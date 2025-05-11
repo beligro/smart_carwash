@@ -1,36 +1,35 @@
-import os
 from sqlalchemy import create_engine
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
-from dotenv import load_dotenv
+from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
 
-# Load environment variables
-load_dotenv()
+from app.utils.config import get_settings
 
-# Database connection settings
-DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://postgres:postgres@db:5432/carwash")
+settings = get_settings()
 
-# Create SQLAlchemy engine
-engine = create_engine(DATABASE_URL)
+# Convert the PostgreSQL URL to AsyncPG URL
+SQLALCHEMY_DATABASE_URL = settings.database_url.replace("postgresql://", "postgresql+asyncpg://")
 
-# Create session factory
-SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+# Create async engine
+engine = create_async_engine(
+    SQLALCHEMY_DATABASE_URL,
+    echo=True,
+)
+
+# Create async session
+AsyncSessionLocal = sessionmaker(
+    engine,
+    class_=AsyncSession,
+    expire_on_commit=False,
+)
 
 # Create base class for models
 Base = declarative_base()
 
-def get_db():
-    """
-    Dependency for getting database session
-    """
-    db = SessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
-
-def create_tables():
-    """
-    Create all tables in the database
-    """
-    Base.metadata.create_all(bind=engine)
+async def get_db():
+    """Get database session."""
+    async with AsyncSessionLocal() as session:
+        try:
+            yield session
+        finally:
+            await session.close()

@@ -1,4 +1,4 @@
-FROM python:3.11-slim
+FROM python:3.12-slim
 
 WORKDIR /app
 
@@ -9,11 +9,8 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copy application code
 COPY . .
 
-# Expose port
-EXPOSE 8000
+# Make start script executable
+RUN chmod +x start.sh
 
-# Set environment variables
-ENV PYTHONUNBUFFERED=1
-
-# Command to run the application
-CMD ["python", "run.py", "--service", "api"]
+# Run the application
+CMD ["./start.sh"]

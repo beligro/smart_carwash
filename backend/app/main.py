@@ -1,36 +1,55 @@
+import os
 from fastapi import FastAPI, Depends
 from fastapi.middleware.cors import CORSMiddleware
-import uvicorn
-from app.routes import carwash, users
-from app.utils.database import create_tables
 
+from app.routes import carwash, users
+from app.services.telegram_bot import start_bot
+from app.utils.config import get_settings
+
+# Create FastAPI app
 app = FastAPI(
     title="Smart Carwash API",
     description="API for Smart Carwash Telegram Mini App",
-    version="1.0.0"
+    version="1.0.0",
 )
 
-# Configure CORS
+# Add CORS middleware
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # In production, replace with specific origins
+    allow_origins=["*"],  # In production, you should specify exact origins
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
 # Include routers
-app.include_router(carwash.router, prefix="/api/carwash", tags=["carwash"])
-app.include_router(users.router, prefix="/api/users", tags=["users"])
+app.include_router(carwash.router, prefix="/api", tags=["carwash"])
+app.include_router(users.router, prefix="/api", tags=["users"])
 
 @app.on_event("startup")
 async def startup_event():
-    # Create database tables on startup
-    create_tables()
+    """Start the Telegram bot when the application starts."""
+    # Start the Telegram bot in a separate thread
+    import asyncio
+    from threading import Thread
+    
+    def run_bot():
+        asyncio.run(start_bot())
+    
+    Thread(target=run_bot, daemon=True).start()
 
-@app.get("/")
-async def root():
-    return {"message": "Smart Carwash API is running"}
+@app.get("/api/health")
+async def health_check():
+    """Health check endpoint."""
+    return {"status": "ok"}
 
 if __name__ == "__main__":
-    uvicorn.run("app.main:app", host="0.0.0.0", port=8000, reload=True)
+    import uvicorn
+    
+    settings = get_settings()
+    uvicorn.run(
+        "app.main:app",
+        host=settings.backend_host,
+        port=settings.backend_port,
+        reload=True,
+    )

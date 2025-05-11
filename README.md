@@ -1,120 +1,139 @@
-# Telegram Mini App для умной автомойки
+# Smart Carwash Telegram Mini App
 
-Telegram Mini App для умных автомоек, позволяющее пользователям проверять доступность моечных боксов.
+Telegram Mini App для умных автомоек с возможностью просмотра статуса боксов и управления ими.
 
-## Функциональность
+## Технологии
 
-- Интеграция с Telegram ботом
-- Telegram Mini App с современным интерфейсом (использует официальный SDK @telegram-apps/sdk-react)
-- Информация о доступных боксах автомойки в реальном времени
-- Управление пользователями с разделением на администраторов и обычных пользователей
-- Настройка Docker и Nginx для простого развертывания
+### Backend
+- Python 3.12
+- FastAPI
+- PostgreSQL
+- SQLAlchemy
+- Alembic
+- python-telegram-bot
 
-## Технологический стек
-
-### Бэкенд
-- Python с FastAPI
-- База данных PostgreSQL
-- ORM SQLAlchemy
-- Библиотека Python Telegram Bot
-
-### Фронтенд
-- React с TypeScript
-- Официальный SDK для Telegram Mini App (@telegram-apps/sdk-react)
+### Frontend
+- React 18
+- Telegram Mini App SDK (@tma.js/sdk)
 - Styled Components
-- Интеграция с Telegram Web App API
+- Axios
 
 ### Инфраструктура
-- Docker и Docker Compose
-- Nginx для обслуживания фронтенда и проксирования API-запросов
+- Docker & Docker Compose
+- Nginx
+- Let's Encrypt для SSL
 
 ## Структура проекта
 
 ```
 smart_carwash/
-├── backend/                # Python бэкенд
-│   ├── app/
-│   │   ├── models/         # Модели базы данных и схемы
+├── .env                    # Файл с переменными окружения
+├── docker-compose.yml      # Конфигурация Docker Compose
+├── backend/                # Бэкенд на Python/FastAPI
+│   ├── app/                # Код приложения
+│   │   ├── models/         # Модели данных
 │   │   ├── routes/         # API маршруты
-│   │   ├── utils/          # Вспомогательные функции
-│   │   ├── bot.py          # Реализация Telegram бота
-│   │   └── main.py         # FastAPI приложение
-│   ├── Dockerfile
-│   ├── requirements.txt
-│   └── run.py              # Скрипт точки входа
-├── frontend/               # React фронтенд
-│   ├── public/
-│   ├── src/
+│   │   ├── services/       # Бизнес-логика
+│   │   └── utils/          # Утилиты
+│   ├── alembic/            # Миграции базы данных
+│   ├── Dockerfile          # Dockerfile для бэкенда
+│   └── requirements.txt    # Зависимости Python
+├── frontend/               # Фронтенд на React
+│   ├── public/             # Публичные файлы
+│   ├── src/                # Исходный код
 │   │   ├── components/     # React компоненты
-│   │   ├── pages/          # Компоненты страниц
-│   │   ├── services/       # API сервисы
-│   │   └── utils/          # Вспомогательные функции
-│   ├── Dockerfile
-│   └── package.json
-├── docker-compose.yml
-└── .env.example
+│   │   ├── pages/          # Страницы приложения
+│   │   ├── services/       # Сервисы для работы с API
+│   │   └── utils/          # Утилиты
+│   ├── Dockerfile          # Dockerfile для фронтенда
+│   └── package.json        # Зависимости NPM
+└── nginx/                  # Конфигурация Nginx
+    ├── default.conf        # Конфигурация Nginx
+    ├── Dockerfile          # Dockerfile для Nginx
+    └── init-letsencrypt.sh # Скрипт для настройки SSL
 ```
 
-## Инструкции по установке
+## Установка и запуск
 
 ### Предварительные требования
 
 - Docker и Docker Compose
-- Токен Telegram бота (от BotFather)
-- Домен для размещения Mini App (или localhost для разработки)
+- Доступ к серверу с публичным IP
+- Зарегистрированный Telegram бот
 
-### Настройка
+### Настройка переменных окружения
 
-1. Клонируйте репозиторий:
-   ```bash
-   git clone https://github.com/yourusername/smart_carwash.git
-   cd smart_carwash
-   ```
+1. Скопируйте файл `.env.example` в `.env` и заполните необходимые переменные:
 
-2. Создайте файлы окружения:
-   ```bash
-   cp .env.example .env
-   cp backend/.env.example backend/.env
-   cp frontend/.env.example frontend/.env
-   ```
+```bash
+cp .env.example .env
+```
 
-3. Отредактируйте файл `.env`, добавив токен вашего Telegram бота и другие настройки:
-   ```
-   TELEGRAM_BOT_TOKEN=ваш_токен_telegram_бота
-   TELEGRAM_BOT_USERNAME=имя_вашего_бота
-   WEBAPP_URL=https://ваш-домен.com
-   ```
+2. Отредактируйте файл `.env`:
+
+```
+# PostgreSQL Configuration
+POSTGRES_USER=postgres
+POSTGRES_PASSWORD=postgres_password
+POSTGRES_DB=carwash_db
+POSTGRES_HOST=postgres
+POSTGRES_PORT=5432
+
+# Backend Configuration
+BACKEND_HOST=0.0.0.0
+BACKEND_PORT=8000
+DATABASE_URL=postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@${POSTGRES_HOST}:${POSTGRES_PORT}/${POSTGRES_DB}
+TELEGRAM_BOT_TOKEN=your_telegram_bot_token
+TELEGRAM_BOT_NAME=your_telegram_bot_name
+SERVER_IP=your_server_ip
+
+# Frontend Configuration
+REACT_APP_API_URL=https://${SERVER_IP}/api
+REACT_APP_TELEGRAM_BOT_NAME=${TELEGRAM_BOT_NAME}
+
+# Nginx Configuration
+DOMAIN=${SERVER_IP}
+```
 
 ### Запуск приложения
 
-1. Соберите и запустите Docker контейнеры:
-   ```bash
-   docker-compose up -d
-   ```
+1. Соберите и запустите контейнеры:
 
-2. Сервисы будут доступны по следующим адресам:
-   - Фронтенд: http://localhost
-   - API бэкенда: http://localhost:8000
-   - PostgreSQL: localhost:5432
+```bash
+docker-compose up -d
+```
 
-3. Для остановки приложения:
-   ```bash
-   docker-compose down
-   ```
+2. Проверьте, что все контейнеры запущены:
 
-### Разработка
+```bash
+docker-compose ps
+```
 
-Для разработки вы можете запустить сервисы отдельно:
+3. Проверьте логи:
 
-#### Бэкенд
+```bash
+docker-compose logs -f
+```
+
+### Настройка Telegram Mini App
+
+1. Откройте BotFather в Telegram: https://t.me/BotFather
+2. Отправьте команду `/mybots` и выберите вашего бота
+3. Выберите "Bot Settings" > "Menu Button" > "Configure menu button"
+4. Установите URL вашего приложения: `https://your_server_ip`
+5. Отправьте команду `/setdomain` и укажите домен вашего сервера
+
+## Разработка
+
+### Локальный запуск бэкенда
 
 ```bash
 cd backend
 pip install -r requirements.txt
-python run.py --service all
+uvicorn app.main:app --reload
 ```
 
-#### Фронтенд
+### Локальный запуск фронтенда
 
 ```bash
 cd frontend
@@ -122,13 +141,24 @@ npm install
 npm start
 ```
 
-## Создание Telegram Mini App
+## API Endpoints
 
-1. Напишите [@BotFather](https://t.me/botfather) в Telegram
-2. Создайте нового бота или выберите существующего
-3. Используйте команду `/newapp` для создания Mini App
-4. Установите URL веб-приложения на URL вашего развернутого фронтенда
-5. Настройте бота для отправки ссылки на Mini App пользователям
+### Carwash API
+
+- `GET /api/carwash/info` - Получить информацию о мойке
+- `GET /api/carwash/boxes/{box_id}` - Получить информацию о конкретном боксе
+- `PATCH /api/carwash/boxes/{box_id}` - Обновить статус бокса
+
+### Users API
+
+- `POST /api/users` - Создать нового пользователя
+- `GET /api/users/{telegram_id}` - Получить информацию о пользователе
+- `POST /api/users/ensure` - Создать пользователя, если он не существует
+
+## Telegram Bot Commands
+
+- `/start` - Начать работу с ботом и открыть Mini App
+- `/help` - Показать справку
 
 ## Лицензия
 

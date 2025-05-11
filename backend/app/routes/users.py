@@ -1,121 +1,51 @@
-from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy.orm import Session
+from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy.ext.asyncio import AsyncSession
 from typing import List
-from app.models import models, schemas
+
 from app.utils.database import get_db
+from app.utils.schemas import UserCreate, UserInDB, UserUpdate
+from app.services.user_service import (
+    get_user_by_telegram_id,
+    create_user,
+    create_user_if_not_exists,
+)
 
 router = APIRouter()
 
-@router.post("/", response_model=schemas.UserResponse, status_code=status.HTTP_201_CREATED)
-async def create_user(user: schemas.UserCreate, db: Session = Depends(get_db)):
-    """
-    Create a new user (first time login)
-    """
+@router.post("/users", response_model=UserInDB)
+async def create_new_user(user: UserCreate, db: AsyncSession = Depends(get_db)):
+    """Create a new user."""
     # Check if user already exists
-    existing_user = db.query(models.User).filter(
-        models.User.telegram_id == user.telegram_id
-    ).first()
+    existing_user = await get_user_by_telegram_id(user.telegram_id, db)
     
     if existing_user:
-        # Return existing user
-        return existing_user
+        raise HTTPException(status_code=400, detail="User already exists")
     
-    # Create new user
-    new_user = models.User(
+    return await create_user(
         telegram_id=user.telegram_id,
         username=user.username,
         first_name=user.first_name,
         last_name=user.last_name,
-        role=user.role
+        db=db,
     )
-    
-    db.add(new_user)
-    db.commit()
-    db.refresh(new_user)
-    
-    return new_user
 
-@router.get("/", response_model=List[schemas.UserResponse])
-async def get_all_users(db: Session = Depends(get_db)):
-    """
-    Get all users (admin only)
-    """
-    users = db.query(models.User).all()
-    return users
-
-@router.get("/{user_id}", response_model=schemas.UserResponse)
-async def get_user(user_id: int, db: Session = Depends(get_db)):
-    """
-    Get a specific user by ID
-    """
-    user = db.query(models.User).filter(models.User.id == user_id).first()
-    if not user:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"User with ID {user_id} not found"
-        )
-    return user
-
-@router.get("/telegram/{telegram_id}", response_model=schemas.UserResponse)
-async def get_user_by_telegram_id(telegram_id: str, db: Session = Depends(get_db)):
-    """
-    Get a user by Telegram ID
-    """
-    user = db.query(models.User).filter(models.User.telegram_id == telegram_id).first()
-    if not user:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"User with Telegram ID {telegram_id} not found"
-        )
-    return user
-
-@router.put("/{user_id}", response_model=schemas.UserResponse)
-async def update_user(
-    user_id: int, 
-    user_update: schemas.UserBase, 
-    db: Session = Depends(get_db)
-):
-    """
-    Update a user (admin only)
-    """
-    # Get the user
-    user = db.query(models.User).filter(models.User.id == user_id).first()
-    if not user:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"User with ID {user_id} not found"
-        )
+@router.get("/users/{telegram_id}", response_model=UserInDB)
+async def get_user(telegram_id: str, db: AsyncSession = Depends(get_db)):
+    """Get a user by Telegram ID."""
+    user = await get_user_by_telegram_id(telegram_id, db)
     
-    # Update user fields
-    for key, value in user_update.dict(exclude_unset=True).items():
-        setattr(user, key, value)
-    
-    db.commit()
-    db.refresh(user)
+    if user is None:
+        raise HTTPException(status_code=404, detail="User not found")
     
     return user
 
-@router.put("/{user_id}/role", response_model=schemas.UserResponse)
-async def update_user_role(
-    user_id: int, 
-    role: schemas.UserRole, 
-    db: Session = Depends(get_db)
-):
-    """
-    Update a user's role (admin only)
-    """
-    # Get the user
-    user = db.query(models.User).filter(models.User.id == user_id).first()
-    if not user:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"User with ID {user_id} not found"
-        )
-    
-    # Update role
-    user.role = role
-    
-    db.commit()
-    db.refresh(user)
-    
-    return user
+@router.post("/users/ensure", response_model=UserInDB)
+async def ensure_user_exists(user: UserCreate, db: AsyncSession = Depends(get_db)):
+    """Ensure a user exists, creating it if necessary."""
+    return await create_user_if_not_exists(
+        telegram_id=user.telegram_id,
+        username=user.username,
+        first_name=user.first_name,
+        last_name=user.last_name,
+        db=db,
+    )
