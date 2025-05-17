@@ -2,11 +2,12 @@ import axios from 'axios';
 
 // Создаем экземпляр axios с базовым URL
 const api = axios.create({
-  baseURL: process.env.REACT_APP_API_URL || 'https://158.160.105.190/api',
+  baseURL: process.env.REACT_APP_API_URL || '/api',
   headers: {
     'Content-Type': 'application/json',
   },
 });
+
 
 // Сервис для работы с API
 const ApiService = {
@@ -21,6 +22,17 @@ const ApiService = {
     }
   },
 
+  // Получение информации о мойке для конкретного пользователя
+  getWashInfoForUser: async (userId) => {
+    try {
+      const response = await api.get(`/wash-info/${userId}`);
+      return response.data;
+    } catch (error) {
+      console.error('Ошибка при получении информации о мойке для пользователя:', error);
+      throw error;
+    }
+  },
+
   // Создание пользователя
   createUser: async (userData) => {
     try {
@@ -29,6 +41,28 @@ const ApiService = {
     } catch (error) {
       console.error('Ошибка при создании пользователя:', error);
       throw error;
+    }
+  },
+
+  // Создание сессии
+  createSession: async (sessionData) => {
+    try {
+      const response = await api.post('/sessions', sessionData);
+      return response.data;
+    } catch (error) {
+      console.error('Ошибка при создании сессии:', error);
+      throw error;
+    }
+  },
+
+  // Получение сессии пользователя
+  getUserSession: async (userId) => {
+    try {
+      const response = await api.get(`/sessions/${userId}`);
+      return response.data;
+    } catch (error) {
+      console.error('Ошибка при получении сессии пользователя:', error);
+      return null;
     }
   },
 };

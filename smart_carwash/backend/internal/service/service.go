@@ -13,6 +13,12 @@ type Service interface {
 
 	// Информация о мойке
 	GetWashInfo() (*models.WashInfo, error)
+	GetWashInfoForUser(userID uint) (*models.WashInfo, error)
+
+	// Сессии мойки
+	CreateSession(req *models.CreateSessionRequest) (*models.Session, error)
+	GetUserSession(req *models.GetUserSessionRequest) (*models.Session, error)
+	ProcessQueue() error
 }
 
 // ServiceImpl реализация Service
@@ -65,8 +71,116 @@ func (s *ServiceImpl) GetWashInfo() (*models.WashInfo, error) {
 		return nil, err
 	}
 
+	// Получаем количество сессий в очереди
+	queueSize, err := s.repo.CountSessionsByStatus(models.SessionStatusCreated)
+	if err != nil {
+		return nil, err
+	}
+
+	// Получаем количество свободных боксов
+	freeBoxes, err := s.repo.GetFreeWashBoxes()
+	if err != nil {
+		return nil, err
+	}
+
+	// Определяем, есть ли очередь
+	hasQueue := queueSize > len(freeBoxes)
+
 	// Формируем ответ
 	return &models.WashInfo{
-		Boxes: boxes,
+		Boxes:     boxes,
+		QueueSize: queueSize,
+		HasQueue:  hasQueue,
 	}, nil
+}
+
+// GetWashInfoForUser получает информацию о мойке для конкретного пользователя
+func (s *ServiceImpl) GetWashInfoForUser(userID uint) (*models.WashInfo, error) {
+	// Получаем общую информацию о мойке
+	washInfo, err := s.GetWashInfo()
+	if err != nil {
+		return nil, err
+	}
+
+	// Получаем активную сессию пользователя, если есть
+	session, err := s.repo.GetActiveSessionByUserID(userID)
+	if err == nil {
+		// Если сессия найдена, добавляем ее в ответ
+		washInfo.UserSession = session
+	}
+
+	return washInfo, nil
+}
+
+// CreateSession создает новую сессию мойки
+func (s *ServiceImpl) CreateSession(req *models.CreateSessionRequest) (*models.Session, error) {
+	// Проверяем, есть ли у пользователя активная сессия
+	existingSession, err := s.repo.GetActiveSessionByUserID(req.UserID)
+	if err == nil && existingSession != nil {
+		// У пользователя уже есть активная сессия
+		return existingSession, nil
+	}
+
+	// Создаем новую сессию
+	session := &models.Session{
+		UserID: req.UserID,
+		Status: models.SessionStatusCreated,
+	}
+
+	// Сохраняем сессию в базе данных
+	err = s.repo.CreateSession(session)
+	if err != nil {
+		return nil, err
+	}
+
+	return session, nil
+}
+
+// GetUserSession получает активную сессию пользователя
+func (s *ServiceImpl) GetUserSession(req *models.GetUserSessionRequest) (*models.Session, error) {
+	return s.repo.GetActiveSessionByUserID(req.UserID)
+}
+
+// ProcessQueue обрабатывает очередь сессий
+func (s *ServiceImpl) ProcessQueue() error {
+	// Получаем все сессии со статусом "created"
+	sessions, err := s.repo.GetSessionsByStatus(models.SessionStatusCreated)
+	if err != nil {
+		return err
+	}
+
+	// Если нет сессий в очереди, выходим
+	if len(sessions) == 0 {
+		return nil
+	}
+
+	// Получаем все свободные боксы
+	freeBoxes, err := s.repo.GetFreeWashBoxes()
+	if err != nil {
+		return err
+	}
+
+	// Если нет свободных боксов, выходим
+	if len(freeBoxes) == 0 {
+		return nil
+	}
+
+	// Назначаем сессии на свободные боксы
+	for i := 0; i < len(sessions) && i < len(freeBoxes); i++ {
+		// Обновляем статус бокса на "busy"
+		err = s.repo.UpdateWashBoxStatus(freeBoxes[i].ID, models.StatusBusy)
+		if err != nil {
+			return err
+		}
+
+		// Обновляем сессию - назначаем бокс и меняем статус
+		sessions[i].BoxID = &freeBoxes[i].ID
+		sessions[i].Status = models.SessionStatusAssigned
+		err = s.repo.UpdateSession(&sessions[i])
+		if err != nil {
+			return err
+		}
+	}
+
+	return nil
 }

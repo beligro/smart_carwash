@@ -1,6 +1,6 @@
 import React from 'react';
 import styled from 'styled-components';
-import { WebApp } from '@twa-dev/sdk';
+import WebApp from '@twa-dev/sdk';
 
 const WelcomeContainer = styled.div`
   margin-bottom: 24px;
@@ -26,7 +26,13 @@ const Description = styled.p`
 
 const WelcomeMessage = ({ theme }) => {
   // Получаем имя пользователя из Telegram WebApp
-  const firstName = WebApp.initDataUnsafe?.user?.first_name || 'Гость';
+  let firstName = 'Гость';
+  
+  try {
+    firstName = WebApp.initDataUnsafe?.user?.first_name || 'Гость';
+  } catch (err) {
+    console.error('Ошибка получения данных пользователя:', err);
+  }
 
   return (
     <WelcomeContainer theme={theme}>

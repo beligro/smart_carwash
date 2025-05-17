@@ -1,5 +1,5 @@
 # Используем официальный образ Golang
-FROM golang:1.22-alpine AS builder
+FROM golang:1.23-alpine AS builder
 
 # Устанавливаем рабочую директорию
 WORKDIR /app
@@ -24,6 +24,9 @@ WORKDIR /app
 
 # Копируем бинарный файл из предыдущего этапа
 COPY --from=builder /app/main .
+
+# Копируем директорию с миграциями
+COPY --from=builder /app/migrations ./migrations
 
 # Открываем порт
 EXPOSE 8080

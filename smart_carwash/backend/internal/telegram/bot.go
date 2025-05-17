@@ -39,8 +39,19 @@ func NewBot(service service.Service, config *config.Config) (*Bot, error) {
 	}, nil
 }
 
-// Start запускает бота
+// Start запускает бота в режиме long polling
 func (b *Bot) Start() {
+	log.Println("Бот запущен в режиме long polling")
+
+	// Удаляем вебхук перед использованием long polling
+	_, err := b.bot.Request(tgbotapi.DeleteWebhookConfig{})
+	if err != nil {
+		log.Printf("Ошибка удаления вебхука: %v", err)
+		return
+	}
+
+	log.Println("Вебхук удален, бот работает в режиме long polling")
+
 	// Настраиваем обновления
 	u := tgbotapi.NewUpdate(0)
 	u.Timeout = 60
@@ -54,6 +65,14 @@ func (b *Bot) Start() {
 		if update.Message != nil {
 			b.handleMessage(update.Message)
 		}
+	}
+}
+
+// ProcessUpdate обрабатывает обновления от вебхука
+func (b *Bot) ProcessUpdate(update tgbotapi.Update) {
+	// Обрабатываем сообщения
+	if update.Message != nil {
+		b.handleMessage(update.Message)
 	}
 }
 
