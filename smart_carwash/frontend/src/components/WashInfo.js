@@ -304,7 +304,11 @@ const WashInfo = ({ washInfo, theme, onCreateSession }) => {
             </SessionInfo>
             {userSession.box_id && (
               <SessionInfo theme={theme}>
-                Назначен бокс: #{userSession.box_id}
+                Назначен бокс: #{
+                  // Находим номер бокса по его ID
+                  boxes.find(box => box.id === userSession.box_id)?.number || 
+                  'Неизвестный бокс'
+                }
               </SessionInfo>
             )}
             <StatusIndicator theme={theme}>

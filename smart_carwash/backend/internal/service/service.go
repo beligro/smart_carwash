@@ -3,6 +3,8 @@ package service
 import (
 	"carwash_backend/internal/models"
 	"carwash_backend/internal/repository"
+
+	"github.com/google/uuid"
 )
 
 // Service интерфейс для бизнес-логики
@@ -13,11 +15,13 @@ type Service interface {
 
 	// Информация о мойке
 	GetWashInfo() (*models.WashInfo, error)
-	GetWashInfoForUser(userID uint) (*models.WashInfo, error)
+	GetWashInfoForUser(userID uuid.UUID) (*models.WashInfo, error)
+	GetQueueStatus() (*models.GetQueueStatusResponse, error)
 
 	// Сессии мойки
 	CreateSession(req *models.CreateSessionRequest) (*models.Session, error)
 	GetUserSession(req *models.GetUserSessionRequest) (*models.Session, error)
+	GetSession(req *models.GetSessionRequest) (*models.Session, error)
 	ProcessQueue() error
 }
 
@@ -95,7 +99,7 @@ func (s *ServiceImpl) GetWashInfo() (*models.WashInfo, error) {
 }
 
 // GetWashInfoForUser получает информацию о мойке для конкретного пользователя
-func (s *ServiceImpl) GetWashInfoForUser(userID uint) (*models.WashInfo, error) {
+func (s *ServiceImpl) GetWashInfoForUser(userID uuid.UUID) (*models.WashInfo, error) {
 	// Получаем общую информацию о мойке
 	washInfo, err := s.GetWashInfo()
 	if err != nil {
@@ -112,8 +116,46 @@ func (s *ServiceImpl) GetWashInfoForUser(userID uint) (*models.WashInfo, error) 
 	return washInfo, nil
 }
 
+// GetQueueStatus получает статус очереди и боксов
+func (s *ServiceImpl) GetQueueStatus() (*models.GetQueueStatusResponse, error) {
+	// Получаем все боксы мойки
+	boxes, err := s.repo.GetAllWashBoxes()
+	if err != nil {
+		return nil, err
+	}
+
+	// Получаем количество сессий в очереди
+	queueSize, err := s.repo.CountSessionsByStatus(models.SessionStatusCreated)
+	if err != nil {
+		return nil, err
+	}
+
+	// Получаем количество свободных боксов
+	freeBoxes, err := s.repo.GetFreeWashBoxes()
+	if err != nil {
+		return nil, err
+	}
+
+	// Определяем, есть ли очередь
+	hasQueue := queueSize > len(freeBoxes)
+
+	// Формируем ответ
+	return &models.GetQueueStatusResponse{
+		Boxes:     boxes,
+		QueueSize: queueSize,
+		HasQueue:  hasQueue,
+	}, nil
+}
+
 // CreateSession создает новую сессию мойки
 func (s *ServiceImpl) CreateSession(req *models.CreateSessionRequest) (*models.Session, error) {
+	// Проверяем идемпотентность запроса
+	existingSessionByKey, err := s.repo.GetSessionByIdempotencyKey(req.IdempotencyKey)
+	if err == nil && existingSessionByKey != nil {
+		// Сессия с таким ключом идемпотентности уже существует
+		return existingSessionByKey, nil
+	}
+
 	// Проверяем, есть ли у пользователя активная сессия
 	existingSession, err := s.repo.GetActiveSessionByUserID(req.UserID)
 	if err == nil && existingSession != nil {
@@ -123,8 +165,9 @@ func (s *ServiceImpl) CreateSession(req *models.CreateSessionRequest) (*models.S
 
 	// Создаем новую сессию
 	session := &models.Session{
-		UserID: req.UserID,
-		Status: models.SessionStatusCreated,
+		UserID:         req.UserID,
+		Status:         models.SessionStatusCreated,
+		IdempotencyKey: req.IdempotencyKey,
 	}
 
 	// Сохраняем сессию в базе данных
@@ -139,6 +182,11 @@ func (s *ServiceImpl) CreateSession(req *models.CreateSessionRequest) (*models.S
 // GetUserSession получает активную сессию пользователя
 func (s *ServiceImpl) GetUserSession(req *models.GetUserSessionRequest) (*models.Session, error) {
 	return s.repo.GetActiveSessionByUserID(req.UserID)
+}
+
+// GetSession получает сессию по ID
+func (s *ServiceImpl) GetSession(req *models.GetSessionRequest) (*models.Session, error) {
+	return s.repo.GetSessionByID(req.SessionID)
 }
 
 // ProcessQueue обрабатывает очередь сессий

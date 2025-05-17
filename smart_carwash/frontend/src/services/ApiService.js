@@ -1,4 +1,5 @@
 import axios from 'axios';
+import { v4 as uuidv4 } from 'uuid';
 
 // Создаем экземпляр axios с базовым URL
 const api = axios.create({
@@ -11,13 +12,13 @@ const api = axios.create({
 
 // Сервис для работы с API
 const ApiService = {
-  // Получение информации о мойке
-  getWashInfo: async () => {
+  // Получение статуса очереди и боксов
+  getQueueStatus: async () => {
     try {
-      const response = await api.get('/wash-info');
+      const response = await api.get('/queue-status');
       return response.data;
     } catch (error) {
-      console.error('Ошибка при получении информации о мойке:', error);
+      console.error('Ошибка при получении статуса очереди:', error);
       throw error;
     }
   },
@@ -36,7 +37,13 @@ const ApiService = {
   // Создание пользователя
   createUser: async (userData) => {
     try {
-      const response = await api.post('/users', userData);
+      // Добавляем токен идемпотентности
+      const dataWithToken = {
+        ...userData,
+        idempotency_key: uuidv4()
+      };
+      
+      const response = await api.post('/users', dataWithToken);
       return response.data;
     } catch (error) {
       console.error('Ошибка при создании пользователя:', error);
@@ -47,7 +54,13 @@ const ApiService = {
   // Создание сессии
   createSession: async (sessionData) => {
     try {
-      const response = await api.post('/sessions', sessionData);
+      // Добавляем токен идемпотентности
+      const dataWithToken = {
+        ...sessionData,
+        idempotency_key: uuidv4()
+      };
+      
+      const response = await api.post('/sessions', dataWithToken);
       return response.data;
     } catch (error) {
       console.error('Ошибка при создании сессии:', error);
@@ -62,6 +75,17 @@ const ApiService = {
       return response.data;
     } catch (error) {
       console.error('Ошибка при получении сессии пользователя:', error);
+      return null;
+    }
+  },
+  
+  // Получение сессии по ID
+  getSessionById: async (sessionId) => {
+    try {
+      const response = await api.get(`/sessions/by-id/${sessionId}`);
+      return response.data;
+    } catch (error) {
+      console.error('Ошибка при получении сессии по ID:', error);
       return null;
     }
   },

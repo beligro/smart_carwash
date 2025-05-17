@@ -90,7 +90,11 @@ function App() {
   // Эффект для загрузки информации о мойке при изменении пользователя
   useEffect(() => {
     if (user) {
-      fetchWashInfoForUser(true); // Первая загрузка
+      // Загружаем статус очереди и боксов
+      fetchQueueStatus(true);
+      
+      // Загружаем информацию о пользовательской сессии, если есть
+      fetchWashInfoForUser(true);
     }
   }, [user]);
 
@@ -106,38 +110,42 @@ function App() {
     }
   };
 
-  // Функция для загрузки информации о мойке для пользователя
-  const fetchWashInfoForUser = async (isInitialLoad = false) => {
+  // Функция для загрузки статуса очереди и боксов
+  const fetchQueueStatus = async (isInitialLoad = false) => {
     try {
       // Устанавливаем loading только при первой загрузке
       if (isInitialLoad) {
         setLoading(true);
       }
       
-      const data = await ApiService.getWashInfoForUser(user.id);
-      console.log('API response data:', data);
+      const data = await ApiService.getQueueStatus();
+      console.log('Queue status data:', data);
       
       // Обновляем данные, сохраняя структуру объекта
       setWashInfo(prevInfo => {
         // Если это первая загрузка или предыдущих данных нет
         if (!prevInfo) {
-          return data;
+          return {
+            boxes: data.boxes,
+            queueSize: data.queue_size,
+            hasQueue: data.has_queue,
+            userSession: null
+          };
         }
         
         // Обновляем только изменившиеся данные
         return {
           ...prevInfo,
           boxes: data.boxes,
-          queueSize: data.queueSize,
-          hasQueue: data.hasQueue,
-          userSession: data.user_session
+          queueSize: data.queue_size,
+          hasQueue: data.has_queue
         };
       });
       
       setError(null);
     } catch (err) {
-      setError('Не удалось загрузить информацию о мойке');
-      console.error('Ошибка загрузки информации о мойке:', err);
+      setError('Не удалось загрузить статус очереди');
+      console.error('Ошибка загрузки статуса очереди:', err);
       
       // Создаем пустой объект с необходимой структурой только если нет предыдущих данных
       if (!washInfo) {
@@ -155,6 +163,28 @@ function App() {
     }
   };
   
+  // Функция для загрузки информации о пользовательской сессии
+  const fetchWashInfoForUser = async (isInitialLoad = false) => {
+    try {
+      if (!user) return;
+      
+      const data = await ApiService.getWashInfoForUser(user.id);
+      console.log('User session data:', data);
+      
+      // Обновляем данные сессии пользователя
+      setWashInfo(prevInfo => {
+        if (!prevInfo) return data;
+        
+        return {
+          ...prevInfo,
+          userSession: data.user_session
+        };
+      });
+    } catch (err) {
+      console.error('Ошибка загрузки информации о пользовательской сессии:', err);
+    }
+  };
+  
   // Функция для создания сессии
   const handleCreateSession = async () => {
     try {
@@ -164,13 +194,17 @@ function App() {
       }
       
       setLoading(true);
-      await ApiService.createSession({ user_id: user.id });
+      const response = await ApiService.createSession({ user_id: user.id });
+      console.log('Создана сессия:', response);
       
-      // Обновляем информацию о мойке после создания сессии
+      // Сохраняем ID сессии для последующего поллинга
+      const sessionId = response.session.id;
+      
+      // Обновляем информацию о пользовательской сессии
       await fetchWashInfoForUser(false);
       
       // Запускаем поллинг для обновления статуса сессии
-      startPolling();
+      startSessionPolling(sessionId);
     } catch (err) {
       setError('Не удалось создать сессию');
       console.error('Ошибка создания сессии:', err);
@@ -179,21 +213,60 @@ function App() {
     }
   };
   
-  // Функция для запуска поллинга
-  const startPolling = () => {
+  // Функция для запуска поллинга статуса очереди и боксов
+  const startQueuePolling = () => {
+    // Устанавливаем интервал для поллинга (каждые 10 секунд)
+    const queuePollingInterval = setInterval(() => {
+      fetchQueueStatus(false);
+    }, 10000);
+    
+    // Сохраняем интервал в ref, чтобы можно было его очистить при размонтировании компонента
+    // Для простоты в этом примере мы не очищаем интервал
+    return queuePollingInterval;
+  };
+  
+  // Функция для запуска поллинга статуса сессии
+  const startSessionPolling = (sessionId) => {
     // Устанавливаем интервал для поллинга (каждые 5 секунд)
-    const pollingInterval = setInterval(() => {
-      if (user) {
-        fetchWashInfoForUser(false); // Не первая загрузка, обновление данных
-      } else {
-        // Если пользователь не определен, останавливаем поллинг
-        clearInterval(pollingInterval);
+    const sessionPollingInterval = setInterval(async () => {
+      try {
+        const sessionData = await ApiService.getSessionById(sessionId);
+        console.log('Обновление статуса сессии:', sessionData);
+        
+        if (sessionData && sessionData.session) {
+          // Обновляем данные сессии пользователя
+          setWashInfo(prevInfo => ({
+            ...prevInfo,
+            userSession: sessionData.session
+          }));
+          
+          // Если сессия завершена или отменена, останавливаем поллинг
+          if (
+            sessionData.session.status === 'complete' || 
+            sessionData.session.status === 'canceled'
+          ) {
+            clearInterval(sessionPollingInterval);
+          }
+        }
+      } catch (err) {
+        console.error('Ошибка при получении статуса сессии:', err);
       }
     }, 5000);
     
     // Сохраняем интервал в ref, чтобы можно было его очистить при размонтировании компонента
     // Для простоты в этом примере мы не очищаем интервал
+    return sessionPollingInterval;
   };
+  
+  // Запускаем поллинг статуса очереди при монтировании компонента
+  useEffect(() => {
+    if (user) {
+      const queueInterval = startQueuePolling();
+      
+      // Очищаем интервал при размонтировании
+      return () => clearInterval(queueInterval);
+    }
+  }, [user]);
 
   return (
     <AppContainer theme={theme}>

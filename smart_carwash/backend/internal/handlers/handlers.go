@@ -3,7 +3,6 @@ package handlers
 import (
 	"encoding/json"
 	"net/http"
-	"strconv"
 
 	"carwash_backend/internal/models"
 	"carwash_backend/internal/service"
@@ -11,6 +10,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
+	"github.com/google/uuid"
 )
 
 // Handler структура для обработчиков HTTP запросов
@@ -32,7 +32,7 @@ func (h *Handler) InitRoutes(router *gin.Engine) {
 	api := router.Group("/")
 	{
 		// Информация о мойке
-		api.GET("/wash-info", h.getWashInfo)
+		api.GET("/queue-status", h.getQueueStatus)
 		api.GET("/wash-info/:user_id", h.getWashInfoForUser)
 
 		// Пользователи
@@ -41,6 +41,7 @@ func (h *Handler) InitRoutes(router *gin.Engine) {
 		// Сессии
 		api.POST("/sessions", h.createSession)
 		api.GET("/sessions/:user_id", h.getUserSession)
+		api.GET("/sessions/by-id/:session_id", h.getSessionByID)
 
 		// Вебхук для Telegram бота
 		api.POST("/webhook", h.handleWebhook)
@@ -69,30 +70,30 @@ func (h *Handler) handleWebhook(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"status": "ok"})
 }
 
-// getWashInfo обработчик для получения информации о мойке
-func (h *Handler) getWashInfo(c *gin.Context) {
-	// Получаем информацию о мойке
-	washInfo, err := h.service.GetWashInfo()
+// getQueueStatus обработчик для получения статуса очереди и боксов
+func (h *Handler) getQueueStatus(c *gin.Context) {
+	// Получаем статус очереди и боксов
+	queueStatus, err := h.service.GetQueueStatus()
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
 
-	c.JSON(http.StatusOK, washInfo)
+	c.JSON(http.StatusOK, queueStatus)
 }
 
 // getWashInfoForUser обработчик для получения информации о мойке для конкретного пользователя
 func (h *Handler) getWashInfoForUser(c *gin.Context) {
 	// Получаем ID пользователя из URL
 	userIDStr := c.Param("user_id")
-	userID, err := strconv.ParseUint(userIDStr, 10, 32)
+	userID, err := uuid.Parse(userIDStr)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Некорректный ID пользователя"})
 		return
 	}
 
 	// Получаем информацию о мойке для пользователя
-	washInfo, err := h.service.GetWashInfoForUser(uint(userID))
+	washInfo, err := h.service.GetWashInfoForUser(userID)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
@@ -147,7 +148,7 @@ func (h *Handler) createSession(c *gin.Context) {
 func (h *Handler) getUserSession(c *gin.Context) {
 	// Получаем ID пользователя из URL
 	userIDStr := c.Param("user_id")
-	userID, err := strconv.ParseUint(userIDStr, 10, 32)
+	userID, err := uuid.Parse(userIDStr)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Некорректный ID пользователя"})
 		return
@@ -155,7 +156,7 @@ func (h *Handler) getUserSession(c *gin.Context) {
 
 	// Получаем сессию пользователя
 	session, err := h.service.GetUserSession(&models.GetUserSessionRequest{
-		UserID: uint(userID),
+		UserID: userID,
 	})
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "Сессия не найдена"})
@@ -164,4 +165,27 @@ func (h *Handler) getUserSession(c *gin.Context) {
 
 	// Возвращаем сессию пользователя
 	c.JSON(http.StatusOK, models.GetUserSessionResponse{Session: session})
+}
+
+// getSessionByID обработчик для получения сессии по ID
+func (h *Handler) getSessionByID(c *gin.Context) {
+	// Получаем ID сессии из URL
+	sessionIDStr := c.Param("session_id")
+	sessionID, err := uuid.Parse(sessionIDStr)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Некорректный ID сессии"})
+		return
+	}
+
+	// Получаем сессию по ID
+	session, err := h.service.GetSession(&models.GetSessionRequest{
+		SessionID: sessionID,
+	})
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Сессия не найдена"})
+		return
+	}
+
+	// Возвращаем сессию
+	c.JSON(http.StatusOK, models.GetSessionResponse{Session: session})
 }
