@@ -1,0 +1,28 @@
+.timer {
+    font-size: 24px;
+    font-weight: bold;
+    text-align: center;
+    margin: 20px 0;
+    padding: 15px;
+    border-radius: 8px;
+    transition: color 0.3s ease;
+  }
+  
+  .light {
+    background-color: #F5F5F5;
+    color: #000000;
+  }
+  
+  .dark {
+    background-color: #1E1E1E;
+    color: #FFFFFF;
+  }
+  
+  .warning {
+    color: #F57F17;
+  }
+  
+  .danger {
+    color: #C62828;
+  }
+  

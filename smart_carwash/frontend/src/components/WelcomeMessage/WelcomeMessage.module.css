@@ -1,0 +1,31 @@
+.container {
+    margin-bottom: 24px;
+  }
+  
+  .title {
+    font-size: 24px;
+    margin-bottom: 16px;
+  }
+  
+  .description {
+    font-size: 16px;
+    line-height: 1.5;
+    margin-bottom: 16px;
+  }
+  
+  .light .title {
+    color: #000000;
+  }
+  
+  .light .description {
+    color: #333333;
+  }
+  
+  .dark .title {
+    color: #FFFFFF;
+  }
+  
+  .dark .description {
+    color: #E0E0E0;
+  }
+  

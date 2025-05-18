@@ -3,6 +3,7 @@ package repository
 import (
 	"carwash_backend/internal/models"
 
+	"github.com/google/uuid"
 	"gorm.io/gorm"
 )
 
@@ -15,15 +16,16 @@ type Repository interface {
 
 	// Боксы мойки
 	GetAllWashBoxes() ([]models.WashBox, error)
-	GetWashBoxByID(id uint) (*models.WashBox, error)
-	UpdateWashBoxStatus(id uint, status string) error
+	GetWashBoxByID(id uuid.UUID) (*models.WashBox, error)
+	UpdateWashBoxStatus(id uuid.UUID, status string) error
 	CreateWashBox(box *models.WashBox) error
 	GetFreeWashBoxes() ([]models.WashBox, error)
 
 	// Сессии мойки
 	CreateSession(session *models.Session) error
-	GetSessionByID(id uint) (*models.Session, error)
-	GetActiveSessionByUserID(userID uint) (*models.Session, error)
+	GetSessionByID(id uuid.UUID) (*models.Session, error)
+	GetActiveSessionByUserID(userID uuid.UUID) (*models.Session, error)
+	GetSessionByIdempotencyKey(key string) (*models.Session, error)
 	UpdateSession(session *models.Session) error
 	GetSessionsByStatus(status string) ([]models.Session, error)
 	CountSessionsByStatus(status string) (int, error)
@@ -67,7 +69,7 @@ func (r *PostgresRepository) GetAllWashBoxes() ([]models.WashBox, error) {
 }
 
 // GetWashBoxByID получает бокс мойки по ID
-func (r *PostgresRepository) GetWashBoxByID(id uint) (*models.WashBox, error) {
+func (r *PostgresRepository) GetWashBoxByID(id uuid.UUID) (*models.WashBox, error) {
 	var box models.WashBox
 	err := r.db.First(&box, id).Error
 	if err != nil {
@@ -77,7 +79,7 @@ func (r *PostgresRepository) GetWashBoxByID(id uint) (*models.WashBox, error) {
 }
 
 // UpdateWashBoxStatus обновляет статус бокса мойки
-func (r *PostgresRepository) UpdateWashBoxStatus(id uint, status string) error {
+func (r *PostgresRepository) UpdateWashBoxStatus(id uuid.UUID, status string) error {
 	return r.db.Model(&models.WashBox{}).Where("id = ?", id).Update("status", status).Error
 }
 
@@ -99,7 +101,7 @@ func (r *PostgresRepository) CreateSession(session *models.Session) error {
 }
 
 // GetSessionByID получает сессию по ID
-func (r *PostgresRepository) GetSessionByID(id uint) (*models.Session, error) {
+func (r *PostgresRepository) GetSessionByID(id uuid.UUID) (*models.Session, error) {
 	var session models.Session
 	err := r.db.First(&session, id).Error
 	if err != nil {
@@ -109,7 +111,7 @@ func (r *PostgresRepository) GetSessionByID(id uint) (*models.Session, error) {
 }
 
 // GetActiveSessionByUserID получает активную сессию пользователя
-func (r *PostgresRepository) GetActiveSessionByUserID(userID uint) (*models.Session, error) {
+func (r *PostgresRepository) GetActiveSessionByUserID(userID uuid.UUID) (*models.Session, error) {
 	var session models.Session
 	err := r.db.Where("user_id = ? AND status IN (?, ?, ?)",
 		userID,
@@ -118,6 +120,16 @@ func (r *PostgresRepository) GetActiveSessionByUserID(userID uint) (*models.Sess
 		models.SessionStatusActive).
 		Order("created_at DESC").
 		First(&session).Error
+	if err != nil {
+		return nil, err
+	}
+	return &session, nil
+}
+
+// GetSessionByIdempotencyKey получает сессию по ключу идемпотентности
+func (r *PostgresRepository) GetSessionByIdempotencyKey(key string) (*models.Session, error) {
+	var session models.Session
+	err := r.db.Where("idempotency_key = ?", key).First(&session).Error
 	if err != nil {
 		return nil, err
 	}

@@ -1,0 +1,103 @@
+.badge {
+    display: inline-block;
+    padding: 8px 16px;
+    border-radius: 20px;
+    font-size: 16px;
+    font-weight: 500;
+    margin-bottom: 16px;
+    text-align: center;
+  }
+  
+  /* Статусы сессий */
+  .created {
+    background-color: #E3F2FD;
+    color: #0D47A1;
+  }
+  
+  .assigned {
+    background-color: #BBDEFB;
+    color: #1565C0;
+  }
+  
+  .active {
+    background-color: #E8F5E9;
+    color: #2E7D32;
+  }
+  
+  .complete {
+    background-color: #F1F8E9;
+    color: #558B2F;
+  }
+  
+  .canceled {
+    background-color: #FFEBEE;
+    color: #C62828;
+  }
+  
+  /* Статусы боксов */
+  .free {
+    background-color: #E8F5E9;
+    color: #2E7D32;
+  }
+  
+  .reserved {
+    background-color: #BBDEFB;
+    color: #1565C0;
+  }
+  
+  .busy {
+    background-color: #FFEBEE;
+    color: #C62828;
+  }
+  
+  .maintenance {
+    background-color: #FFF3E0;
+    color: #F57C00;
+  }
+  
+  /* Темная тема */
+  .dark.created {
+    background-color: #0D47A1;
+    color: #FFFFFF;
+  }
+  
+  .dark.assigned {
+    background-color: #1565C0;
+    color: #FFFFFF;
+  }
+  
+  .dark.active {
+    background-color: #2E7D32;
+    color: #FFFFFF;
+  }
+  
+  .dark.complete {
+    background-color: #558B2F;
+    color: #FFFFFF;
+  }
+  
+  .dark.canceled {
+    background-color: #C62828;
+    color: #FFFFFF;
+  }
+  
+  .dark.free {
+    background-color: #2E7D32;
+    color: #FFFFFF;
+  }
+  
+  .dark.reserved {
+    background-color: #1565C0;
+    color: #FFFFFF;
+  }
+  
+  .dark.busy {
+    background-color: #C62828;
+    color: #FFFFFF;
+  }
+  
+  .dark.maintenance {
+    background-color: #F57C00;
+    color: #FFFFFF;
+  }
+  

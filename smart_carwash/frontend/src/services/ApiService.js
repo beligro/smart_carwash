@@ -1,4 +1,5 @@
 import axios from 'axios';
+import { v4 as uuidv4 } from 'uuid';
 
 // Создаем экземпляр axios с базовым URL
 const api = axios.create({
@@ -11,32 +12,49 @@ const api = axios.create({
 
 // Сервис для работы с API
 const ApiService = {
-  // Получение информации о мойке
-  getWashInfo: async () => {
+  // Получение пользователя по telegram_id
+  getUserByTelegramId: async (telegramId) => {
     try {
-      const response = await api.get('/wash-info');
+      const response = await api.get(`/users/by-telegram-id?telegram_id=${telegramId}`);
       return response.data;
     } catch (error) {
-      console.error('Ошибка при получении информации о мойке:', error);
+      console.error('Ошибка при получении пользователя по telegram_id:', error);
       throw error;
     }
   },
 
-  // Получение информации о мойке для конкретного пользователя
-  getWashInfoForUser: async (userId) => {
+  // Получение статуса очереди и боксов
+  getQueueStatus: async () => {
     try {
-      const response = await api.get(`/wash-info/${userId}`);
+      const response = await api.get('/queue-status');
       return response.data;
     } catch (error) {
-      console.error('Ошибка при получении информации о мойке для пользователя:', error);
+      console.error('Ошибка при получении статуса очереди:', error);
       throw error;
+    }
+  },
+
+  // Получение информации о сессии пользователя
+  getWashInfoForUser: async (userId) => {
+    try {
+      const response = await api.get(`/wash-info?user_id=${userId}`);
+      return response.data;
+    } catch (error) {
+      console.error('Ошибка при получении информации о сессии пользователя:', error);
+      return { session: null }; // Возвращаем пустой объект, если сессия не найдена
     }
   },
 
   // Создание пользователя
   createUser: async (userData) => {
     try {
-      const response = await api.post('/users', userData);
+      // Добавляем токен идемпотентности
+      const dataWithToken = {
+        ...userData,
+        idempotency_key: uuidv4()
+      };
+      
+      const response = await api.post('/users', dataWithToken);
       return response.data;
     } catch (error) {
       console.error('Ошибка при создании пользователя:', error);
@@ -47,7 +65,13 @@ const ApiService = {
   // Создание сессии
   createSession: async (sessionData) => {
     try {
-      const response = await api.post('/sessions', sessionData);
+      // Добавляем токен идемпотентности
+      const dataWithToken = {
+        ...sessionData,
+        idempotency_key: uuidv4()
+      };
+      
+      const response = await api.post('/sessions', dataWithToken);
       return response.data;
     } catch (error) {
       console.error('Ошибка при создании сессии:', error);
@@ -58,11 +82,44 @@ const ApiService = {
   // Получение сессии пользователя
   getUserSession: async (userId) => {
     try {
-      const response = await api.get(`/sessions/${userId}`);
+      const response = await api.get(`/sessions?user_id=${userId}`);
       return response.data;
     } catch (error) {
       console.error('Ошибка при получении сессии пользователя:', error);
-      return null;
+      return { session: null };
+    }
+  },
+  
+  // Получение сессии по ID
+  getSessionById: async (sessionId) => {
+    try {
+      const response = await api.get(`/sessions/by-id?session_id=${sessionId}`);
+      return response.data;
+    } catch (error) {
+      console.error('Ошибка при получении сессии по ID:', error);
+      return { session: null };
+    }
+  },
+  
+  // Запуск сессии (перевод в статус active)
+  startSession: async (sessionId) => {
+    try {
+      const response = await api.post('/sessions/start', { session_id: sessionId });
+      return response.data;
+    } catch (error) {
+      console.error('Ошибка при запуске сессии:', error);
+      throw error;
+    }
+  },
+  
+  // Завершение сессии (перевод в статус complete)
+  completeSession: async (sessionId) => {
+    try {
+      const response = await api.post('/sessions/complete', { session_id: sessionId });
+      return response.data;
+    } catch (error) {
+      console.error('Ошибка при завершении сессии:', error);
+      throw error;
     }
   },
 };

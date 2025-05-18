@@ -112,7 +112,7 @@ func main() {
 
 	// Запускаем периодическую задачу для обработки очереди
 	go func() {
-		ticker := time.NewTicker(30 * time.Second)
+		ticker := time.NewTicker(5 * time.Second)
 		defer ticker.Stop()
 
 		for {
@@ -123,6 +123,46 @@ func main() {
 					log.Printf("Ошибка обработки очереди: %v", err)
 				} else {
 					log.Println("Обработка очереди завершена успешно")
+				}
+			case <-quit:
+				return
+			}
+		}
+	}()
+
+	// Запускаем периодическую задачу для проверки и завершения истекших сессий
+	go func() {
+		ticker := time.NewTicker(5 * time.Second)
+		defer ticker.Stop()
+
+		for {
+			select {
+			case <-ticker.C:
+				log.Println("Запуск проверки истекших сессий...")
+				if err := svc.CheckAndCompleteExpiredSessions(); err != nil {
+					log.Printf("Ошибка проверки истекших сессий: %v", err)
+				} else {
+					log.Println("Проверка истекших сессий завершена успешно")
+				}
+			case <-quit:
+				return
+			}
+		}
+	}()
+
+	// Запускаем периодическую задачу для проверки и истечения зарезервированных сессий
+	go func() {
+		ticker := time.NewTicker(5 * time.Second)
+		defer ticker.Stop()
+
+		for {
+			select {
+			case <-ticker.C:
+				log.Println("Запуск проверки зарезервированных сессий...")
+				if err := svc.CheckAndExpireReservedSessions(); err != nil {
+					log.Printf("Ошибка проверки зарезервированных сессий: %v", err)
+				} else {
+					log.Println("Проверка зарезервированных сессий завершена успешно")
 				}
 			case <-quit:
 				return
