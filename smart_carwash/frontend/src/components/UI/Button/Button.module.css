@@ -1,0 +1,73 @@
+.button {
+    border: none;
+    border-radius: 8px;
+    padding: 12px 20px;
+    font-size: 16px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: opacity 0.2s ease;
+    margin-top: 16px;
+    width: 100%;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+  }
+  
+  .button:hover {
+    opacity: 0.9;
+  }
+  
+  .button:active {
+    opacity: 0.8;
+  }
+  
+  .primary {
+    background-color: var(--tg-theme-button-color, #2481cc);
+    color: #FFFFFF;
+  }
+  
+  .secondary {
+    background-color: #6c757d;
+    color: #FFFFFF;
+  }
+  
+  .danger {
+    background-color: #C62828;
+    color: #FFFFFF;
+  }
+  
+  .success {
+    background-color: #2E7D32;
+    color: #FFFFFF;
+  }
+  
+  .disabled {
+    opacity: 0.7;
+    cursor: not-allowed;
+  }
+  
+  .light.disabled {
+    background-color: #E0E0E0;
+    color: #9E9E9E;
+  }
+  
+  .dark.disabled {
+    background-color: #424242;
+    color: #757575;
+  }
+  
+  .spinner {
+    display: inline-block;
+    width: 20px;
+    height: 20px;
+    margin-right: 8px;
+    border: 3px solid rgba(255, 255, 255, 0.3);
+    border-radius: 50%;
+    border-top-color: #FFFFFF;
+    animation: spin 1s ease-in-out infinite;
+  }
+  
+  @keyframes spin {
+    to { transform: rotate(360deg); }
+  }
+  

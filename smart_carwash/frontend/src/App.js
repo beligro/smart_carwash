@@ -1,11 +1,18 @@
 import React, { useEffect, useState } from 'react';
 import WebApp from '@twa-dev/sdk';
+import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import styled from 'styled-components';
+
+// Компоненты
 import Header from './components/Header';
-import WashInfo from './components/WashInfo';
-import WelcomeMessage from './components/WelcomeMessage';
+import WelcomeMessage from './components/WelcomeMessage/WelcomeMessage';
+import WashInfo from './components/WashInfo/WashInfo';
+import SessionDetails from './components/SessionDetails';
+
+// Сервисы и утилиты
 import ApiService from './services/ApiService';
 
+// Стилизованные компоненты
 const AppContainer = styled.div`
   display: flex;
   flex-direction: column;
@@ -23,13 +30,18 @@ const ContentContainer = styled.div`
   width: 100%;
 `;
 
+/**
+ * Главный компонент приложения
+ */
 function App() {
+  // Состояния
   const [washInfo, setWashInfo] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [theme, setTheme] = useState('light');
   const [user, setUser] = useState(null);
 
+  // Инициализация приложения
   useEffect(() => {
     try {
       // Инициализация Telegram Mini App
@@ -57,56 +69,30 @@ function App() {
       if (WebApp.initDataUnsafe && WebApp.initDataUnsafe.user) {
         const telegramUser = WebApp.initDataUnsafe.user;
         
-        // Создаем или получаем пользователя
-        createUser({
-          telegram_id: telegramUser.id,
-          username: telegramUser.username || '',
-          first_name: telegramUser.first_name || '',
-          last_name: telegramUser.last_name || ''
-        });
+        // Получаем пользователя по telegram_id
+        getUserByTelegramId(telegramUser.id);
       } else {
         // Для разработки используем тестового пользователя
-        createUser({
-          telegram_id: 12345678,
-          username: 'test_user',
-          first_name: 'Test',
-          last_name: 'User'
-        });
+        getUserByTelegramId(12345678);
       }
     } catch (err) {
       console.error('Ошибка инициализации Telegram WebApp:', err);
       console.log('Продолжаем работу в режиме разработки');
       
       // Для разработки используем тестового пользователя
-      createUser({
-        telegram_id: 12345678,
-        username: 'test_user',
-        first_name: 'Test',
-        last_name: 'User'
-      });
+      getUserByTelegramId(12345678);
     }
   }, []);
   
-  // Эффект для загрузки информации о мойке при изменении пользователя
-  useEffect(() => {
-    if (user) {
-      // Загружаем статус очереди и боксов
-      fetchQueueStatus(true);
-      
-      // Загружаем информацию о пользовательской сессии, если есть
-      fetchWashInfoForUser(true);
-    }
-  }, [user]);
-
-  // Функция для создания пользователя
-  const createUser = async (userData) => {
+  // Функция для получения пользователя по telegram_id
+  const getUserByTelegramId = async (telegramId) => {
     try {
-      const response = await ApiService.createUser(userData);
+      const response = await ApiService.getUserByTelegramId(telegramId);
       setUser(response.user);
-      console.log('Пользователь создан/получен:', response.user);
+      console.log('Пользователь получен:', response.user);
     } catch (err) {
-      console.error('Ошибка создания пользователя:', err);
-      setError('Не удалось создать пользователя');
+      console.error('Ошибка получения пользователя:', err);
+      setError('Не удалось получить пользователя. Возможно, вы не зарегистрированы в боте. Пожалуйста, нажмите /start в боте.');
     }
   };
 
@@ -163,28 +149,6 @@ function App() {
     }
   };
   
-  // Функция для загрузки информации о пользовательской сессии
-  const fetchWashInfoForUser = async (isInitialLoad = false) => {
-    try {
-      if (!user) return;
-      
-      const data = await ApiService.getWashInfoForUser(user.id);
-      console.log('User session data:', data);
-      
-      // Обновляем данные сессии пользователя
-      setWashInfo(prevInfo => {
-        if (!prevInfo) return data;
-        
-        return {
-          ...prevInfo,
-          userSession: data.user_session
-        };
-      });
-    } catch (err) {
-      console.error('Ошибка загрузки информации о пользовательской сессии:', err);
-    }
-  };
-  
   // Функция для создания сессии
   const handleCreateSession = async () => {
     try {
@@ -197,14 +161,16 @@ function App() {
       const response = await ApiService.createSession({ user_id: user.id });
       console.log('Создана сессия:', response);
       
-      // Сохраняем ID сессии для последующего поллинга
-      const sessionId = response.session.id;
+      // Обновляем информацию о сессии в состоянии
+      setWashInfo(prevInfo => ({
+        ...prevInfo,
+        userSession: response.session
+      }));
       
-      // Обновляем информацию о пользовательской сессии
-      await fetchWashInfoForUser(false);
-      
-      // Запускаем поллинг для обновления статуса сессии
-      startSessionPolling(sessionId);
+      // Запускаем поллинг для обновления статуса сессии по session_id
+      if (response.session && ['created', 'assigned', 'active'].includes(response.session.status)) {
+        startSessionPolling(response.session.id);
+      }
     } catch (err) {
       setError('Не удалось создать сессию');
       console.error('Ошибка создания сессии:', err);
@@ -235,10 +201,13 @@ function App() {
         
         if (sessionData && sessionData.session) {
           // Обновляем данные сессии пользователя
-          setWashInfo(prevInfo => ({
-            ...prevInfo,
-            userSession: sessionData.session
-          }));
+          setWashInfo(prevInfo => {
+            console.log('Обновление сессии в washInfo:', sessionData.session);
+            return {
+              ...prevInfo,
+              userSession: sessionData.session
+            };
+          });
           
           // Если сессия завершена или отменена, останавливаем поллинг
           if (
@@ -258,10 +227,37 @@ function App() {
     return sessionPollingInterval;
   };
   
-  // Запускаем поллинг статуса очереди при монтировании компонента
+  // Запускаем поллинг при монтировании компонента
   useEffect(() => {
     if (user) {
+      // Загружаем статус очереди и боксов при первой загрузке
+      fetchQueueStatus(true);
+      
+      // Запускаем поллинг статуса очереди (должен работать всегда)
       const queueInterval = startQueuePolling();
+      
+      // Загружаем информацию о сессии пользователя по user_id и запускаем поллинг по session_id
+      const loadUserSessionAndStartPolling = async () => {
+        try {
+          const data = await ApiService.getWashInfoForUser(user.id);
+          console.log('User session data:', data);
+          
+          // Обновляем данные сессии пользователя
+          setWashInfo(prevInfo => ({
+            ...prevInfo,
+            userSession: data.session
+          }));
+          
+          // Если у пользователя есть активная сессия, запускаем поллинг для неё по ID сессии
+          if (data.session && ['created', 'assigned', 'active'].includes(data.session.status)) {
+            startSessionPolling(data.session.id);
+          }
+        } catch (err) {
+          console.error('Ошибка загрузки информации о пользовательской сессии:', err);
+        }
+      };
+      
+      loadUserSessionAndStartPolling();
       
       // Очищаем интервал при размонтировании
       return () => clearInterval(queueInterval);
@@ -269,23 +265,44 @@ function App() {
   }, [user]);
 
   return (
-    <AppContainer theme={theme}>
-      <Header theme={theme} />
-      <ContentContainer>
-        <WelcomeMessage theme={theme} />
-        {loading ? (
-          <p>Загрузка информации о мойке...</p>
-        ) : error ? (
-          <p style={{ color: 'red' }}>{error}</p>
-        ) : (
-          <WashInfo 
-            washInfo={washInfo} 
-            theme={theme} 
-            onCreateSession={handleCreateSession}
-          />
-        )}
-      </ContentContainer>
-    </AppContainer>
+    <Router>
+      <AppContainer theme={theme}>
+        <Header theme={theme} />
+        <ContentContainer>
+          <Routes>
+            <Route 
+              path="/" 
+              element={
+                <>
+                  <WelcomeMessage theme={theme} />
+                  {loading ? (
+                    <p>Загрузка информации о мойке...</p>
+                  ) : error ? (
+                    <p style={{ color: 'red' }}>{error}</p>
+                  ) : (
+                    <WashInfo 
+                      washInfo={washInfo} 
+                      theme={theme} 
+                      onCreateSession={handleCreateSession}
+                    />
+                  )}
+                </>
+              } 
+            />
+            <Route 
+              path="/session/:sessionId" 
+              element={
+                <SessionDetails 
+                  theme={theme} 
+                  user={user}
+                />
+              } 
+            />
+            <Route path="*" element={<Navigate to="/" />} />
+          </Routes>
+        </ContentContainer>
+      </AppContainer>
+    </Router>
   );
 }
 

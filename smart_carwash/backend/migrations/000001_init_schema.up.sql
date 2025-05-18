@@ -31,9 +31,7 @@ CREATE INDEX IF NOT EXISTS idx_wash_boxes_status ON wash_boxes(status);
 -- Добавление начальных данных для боксов мойки
 INSERT INTO wash_boxes (number, status) VALUES
     (1, 'free'),
-    (2, 'free'),
-    (3, 'free'),
-    (4, 'free')
+    (2, 'free')
 ON CONFLICT (number) DO NOTHING;
 
 -- Добавление администратора по умолчанию (если нужно)

@@ -10,7 +10,8 @@ import (
 // Статусы бокса мойки
 const (
 	StatusFree        = "free"        // Свободен
-	StatusBusy        = "busy"        // Занят
+	StatusReserved    = "reserved"    // Зарезервирован (назначен на пользователя, но сессия не запущена)
+	StatusBusy        = "busy"        // Занят (сессия активна)
 	StatusMaintenance = "maintenance" // На обслуживании
 )
 
@@ -21,6 +22,7 @@ const (
 	SessionStatusActive   = "active"   // Активна (клиент приступил к мойке)
 	SessionStatusComplete = "complete" // Завершена
 	SessionStatusCanceled = "canceled" // Отменена
+	SessionStatusExpired  = "expired"  // Истек срок резервирования
 )
 
 // User представляет пользователя системы
@@ -109,6 +111,36 @@ type GetSessionRequest struct {
 // GetSessionResponse представляет ответ на получение сессии
 type GetSessionResponse struct {
 	Session *Session `json:"session"`
+}
+
+// StartSessionRequest представляет запрос на запуск сессии
+type StartSessionRequest struct {
+	SessionID uuid.UUID `json:"session_id" binding:"required"`
+}
+
+// StartSessionResponse представляет ответ на запуск сессии
+type StartSessionResponse struct {
+	Session *Session `json:"session"`
+}
+
+// CompleteSessionRequest представляет запрос на завершение сессии
+type CompleteSessionRequest struct {
+	SessionID uuid.UUID `json:"session_id" binding:"required"`
+}
+
+// CompleteSessionResponse представляет ответ на завершение сессии
+type CompleteSessionResponse struct {
+	Session *Session `json:"session"`
+}
+
+// GetUserByTelegramIDRequest представляет запрос на получение пользователя по telegram_id
+type GetUserByTelegramIDRequest struct {
+	TelegramID int64 `json:"telegram_id" binding:"required"`
+}
+
+// GetUserByTelegramIDResponse представляет ответ на получение пользователя по telegram_id
+type GetUserByTelegramIDResponse struct {
+	User User `json:"user"`
 }
 
 // GetQueueStatusRequest представляет запрос на получение статуса очереди и боксов

@@ -1,0 +1,186 @@
+.container {
+    margin-bottom: 24px;
+  }
+  
+  .section {
+    margin-bottom: 24px;
+  }
+  
+  .title {
+    font-size: 20px;
+    margin-bottom: 16px;
+  }
+  
+  .subtitle {
+    font-size: 18px;
+    margin-bottom: 12px;
+  }
+  
+  .boxesGrid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+    gap: 16px;
+  }
+  
+  .boxCard {
+    padding: 16px;
+    border-radius: 12px;
+    transition: transform 0.2s ease, background-color 0.3s ease;
+  }
+  
+  .boxCard:hover {
+    transform: translateY(-4px);
+  }
+  
+  .boxNumber {
+    font-size: 18px;
+    margin-bottom: 8px;
+  }
+  
+  .infoRow {
+    display: flex;
+    margin-bottom: 12px;
+    padding-bottom: 12px;
+  }
+  
+  .infoRow:last-child {
+    border-bottom: none;
+    margin-bottom: 0;
+    padding-bottom: 0;
+  }
+  
+  .infoLabel {
+    flex: 0 0 150px;
+    font-weight: 500;
+  }
+  
+  .infoValue {
+    flex: 1;
+  }
+  
+  .statusIndicator {
+    display: flex;
+    align-items: center;
+    margin-top: 12px;
+    padding-top: 12px;
+  }
+  
+  .statusDot {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    margin-right: 8px;
+  }
+  
+  .statusDot.created {
+    background-color: #FFC107;
+    animation: pulse 1.5s infinite;
+  }
+  
+  .statusDot.assigned {
+    background-color: #2196F3;
+  }
+  
+  .statusDot.active {
+    background-color: #4CAF50;
+  }
+  
+  .statusDot.complete {
+    background-color: #8BC34A;
+  }
+  
+  .statusDot.canceled {
+    background-color: #F44336;
+  }
+  
+  .statusText {
+    font-size: 14px;
+  }
+  
+  .sessionInfo {
+    font-size: 14px;
+    margin-bottom: 8px;
+  }
+  
+  /* Темная тема */
+  .light .title {
+    color: #000000;
+  }
+  
+  .light .subtitle {
+    color: #333333;
+  }
+  
+  .light .boxNumber {
+    color: #000000;
+  }
+  
+  .light .infoLabel {
+    color: #666666;
+  }
+  
+  .light .infoValue {
+    color: #000000;
+  }
+  
+  .light .statusText {
+    color: #666666;
+  }
+  
+  .light .sessionInfo {
+    color: #666666;
+  }
+  
+  .light .statusIndicator {
+    border-top: 1px solid #EEEEEE;
+  }
+  
+  .dark .title {
+    color: #FFFFFF;
+  }
+  
+  .dark .subtitle {
+    color: #E0E0E0;
+  }
+  
+  .dark .boxNumber {
+    color: #FFFFFF;
+  }
+  
+  .dark .infoLabel {
+    color: #E0E0E0;
+  }
+  
+  .dark .infoValue {
+    color: #FFFFFF;
+  }
+  
+  .dark .statusText {
+    color: #E0E0E0;
+  }
+  
+  .dark .sessionInfo {
+    color: #E0E0E0;
+  }
+  
+  .dark .statusIndicator {
+    border-top: 1px solid #444444;
+  }
+  
+  @keyframes pulse {
+    0% {
+      transform: scale(0.95);
+      box-shadow: 0 0 0 0 rgba(255, 193, 7, 0.7);
+    }
+    
+    70% {
+      transform: scale(1);
+      box-shadow: 0 0 0 5px rgba(255, 193, 7, 0);
+    }
+    
+    100% {
+      transform: scale(0.95);
+      box-shadow: 0 0 0 0 rgba(255, 193, 7, 0);
+    }
+  }
+  

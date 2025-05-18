@@ -1,0 +1,105 @@
+.container {
+    padding: 16px;
+    max-width: 800px;
+    margin: 0 auto;
+  }
+  
+  .backButton {
+    background: none;
+    border: none;
+    display: flex;
+    align-items: center;
+    font-size: 16px;
+    padding: 8px 0;
+    margin-bottom: 16px;
+    cursor: pointer;
+  }
+  
+  .backButton:hover {
+    opacity: 0.8;
+  }
+  
+  .title {
+    font-size: 22px;
+    margin-bottom: 20px;
+  }
+  
+  .infoRow {
+    display: flex;
+    margin-bottom: 12px;
+    padding-bottom: 12px;
+  }
+  
+  .infoRow:last-child {
+    border-bottom: none;
+    margin-bottom: 0;
+    padding-bottom: 0;
+  }
+  
+  .infoLabel {
+    flex: 0 0 150px;
+    font-weight: 500;
+  }
+  
+  .infoValue {
+    flex: 1;
+  }
+  
+  .errorMessage {
+    margin-top: 16px;
+    padding: 12px;
+    border-radius: 8px;
+    font-size: 14px;
+  }
+  
+  /* Темная тема */
+  .light .title {
+    color: #000000;
+  }
+  
+  .light .infoLabel {
+    color: #666666;
+  }
+  
+  .light .infoValue {
+    color: #000000;
+  }
+  
+  .light .backButton {
+    color: var(--tg-theme-button-color, #2481cc);
+  }
+  
+  .light .infoRow {
+    border-bottom: 1px solid #EEEEEE;
+  }
+  
+  .light .errorMessage {
+    color: #C62828;
+    background-color: #FFEBEE;
+  }
+  
+  .dark .title {
+    color: #FFFFFF;
+  }
+  
+  .dark .infoLabel {
+    color: #E0E0E0;
+  }
+  
+  .dark .infoValue {
+    color: #FFFFFF;
+  }
+  
+  .dark .backButton {
+    color: var(--tg-theme-button-color, #2481cc);
+  }
+  
+  .dark .infoRow {
+    border-bottom: 1px solid #444444;
+  }
+  
+  .dark .errorMessage {
+    color: #C62828;
+    background-color: #3E2723;
+  }
+  

@@ -12,6 +12,17 @@ const api = axios.create({
 
 // Сервис для работы с API
 const ApiService = {
+  // Получение пользователя по telegram_id
+  getUserByTelegramId: async (telegramId) => {
+    try {
+      const response = await api.get(`/users/by-telegram-id?telegram_id=${telegramId}`);
+      return response.data;
+    } catch (error) {
+      console.error('Ошибка при получении пользователя по telegram_id:', error);
+      throw error;
+    }
+  },
+
   // Получение статуса очереди и боксов
   getQueueStatus: async () => {
     try {
@@ -23,14 +34,14 @@ const ApiService = {
     }
   },
 
-  // Получение информации о мойке для конкретного пользователя
+  // Получение информации о сессии пользователя
   getWashInfoForUser: async (userId) => {
     try {
-      const response = await api.get(`/wash-info/${userId}`);
+      const response = await api.get(`/wash-info?user_id=${userId}`);
       return response.data;
     } catch (error) {
-      console.error('Ошибка при получении информации о мойке для пользователя:', error);
-      throw error;
+      console.error('Ошибка при получении информации о сессии пользователя:', error);
+      return { session: null }; // Возвращаем пустой объект, если сессия не найдена
     }
   },
 
@@ -71,22 +82,44 @@ const ApiService = {
   // Получение сессии пользователя
   getUserSession: async (userId) => {
     try {
-      const response = await api.get(`/sessions/${userId}`);
+      const response = await api.get(`/sessions?user_id=${userId}`);
       return response.data;
     } catch (error) {
       console.error('Ошибка при получении сессии пользователя:', error);
-      return null;
+      return { session: null };
     }
   },
   
   // Получение сессии по ID
   getSessionById: async (sessionId) => {
     try {
-      const response = await api.get(`/sessions/by-id/${sessionId}`);
+      const response = await api.get(`/sessions/by-id?session_id=${sessionId}`);
       return response.data;
     } catch (error) {
       console.error('Ошибка при получении сессии по ID:', error);
-      return null;
+      return { session: null };
+    }
+  },
+  
+  // Запуск сессии (перевод в статус active)
+  startSession: async (sessionId) => {
+    try {
+      const response = await api.post('/sessions/start', { session_id: sessionId });
+      return response.data;
+    } catch (error) {
+      console.error('Ошибка при запуске сессии:', error);
+      throw error;
+    }
+  },
+  
+  // Завершение сессии (перевод в статус complete)
+  completeSession: async (sessionId) => {
+    try {
+      const response = await api.post('/sessions/complete', { session_id: sessionId });
+      return response.data;
+    } catch (error) {
+      console.error('Ошибка при завершении сессии:', error);
+      throw error;
     }
   },
 };
