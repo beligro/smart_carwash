@@ -3,6 +3,7 @@ package repository
 import (
 	"carwash_backend/internal/domain/user/models"
 
+	"github.com/google/uuid"
 	"gorm.io/gorm"
 )
 
@@ -10,6 +11,7 @@ import (
 type Repository interface {
 	CreateUser(user *models.User) error
 	GetUserByTelegramID(telegramID int64) (*models.User, error)
+	GetUserByID(id uuid.UUID) (*models.User, error)
 	UpdateUser(user *models.User) error
 }
 
@@ -32,6 +34,16 @@ func (r *PostgresRepository) CreateUser(user *models.User) error {
 func (r *PostgresRepository) GetUserByTelegramID(telegramID int64) (*models.User, error) {
 	var user models.User
 	err := r.db.Where("telegram_id = ?", telegramID).First(&user).Error
+	if err != nil {
+		return nil, err
+	}
+	return &user, nil
+}
+
+// GetUserByID получает пользователя по ID
+func (r *PostgresRepository) GetUserByID(id uuid.UUID) (*models.User, error) {
+	var user models.User
+	err := r.db.Where("id = ?", id).First(&user).Error
 	if err != nil {
 		return nil, err
 	}

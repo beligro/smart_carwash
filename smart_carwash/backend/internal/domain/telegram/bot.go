@@ -12,6 +12,21 @@ import (
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 )
 
+// NotificationType тип уведомления
+type NotificationType string
+
+const (
+	// NotificationTypeSessionExpiringSoon уведомление о скором истечении сессии
+	NotificationTypeSessionExpiringSoon NotificationType = "session_expiring_soon"
+	// NotificationTypeSessionCompletingSoon уведомление о скором завершении сессии
+	NotificationTypeSessionCompletingSoon NotificationType = "session_completing_soon"
+)
+
+// NotificationService интерфейс для отправки уведомлений
+type NotificationService interface {
+	SendSessionNotification(telegramID int64, notificationType NotificationType, boxNumber int) error
+}
+
 // Bot структура для работы с Telegram ботом
 type Bot struct {
 	bot     *tgbotapi.BotAPI
@@ -183,4 +198,37 @@ func (b *Bot) sendErrorMessage(chatID int64) {
 	if err != nil {
 		log.Printf("Ошибка отправки сообщения: %v", err)
 	}
+}
+
+// SendSessionNotification отправляет уведомление о сессии
+func (b *Bot) SendSessionNotification(telegramID int64, notificationType NotificationType, boxNumber int) error {
+	var messageText string
+
+	switch notificationType {
+	case NotificationTypeSessionExpiringSoon:
+		messageText = fmt.Sprintf("⚠️ Внимание! Через 1 минуту истечет время ожидания начала мойки в боксе №%d. Пожалуйста, начните мойку, иначе ваша сессия будет отменена.", boxNumber)
+	case NotificationTypeSessionCompletingSoon:
+		messageText = fmt.Sprintf("⚠️ Внимание! Через 1 минуту завершится время мойки в боксе №%d. Пожалуйста, завершите мойку.", boxNumber)
+	default:
+		return fmt.Errorf("неизвестный тип уведомления: %s", notificationType)
+	}
+
+	// Создаем клавиатуру с кнопкой для открытия Mini App
+	keyboard := tgbotapi.NewInlineKeyboardMarkup(
+		tgbotapi.NewInlineKeyboardRow(
+			tgbotapi.NewInlineKeyboardButtonURL("Открыть приложение", fmt.Sprintf("https://%s", b.config.ServerIP)),
+		),
+	)
+
+	// Отправляем сообщение с клавиатурой
+	msg := tgbotapi.NewMessage(telegramID, messageText)
+	msg.ReplyMarkup = keyboard
+	msg.ParseMode = "HTML"
+
+	_, err := b.bot.Send(msg)
+	if err != nil {
+		return fmt.Errorf("ошибка отправки уведомления: %v", err)
+	}
+
+	return nil
 }

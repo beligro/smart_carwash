@@ -74,16 +74,18 @@ func main() {
 	userSvc := userService.NewService(userRepository)
 
 	washboxSvc := washboxService.NewService(washboxRepository)
-	sessionSvc := sessionService.NewService(sessionRepository, washboxSvc)
-
-	// Создаем сервис очереди, который зависит от сервисов сессий и боксов
-	queueSvc := queueService.NewService(sessionSvc, washboxSvc)
 
 	// Создаем Telegram бота
 	bot, err := telegram.NewBot(userSvc, cfg)
 	if err != nil {
 		log.Fatalf("Ошибка создания Telegram бота: %v", err)
 	}
+
+	// Создаем сервис сессий с зависимостями
+	sessionSvc := sessionService.NewService(sessionRepository, washboxSvc, userSvc, bot)
+
+	// Создаем сервис очереди, который зависит от сервисов сессий и боксов
+	queueSvc := queueService.NewService(sessionSvc, washboxSvc)
 
 	// Устанавливаем вебхук для бота
 	if err := bot.SetWebhook(); err != nil {
@@ -219,6 +221,47 @@ func main() {
 			}
 		}
 	}()
+
+	// Запускаем периодическую задачу для проверки и отправки уведомлений о скором истечении сессий
+	go func() {
+		ticker := time.NewTicker(5 * time.Second)
+		defer ticker.Stop()
+
+		for {
+			select {
+			case <-ticker.C:
+				log.Println("Запуск проверки сессий для отправки уведомлений о скором истечении...")
+				if err := sessionSvc.CheckAndNotifyExpiringReservedSessions(); err != nil {
+					log.Printf("Ошибка отправки уведомлений о скором истечении сессий: %v", err)
+				} else {
+					log.Println("Проверка сессий для отправки уведомлений о скором истечении завершена успешно")
+				}
+			case <-quit:
+				return
+			}
+		}
+	}()
+
+	// Запускаем периодическую задачу для проверки и отправки уведомлений о скором завершении сессий
+	go func() {
+		ticker := time.NewTicker(5 * time.Second)
+		defer ticker.Stop()
+
+		for {
+			select {
+			case <-ticker.C:
+				log.Println("Запуск проверки сессий для отправки уведомлений о скором завершении...")
+				if err := sessionSvc.CheckAndNotifyCompletingSessions(); err != nil {
+					log.Printf("Ошибка отправки уведомлений о скором завершении сессий: %v", err)
+				} else {
+					log.Println("Проверка сессий для отправки уведомлений о скором завершении завершена успешно")
+				}
+			case <-quit:
+				return
+			}
+		}
+	}()
+
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
 	<-quit
 

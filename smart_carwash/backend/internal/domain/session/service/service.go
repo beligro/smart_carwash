@@ -3,8 +3,11 @@ package service
 import (
 	"carwash_backend/internal/domain/session/models"
 	"carwash_backend/internal/domain/session/repository"
+	"carwash_backend/internal/domain/telegram"
+	"carwash_backend/internal/domain/user/service"
 	washboxModels "carwash_backend/internal/domain/washbox/models"
 	washboxService "carwash_backend/internal/domain/washbox/service"
+	"log"
 	"time"
 )
 
@@ -18,6 +21,8 @@ type Service interface {
 	ProcessQueue() error
 	CheckAndCompleteExpiredSessions() error
 	CheckAndExpireReservedSessions() error
+	CheckAndNotifyExpiringReservedSessions() error
+	CheckAndNotifyCompletingSessions() error
 	CountSessionsByStatus(status string) (int, error)
 	GetSessionsByStatus(status string) ([]models.Session, error)
 	GetUserSessionHistory(req *models.GetUserSessionHistoryRequest) ([]models.Session, error)
@@ -27,13 +32,17 @@ type Service interface {
 type ServiceImpl struct {
 	repo           repository.Repository
 	washboxService washboxService.Service
+	userService    service.Service
+	telegramBot    telegram.NotificationService
 }
 
 // NewService создает новый экземпляр Service
-func NewService(repo repository.Repository, washboxService washboxService.Service) *ServiceImpl {
+func NewService(repo repository.Repository, washboxService washboxService.Service, userService service.Service, telegramBot telegram.NotificationService) *ServiceImpl {
 	return &ServiceImpl{
 		repo:           repo,
 		washboxService: washboxService,
+		userService:    userService,
+		telegramBot:    telegramBot,
 	}
 }
 
@@ -308,6 +317,104 @@ func (s *ServiceImpl) CheckAndExpireReservedSessions() error {
 			err = s.repo.UpdateSession(&session)
 			if err != nil {
 				return err
+			}
+		}
+	}
+
+	return nil
+}
+
+// CheckAndNotifyExpiringReservedSessions проверяет и отправляет уведомления для сессий, которые скоро истекут
+func (s *ServiceImpl) CheckAndNotifyExpiringReservedSessions() error {
+	// Если сервис пользователей или телеграм бот не инициализированы, выходим
+	if s.userService == nil || s.telegramBot == nil {
+		return nil
+	}
+
+	// Получаем все сессии со статусом "assigned"
+	assignedSessions, err := s.repo.GetSessionsByStatus(models.SessionStatusAssigned)
+	if err != nil {
+		return err
+	}
+
+	// Если нет назначенных сессий, выходим
+	if len(assignedSessions) == 0 {
+		return nil
+	}
+
+	// Текущее время
+	now := time.Now()
+
+	// Проверяем каждую назначенную сессию
+	for _, session := range assignedSessions {
+		// Время назначения сессии - это время последнего обновления статуса на assigned
+		assignedTime := session.UpdatedAt
+
+		// Проверяем, прошло ли 2 минуты с момента назначения сессии (за 1 минуту до истечения)
+		if now.Sub(assignedTime) >= 2*time.Minute && now.Sub(assignedTime) < 3*time.Minute {
+			// Если прошло 2 минуты, отправляем уведомление
+			if session.BoxID != nil && session.BoxNumber != nil {
+				// Получаем пользователя
+				user, err := s.userService.GetUserByID(session.UserID)
+				if err != nil {
+					log.Printf("Ошибка получения пользователя: %v", err)
+					continue
+				}
+
+				// Отправляем уведомление
+				err = s.telegramBot.SendSessionNotification(user.TelegramID, telegram.NotificationTypeSessionExpiringSoon, *session.BoxNumber)
+				if err != nil {
+					log.Printf("Ошибка отправки уведомления: %v", err)
+				}
+			}
+		}
+	}
+
+	return nil
+}
+
+// CheckAndNotifyCompletingSessions проверяет и отправляет уведомления для сессий, которые скоро завершатся
+func (s *ServiceImpl) CheckAndNotifyCompletingSessions() error {
+	// Если сервис пользователей или телеграм бот не инициализированы, выходим
+	if s.userService == nil || s.telegramBot == nil {
+		return nil
+	}
+
+	// Получаем все сессии со статусом "active"
+	activeSessions, err := s.repo.GetSessionsByStatus(models.SessionStatusActive)
+	if err != nil {
+		return err
+	}
+
+	// Если нет активных сессий, выходим
+	if len(activeSessions) == 0 {
+		return nil
+	}
+
+	// Текущее время
+	now := time.Now()
+
+	// Проверяем каждую активную сессию
+	for _, session := range activeSessions {
+		// Время начала сессии - это время последнего обновления статуса на active
+		startTime := session.UpdatedAt
+
+		// Проверяем, прошло ли 4 минуты с момента начала сессии (за 1 минуту до завершения)
+		if now.Sub(startTime) >= 4*time.Minute && now.Sub(startTime) < 5*time.Minute {
+			// Если прошло 4 минуты, отправляем уведомление
+			if session.BoxID != nil && session.BoxNumber != nil {
+				// Получаем пользователя
+				user, err := s.userService.GetUserByID(session.UserID)
+				if err != nil {
+					log.Printf("Ошибка получения пользователя: %v", err)
+					continue
+				}
+
+				// Отправляем уведомление
+				err = s.telegramBot.SendSessionNotification(user.TelegramID, telegram.NotificationTypeSessionCompletingSoon, *session.BoxNumber)
+				if err != nil {
+					log.Printf("Ошибка отправки уведомления: %v", err)
+				}
 			}
 		}
 	}
