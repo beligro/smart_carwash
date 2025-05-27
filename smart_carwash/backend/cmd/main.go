@@ -73,12 +73,8 @@ func main() {
 	// Создаем сервисы
 	userSvc := userService.NewService(userRepository)
 
-	// Создаем сервис сессий, который не зависит от сервиса боксов
-	sessionSvc := sessionService.NewService(sessionRepository, nil)
-
-	// Создаем сервис боксов, который не зависит от репозитория сессий
-	// Вместо этого он будет использовать сервис сессий через интерфейс SessionCounter
-	washboxSvc := washboxService.NewService(washboxRepository, sessionSvc)
+	washboxSvc := washboxService.NewService(washboxRepository)
+	sessionSvc := sessionService.NewService(sessionRepository, washboxSvc)
 
 	// Создаем сервис очереди, который зависит от сервисов сессий и боксов
 	queueSvc := queueService.NewService(sessionSvc, washboxSvc)
@@ -173,7 +169,7 @@ func main() {
 			select {
 			case <-ticker.C:
 				log.Println("Запуск обработки очереди...")
-				if err := queueSvc.ProcessQueue(); err != nil {
+				if err := sessionSvc.ProcessQueue(); err != nil {
 					log.Printf("Ошибка обработки очереди: %v", err)
 				} else {
 					log.Println("Обработка очереди завершена успешно")
@@ -193,7 +189,7 @@ func main() {
 			select {
 			case <-ticker.C:
 				log.Println("Запуск проверки истекших сессий...")
-				if err := queueSvc.CheckAndCompleteExpiredSessions(); err != nil {
+				if err := sessionSvc.CheckAndCompleteExpiredSessions(); err != nil {
 					log.Printf("Ошибка проверки истекших сессий: %v", err)
 				} else {
 					log.Println("Проверка истекших сессий завершена успешно")
@@ -213,7 +209,7 @@ func main() {
 			select {
 			case <-ticker.C:
 				log.Println("Запуск проверки зарезервированных сессий...")
-				if err := queueSvc.CheckAndExpireReservedSessions(); err != nil {
+				if err := sessionSvc.CheckAndExpireReservedSessions(); err != nil {
 					log.Printf("Ошибка проверки зарезервированных сессий: %v", err)
 				} else {
 					log.Println("Проверка зарезервированных сессий завершена успешно")

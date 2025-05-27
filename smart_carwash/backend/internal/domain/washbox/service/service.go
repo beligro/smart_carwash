@@ -7,11 +7,6 @@ import (
 	"github.com/google/uuid"
 )
 
-// SessionCounter интерфейс для подсчета сессий
-type SessionCounter interface {
-	CountSessionsByStatus(status string) (int, error)
-}
-
 // Service интерфейс для бизнес-логики боксов мойки
 type Service interface {
 	GetWashBoxByID(id uuid.UUID) (*models.WashBox, error)
@@ -22,47 +17,14 @@ type Service interface {
 
 // ServiceImpl реализация Service
 type ServiceImpl struct {
-	repo           repository.Repository
-	sessionCounter SessionCounter
+	repo repository.Repository
 }
 
 // NewService создает новый экземпляр Service
-func NewService(repo repository.Repository, sessionCounter SessionCounter) *ServiceImpl {
+func NewService(repo repository.Repository) *ServiceImpl {
 	return &ServiceImpl{
-		repo:           repo,
-		sessionCounter: sessionCounter,
+		repo: repo,
 	}
-}
-
-// GetQueueStatus получает статус очереди и боксов
-func (s *ServiceImpl) GetQueueStatus() (*models.GetQueueStatusResponse, error) {
-	// Получаем все боксы мойки
-	boxes, err := s.repo.GetAllWashBoxes()
-	if err != nil {
-		return nil, err
-	}
-
-	// Получаем количество сессий в очереди
-	queueSize, err := s.sessionCounter.CountSessionsByStatus("created")
-	if err != nil {
-		return nil, err
-	}
-
-	// Получаем количество свободных боксов
-	freeBoxes, err := s.repo.GetFreeWashBoxes()
-	if err != nil {
-		return nil, err
-	}
-
-	// Определяем, есть ли очередь
-	hasQueue := queueSize > len(freeBoxes)
-
-	// Формируем ответ
-	return &models.GetQueueStatusResponse{
-		Boxes:     boxes,
-		QueueSize: queueSize,
-		HasQueue:  hasQueue,
-	}, nil
 }
 
 // GetWashBoxByID получает бокс мойки по ID

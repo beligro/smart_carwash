@@ -34,17 +34,6 @@ const ApiService = {
     }
   },
 
-  // Получение информации о сессии пользователя
-  getWashInfoForUser: async (userId) => {
-    try {
-      const response = await api.get(`/wash-info?user_id=${userId}`);
-      return response.data;
-    } catch (error) {
-      console.error('Ошибка при получении информации о сессии пользователя:', error);
-      return { session: null }; // Возвращаем пустой объект, если сессия не найдена
-    }
-  },
-
   // Создание пользователя
   createUser: async (userData) => {
     try {

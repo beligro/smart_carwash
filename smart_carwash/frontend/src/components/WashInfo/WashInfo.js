@@ -20,7 +20,7 @@ const WashInfo = ({ washInfo, theme = 'light', onCreateSession }) => {
   const hasQueue = washInfo?.hasQueue || false;
   
   // Используем userSession из washInfo
-  const userSession = washInfo?.userSession;
+  const userSession = washInfo?.userSession || washInfo?.user_session;
   
   // Используем хук для таймера
   const { timeLeft } = useTimer(userSession);
