@@ -79,3 +79,15 @@ type CompleteSessionRequest struct {
 type CompleteSessionResponse struct {
 	Session *Session `json:"session"`
 }
+
+// GetUserSessionHistoryRequest представляет запрос на получение истории сессий пользователя
+type GetUserSessionHistoryRequest struct {
+	UserID uuid.UUID `json:"user_id" binding:"required"`
+	Limit  int       `json:"limit"`
+	Offset int       `json:"offset"`
+}
+
+// GetUserSessionHistoryResponse представляет ответ на получение истории сессий пользователя
+type GetUserSessionHistoryResponse struct {
+	Sessions []Session `json:"sessions"`
+}

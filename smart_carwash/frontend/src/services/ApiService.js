@@ -111,6 +111,17 @@ const ApiService = {
       throw error;
     }
   },
+  
+  // Получение истории сессий пользователя
+  getUserSessionHistory: async (userId, limit = 10, offset = 0) => {
+    try {
+      const response = await api.get(`/sessions/history?user_id=${userId}&limit=${limit}&offset=${offset}`);
+      return response.data;
+    } catch (error) {
+      console.error('Ошибка при получении истории сессий:', error);
+      throw error;
+    }
+  },
 };
 
 // Добавляем перехватчик для обработки ошибок

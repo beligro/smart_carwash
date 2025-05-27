@@ -6,6 +6,10 @@
     margin-bottom: 24px;
   }
   
+  .historyButton {
+    width: 100%;
+  }
+  
   .title {
     font-size: 20px;
     margin-bottom: 16px;
@@ -183,4 +187,3 @@
       box-shadow: 0 0 0 0 rgba(255, 193, 7, 0);
     }
   }
-  

@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"net/http"
+	"strconv"
 
 	"carwash_backend/internal/domain/session/models"
 	"carwash_backend/internal/domain/session/service"
@@ -27,10 +28,11 @@ func (h *Handler) RegisterRoutes(router *gin.RouterGroup) {
 	sessionRoutes := router.Group("/sessions")
 	{
 		sessionRoutes.POST("", h.createSession)
-		sessionRoutes.GET("", h.getUserSession)            // user_id в query параметре
-		sessionRoutes.GET("/by-id", h.getSessionByID)      // session_id в query параметре
-		sessionRoutes.POST("/start", h.startSession)       // session_id в теле запроса
-		sessionRoutes.POST("/complete", h.completeSession) // session_id в теле запроса
+		sessionRoutes.GET("", h.getUserSession)                // user_id в query параметре
+		sessionRoutes.GET("/by-id", h.getSessionByID)          // session_id в query параметре
+		sessionRoutes.POST("/start", h.startSession)           // session_id в теле запроса
+		sessionRoutes.POST("/complete", h.completeSession)     // session_id в теле запроса
+		sessionRoutes.GET("/history", h.getUserSessionHistory) // user_id в query параметре
 	}
 }
 
@@ -151,4 +153,54 @@ func (h *Handler) completeSession(c *gin.Context) {
 
 	// Возвращаем обновленную сессию
 	c.JSON(http.StatusOK, models.CompleteSessionResponse{Session: session})
+}
+
+// getUserSessionHistory обработчик для получения истории сессий пользователя
+func (h *Handler) getUserSessionHistory(c *gin.Context) {
+	// Получаем ID пользователя из query параметра
+	userIDStr := c.Query("user_id")
+	if userIDStr == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Не указан ID пользователя"})
+		return
+	}
+
+	userID, err := uuid.Parse(userIDStr)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Некорректный ID пользователя"})
+		return
+	}
+
+	// Получаем лимит и смещение из query параметров
+	limit := 10 // По умолчанию 10 сессий
+	offset := 0 // По умолчанию начинаем с первой сессии
+
+	limitStr := c.Query("limit")
+	if limitStr != "" {
+		limitVal, err := strconv.Atoi(limitStr)
+		if err == nil && limitVal > 0 {
+			limit = limitVal
+		}
+	}
+
+	offsetStr := c.Query("offset")
+	if offsetStr != "" {
+		offsetVal, err := strconv.Atoi(offsetStr)
+		if err == nil && offsetVal >= 0 {
+			offset = offsetVal
+		}
+	}
+
+	// Получаем историю сессий пользователя
+	sessions, err := h.service.GetUserSessionHistory(&models.GetUserSessionHistoryRequest{
+		UserID: userID,
+		Limit:  limit,
+		Offset: offset,
+	})
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Не удалось получить историю сессий"})
+		return
+	}
+
+	// Возвращаем историю сессий пользователя
+	c.JSON(http.StatusOK, models.GetUserSessionHistoryResponse{Sessions: sessions})
 }

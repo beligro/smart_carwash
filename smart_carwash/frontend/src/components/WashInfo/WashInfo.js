@@ -12,8 +12,9 @@ import useTimer from '../../hooks/useTimer';
  * @param {Object} props.washInfo - Информация о мойке
  * @param {string} props.theme - Тема оформления ('light' или 'dark')
  * @param {Function} props.onCreateSession - Функция для создания сессии
+ * @param {Function} props.onViewHistory - Функция для просмотра истории сессий
  */
-const WashInfo = ({ washInfo, theme = 'light', onCreateSession }) => {
+const WashInfo = ({ washInfo, theme = 'light', onCreateSession, onViewHistory }) => {
   const navigate = useNavigate();
   const boxes = washInfo?.boxes || [];
   const queueSize = washInfo?.queueSize || 0;
@@ -55,6 +56,20 @@ const WashInfo = ({ washInfo, theme = 'light', onCreateSession }) => {
               Количество человек в очереди: {queueSize}
             </p>
           )}
+        </Card>
+      </section>
+
+      {/* Кнопка для просмотра истории сессий */}
+      <section className={styles.section}>
+        <h2 className={`${styles.title} ${themeClass}`}>История моек</h2>
+        <Card theme={theme}>
+          <Button 
+            theme={theme} 
+            onClick={onViewHistory}
+            className={styles.historyButton}
+          >
+            Посмотреть историю моек
+          </Button>
         </Card>
       </section>
 

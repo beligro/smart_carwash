@@ -20,6 +20,7 @@ type Service interface {
 	CheckAndExpireReservedSessions() error
 	CountSessionsByStatus(status string) (int, error)
 	GetSessionsByStatus(status string) ([]models.Session, error)
+	GetUserSessionHistory(req *models.GetUserSessionHistoryRequest) ([]models.Session, error)
 }
 
 // ServiceImpl реализация Service
@@ -321,4 +322,20 @@ func (s *ServiceImpl) CountSessionsByStatus(status string) (int, error) {
 // GetSessionsByStatus получает сессии по статусу
 func (s *ServiceImpl) GetSessionsByStatus(status string) ([]models.Session, error) {
 	return s.repo.GetSessionsByStatus(status)
+}
+
+// GetUserSessionHistory получает историю сессий пользователя
+func (s *ServiceImpl) GetUserSessionHistory(req *models.GetUserSessionHistoryRequest) ([]models.Session, error) {
+	// Устанавливаем значения по умолчанию, если не указаны
+	limit := req.Limit
+	if limit <= 0 {
+		limit = 10 // По умолчанию возвращаем 10 сессий
+	}
+
+	offset := req.Offset
+	if offset < 0 {
+		offset = 0
+	}
+
+	return s.repo.GetUserSessionHistory(req.UserID, limit, offset)
 }

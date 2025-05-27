@@ -16,6 +16,7 @@ type Repository interface {
 	UpdateSession(session *models.Session) error
 	GetSessionsByStatus(status string) ([]models.Session, error)
 	CountSessionsByStatus(status string) (int, error)
+	GetUserSessionHistory(userID uuid.UUID, limit, offset int) ([]models.Session, error)
 }
 
 // PostgresRepository реализация Repository для PostgreSQL
@@ -86,4 +87,22 @@ func (r *PostgresRepository) CountSessionsByStatus(status string) (int, error) {
 	var count int64
 	err := r.db.Model(&models.Session{}).Where("status = ?", status).Count(&count).Error
 	return int(count), err
+}
+
+// GetUserSessionHistory получает историю сессий пользователя
+func (r *PostgresRepository) GetUserSessionHistory(userID uuid.UUID, limit, offset int) ([]models.Session, error) {
+	var sessions []models.Session
+	query := r.db.Where("user_id = ?", userID).
+		Order("created_at DESC")
+
+	if limit > 0 {
+		query = query.Limit(limit)
+	}
+
+	if offset > 0 {
+		query = query.Offset(offset)
+	}
+
+	err := query.Find(&sessions).Error
+	return sessions, err
 }

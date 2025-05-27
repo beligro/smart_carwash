@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import WebApp from '@twa-dev/sdk';
-import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
+import { BrowserRouter as Router, Routes, Route, Navigate, useNavigate } from 'react-router-dom';
 import styled from 'styled-components';
 
 // Компоненты
@@ -8,6 +8,7 @@ import Header from './components/Header';
 import WelcomeMessage from './components/WelcomeMessage/WelcomeMessage';
 import WashInfo from './components/WashInfo/WashInfo';
 import SessionDetails from './components/SessionDetails';
+import SessionHistory from './components/SessionHistory';
 
 // Сервисы и утилиты
 import ApiService from './services/ApiService';
@@ -33,7 +34,8 @@ const ContentContainer = styled.div`
 /**
  * Главный компонент приложения
  */
-function App() {
+function AppContent() {
+  const navigate = useNavigate();
   // Состояния
   const [washInfo, setWashInfo] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -267,10 +269,19 @@ function App() {
     }
   }, [user]);
 
+  // Функция для перехода на страницу истории сессий
+  const handleViewHistory = () => {
+    navigate('/history');
+  };
+
+  // Функция для возврата на главную страницу
+  const handleBackToHome = () => {
+    navigate('/');
+  };
+
   return (
-    <Router>
-      <AppContainer theme={theme}>
-        <Header theme={theme} />
+    <AppContainer theme={theme}>
+      <Header theme={theme} />
         <ContentContainer>
           <Routes>
             <Route 
@@ -287,6 +298,7 @@ function App() {
                       washInfo={washInfo} 
                       theme={theme} 
                       onCreateSession={handleCreateSession}
+                      onViewHistory={handleViewHistory}
                     />
                   )}
                 </>
@@ -301,10 +313,27 @@ function App() {
                 />
               } 
             />
+            <Route 
+              path="/history" 
+              element={
+                <SessionHistory 
+                  theme={theme} 
+                  user={user}
+                  onBack={handleBackToHome}
+                />
+              } 
+            />
             <Route path="*" element={<Navigate to="/" />} />
           </Routes>
         </ContentContainer>
       </AppContainer>
+  );
+}
+
+function App() {
+  return (
+    <Router>
+      <AppContent />
     </Router>
   );
 }
