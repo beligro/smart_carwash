@@ -1,25 +1,15 @@
 package service
 
 import (
-	"carwash_backend/internal/models"
-	"carwash_backend/internal/repository"
+	"carwash_backend/internal/domain/session/models"
+	"carwash_backend/internal/domain/session/repository"
+	washboxModels "carwash_backend/internal/domain/washbox/models"
+	washboxService "carwash_backend/internal/domain/washbox/service"
 	"time"
-
-	"github.com/google/uuid"
 )
 
-// Service интерфейс для бизнес-логики
+// Service интерфейс для бизнес-логики сессий
 type Service interface {
-	// Пользователи
-	CreateUser(req *models.CreateUserRequest) (*models.User, error)
-	GetUserByTelegramID(telegramID int64) (*models.User, error)
-
-	// Информация о мойке
-	GetWashInfo() (*models.WashInfo, error)
-	GetWashInfoForUser(userID uuid.UUID) (*models.WashInfo, error)
-	GetQueueStatus() (*models.GetQueueStatusResponse, error)
-
-	// Сессии мойки
 	CreateSession(req *models.CreateSessionRequest) (*models.Session, error)
 	GetUserSession(req *models.GetUserSessionRequest) (*models.Session, error)
 	GetSession(req *models.GetSessionRequest) (*models.Session, error)
@@ -28,128 +18,22 @@ type Service interface {
 	ProcessQueue() error
 	CheckAndCompleteExpiredSessions() error
 	CheckAndExpireReservedSessions() error
+	CountSessionsByStatus(status string) (int, error)
+	GetSessionsByStatus(status string) ([]models.Session, error)
 }
 
 // ServiceImpl реализация Service
 type ServiceImpl struct {
-	repo repository.Repository
+	repo           repository.Repository
+	washboxService washboxService.Service
 }
 
 // NewService создает новый экземпляр Service
-func NewService(repo repository.Repository) *ServiceImpl {
-	return &ServiceImpl{repo: repo}
-}
-
-// CreateUser создает нового пользователя
-func (s *ServiceImpl) CreateUser(req *models.CreateUserRequest) (*models.User, error) {
-	// Проверяем, существует ли пользователь
-	existingUser, err := s.repo.GetUserByTelegramID(req.TelegramID)
-	if err == nil {
-		// Пользователь уже существует, возвращаем его
-		return existingUser, nil
+func NewService(repo repository.Repository, washboxService washboxService.Service) *ServiceImpl {
+	return &ServiceImpl{
+		repo:           repo,
+		washboxService: washboxService,
 	}
-
-	// Создаем нового пользователя
-	user := &models.User{
-		TelegramID: req.TelegramID,
-		Username:   req.Username,
-		FirstName:  req.FirstName,
-		LastName:   req.LastName,
-		IsAdmin:    false, // По умолчанию пользователь не админ
-	}
-
-	// Сохраняем пользователя в базе данных
-	err = s.repo.CreateUser(user)
-	if err != nil {
-		return nil, err
-	}
-
-	return user, nil
-}
-
-// GetUserByTelegramID получает пользователя по Telegram ID
-func (s *ServiceImpl) GetUserByTelegramID(telegramID int64) (*models.User, error) {
-	return s.repo.GetUserByTelegramID(telegramID)
-}
-
-// GetWashInfo получает информацию о мойке
-func (s *ServiceImpl) GetWashInfo() (*models.WashInfo, error) {
-	// Получаем все боксы мойки
-	boxes, err := s.repo.GetAllWashBoxes()
-	if err != nil {
-		return nil, err
-	}
-
-	// Получаем количество сессий в очереди
-	queueSize, err := s.repo.CountSessionsByStatus(models.SessionStatusCreated)
-	if err != nil {
-		return nil, err
-	}
-
-	// Получаем количество свободных боксов
-	freeBoxes, err := s.repo.GetFreeWashBoxes()
-	if err != nil {
-		return nil, err
-	}
-
-	// Определяем, есть ли очередь
-	hasQueue := queueSize > len(freeBoxes)
-
-	// Формируем ответ
-	return &models.WashInfo{
-		Boxes:     boxes,
-		QueueSize: queueSize,
-		HasQueue:  hasQueue,
-	}, nil
-}
-
-// GetWashInfoForUser получает информацию о мойке для конкретного пользователя
-func (s *ServiceImpl) GetWashInfoForUser(userID uuid.UUID) (*models.WashInfo, error) {
-	// Получаем общую информацию о мойке
-	washInfo, err := s.GetWashInfo()
-	if err != nil {
-		return nil, err
-	}
-
-	// Получаем активную сессию пользователя, если есть
-	session, err := s.repo.GetActiveSessionByUserID(userID)
-	if err == nil {
-		// Если сессия найдена, добавляем ее в ответ
-		washInfo.UserSession = session
-	}
-
-	return washInfo, nil
-}
-
-// GetQueueStatus получает статус очереди и боксов
-func (s *ServiceImpl) GetQueueStatus() (*models.GetQueueStatusResponse, error) {
-	// Получаем все боксы мойки
-	boxes, err := s.repo.GetAllWashBoxes()
-	if err != nil {
-		return nil, err
-	}
-
-	// Получаем количество сессий в очереди
-	queueSize, err := s.repo.CountSessionsByStatus(models.SessionStatusCreated)
-	if err != nil {
-		return nil, err
-	}
-
-	// Получаем количество свободных боксов
-	freeBoxes, err := s.repo.GetFreeWashBoxes()
-	if err != nil {
-		return nil, err
-	}
-
-	// Определяем, есть ли очередь
-	hasQueue := queueSize > len(freeBoxes)
-
-	// Формируем ответ
-	return &models.GetQueueStatusResponse{
-		Boxes:     boxes,
-		QueueSize: queueSize,
-		HasQueue:  hasQueue,
-	}, nil
 }
 
 // CreateSession создает новую сессию мойки
@@ -212,14 +96,25 @@ func (s *ServiceImpl) StartSession(req *models.StartSessionRequest) (*models.Ses
 		return session, nil // Возвращаем сессию без изменений
 	}
 
+	// Если сервис боксов не инициализирован, просто обновляем статус сессии
+	if s.washboxService == nil {
+		// Обновляем статус сессии на active
+		session.Status = models.SessionStatusActive
+		err = s.repo.UpdateSession(session)
+		if err != nil {
+			return nil, err
+		}
+		return session, nil
+	}
+
 	// Получаем информацию о боксе
-	box, err := s.repo.GetWashBoxByID(*session.BoxID)
+	box, err := s.washboxService.GetWashBoxByID(*session.BoxID)
 	if err != nil {
 		return nil, err
 	}
 
 	// Обновляем статус бокса на busy
-	err = s.repo.UpdateWashBoxStatus(*session.BoxID, models.StatusBusy)
+	err = s.washboxService.UpdateWashBoxStatus(*session.BoxID, washboxModels.StatusBusy)
 	if err != nil {
 		return nil, err
 	}
@@ -229,7 +124,7 @@ func (s *ServiceImpl) StartSession(req *models.StartSessionRequest) (*models.Ses
 	err = s.repo.UpdateSession(session)
 	if err != nil {
 		// Если не удалось обновить сессию, возвращаем статус бокса обратно
-		s.repo.UpdateWashBoxStatus(*session.BoxID, box.Status)
+		s.washboxService.UpdateWashBoxStatus(*session.BoxID, box.Status)
 		return nil, err
 	}
 
@@ -254,8 +149,19 @@ func (s *ServiceImpl) CompleteSession(req *models.CompleteSessionRequest) (*mode
 		return session, nil // Возвращаем сессию без изменений
 	}
 
+	// Если сервис боксов не инициализирован, просто обновляем статус сессии
+	if s.washboxService == nil {
+		// Обновляем статус сессии на complete
+		session.Status = models.SessionStatusComplete
+		err = s.repo.UpdateSession(session)
+		if err != nil {
+			return nil, err
+		}
+		return session, nil
+	}
+
 	// Обновляем статус бокса на free
-	err = s.repo.UpdateWashBoxStatus(*session.BoxID, models.StatusFree)
+	err = s.washboxService.UpdateWashBoxStatus(*session.BoxID, washboxModels.StatusFree)
 	if err != nil {
 		return nil, err
 	}
@@ -294,9 +200,9 @@ func (s *ServiceImpl) CheckAndCompleteExpiredSessions() error {
 		// Проверяем, прошло ли 5 минут с момента начала сессии
 		if now.Sub(startTime) >= 5*time.Minute {
 			// Если прошло 5 минут, завершаем сессию
-			if session.BoxID != nil {
+			if session.BoxID != nil && s.washboxService != nil {
 				// Обновляем статус бокса на free
-				err = s.repo.UpdateWashBoxStatus(*session.BoxID, models.StatusFree)
+				err = s.washboxService.UpdateWashBoxStatus(*session.BoxID, washboxModels.StatusFree)
 				if err != nil {
 					return err
 				}
@@ -316,6 +222,11 @@ func (s *ServiceImpl) CheckAndCompleteExpiredSessions() error {
 
 // ProcessQueue обрабатывает очередь сессий
 func (s *ServiceImpl) ProcessQueue() error {
+	// Если сервис боксов не инициализирован, выходим
+	if s.washboxService == nil {
+		return nil
+	}
+
 	// Получаем все сессии со статусом "created"
 	sessions, err := s.repo.GetSessionsByStatus(models.SessionStatusCreated)
 	if err != nil {
@@ -327,8 +238,8 @@ func (s *ServiceImpl) ProcessQueue() error {
 		return nil
 	}
 
-	// Получаем все свободные боксы
-	freeBoxes, err := s.repo.GetFreeWashBoxes()
+	// Получаем все свободные боксы через сервис washbox
+	freeBoxes, err := s.washboxService.GetFreeWashBoxes()
 	if err != nil {
 		return err
 	}
@@ -341,7 +252,7 @@ func (s *ServiceImpl) ProcessQueue() error {
 	// Назначаем сессии на свободные боксы
 	for i := 0; i < len(sessions) && i < len(freeBoxes); i++ {
 		// Обновляем статус бокса на "reserved"
-		err = s.repo.UpdateWashBoxStatus(freeBoxes[i].ID, models.StatusReserved)
+		err = s.washboxService.UpdateWashBoxStatus(freeBoxes[i].ID, washboxModels.StatusReserved)
 		if err != nil {
 			return err
 		}
@@ -382,9 +293,9 @@ func (s *ServiceImpl) CheckAndExpireReservedSessions() error {
 		// Проверяем, прошло ли 3 минуты с момента назначения сессии
 		if now.Sub(assignedTime) >= 3*time.Minute {
 			// Если прошло 3 минуты, истекаем сессию
-			if session.BoxID != nil {
+			if session.BoxID != nil && s.washboxService != nil {
 				// Обновляем статус бокса на free
-				err = s.repo.UpdateWashBoxStatus(*session.BoxID, models.StatusFree)
+				err = s.washboxService.UpdateWashBoxStatus(*session.BoxID, washboxModels.StatusFree)
 				if err != nil {
 					return err
 				}
@@ -400,4 +311,14 @@ func (s *ServiceImpl) CheckAndExpireReservedSessions() error {
 	}
 
 	return nil
+}
+
+// CountSessionsByStatus подсчитывает количество сессий с определенным статусом
+func (s *ServiceImpl) CountSessionsByStatus(status string) (int, error) {
+	return s.repo.CountSessionsByStatus(status)
+}
+
+// GetSessionsByStatus получает сессии по статусу
+func (s *ServiceImpl) GetSessionsByStatus(status string) ([]models.Session, error) {
+	return s.repo.GetSessionsByStatus(status)
 }

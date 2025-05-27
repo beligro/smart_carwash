@@ -6,8 +6,8 @@ import (
 	"strings"
 
 	"carwash_backend/internal/config"
-	"carwash_backend/internal/models"
-	"carwash_backend/internal/service"
+	"carwash_backend/internal/domain/user/models"
+	"carwash_backend/internal/domain/user/service"
 
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 )

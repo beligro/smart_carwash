@@ -239,18 +239,21 @@ function App() {
       // Загружаем информацию о сессии пользователя по user_id и запускаем поллинг по session_id
       const loadUserSessionAndStartPolling = async () => {
         try {
-          const data = await ApiService.getWashInfoForUser(user.id);
-          console.log('User session data:', data);
+          // Сначала пробуем получить сессию напрямую через getUserSession
+          const sessionResponse = await ApiService.getUserSession(user.id);
+          console.log('User session direct data:', sessionResponse);
           
-          // Обновляем данные сессии пользователя
-          setWashInfo(prevInfo => ({
-            ...prevInfo,
-            userSession: data.session
-          }));
-          
-          // Если у пользователя есть активная сессия, запускаем поллинг для неё по ID сессии
-          if (data.session && ['created', 'assigned', 'active'].includes(data.session.status)) {
-            startSessionPolling(data.session.id);
+          if (sessionResponse && sessionResponse.session) {
+            // Обновляем данные сессии пользователя
+            setWashInfo(prevInfo => ({
+              ...prevInfo,
+              userSession: sessionResponse.session
+            }));
+            
+            // Если у пользователя есть активная сессия, запускаем поллинг для неё по ID сессии
+            if (['created', 'assigned', 'active'].includes(sessionResponse.session.status)) {
+              startSessionPolling(sessionResponse.session.id);
+            }
           }
         } catch (err) {
           console.error('Ошибка загрузки информации о пользовательской сессии:', err);

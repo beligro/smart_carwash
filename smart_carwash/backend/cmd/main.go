@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"log"
 	"net/http"
@@ -12,13 +13,22 @@ import (
 	"time"
 
 	"carwash_backend/internal/config"
-	"carwash_backend/internal/handlers"
-	"carwash_backend/internal/repository"
-	"carwash_backend/internal/service"
-	"carwash_backend/internal/telegram"
+	queueHandlers "carwash_backend/internal/domain/queue/handlers"
+	queueService "carwash_backend/internal/domain/queue/service"
+	sessionHandlers "carwash_backend/internal/domain/session/handlers"
+	sessionRepo "carwash_backend/internal/domain/session/repository"
+	sessionService "carwash_backend/internal/domain/session/service"
+	"carwash_backend/internal/domain/telegram"
+	userHandlers "carwash_backend/internal/domain/user/handlers"
+	userRepo "carwash_backend/internal/domain/user/repository"
+	userService "carwash_backend/internal/domain/user/service"
+	washboxHandlers "carwash_backend/internal/domain/washbox/handlers"
+	washboxRepo "carwash_backend/internal/domain/washbox/repository"
+	washboxService "carwash_backend/internal/domain/washbox/service"
 
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
+	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 	"github.com/golang-migrate/migrate/v4"
 	_ "github.com/golang-migrate/migrate/v4/database/postgres"
 	_ "github.com/golang-migrate/migrate/v4/source/file"
@@ -55,14 +65,22 @@ func main() {
 	sqlDB.SetMaxOpenConns(100)
 	sqlDB.SetConnMaxLifetime(time.Hour)
 
-	// Создаем репозиторий
-	repo := repository.NewPostgresRepository(db)
+	// Создаем репозитории
+	userRepository := userRepo.NewPostgresRepository(db)
+	washboxRepository := washboxRepo.NewPostgresRepository(db)
+	sessionRepository := sessionRepo.NewPostgresRepository(db)
 
-	// Создаем сервис
-	svc := service.NewService(repo)
+	// Создаем сервисы
+	userSvc := userService.NewService(userRepository)
+
+	washboxSvc := washboxService.NewService(washboxRepository)
+	sessionSvc := sessionService.NewService(sessionRepository, washboxSvc)
+
+	// Создаем сервис очереди, который зависит от сервисов сессий и боксов
+	queueSvc := queueService.NewService(sessionSvc, washboxSvc)
 
 	// Создаем Telegram бота
-	bot, err := telegram.NewBot(svc, cfg)
+	bot, err := telegram.NewBot(userSvc, cfg)
 	if err != nil {
 		log.Fatalf("Ошибка создания Telegram бота: %v", err)
 	}
@@ -73,7 +91,10 @@ func main() {
 	}
 
 	// Создаем обработчики
-	handler := handlers.NewHandler(svc, bot)
+	userHandler := userHandlers.NewHandler(userSvc)
+	washboxHandler := washboxHandlers.NewHandler(washboxSvc)
+	sessionHandler := sessionHandlers.NewHandler(sessionSvc)
+	queueHandler := queueHandlers.NewHandler(queueSvc)
 
 	// Создаем роутер
 	router := gin.Default()
@@ -89,7 +110,36 @@ func main() {
 	}))
 
 	// Инициализируем маршруты
-	handler.InitRoutes(router)
+	api := router.Group("/")
+	{
+		// Регистрируем маршруты для каждого домена
+		userHandler.RegisterRoutes(api)
+		washboxHandler.RegisterRoutes(api)
+		sessionHandler.RegisterRoutes(api)
+		queueHandler.RegisterRoutes(api)
+
+		// Вебхук для Telegram бота
+		api.POST("/webhook", func(c *gin.Context) {
+			// Читаем тело запроса
+			body, err := c.GetRawData()
+			if err != nil {
+				c.JSON(http.StatusBadRequest, gin.H{"error": "Не удалось прочитать тело запроса"})
+				return
+			}
+
+			// Парсим обновление
+			var update tgbotapi.Update
+			if err := json.Unmarshal(body, &update); err != nil {
+				c.JSON(http.StatusBadRequest, gin.H{"error": "Не удалось распарсить обновление"})
+				return
+			}
+
+			// Обрабатываем обновление
+			bot.ProcessUpdate(update)
+
+			c.JSON(http.StatusOK, gin.H{"status": "ok"})
+		})
+	}
 
 	// Создаем HTTP сервер
 	server := &http.Server{
@@ -119,7 +169,7 @@ func main() {
 			select {
 			case <-ticker.C:
 				log.Println("Запуск обработки очереди...")
-				if err := svc.ProcessQueue(); err != nil {
+				if err := sessionSvc.ProcessQueue(); err != nil {
 					log.Printf("Ошибка обработки очереди: %v", err)
 				} else {
 					log.Println("Обработка очереди завершена успешно")
@@ -139,7 +189,7 @@ func main() {
 			select {
 			case <-ticker.C:
 				log.Println("Запуск проверки истекших сессий...")
-				if err := svc.CheckAndCompleteExpiredSessions(); err != nil {
+				if err := sessionSvc.CheckAndCompleteExpiredSessions(); err != nil {
 					log.Printf("Ошибка проверки истекших сессий: %v", err)
 				} else {
 					log.Println("Проверка истекших сессий завершена успешно")
@@ -159,7 +209,7 @@ func main() {
 			select {
 			case <-ticker.C:
 				log.Println("Запуск проверки зарезервированных сессий...")
-				if err := svc.CheckAndExpireReservedSessions(); err != nil {
+				if err := sessionSvc.CheckAndExpireReservedSessions(); err != nil {
 					log.Printf("Ошибка проверки зарезервированных сессий: %v", err)
 				} else {
 					log.Println("Проверка зарезервированных сессий завершена успешно")
