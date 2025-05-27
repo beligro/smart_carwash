@@ -22,6 +22,7 @@ type Session struct {
 	ID             uuid.UUID      `json:"id" gorm:"primaryKey;type:uuid;default:gen_random_uuid()"`
 	UserID         uuid.UUID      `json:"user_id" gorm:"index;type:uuid"`
 	BoxID          *uuid.UUID     `json:"box_id,omitempty" gorm:"index;type:uuid"`
+	BoxNumber      *int           `json:"box_number,omitempty" gorm:"-"` // Виртуальное поле, не хранится в БД
 	Status         string         `json:"status" gorm:"default:created;index"`
 	IdempotencyKey string         `json:"idempotency_key,omitempty" gorm:"index"`
 	CreatedAt      time.Time      `json:"created_at"`

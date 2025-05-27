@@ -41,6 +41,19 @@ func (r *PostgresRepository) GetSessionByID(id uuid.UUID) (*models.Session, erro
 	if err != nil {
 		return nil, err
 	}
+
+	// Если у сессии есть BoxID, получаем номер бокса
+	if session.BoxID != nil {
+		var boxNumber int
+		err = r.db.Model(&struct {
+			ID     uuid.UUID `gorm:"primaryKey;type:uuid"`
+			Number int
+		}{}).Where("id = ?", *session.BoxID).Select("number").Scan(&boxNumber).Error
+		if err == nil {
+			session.BoxNumber = &boxNumber
+		}
+	}
+
 	return &session, nil
 }
 
@@ -57,6 +70,19 @@ func (r *PostgresRepository) GetActiveSessionByUserID(userID uuid.UUID) (*models
 	if err != nil {
 		return nil, err
 	}
+
+	// Если у сессии есть BoxID, получаем номер бокса
+	if session.BoxID != nil {
+		var boxNumber int
+		err = r.db.Model(&struct {
+			ID     uuid.UUID `gorm:"primaryKey;type:uuid"`
+			Number int
+		}{}).Where("id = ?", *session.BoxID).Select("number").Scan(&boxNumber).Error
+		if err == nil {
+			session.BoxNumber = &boxNumber
+		}
+	}
+
 	return &session, nil
 }
 

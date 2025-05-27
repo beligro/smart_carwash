@@ -106,12 +106,6 @@ const SessionHistory = ({ user, theme = 'light', onBack }) => {
                       {getSessionStatusDescription(session.status)}
                     </span>
                   </div>
-                  
-                  {session.box_id && (
-                    <p className={`${styles.boxInfo} ${themeClass}`}>
-                      Бокс: #{session.box_number || 'Неизвестный'}
-                    </p>
-                  )}
                 </div>
                 
                 <Button 

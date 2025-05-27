@@ -37,11 +37,17 @@ const SessionDetails = ({ theme = 'light', user }) => {
       if (response && response.session) {
         setSession(response.session);
         
-        // Обновляем информацию о боксе
-        const queueStatus = await ApiService.getQueueStatus();
-        const boxInfo = queueStatus.boxes.find(b => b.id === response.session.box_id);
-        if (boxInfo) {
-          setBox(boxInfo);
+        // Если у сессии есть номер бокса, используем его
+        if (response.session.box_number) {
+          setBox({ number: response.session.box_number });
+        }
+        // Иначе, если у сессии есть назначенный бокс, получаем информацию о нем
+        else if (response.session.box_id) {
+          const queueStatus = await ApiService.getQueueStatus();
+          const boxInfo = queueStatus.boxes.find(b => b.id === response.session.box_id);
+          if (boxInfo) {
+            setBox(boxInfo);
+          }
         }
       }
     } catch (err) {
@@ -52,35 +58,54 @@ const SessionDetails = ({ theme = 'light', user }) => {
     }
   };
   
-  // Загрузка данных о сессии
-  useEffect(() => {
-    const fetchSessionDetails = async () => {
-      try {
-        setLoading(true);
-        const response = await ApiService.getSessionById(sessionId);
+  // Функция для загрузки данных о сессии
+  const fetchSessionDetails = async () => {
+    try {
+      setLoading(true);
+      const response = await ApiService.getSessionById(sessionId);
+      
+      if (response && response.session) {
+        setSession(response.session);
         
-        if (response && response.session) {
-          setSession(response.session);
-          
-          // Если у сессии есть назначенный бокс, получаем информацию о нем
-          if (response.session.box_id) {
-            const queueStatus = await ApiService.getQueueStatus();
-            const boxInfo = queueStatus.boxes.find(b => b.id === response.session.box_id);
-            if (boxInfo) {
-              setBox(boxInfo);
-            }
-          }
-        } else {
-          setError('Сессия не найдена');
+        // Если у сессии есть номер бокса, используем его
+        if (response.session.box_number) {
+          setBox({ number: response.session.box_number });
         }
-      } catch (err) {
-        console.error('Ошибка при загрузке данных о сессии:', err);
-        setError('Не удалось загрузить данные о сессии');
-      } finally {
-        setLoading(false);
+        // Иначе, если у сессии есть назначенный бокс, получаем информацию о нем
+        else if (response.session.box_id) {
+          const queueStatus = await ApiService.getQueueStatus();
+          const boxInfo = queueStatus.boxes.find(b => b.id === response.session.box_id);
+          if (boxInfo) {
+            setBox(boxInfo);
+          }
+        }
+        
+        return response.session;
+      } else {
+        setError('Сессия не найдена');
+        return null;
       }
-    };
-    
+    } catch (err) {
+      console.error('Ошибка при загрузке данных о сессии:', err);
+      setError('Не удалось загрузить данные о сессии');
+      return null;
+    } finally {
+      setLoading(false);
+    }
+  };
+  
+  // Начальная загрузка данных о сессии
+  useEffect(() => {
+    if (sessionId) {
+      fetchSessionDetails();
+    }
+  }, [sessionId]);
+  
+  // Настройка поллинга для обновления данных о сессии
+  // Примечание: Мы не запускаем поллинг здесь, так как он уже запущен в App.js
+  // Вместо этого просто обновляем данные при первой загрузке и при изменении статуса сессии
+  useEffect(() => {
+    // Обновляем данные каждый раз, когда меняется sessionId
     if (sessionId) {
       fetchSessionDetails();
     }
@@ -98,11 +123,17 @@ const SessionDetails = ({ theme = 'light', user }) => {
       if (response && response.session) {
         setSession(response.session);
         
-        // Обновляем информацию о боксе
-        const queueStatus = await ApiService.getQueueStatus();
-        const boxInfo = queueStatus.boxes.find(b => b.id === response.session.box_id);
-        if (boxInfo) {
-          setBox(boxInfo);
+        // Если у сессии есть номер бокса, используем его
+        if (response.session.box_number) {
+          setBox({ number: response.session.box_number });
+        }
+        // Иначе, если у сессии есть назначенный бокс, получаем информацию о нем
+        else if (response.session.box_id) {
+          const queueStatus = await ApiService.getQueueStatus();
+          const boxInfo = queueStatus.boxes.find(b => b.id === response.session.box_id);
+          if (boxInfo) {
+            setBox(boxInfo);
+          }
         }
       }
     } catch (err) {
@@ -178,16 +209,13 @@ const SessionDetails = ({ theme = 'light', user }) => {
           <div className={`${styles.infoValue} ${themeClass}`}>{formatDate(session.updated_at)}</div>
         </div>
         
-        {session.box_id && (
+        {(session.box_id || session.box_number) && (
           <div className={`${styles.infoRow} ${themeClass}`}>
             <div className={`${styles.infoLabel} ${themeClass}`}>Назначенный бокс:</div>
             <div className={`${styles.infoValue} ${themeClass}`}>
-              {box ? `Бокс #${box.number} (${
-                box.status === 'free' ? 'Свободен' : 
-                box.status === 'reserved' ? 'Зарезервирован' : 
-                box.status === 'busy' ? 'Занят' : 
-                'На обслуживании'
-              })` : 'Информация о боксе недоступна'}
+              {box ? `Бокс #${box.number}` : 
+               session.box_number ? `Бокс #${session.box_number}` : 
+               'Информация о боксе недоступна'}
             </div>
           </div>
         )}

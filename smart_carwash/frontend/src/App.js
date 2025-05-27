@@ -211,12 +211,21 @@ function AppContent() {
             };
           });
           
-          // Если сессия завершена или отменена, останавливаем поллинг
+          // Если сессия завершена, отменена или истекла, останавливаем поллинг
           if (
             sessionData.session.status === 'complete' || 
-            sessionData.session.status === 'canceled'
+            sessionData.session.status === 'canceled' ||
+            sessionData.session.status === 'expired'
           ) {
             clearInterval(sessionPollingInterval);
+            
+            // Через 5 секунд обновляем блок с сессией и предлагаем начать новую
+            setTimeout(() => {
+              setWashInfo(prevInfo => ({
+                ...prevInfo,
+                userSession: null
+              }));
+            }, 5000);
           }
         }
       } catch (err) {

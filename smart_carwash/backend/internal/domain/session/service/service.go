@@ -260,6 +260,7 @@ func (s *ServiceImpl) ProcessQueue() error {
 
 		// Обновляем сессию - назначаем бокс и меняем статус
 		sessions[i].BoxID = &freeBoxes[i].ID
+		sessions[i].BoxNumber = &freeBoxes[i].Number
 		sessions[i].Status = models.SessionStatusAssigned
 		err = s.repo.UpdateSession(&sessions[i])
 		if err != nil {

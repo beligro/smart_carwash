@@ -83,10 +83,12 @@ const WashInfo = ({ washInfo, theme = 'light', onCreateSession, onViewHistory })
               <p className={`${styles.sessionInfo} ${themeClass}`}>
                 Создана: {formatDate(userSession.created_at)}
               </p>
-              {userSession.box_id && (
+              {(userSession.box_id || userSession.box_number) && (
                 <p className={`${styles.sessionInfo} ${themeClass}`}>
                   Назначен бокс: #{
-                    // Находим номер бокса по его ID
+                    // Используем номер бокса из сессии, если он есть
+                    userSession.box_number || 
+                    // Иначе находим номер бокса по его ID
                     boxes.find(box => box.id === userSession.box_id)?.number || 
                     'Неизвестный бокс'
                   }
