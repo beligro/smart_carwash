@@ -63,10 +63,12 @@ func (s *ServiceImpl) CreateSession(req *models.CreateSessionRequest) (*models.S
 	}
 
 	// Создаем новую сессию
+	now := time.Now()
 	session := &models.Session{
-		UserID:         req.UserID,
-		Status:         models.SessionStatusCreated,
-		IdempotencyKey: req.IdempotencyKey,
+		UserID:          req.UserID,
+		Status:          models.SessionStatusCreated,
+		IdempotencyKey:  req.IdempotencyKey,
+		StatusUpdatedAt: now, // Инициализируем время изменения статуса
 	}
 
 	// Сохраняем сессию в базе данных
@@ -129,8 +131,10 @@ func (s *ServiceImpl) StartSession(req *models.StartSessionRequest) (*models.Ses
 		return nil, err
 	}
 
-	// Обновляем статус сессии на active
+	// Обновляем статус сессии на active, время обновления статуса и сбрасываем флаг уведомления
 	session.Status = models.SessionStatusActive
+	session.StatusUpdatedAt = time.Now()       // Обновляем время изменения статуса
+	session.IsExpiringNotificationSent = false // Сбрасываем флаг, чтобы уведомление могло быть отправлено снова
 	err = s.repo.UpdateSession(session)
 	if err != nil {
 		// Если не удалось обновить сессию, возвращаем статус бокса обратно
@@ -176,8 +180,10 @@ func (s *ServiceImpl) CompleteSession(req *models.CompleteSessionRequest) (*mode
 		return nil, err
 	}
 
-	// Обновляем статус сессии на complete
+	// Обновляем статус сессии на complete, время обновления статуса и сбрасываем флаг уведомления
 	session.Status = models.SessionStatusComplete
+	session.StatusUpdatedAt = time.Now()         // Обновляем время изменения статуса
+	session.IsCompletingNotificationSent = false // Сбрасываем флаг, чтобы уведомление могло быть отправлено снова
 	err = s.repo.UpdateSession(session)
 	if err != nil {
 		return nil, err
@@ -205,7 +211,7 @@ func (s *ServiceImpl) CheckAndCompleteExpiredSessions() error {
 	// Проверяем каждую активную сессию
 	for _, session := range activeSessions {
 		// Время начала сессии - это время последнего обновления статуса на active
-		startTime := session.UpdatedAt
+		startTime := session.StatusUpdatedAt
 
 		// Проверяем, прошло ли 5 минут с момента начала сессии
 		if now.Sub(startTime) >= 5*time.Minute {
@@ -218,8 +224,10 @@ func (s *ServiceImpl) CheckAndCompleteExpiredSessions() error {
 				}
 			}
 
-			// Обновляем статус сессии на complete
+			// Обновляем статус сессии на complete, время обновления статуса и сбрасываем флаг уведомления
 			session.Status = models.SessionStatusComplete
+			session.StatusUpdatedAt = time.Now()         // Обновляем время изменения статуса
+			session.IsCompletingNotificationSent = false // Сбрасываем флаг, чтобы уведомление могло быть отправлено снова
 			err = s.repo.UpdateSession(&session)
 			if err != nil {
 				return err
@@ -267,10 +275,11 @@ func (s *ServiceImpl) ProcessQueue() error {
 			return err
 		}
 
-		// Обновляем сессию - назначаем бокс и меняем статус
+		// Обновляем сессию - назначаем бокс, меняем статус и обновляем время изменения статуса
 		sessions[i].BoxID = &freeBoxes[i].ID
 		sessions[i].BoxNumber = &freeBoxes[i].Number
 		sessions[i].Status = models.SessionStatusAssigned
+		sessions[i].StatusUpdatedAt = time.Now() // Обновляем время изменения статуса
 		err = s.repo.UpdateSession(&sessions[i])
 		if err != nil {
 			return err
@@ -299,7 +308,7 @@ func (s *ServiceImpl) CheckAndExpireReservedSessions() error {
 	// Проверяем каждую назначенную сессию
 	for _, session := range assignedSessions {
 		// Время назначения сессии - это время последнего обновления статуса на assigned
-		assignedTime := session.UpdatedAt
+		assignedTime := session.StatusUpdatedAt
 
 		// Проверяем, прошло ли 3 минуты с момента назначения сессии
 		if now.Sub(assignedTime) >= 3*time.Minute {
@@ -312,8 +321,10 @@ func (s *ServiceImpl) CheckAndExpireReservedSessions() error {
 				}
 			}
 
-			// Обновляем статус сессии на expired
+			// Обновляем статус сессии на expired, время обновления статуса и сбрасываем флаг уведомления
 			session.Status = models.SessionStatusExpired
+			session.StatusUpdatedAt = time.Now()       // Обновляем время изменения статуса
+			session.IsExpiringNotificationSent = false // Сбрасываем флаг, чтобы уведомление могло быть отправлено снова
 			err = s.repo.UpdateSession(&session)
 			if err != nil {
 				return err
@@ -348,12 +359,12 @@ func (s *ServiceImpl) CheckAndNotifyExpiringReservedSessions() error {
 	// Проверяем каждую назначенную сессию
 	for _, session := range assignedSessions {
 		// Время назначения сессии - это время последнего обновления статуса на assigned
-		assignedTime := session.UpdatedAt
+		assignedTime := session.StatusUpdatedAt
 
 		// Проверяем, прошло ли 2 минуты с момента назначения сессии (за 1 минуту до истечения)
 		if now.Sub(assignedTime) >= 2*time.Minute && now.Sub(assignedTime) < 3*time.Minute {
-			// Если прошло 2 минуты, отправляем уведомление
-			if session.BoxID != nil && session.BoxNumber != nil {
+			// Если прошло 2 минуты и уведомление еще не отправлено, отправляем его
+			if !session.IsExpiringNotificationSent {
 				// Получаем пользователя
 				user, err := s.userService.GetUserByID(session.UserID)
 				if err != nil {
@@ -362,9 +373,17 @@ func (s *ServiceImpl) CheckAndNotifyExpiringReservedSessions() error {
 				}
 
 				// Отправляем уведомление
-				err = s.telegramBot.SendSessionNotification(user.TelegramID, telegram.NotificationTypeSessionExpiringSoon, *session.BoxNumber)
+				err = s.telegramBot.SendSessionNotification(user.TelegramID, telegram.NotificationTypeSessionExpiringSoon)
 				if err != nil {
 					log.Printf("Ошибка отправки уведомления: %v", err)
+					continue
+				}
+
+				// Помечаем, что уведомление отправлено
+				session.IsExpiringNotificationSent = true
+				err = s.repo.UpdateSession(&session)
+				if err != nil {
+					log.Printf("Ошибка обновления сессии: %v", err)
 				}
 			}
 		}
@@ -397,12 +416,12 @@ func (s *ServiceImpl) CheckAndNotifyCompletingSessions() error {
 	// Проверяем каждую активную сессию
 	for _, session := range activeSessions {
 		// Время начала сессии - это время последнего обновления статуса на active
-		startTime := session.UpdatedAt
+		startTime := session.StatusUpdatedAt
 
 		// Проверяем, прошло ли 4 минуты с момента начала сессии (за 1 минуту до завершения)
 		if now.Sub(startTime) >= 4*time.Minute && now.Sub(startTime) < 5*time.Minute {
-			// Если прошло 4 минуты, отправляем уведомление
-			if session.BoxID != nil && session.BoxNumber != nil {
+			// Если прошло 4 минуты и уведомление еще не отправлено, отправляем его
+			if !session.IsCompletingNotificationSent {
 				// Получаем пользователя
 				user, err := s.userService.GetUserByID(session.UserID)
 				if err != nil {
@@ -411,9 +430,17 @@ func (s *ServiceImpl) CheckAndNotifyCompletingSessions() error {
 				}
 
 				// Отправляем уведомление
-				err = s.telegramBot.SendSessionNotification(user.TelegramID, telegram.NotificationTypeSessionCompletingSoon, *session.BoxNumber)
+				err = s.telegramBot.SendSessionNotification(user.TelegramID, telegram.NotificationTypeSessionCompletingSoon)
 				if err != nil {
 					log.Printf("Ошибка отправки уведомления: %v", err)
+					continue
+				}
+
+				// Помечаем, что уведомление отправлено
+				session.IsCompletingNotificationSent = true
+				err = s.repo.UpdateSession(&session)
+				if err != nil {
+					log.Printf("Ошибка обновления сессии: %v", err)
 				}
 			}
 		}

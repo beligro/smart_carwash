@@ -19,15 +19,18 @@ const (
 
 // Session представляет сессию мойки
 type Session struct {
-	ID             uuid.UUID      `json:"id" gorm:"primaryKey;type:uuid;default:gen_random_uuid()"`
-	UserID         uuid.UUID      `json:"user_id" gorm:"index;type:uuid"`
-	BoxID          *uuid.UUID     `json:"box_id,omitempty" gorm:"index;type:uuid"`
-	BoxNumber      *int           `json:"box_number,omitempty" gorm:"-"` // Виртуальное поле, не хранится в БД
-	Status         string         `json:"status" gorm:"default:created;index"`
-	IdempotencyKey string         `json:"idempotency_key,omitempty" gorm:"index"`
-	CreatedAt      time.Time      `json:"created_at"`
-	UpdatedAt      time.Time      `json:"updated_at"`
-	DeletedAt      gorm.DeletedAt `json:"-" gorm:"index"`
+	ID                           uuid.UUID      `json:"id" gorm:"primaryKey;type:uuid;default:gen_random_uuid()"`
+	UserID                       uuid.UUID      `json:"user_id" gorm:"index;type:uuid"`
+	BoxID                        *uuid.UUID     `json:"box_id,omitempty" gorm:"index;type:uuid"`
+	BoxNumber                    *int           `json:"box_number,omitempty" gorm:"-"` // Виртуальное поле, не хранится в БД
+	Status                       string         `json:"status" gorm:"default:created;index"`
+	IdempotencyKey               string         `json:"idempotency_key,omitempty" gorm:"index"`
+	IsExpiringNotificationSent   bool           `json:"is_expiring_notification_sent" gorm:"default:false"`
+	IsCompletingNotificationSent bool           `json:"is_completing_notification_sent" gorm:"default:false"`
+	CreatedAt                    time.Time      `json:"created_at"`
+	UpdatedAt                    time.Time      `json:"updated_at"`
+	StatusUpdatedAt              time.Time      `json:"status_updated_at"` // Время последнего обновления статуса
+	DeletedAt                    gorm.DeletedAt `json:"-" gorm:"index"`
 }
 
 // CreateSessionRequest представляет запрос на создание сессии
