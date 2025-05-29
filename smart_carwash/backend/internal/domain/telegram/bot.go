@@ -12,6 +12,21 @@ import (
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 )
 
+// NotificationType тип уведомления
+type NotificationType string
+
+const (
+	// NotificationTypeSessionExpiringSoon уведомление о скором истечении сессии
+	NotificationTypeSessionExpiringSoon NotificationType = "session_expiring_soon"
+	// NotificationTypeSessionCompletingSoon уведомление о скором завершении сессии
+	NotificationTypeSessionCompletingSoon NotificationType = "session_completing_soon"
+)
+
+// NotificationService интерфейс для отправки уведомлений
+type NotificationService interface {
+	SendSessionNotification(telegramID int64, notificationType NotificationType) error
+}
+
 // Bot структура для работы с Telegram ботом
 type Bot struct {
 	bot     *tgbotapi.BotAPI
@@ -128,19 +143,10 @@ func (b *Bot) handleStartCommand(message *tgbotapi.Message) {
 	// Формируем приветственное сообщение
 	var messageText strings.Builder
 	messageText.WriteString(fmt.Sprintf("Привет, %s!\n\n", user.FirstName))
-	messageText.WriteString("Добро пожаловать в бота умной автомойки.\n\n")
-	messageText.WriteString("Нажмите на кнопку ниже, чтобы открыть приложение.")
-
-	// Создаем клавиатуру с кнопкой для открытия Mini App
-	keyboard := tgbotapi.NewInlineKeyboardMarkup(
-		tgbotapi.NewInlineKeyboardRow(
-			tgbotapi.NewInlineKeyboardButtonURL("Открыть приложение", fmt.Sprintf("https://%s", b.config.ServerIP)),
-		),
-	)
+	messageText.WriteString("Добро пожаловать в бота умной автомойки.")
 
 	// Отправляем сообщение с клавиатурой
 	msg := tgbotapi.NewMessage(message.Chat.ID, messageText.String())
-	msg.ReplyMarkup = keyboard
 	msg.ParseMode = "HTML"
 
 	_, err = b.bot.Send(msg)
@@ -154,19 +160,10 @@ func (b *Bot) sendHelpMessage(chatID int64) {
 	// Формируем сообщение с помощью
 	var messageText strings.Builder
 	messageText.WriteString("Доступные команды:\n\n")
-	messageText.WriteString("/start - Начать работу с ботом\n\n")
-	messageText.WriteString("Нажмите на кнопку ниже, чтобы открыть приложение.")
-
-	// Создаем клавиатуру с кнопкой для открытия Mini App
-	keyboard := tgbotapi.NewInlineKeyboardMarkup(
-		tgbotapi.NewInlineKeyboardRow(
-			tgbotapi.NewInlineKeyboardButtonURL("Открыть приложение", fmt.Sprintf("https://%s", b.config.ServerIP)),
-		),
-	)
+	messageText.WriteString("/start - Начать работу с ботом")
 
 	// Отправляем сообщение с клавиатурой
 	msg := tgbotapi.NewMessage(chatID, messageText.String())
-	msg.ReplyMarkup = keyboard
 	msg.ParseMode = "HTML"
 
 	_, err := b.bot.Send(msg)
@@ -183,4 +180,29 @@ func (b *Bot) sendErrorMessage(chatID int64) {
 	if err != nil {
 		log.Printf("Ошибка отправки сообщения: %v", err)
 	}
+}
+
+// SendSessionNotification отправляет уведомление о сессии
+func (b *Bot) SendSessionNotification(telegramID int64, notificationType NotificationType) error {
+	var messageText string
+
+	switch notificationType {
+	case NotificationTypeSessionExpiringSoon:
+		messageText = "⚠️ Внимание! Через 1 минуту истечет время ожидания начала мойки. Пожалуйста, начните мойку, иначе ваша сессия будет отменена."
+	case NotificationTypeSessionCompletingSoon:
+		messageText = "⚠️ Внимание! Через 1 минуту завершится время мойки. Пожалуйста, завершите мойку."
+	default:
+		return fmt.Errorf("неизвестный тип уведомления: %s", notificationType)
+	}
+
+	// Отправляем сообщение с клавиатурой
+	msg := tgbotapi.NewMessage(telegramID, messageText)
+	msg.ParseMode = "HTML"
+
+	_, err := b.bot.Send(msg)
+	if err != nil {
+		return fmt.Errorf("ошибка отправки уведомления: %v", err)
+	}
+
+	return nil
 }

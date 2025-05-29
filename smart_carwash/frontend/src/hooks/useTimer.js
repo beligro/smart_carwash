@@ -18,7 +18,7 @@ const useTimer = (session) => {
     if (sessionData.status === 'active') {
       // Для активной сессии - 5 минут с момента начала
       // Время начала сессии - это время последнего обновления статуса на active
-      const startTime = new Date(sessionData.updated_at);
+      const startTime = new Date(sessionData.status_updated_at || sessionData.updated_at);
       const now = new Date();
       
       // Общая продолжительность сессии - 5 минут (300 секунд)
@@ -34,7 +34,7 @@ const useTimer = (session) => {
     } else if (sessionData.status === 'assigned') {
       // Для назначенной сессии - 3 минуты с момента назначения
       // Время назначения сессии - это время последнего обновления статуса на assigned
-      const assignedTime = new Date(sessionData.updated_at);
+      const assignedTime = new Date(sessionData.status_updated_at || sessionData.updated_at);
       const now = new Date();
       
       // Общая продолжительность резерва - 3 минуты (180 секунд)

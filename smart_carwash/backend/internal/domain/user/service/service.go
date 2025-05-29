@@ -3,12 +3,15 @@ package service
 import (
 	"carwash_backend/internal/domain/user/models"
 	"carwash_backend/internal/domain/user/repository"
+
+	"github.com/google/uuid"
 )
 
 // Service интерфейс для бизнес-логики пользователей
 type Service interface {
 	CreateUser(req *models.CreateUserRequest) (*models.User, error)
 	GetUserByTelegramID(telegramID int64) (*models.User, error)
+	GetUserByID(id uuid.UUID) (*models.User, error)
 }
 
 // ServiceImpl реализация Service
@@ -51,4 +54,9 @@ func (s *ServiceImpl) CreateUser(req *models.CreateUserRequest) (*models.User, e
 // GetUserByTelegramID получает пользователя по Telegram ID
 func (s *ServiceImpl) GetUserByTelegramID(telegramID int64) (*models.User, error) {
 	return s.repo.GetUserByTelegramID(telegramID)
+}
+
+// GetUserByID получает пользователя по ID
+func (s *ServiceImpl) GetUserByID(id uuid.UUID) (*models.User, error) {
+	return s.repo.GetUserByID(id)
 }
