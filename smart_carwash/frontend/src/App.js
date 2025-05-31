@@ -106,6 +106,7 @@ function AppContent() {
         setLoading(true);
       }
       
+      // Используем новый метод getWashInfo вместо getQueueStatus
       const data = await ApiService.getQueueStatus();
       console.log('Queue status data:', data);
       
@@ -114,33 +115,43 @@ function AppContent() {
         // Если это первая загрузка или предыдущих данных нет
         if (!prevInfo) {
           return {
-            boxes: data.boxes,
-            queueSize: data.queue_size,
-            hasQueue: data.has_queue,
-            userSession: null
+            allBoxes: data.all_boxes || [],
+            washQueue: data.wash_queue || { queue_size: 0, has_queue: false },
+            airDryQueue: data.air_dry_queue || { queue_size: 0, has_queue: false },
+            vacuumQueue: data.vacuum_queue || { queue_size: 0, has_queue: false },
+            totalQueueSize: data.total_queue_size || 0,
+            hasAnyQueue: data.has_any_queue || false,
+            userSession: data.user_session || null
           };
         }
         
         // Обновляем только изменившиеся данные
         return {
           ...prevInfo,
-          boxes: data.boxes,
-          queueSize: data.queue_size,
-          hasQueue: data.has_queue
+          allBoxes: data.all_boxes || prevInfo.allBoxes,
+          washQueue: data.wash_queue || prevInfo.washQueue,
+          airDryQueue: data.air_dry_queue || prevInfo.airDryQueue,
+          vacuumQueue: data.vacuum_queue || prevInfo.vacuumQueue,
+          totalQueueSize: data.total_queue_size || prevInfo.totalQueueSize,
+          hasAnyQueue: data.has_any_queue || prevInfo.hasAnyQueue,
+          userSession: data.user_session || prevInfo.userSession
         };
       });
       
       setError(null);
     } catch (err) {
-      setError('Не удалось загрузить статус очереди');
-      console.error('Ошибка загрузки статуса очереди:', err);
+      setError('Не удалось загрузить информацию о мойке');
+      console.error('Ошибка загрузки информации о мойке:', err);
       
       // Создаем пустой объект с необходимой структурой только если нет предыдущих данных
       if (!washInfo) {
         setWashInfo({
-          boxes: [],
-          queueSize: 0,
-          hasQueue: false,
+          allBoxes: [],
+          washQueue: { serviceType: 'wash', boxes: [], queue_size: 0, has_queue: false },
+          airDryQueue: { serviceType: 'air_dry', boxes: [], queue_size: 0, has_queue: false },
+          vacuumQueue: { serviceType: 'vacuum', boxes: [], queue_size: 0, has_queue: false },
+          totalQueueSize: 0,
+          hasAnyQueue: false,
           userSession: null
         });
       }
@@ -152,7 +163,7 @@ function AppContent() {
   };
   
   // Функция для создания сессии
-  const handleCreateSession = async () => {
+  const handleCreateSession = async (serviceData) => {
     try {
       if (!user) {
         setError('Пользователь не авторизован');
@@ -160,7 +171,14 @@ function AppContent() {
       }
       
       setLoading(true);
-      const response = await ApiService.createSession({ user_id: user.id });
+      
+      // Добавляем данные о типе услуги и химии в запрос
+      const response = await ApiService.createSession({ 
+        user_id: user.id,
+        service_type: serviceData.serviceType,
+        with_chemistry: serviceData.withChemistry
+      });
+      
       console.log('Создана сессия:', response);
       
       // Обновляем информацию о сессии в состоянии
@@ -246,7 +264,7 @@ function AppContent() {
       
       // Запускаем поллинг статуса очереди (должен работать всегда)
       const queueInterval = startQueuePolling();
-      
+
       // Загружаем информацию о сессии пользователя по user_id и запускаем поллинг по session_id
       const loadUserSessionAndStartPolling = async () => {
         try {
