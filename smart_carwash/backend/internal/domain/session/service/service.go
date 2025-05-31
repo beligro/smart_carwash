@@ -67,6 +67,8 @@ func (s *ServiceImpl) CreateSession(req *models.CreateSessionRequest) (*models.S
 	session := &models.Session{
 		UserID:          req.UserID,
 		Status:          models.SessionStatusCreated,
+		ServiceType:     req.ServiceType,
+		WithChemistry:   req.WithChemistry,
 		IdempotencyKey:  req.IdempotencyKey,
 		StatusUpdatedAt: now, // Инициализируем время изменения статуса
 	}
@@ -256,31 +258,39 @@ func (s *ServiceImpl) ProcessQueue() error {
 		return nil
 	}
 
-	// Получаем все свободные боксы через сервис washbox
-	freeBoxes, err := s.washboxService.GetFreeWashBoxes()
-	if err != nil {
-		return err
-	}
+	// Обрабатываем каждую сессию
+	for _, session := range sessions {
+		// Если у сессии не указан тип услуги, пропускаем её
+		if session.ServiceType == "" {
+			continue
+		}
 
-	// Если нет свободных боксов, выходим
-	if len(freeBoxes) == 0 {
-		return nil
-	}
+		// Получаем свободные боксы для данного типа услуги
+		freeBoxes, err := s.washboxService.GetFreeWashBoxesByServiceType(session.ServiceType)
+		if err != nil {
+			return err
+		}
 
-	// Назначаем сессии на свободные боксы
-	for i := 0; i < len(sessions) && i < len(freeBoxes); i++ {
+		// Если нет свободных боксов для данного типа услуги, пропускаем сессию
+		if len(freeBoxes) == 0 {
+			continue
+		}
+
+		// Берем первый свободный бокс
+		box := freeBoxes[0]
+
 		// Обновляем статус бокса на "reserved"
-		err = s.washboxService.UpdateWashBoxStatus(freeBoxes[i].ID, washboxModels.StatusReserved)
+		err = s.washboxService.UpdateWashBoxStatus(box.ID, washboxModels.StatusReserved)
 		if err != nil {
 			return err
 		}
 
 		// Обновляем сессию - назначаем бокс, меняем статус и обновляем время изменения статуса
-		sessions[i].BoxID = &freeBoxes[i].ID
-		sessions[i].BoxNumber = &freeBoxes[i].Number
-		sessions[i].Status = models.SessionStatusAssigned
-		sessions[i].StatusUpdatedAt = time.Now() // Обновляем время изменения статуса
-		err = s.repo.UpdateSession(&sessions[i])
+		session.BoxID = &box.ID
+		session.BoxNumber = &box.Number
+		session.Status = models.SessionStatusAssigned
+		session.StatusUpdatedAt = time.Now() // Обновляем время изменения статуса
+		err = s.repo.UpdateSession(&session)
 		if err != nil {
 			return err
 		}

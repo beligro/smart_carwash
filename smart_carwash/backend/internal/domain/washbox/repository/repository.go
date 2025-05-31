@@ -14,6 +14,8 @@ type Repository interface {
 	UpdateWashBoxStatus(id uuid.UUID, status string) error
 	CreateWashBox(box *models.WashBox) error
 	GetFreeWashBoxes() ([]models.WashBox, error)
+	GetFreeWashBoxesByServiceType(serviceType string) ([]models.WashBox, error)
+	GetWashBoxesByServiceType(serviceType string) ([]models.WashBox, error)
 }
 
 // PostgresRepository реализация Repository для PostgreSQL
@@ -57,5 +59,19 @@ func (r *PostgresRepository) CreateWashBox(box *models.WashBox) error {
 func (r *PostgresRepository) GetFreeWashBoxes() ([]models.WashBox, error) {
 	var boxes []models.WashBox
 	err := r.db.Where("status = ?", models.StatusFree).Find(&boxes).Error
+	return boxes, err
+}
+
+// GetFreeWashBoxesByServiceType получает все свободные боксы мойки определенного типа
+func (r *PostgresRepository) GetFreeWashBoxesByServiceType(serviceType string) ([]models.WashBox, error) {
+	var boxes []models.WashBox
+	err := r.db.Where("status = ? AND service_type = ?", models.StatusFree, serviceType).Find(&boxes).Error
+	return boxes, err
+}
+
+// GetWashBoxesByServiceType получает все боксы мойки определенного типа
+func (r *PostgresRepository) GetWashBoxesByServiceType(serviceType string) ([]models.WashBox, error) {
+	var boxes []models.WashBox
+	err := r.db.Where("service_type = ?", serviceType).Find(&boxes).Error
 	return boxes, err
 }
