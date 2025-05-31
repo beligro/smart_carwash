@@ -68,6 +68,17 @@ const ApiService = {
     }
   },
 
+  // Получение информации о мойке для пользователя
+  getWashInfo: async (userId) => {
+    try {
+      const response = await api.get(`/wash-info?user_id=${userId}`);
+      return response.data;
+    } catch (error) {
+      console.error('Ошибка при получении информации о мойке:', error);
+      throw error;
+    }
+  },
+
   // Получение сессии пользователя
   getUserSession: async (userId) => {
     try {

@@ -3,6 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import styles from './SessionDetails.module.css';
 import { Card, Button, StatusBadge, Timer } from '../UI';
 import { formatDate } from '../../utils/formatters';
+import { getServiceTypeDescription } from '../../utils/statusHelpers';
 import ApiService from '../../services/ApiService';
 import useTimer from '../../hooks/useTimer';
 
@@ -207,6 +208,14 @@ const SessionDetails = ({ theme = 'light', user }) => {
         <div className={`${styles.infoRow} ${themeClass}`}>
           <div className={`${styles.infoLabel} ${themeClass}`}>Обновлена:</div>
           <div className={`${styles.infoValue} ${themeClass}`}>{formatDate(session.updated_at)}</div>
+        </div>
+        
+        <div className={`${styles.infoRow} ${themeClass}`}>
+          <div className={`${styles.infoLabel} ${themeClass}`}>Тип услуги:</div>
+          <div className={`${styles.infoValue} ${themeClass}`}>
+            {getServiceTypeDescription(session.service_type)}
+            {session.with_chemistry && ' (с химией)'}
+          </div>
         </div>
         
         {(session.box_id || session.box_number) && (

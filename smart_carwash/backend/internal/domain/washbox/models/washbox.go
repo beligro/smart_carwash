@@ -15,14 +15,22 @@ const (
 	StatusMaintenance = "maintenance" // На обслуживании
 )
 
+// Типы услуг
+const (
+	ServiceTypeWash   = "wash"    // Мойка
+	ServiceTypeAirDry = "air_dry" // Обдув воздухом
+	ServiceTypeVacuum = "vacuum"  // Пылесос
+)
+
 // WashBox представляет бокс автомойки
 type WashBox struct {
-	ID        uuid.UUID      `json:"id" gorm:"primaryKey;type:uuid;default:gen_random_uuid()"`
-	Number    int            `json:"number" gorm:"uniqueIndex"`
-	Status    string         `json:"status" gorm:"default:free"`
-	CreatedAt time.Time      `json:"created_at"`
-	UpdatedAt time.Time      `json:"updated_at"`
-	DeletedAt gorm.DeletedAt `json:"-" gorm:"index"`
+	ID          uuid.UUID      `json:"id" gorm:"primaryKey;type:uuid;default:gen_random_uuid()"`
+	Number      int            `json:"number" gorm:"uniqueIndex"`
+	Status      string         `json:"status" gorm:"default:free"`
+	ServiceType string         `json:"service_type" gorm:"default:wash"`
+	CreatedAt   time.Time      `json:"created_at"`
+	UpdatedAt   time.Time      `json:"updated_at"`
+	DeletedAt   gorm.DeletedAt `json:"-" gorm:"index"`
 }
 
 // GetQueueStatusResponse представляет ответ на получение статуса очереди и боксов

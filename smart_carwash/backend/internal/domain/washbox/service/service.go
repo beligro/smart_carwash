@@ -12,6 +12,8 @@ type Service interface {
 	GetWashBoxByID(id uuid.UUID) (*models.WashBox, error)
 	UpdateWashBoxStatus(id uuid.UUID, status string) error
 	GetFreeWashBoxes() ([]models.WashBox, error)
+	GetFreeWashBoxesByServiceType(serviceType string) ([]models.WashBox, error)
+	GetWashBoxesByServiceType(serviceType string) ([]models.WashBox, error)
 	GetAllWashBoxes() ([]models.WashBox, error)
 }
 
@@ -40,6 +42,16 @@ func (s *ServiceImpl) UpdateWashBoxStatus(id uuid.UUID, status string) error {
 // GetFreeWashBoxes получает все свободные боксы мойки
 func (s *ServiceImpl) GetFreeWashBoxes() ([]models.WashBox, error) {
 	return s.repo.GetFreeWashBoxes()
+}
+
+// GetFreeWashBoxesByServiceType получает все свободные боксы мойки определенного типа
+func (s *ServiceImpl) GetFreeWashBoxesByServiceType(serviceType string) ([]models.WashBox, error) {
+	return s.repo.GetFreeWashBoxesByServiceType(serviceType)
+}
+
+// GetWashBoxesByServiceType получает все боксы мойки определенного типа
+func (s *ServiceImpl) GetWashBoxesByServiceType(serviceType string) ([]models.WashBox, error) {
+	return s.repo.GetWashBoxesByServiceType(serviceType)
 }
 
 // GetAllWashBoxes получает все боксы мойки

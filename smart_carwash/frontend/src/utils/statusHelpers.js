@@ -66,3 +66,20 @@ export const getSessionStatusText = (status) => {
     }
   };
   
+  /**
+   * Получает описание типа услуги для отображения пользователю
+   * @param {string} serviceType - Тип услуги
+   * @returns {string} - Описание типа услуги
+   */
+  export const getServiceTypeDescription = (serviceType) => {
+    switch (serviceType) {
+      case 'wash':
+        return 'Мойка';
+      case 'air_dry':
+        return 'Обдув воздухом';
+      case 'vacuum':
+        return 'Пылесос';
+      default:
+        return 'Неизвестная услуга';
+    }
+  };

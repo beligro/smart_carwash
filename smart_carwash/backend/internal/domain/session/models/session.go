@@ -24,6 +24,8 @@ type Session struct {
 	BoxID                        *uuid.UUID     `json:"box_id,omitempty" gorm:"index;type:uuid"`
 	BoxNumber                    *int           `json:"box_number,omitempty" gorm:"-"` // Виртуальное поле, не хранится в БД
 	Status                       string         `json:"status" gorm:"default:created;index"`
+	ServiceType                  string         `json:"service_type,omitempty" gorm:"default:null"`
+	WithChemistry                bool           `json:"with_chemistry" gorm:"default:false"`
 	IdempotencyKey               string         `json:"idempotency_key,omitempty" gorm:"index"`
 	IsExpiringNotificationSent   bool           `json:"is_expiring_notification_sent" gorm:"default:false"`
 	IsCompletingNotificationSent bool           `json:"is_completing_notification_sent" gorm:"default:false"`
@@ -36,6 +38,8 @@ type Session struct {
 // CreateSessionRequest представляет запрос на создание сессии
 type CreateSessionRequest struct {
 	UserID         uuid.UUID `json:"user_id" binding:"required"`
+	ServiceType    string    `json:"service_type" binding:"required"`
+	WithChemistry  bool      `json:"with_chemistry"`
 	IdempotencyKey string    `json:"idempotency_key" binding:"required"`
 }
 
