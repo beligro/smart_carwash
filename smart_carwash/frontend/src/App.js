@@ -106,7 +106,6 @@ function AppContent() {
         setLoading(true);
       }
       
-      // Используем новый метод getWashInfo вместо getQueueStatus
       const data = await ApiService.getQueueStatus();
       console.log('Queue status data:', data);
       

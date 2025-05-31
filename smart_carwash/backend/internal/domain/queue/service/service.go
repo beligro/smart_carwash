@@ -6,14 +6,11 @@ import (
 	sessionService "carwash_backend/internal/domain/session/service"
 	washboxModels "carwash_backend/internal/domain/washbox/models"
 	washboxService "carwash_backend/internal/domain/washbox/service"
-
-	"github.com/google/uuid"
 )
 
 // Service интерфейс для бизнес-логики очереди
 type Service interface {
 	GetQueueStatus() (*models.QueueStatus, error)
-	GetWashInfo(userID string) (*models.WashInfo, error)
 }
 
 // ServiceImpl реализация Service
@@ -108,39 +105,5 @@ func (s *ServiceImpl) GetQueueStatus() (*models.QueueStatus, error) {
 		VacuumQueue:    *vacuumQueueInfo,
 		TotalQueueSize: totalQueueSize,
 		HasAnyQueue:    hasAnyQueue,
-	}, nil
-}
-
-// GetWashInfo получает информацию о мойке для пользователя
-func (s *ServiceImpl) GetWashInfo(userID string) (*models.WashInfo, error) {
-	// Получаем статус очереди
-	queueStatus, err := s.GetQueueStatus()
-	if err != nil {
-		return nil, err
-	}
-
-	// Преобразуем строку userID в UUID
-	userUUID, err := uuid.Parse(userID)
-	if err != nil {
-		return nil, err
-	}
-
-	// Получаем сессию пользователя
-	userSession, err := s.sessionService.GetUserSession(&sessionModels.GetUserSessionRequest{
-		UserID: userUUID,
-	})
-	if err != nil {
-		userSession = nil
-	}
-
-	// Формируем ответ
-	return &models.WashInfo{
-		AllBoxes:       queueStatus.AllBoxes,
-		WashQueue:      queueStatus.WashQueue,
-		AirDryQueue:    queueStatus.AirDryQueue,
-		VacuumQueue:    queueStatus.VacuumQueue,
-		TotalQueueSize: queueStatus.TotalQueueSize,
-		HasAnyQueue:    queueStatus.HasAnyQueue,
-		UserSession:    userSession,
 	}, nil
 }
