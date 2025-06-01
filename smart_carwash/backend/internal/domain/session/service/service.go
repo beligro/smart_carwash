@@ -7,6 +7,7 @@ import (
 	"carwash_backend/internal/domain/user/service"
 	washboxModels "carwash_backend/internal/domain/washbox/models"
 	washboxService "carwash_backend/internal/domain/washbox/service"
+	"fmt"
 	"log"
 	"time"
 )
@@ -18,6 +19,7 @@ type Service interface {
 	GetSession(req *models.GetSessionRequest) (*models.Session, error)
 	StartSession(req *models.StartSessionRequest) (*models.Session, error)
 	CompleteSession(req *models.CompleteSessionRequest) (*models.Session, error)
+	ExtendSession(req *models.ExtendSessionRequest) (*models.Session, error)
 	ProcessQueue() error
 	CheckAndCompleteExpiredSessions() error
 	CheckAndExpireReservedSessions() error
@@ -195,6 +197,36 @@ func (s *ServiceImpl) CompleteSession(req *models.CompleteSessionRequest) (*mode
 	return session, nil
 }
 
+// ExtendSession продлевает сессию (добавляет время к активной сессии)
+func (s *ServiceImpl) ExtendSession(req *models.ExtendSessionRequest) (*models.Session, error) {
+	// Получаем сессию по ID
+	session, err := s.repo.GetSessionByID(req.SessionID)
+	if err != nil {
+		return nil, err
+	}
+
+	// Проверяем, что сессия в статусе active
+	if session.Status != models.SessionStatusActive {
+		return nil, fmt.Errorf("сессия должна быть в статусе active для продления")
+	}
+
+	// Проверяем, что время продления положительное
+	if req.ExtensionTimeMinutes <= 0 {
+		return nil, fmt.Errorf("время продления должно быть положительным числом")
+	}
+
+	// Обновляем время продления сессии
+	session.ExtensionTimeMinutes += req.ExtensionTimeMinutes
+
+	// Обновляем сессию в базе данных
+	err = s.repo.UpdateSession(session)
+	if err != nil {
+		return nil, err
+	}
+
+	return session, nil
+}
+
 // CheckAndCompleteExpiredSessions проверяет и завершает истекшие сессии
 func (s *ServiceImpl) CheckAndCompleteExpiredSessions() error {
 	// Получаем все активные сессии
@@ -222,8 +254,11 @@ func (s *ServiceImpl) CheckAndCompleteExpiredSessions() error {
 			rentalTime = 5
 		}
 
+		// Учитываем время продления, если оно есть
+		totalTime := rentalTime + session.ExtensionTimeMinutes
+
 		// Проверяем, прошло ли выбранное время с момента начала сессии
-		if now.Sub(startTime) >= time.Duration(rentalTime)*time.Minute {
+		if now.Sub(startTime) >= time.Duration(totalTime)*time.Minute {
 			// Если прошло 5 минут, завершаем сессию
 			if session.BoxID != nil && s.washboxService != nil {
 				// Обновляем статус бокса на free
@@ -441,8 +476,11 @@ func (s *ServiceImpl) CheckAndNotifyCompletingSessions() error {
 			rentalTime = 5
 		}
 
+		// Учитываем время продления, если оно есть
+		totalTime := rentalTime + session.ExtensionTimeMinutes
+
 		// Проверяем, прошло ли время с момента начала сессии (за 1 минуту до завершения)
-		if now.Sub(startTime) >= time.Duration(rentalTime-1)*time.Minute && now.Sub(startTime) < time.Duration(rentalTime)*time.Minute {
+		if now.Sub(startTime) >= time.Duration(totalTime-1)*time.Minute && now.Sub(startTime) < time.Duration(totalTime)*time.Minute {
 			// Если прошло 4 минуты и уведомление еще не отправлено, отправляем его
 			if !session.IsCompletingNotificationSent {
 				// Получаем пользователя

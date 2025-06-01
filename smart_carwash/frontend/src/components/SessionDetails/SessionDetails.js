@@ -22,10 +22,78 @@ const SessionDetails = ({ theme = 'light', user }) => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [actionLoading, setActionLoading] = useState(false);
+  const [showExtendModal, setShowExtendModal] = useState(false);
+  const [availableRentalTimes, setAvailableRentalTimes] = useState([]);
+  const [selectedExtensionTime, setSelectedExtensionTime] = useState(null);
+  const [loadingRentalTimes, setLoadingRentalTimes] = useState(false);
   
   // Используем хук для таймера
   const { timeLeft } = useTimer(session);
   
+  // Функция для загрузки доступного времени аренды
+  const fetchAvailableRentalTimes = async (serviceType) => {
+    try {
+      setLoadingRentalTimes(true);
+      const response = await ApiService.getAvailableRentalTimes(serviceType);
+      if (response && response.available_times) {
+        setAvailableRentalTimes(response.available_times);
+        // Устанавливаем первое значение как выбранное по умолчанию
+        if (response.available_times.length > 0) {
+          setSelectedExtensionTime(response.available_times[0]);
+        }
+      }
+    } catch (err) {
+      console.error('Ошибка при загрузке доступного времени аренды:', err);
+      setError('Не удалось загрузить доступное время аренды');
+    } finally {
+      setLoadingRentalTimes(false);
+    }
+  };
+
+  // Функция для продления сессии
+  const handleExtendSession = async () => {
+    if (!selectedExtensionTime) {
+      setError('Выберите время продления');
+      return;
+    }
+
+    try {
+      setActionLoading(true);
+      setError(null);
+      
+      // Вызываем API для продления сессии
+      const response = await ApiService.extendSession(sessionId, selectedExtensionTime);
+      
+      if (response && response.session) {
+        setSession(response.session);
+        setShowExtendModal(false); // Закрываем модальное окно
+      }
+    } catch (err) {
+      console.error('Ошибка при продлении сессии:', err);
+      setError('Не удалось продлить сессию. Пожалуйста, попробуйте еще раз.');
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  // Функция для открытия модального окна продления
+  const openExtendModal = () => {
+    if (session && session.service_type) {
+      fetchAvailableRentalTimes(session.service_type);
+      setShowExtendModal(true);
+    }
+  };
+
+  // Функция для закрытия модального окна продления
+  const closeExtendModal = () => {
+    setShowExtendModal(false);
+  };
+
+  // Функция для выбора времени продления
+  const handleExtensionTimeSelect = (time) => {
+    setSelectedExtensionTime(time);
+  };
+
   // Функция для завершения сессии
   const handleCompleteSession = async () => {
     try {
@@ -222,6 +290,7 @@ const SessionDetails = ({ theme = 'light', user }) => {
           <div className={`${styles.infoLabel} ${themeClass}`}>Время аренды:</div>
           <div className={`${styles.infoValue} ${themeClass}`}>
             {session.rental_time_minutes || 5} минут
+            {session.extension_time_minutes > 0 && ` (продлено на ${session.extension_time_minutes} минут)`}
           </div>
         </div>
         
@@ -267,18 +336,79 @@ const SessionDetails = ({ theme = 'light', user }) => {
           </Button>
         )}
         
-        {/* Кнопка "Завершить мойку" отображается только если сессия в статусе active */}
+        {/* Кнопки для активной сессии */}
         {session.status === 'active' && (
-          <Button 
-            theme={theme} 
-            variant="danger"
-            onClick={handleCompleteSession}
-            disabled={actionLoading}
-            loading={actionLoading}
-            style={{ marginTop: '10px' }}
-          >
-            Завершить мойку
-          </Button>
+          <div className={styles.buttonGroup}>
+            <Button 
+              theme={theme} 
+              onClick={openExtendModal}
+              disabled={actionLoading}
+              loading={actionLoading}
+              style={{ marginTop: '10px', marginRight: '10px' }}
+            >
+              Продлить мойку
+            </Button>
+            <Button 
+              theme={theme} 
+              variant="danger"
+              onClick={handleCompleteSession}
+              disabled={actionLoading}
+              loading={actionLoading}
+              style={{ marginTop: '10px' }}
+            >
+              Завершить мойку
+            </Button>
+          </div>
+        )}
+
+        {/* Модальное окно для продления сессии */}
+        {showExtendModal && (
+          <div className={styles.modalOverlay}>
+            <Card theme={theme} className={styles.modal}>
+              <h3 className={`${styles.modalTitle} ${themeClass}`}>Продление сессии</h3>
+              
+              {loadingRentalTimes ? (
+                <p className={`${styles.loadingText} ${themeClass}`}>Загрузка доступного времени...</p>
+              ) : (
+                <>
+                  <p className={`${styles.modalText} ${themeClass}`}>Выберите время продления:</p>
+                  <div className={styles.rentalTimeGrid}>
+                    {availableRentalTimes.map((time) => (
+                      <div 
+                        key={time} 
+                        className={`${styles.rentalTimeItem} ${selectedExtensionTime === time ? styles.selectedTime : ''}`}
+                        onClick={() => handleExtensionTimeSelect(time)}
+                      >
+                        <span className={`${styles.rentalTimeValue} ${themeClass}`}>{time}</span>
+                        <span className={`${styles.rentalTimeUnit} ${themeClass}`}>мин</span>
+                      </div>
+                    ))}
+                  </div>
+                  
+                  <div className={styles.modalButtons}>
+                    <Button 
+                      theme={theme} 
+                      variant="secondary"
+                      onClick={closeExtendModal}
+                      disabled={actionLoading}
+                    >
+                      Отмена
+                    </Button>
+                    <Button 
+                      theme={theme} 
+                      onClick={handleExtendSession}
+                      disabled={actionLoading || !selectedExtensionTime}
+                      loading={actionLoading}
+                    >
+                      Продлить
+                    </Button>
+                  </div>
+                </>
+              )}
+              
+              {error && <div className={`${styles.errorMessage} ${themeClass}`}>{error}</div>}
+            </Card>
+          </div>
         )}
         
         {error && <div className={`${styles.errorMessage} ${themeClass}`}>{error}</div>}

@@ -24,8 +24,11 @@ const useTimer = (session) => {
       // Получаем выбранное время аренды в минутах (по умолчанию 5 минут)
       const rentalTimeMinutes = sessionData.rental_time_minutes || 5;
       
+      // Учитываем время продления, если оно есть
+      const extensionTimeMinutes = sessionData.extension_time_minutes || 0;
+      
       // Общая продолжительность сессии в секундах
-      const totalDuration = rentalTimeMinutes * 60; // в секундах
+      const totalDuration = (rentalTimeMinutes + extensionTimeMinutes) * 60; // в секундах
       
       // Прошедшее время в секундах
       const elapsedSeconds = differenceInSeconds(now, startTime);
