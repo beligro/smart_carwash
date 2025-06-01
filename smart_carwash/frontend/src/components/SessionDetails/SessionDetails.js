@@ -218,6 +218,13 @@ const SessionDetails = ({ theme = 'light', user }) => {
           </div>
         </div>
         
+        <div className={`${styles.infoRow} ${themeClass}`}>
+          <div className={`${styles.infoLabel} ${themeClass}`}>Время аренды:</div>
+          <div className={`${styles.infoValue} ${themeClass}`}>
+            {session.rental_time_minutes || 5} минут
+          </div>
+        </div>
+        
         {(session.box_id || session.box_number) && (
           <div className={`${styles.infoRow} ${themeClass}`}>
             <div className={`${styles.infoLabel} ${themeClass}`}>Назначенный бокс:</div>

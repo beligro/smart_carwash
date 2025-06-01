@@ -18,6 +18,9 @@ import (
 	sessionHandlers "carwash_backend/internal/domain/session/handlers"
 	sessionRepo "carwash_backend/internal/domain/session/repository"
 	sessionService "carwash_backend/internal/domain/session/service"
+	settingsHandlers "carwash_backend/internal/domain/settings/handlers"
+	settingsRepo "carwash_backend/internal/domain/settings/repository"
+	settingsService "carwash_backend/internal/domain/settings/service"
 	"carwash_backend/internal/domain/telegram"
 	userHandlers "carwash_backend/internal/domain/user/handlers"
 	userRepo "carwash_backend/internal/domain/user/repository"
@@ -69,11 +72,12 @@ func main() {
 	userRepository := userRepo.NewPostgresRepository(db)
 	washboxRepository := washboxRepo.NewPostgresRepository(db)
 	sessionRepository := sessionRepo.NewPostgresRepository(db)
+	settingsRepository := settingsRepo.NewRepository(db)
 
 	// Создаем сервисы
 	userSvc := userService.NewService(userRepository)
-
 	washboxSvc := washboxService.NewService(washboxRepository)
+	settingsSvc := settingsService.NewService(settingsRepository)
 
 	// Создаем Telegram бота
 	bot, err := telegram.NewBot(userSvc, cfg)
@@ -97,6 +101,7 @@ func main() {
 	washboxHandler := washboxHandlers.NewHandler(washboxSvc)
 	sessionHandler := sessionHandlers.NewHandler(sessionSvc)
 	queueHandler := queueHandlers.NewHandler(queueSvc)
+	settingsHandler := settingsHandlers.NewHandler(settingsSvc)
 
 	// Создаем роутер
 	router := gin.Default()
@@ -119,6 +124,7 @@ func main() {
 		washboxHandler.RegisterRoutes(api)
 		sessionHandler.RegisterRoutes(api)
 		queueHandler.RegisterRoutes(api)
+		settingsHandler.RegisterRoutes(api)
 
 		// Вебхук для Telegram бота
 		api.POST("/webhook", func(c *gin.Context) {

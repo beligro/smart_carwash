@@ -1,6 +1,7 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import styles from './ServiceSelector.module.css';
 import { Card, Button } from '../UI';
+import ApiService from '../../services/ApiService';
 
 /**
  * Компонент ServiceSelector - позволяет выбрать тип услуги и дополнительные опции
@@ -11,6 +12,9 @@ import { Card, Button } from '../UI';
 const ServiceSelector = ({ onSelect, theme = 'light' }) => {
   const [selectedService, setSelectedService] = useState(null);
   const [withChemistry, setWithChemistry] = useState(false);
+  const [rentalTimes, setRentalTimes] = useState([]);
+  const [selectedRentalTime, setSelectedRentalTime] = useState(null);
+  const [loading, setLoading] = useState(false);
   
   const themeClass = theme === 'dark' ? styles.dark : styles.light;
   
@@ -21,6 +25,29 @@ const ServiceSelector = ({ onSelect, theme = 'light' }) => {
     { id: 'vacuum', name: 'Пылесос', description: 'Уборка салона пылесосом', hasChemistry: false }
   ];
   
+  // Загрузка доступного времени аренды при выборе услуги
+  useEffect(() => {
+    if (selectedService) {
+      setLoading(true);
+      ApiService.getAvailableRentalTimes(selectedService.id)
+        .then(data => {
+          setRentalTimes(data.available_times || [5]);
+          setSelectedRentalTime(data.available_times && data.available_times.length > 0 ? data.available_times[0] : 5);
+        })
+        .catch(error => {
+          console.error('Ошибка при загрузке времени аренды:', error);
+          setRentalTimes([5]);
+          setSelectedRentalTime(5);
+        })
+        .finally(() => {
+          setLoading(false);
+        });
+    } else {
+      setRentalTimes([]);
+      setSelectedRentalTime(null);
+    }
+  }, [selectedService]);
+
   // Обработчик выбора услуги
   const handleServiceSelect = (serviceType) => {
     setSelectedService(serviceType);
@@ -35,12 +62,18 @@ const ServiceSelector = ({ onSelect, theme = 'light' }) => {
     setWithChemistry(!withChemistry);
   };
   
+  // Обработчик выбора времени аренды
+  const handleRentalTimeSelect = (time) => {
+    setSelectedRentalTime(time);
+  };
+
   // Обработчик подтверждения выбора
   const handleConfirm = () => {
-    if (selectedService) {
+    if (selectedService && selectedRentalTime) {
       onSelect({
         serviceType: selectedService.id,
-        withChemistry: selectedService.hasChemistry ? withChemistry : false
+        withChemistry: selectedService.hasChemistry ? withChemistry : false,
+        rentalTimeMinutes: selectedRentalTime
       });
     }
   };
@@ -66,24 +99,46 @@ const ServiceSelector = ({ onSelect, theme = 'light' }) => {
         ))}
       </div>
       
-      {selectedService?.hasChemistry && (
+      {selectedService && (
         <div className={styles.optionsContainer}>
+          {selectedService.hasChemistry && (
+            <Card theme={theme} className={styles.optionCard}>
+              <div className={styles.optionRow}>
+                <label className={`${styles.optionLabel} ${themeClass}`}>
+                  <input 
+                    type="checkbox" 
+                    checked={withChemistry} 
+                    onChange={handleChemistryToggle}
+                    className={styles.checkbox}
+                  />
+                  <span className={styles.checkmark}></span>
+                  Использовать химию
+                </label>
+              </div>
+              <p className={`${styles.optionDescription} ${themeClass}`}>
+                Химия помогает лучше очистить поверхность автомобиля от грязи и жира
+              </p>
+            </Card>
+          )}
+          
           <Card theme={theme} className={styles.optionCard}>
-            <div className={styles.optionRow}>
-              <label className={`${styles.optionLabel} ${themeClass}`}>
-                <input 
-                  type="checkbox" 
-                  checked={withChemistry} 
-                  onChange={handleChemistryToggle}
-                  className={styles.checkbox}
-                />
-                <span className={styles.checkmark}></span>
-                Использовать химию
-              </label>
-            </div>
-            <p className={`${styles.optionDescription} ${themeClass}`}>
-              Химия помогает лучше очистить поверхность автомобиля от грязи и жира
-            </p>
+            <h3 className={`${styles.optionTitle} ${themeClass}`}>Выберите время аренды</h3>
+            {loading ? (
+              <p className={`${styles.loadingText} ${themeClass}`}>Загрузка доступного времени...</p>
+            ) : (
+              <div className={styles.rentalTimeGrid}>
+                {rentalTimes.map((time) => (
+                  <div 
+                    key={time} 
+                    className={`${styles.rentalTimeItem} ${selectedRentalTime === time ? styles.selectedTime : ''}`}
+                    onClick={() => handleRentalTimeSelect(time)}
+                  >
+                    <span className={`${styles.rentalTimeValue} ${themeClass}`}>{time}</span>
+                    <span className={`${styles.rentalTimeUnit} ${themeClass}`}>мин</span>
+                  </div>
+                ))}
+              </div>
+            )}
           </Card>
         </div>
       )}
@@ -92,7 +147,7 @@ const ServiceSelector = ({ onSelect, theme = 'light' }) => {
         <Button 
           theme={theme} 
           onClick={handleConfirm}
-          disabled={!selectedService}
+          disabled={!selectedService || !selectedRentalTime || loading}
           className={styles.confirmButton}
         >
           Подтвердить выбор

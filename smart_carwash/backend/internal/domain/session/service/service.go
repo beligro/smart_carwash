@@ -65,12 +65,13 @@ func (s *ServiceImpl) CreateSession(req *models.CreateSessionRequest) (*models.S
 	// Создаем новую сессию
 	now := time.Now()
 	session := &models.Session{
-		UserID:          req.UserID,
-		Status:          models.SessionStatusCreated,
-		ServiceType:     req.ServiceType,
-		WithChemistry:   req.WithChemistry,
-		IdempotencyKey:  req.IdempotencyKey,
-		StatusUpdatedAt: now, // Инициализируем время изменения статуса
+		UserID:            req.UserID,
+		Status:            models.SessionStatusCreated,
+		ServiceType:       req.ServiceType,
+		WithChemistry:     req.WithChemistry,
+		RentalTimeMinutes: req.RentalTimeMinutes,
+		IdempotencyKey:    req.IdempotencyKey,
+		StatusUpdatedAt:   now, // Инициализируем время изменения статуса
 	}
 
 	// Сохраняем сессию в базе данных
@@ -215,8 +216,14 @@ func (s *ServiceImpl) CheckAndCompleteExpiredSessions() error {
 		// Время начала сессии - это время последнего обновления статуса на active
 		startTime := session.StatusUpdatedAt
 
-		// Проверяем, прошло ли 5 минут с момента начала сессии
-		if now.Sub(startTime) >= 5*time.Minute {
+		// Получаем время аренды в минутах (по умолчанию 5 минут)
+		rentalTime := session.RentalTimeMinutes
+		if rentalTime <= 0 {
+			rentalTime = 5
+		}
+
+		// Проверяем, прошло ли выбранное время с момента начала сессии
+		if now.Sub(startTime) >= time.Duration(rentalTime)*time.Minute {
 			// Если прошло 5 минут, завершаем сессию
 			if session.BoxID != nil && s.washboxService != nil {
 				// Обновляем статус бокса на free
@@ -428,8 +435,14 @@ func (s *ServiceImpl) CheckAndNotifyCompletingSessions() error {
 		// Время начала сессии - это время последнего обновления статуса на active
 		startTime := session.StatusUpdatedAt
 
-		// Проверяем, прошло ли 4 минуты с момента начала сессии (за 1 минуту до завершения)
-		if now.Sub(startTime) >= 4*time.Minute && now.Sub(startTime) < 5*time.Minute {
+		// Получаем время аренды в минутах (по умолчанию 5 минут)
+		rentalTime := session.RentalTimeMinutes
+		if rentalTime <= 0 {
+			rentalTime = 5
+		}
+
+		// Проверяем, прошло ли время с момента начала сессии (за 1 минуту до завершения)
+		if now.Sub(startTime) >= time.Duration(rentalTime-1)*time.Minute && now.Sub(startTime) < time.Duration(rentalTime)*time.Minute {
 			// Если прошло 4 минуты и уведомление еще не отправлено, отправляем его
 			if !session.IsCompletingNotificationSent {
 				// Получаем пользователя

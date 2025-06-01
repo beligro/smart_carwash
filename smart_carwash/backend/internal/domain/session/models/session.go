@@ -26,6 +26,7 @@ type Session struct {
 	Status                       string         `json:"status" gorm:"default:created;index"`
 	ServiceType                  string         `json:"service_type,omitempty" gorm:"default:null"`
 	WithChemistry                bool           `json:"with_chemistry" gorm:"default:false"`
+	RentalTimeMinutes            int            `json:"rental_time_minutes" gorm:"default:5"` // Время аренды в минутах
 	IdempotencyKey               string         `json:"idempotency_key,omitempty" gorm:"index"`
 	IsExpiringNotificationSent   bool           `json:"is_expiring_notification_sent" gorm:"default:false"`
 	IsCompletingNotificationSent bool           `json:"is_completing_notification_sent" gorm:"default:false"`
@@ -37,10 +38,11 @@ type Session struct {
 
 // CreateSessionRequest представляет запрос на создание сессии
 type CreateSessionRequest struct {
-	UserID         uuid.UUID `json:"user_id" binding:"required"`
-	ServiceType    string    `json:"service_type" binding:"required"`
-	WithChemistry  bool      `json:"with_chemistry"`
-	IdempotencyKey string    `json:"idempotency_key" binding:"required"`
+	UserID            uuid.UUID `json:"user_id" binding:"required"`
+	ServiceType       string    `json:"service_type" binding:"required"`
+	WithChemistry     bool      `json:"with_chemistry"`
+	RentalTimeMinutes int       `json:"rental_time_minutes" binding:"required"`
+	IdempotencyKey    string    `json:"idempotency_key" binding:"required"`
 }
 
 // CreateSessionResponse представляет ответ на создание сессии
