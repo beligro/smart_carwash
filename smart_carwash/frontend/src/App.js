@@ -175,7 +175,8 @@ function AppContent() {
       const response = await ApiService.createSession({ 
         user_id: user.id,
         service_type: serviceData.serviceType,
-        with_chemistry: serviceData.withChemistry
+        with_chemistry: serviceData.withChemistry,
+        rental_time_minutes: serviceData.rentalTimeMinutes
       });
       
       console.log('Создана сессия:', response);
