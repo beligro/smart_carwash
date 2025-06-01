@@ -16,13 +16,16 @@ const useTimer = (session) => {
     }
     
     if (sessionData.status === 'active') {
-      // Для активной сессии - 5 минут с момента начала
+      // Для активной сессии - используем выбранное время аренды (по умолчанию 5 минут)
       // Время начала сессии - это время последнего обновления статуса на active
       const startTime = new Date(sessionData.status_updated_at || sessionData.updated_at);
       const now = new Date();
       
-      // Общая продолжительность сессии - 5 минут (300 секунд)
-      const totalDuration = 300; // в секундах
+      // Получаем выбранное время аренды в минутах (по умолчанию 5 минут)
+      const rentalTimeMinutes = sessionData.rental_time_minutes || 5;
+      
+      // Общая продолжительность сессии в секундах
+      const totalDuration = rentalTimeMinutes * 60; // в секундах
       
       // Прошедшее время в секундах
       const elapsedSeconds = differenceInSeconds(now, startTime);

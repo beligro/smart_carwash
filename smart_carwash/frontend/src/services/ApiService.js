@@ -12,6 +12,17 @@ const api = axios.create({
 
 // Сервис для работы с API
 const ApiService = {
+  // Получение доступного времени аренды для определенного типа услуги
+  getAvailableRentalTimes: async (serviceType) => {
+    try {
+      const response = await api.get(`/settings/rental-times?service_type=${serviceType}`);
+      return response.data;
+    } catch (error) {
+      console.error('Ошибка при получении доступного времени аренды:', error);
+      return { available_times: [5] }; // Значение по умолчанию
+    }
+  },
+
   // Получение пользователя по telegram_id
   getUserByTelegramId: async (telegramId) => {
     try {

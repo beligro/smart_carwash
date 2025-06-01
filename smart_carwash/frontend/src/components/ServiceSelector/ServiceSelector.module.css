@@ -85,10 +85,97 @@
 
 .optionsContainer {
   margin-bottom: 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
 }
 
 .optionCard {
   padding: 16px;
+}
+
+.optionTitle {
+  font-size: 1.1rem;
+  margin-bottom: 12px;
+}
+
+.optionTitle.light {
+  color: #333;
+}
+
+.optionTitle.dark {
+  color: #f5f5f5;
+}
+
+.loadingText {
+  font-size: 0.9rem;
+  text-align: center;
+  padding: 10px;
+}
+
+.loadingText.light {
+  color: #666;
+}
+
+.loadingText.dark {
+  color: #ccc;
+}
+
+.rentalTimeGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(60px, 1fr));
+  gap: 10px;
+  margin-top: 10px;
+}
+
+.rentalTimeItem {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 10px;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.2s;
+  border: 1px solid #ddd;
+  background-color: #f9f9f9;
+}
+
+.rentalTimeItem:hover {
+  background-color: #f0f0f0;
+  transform: translateY(-2px);
+}
+
+.rentalTimeItem.selectedTime {
+  background-color: #e8f5e9;
+  border-color: #4CAF50;
+  box-shadow: 0 2px 4px rgba(76, 175, 80, 0.2);
+}
+
+.rentalTimeValue {
+  font-size: 1.2rem;
+  font-weight: bold;
+}
+
+.rentalTimeValue.light {
+  color: #333;
+}
+
+.rentalTimeValue.dark {
+  color: #f5f5f5;
+}
+
+.rentalTimeUnit {
+  font-size: 0.8rem;
+  margin-top: 2px;
+}
+
+.rentalTimeUnit.light {
+  color: #666;
+}
+
+.rentalTimeUnit.dark {
+  color: #ccc;
 }
 
 .optionRow {
