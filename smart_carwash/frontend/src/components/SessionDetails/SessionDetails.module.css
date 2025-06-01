@@ -45,25 +45,111 @@
     flex: 1;
   }
   
-  .errorMessage {
-    margin-top: 16px;
-    padding: 12px;
-    border-radius: 8px;
-    font-size: 14px;
-  }
+.errorMessage {
+  margin-top: 16px;
+  padding: 12px;
+  border-radius: 8px;
+  font-size: 14px;
+}
+
+.buttonGroup {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  margin-top: 16px;
+}
+
+/* Модальное окно */
+.modalOverlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: rgba(0, 0, 0, 0.5);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 1000;
+}
+
+.modal {
+  width: 90%;
+  max-width: 400px;
+  padding: 20px;
+  border-radius: 8px;
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+}
+
+.modalTitle {
+  font-size: 20px;
+  margin-bottom: 16px;
+  text-align: center;
+}
+
+.modalText {
+  margin-bottom: 16px;
+  text-align: center;
+}
+
+.modalButtons {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 20px;
+}
+
+.loadingText {
+  text-align: center;
+  margin: 20px 0;
+}
+
+/* Сетка времени аренды */
+.rentalTimeGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(70px, 1fr));
+  gap: 10px;
+  margin: 16px 0;
+}
+
+.rentalTimeItem {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 10px;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  border: 2px solid transparent;
+}
+
+.rentalTimeValue {
+  font-size: 18px;
+  font-weight: bold;
+}
+
+.rentalTimeUnit {
+  font-size: 12px;
+  margin-top: 4px;
+}
+
+.selectedTime {
+  border-color: var(--tg-theme-button-color, #2481cc);
+  background-color: rgba(36, 129, 204, 0.1);
+}
   
-  /* Темная тема */
-  .light .title {
-    color: #000000;
-  }
+/* Темная тема */
+.light .title, .light .modalTitle {
+  color: #000000;
+}
   
-  .light .infoLabel {
-    color: #666666;
-  }
-  
-  .light .infoValue {
-    color: #000000;
-  }
+.light .infoLabel, .light .modalText {
+  color: #666666;
+}
+
+.light .infoValue, .light .rentalTimeValue, .light .rentalTimeUnit {
+  color: #000000;
+}
   
   .light .backButton {
     color: var(--tg-theme-button-color, #2481cc);
@@ -78,17 +164,17 @@
     background-color: #FFEBEE;
   }
   
-  .dark .title {
-    color: #FFFFFF;
-  }
+.dark .title, .dark .modalTitle {
+  color: #FFFFFF;
+}
   
-  .dark .infoLabel {
-    color: #E0E0E0;
-  }
-  
-  .dark .infoValue {
-    color: #FFFFFF;
-  }
+.dark .infoLabel, .dark .modalText, .dark .loadingText {
+  color: #E0E0E0;
+}
+
+.dark .infoValue, .dark .rentalTimeValue, .dark .rentalTimeUnit {
+  color: #FFFFFF;
+}
   
   .dark .backButton {
     color: var(--tg-theme-button-color, #2481cc);
@@ -98,8 +184,23 @@
     border-bottom: 1px solid #444444;
   }
   
-  .dark .errorMessage {
-    color: #C62828;
-    background-color: #3E2723;
-  }
-  
+.dark .errorMessage {
+  color: #C62828;
+  background-color: #3E2723;
+}
+
+.light .rentalTimeItem {
+  background-color: #F5F5F5;
+}
+
+.dark .rentalTimeItem {
+  background-color: #333333;
+}
+
+.light .rentalTimeItem:hover {
+  background-color: #E0E0E0;
+}
+
+.dark .rentalTimeItem:hover {
+  background-color: #444444;
+}

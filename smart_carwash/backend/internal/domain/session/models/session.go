@@ -26,7 +26,8 @@ type Session struct {
 	Status                       string         `json:"status" gorm:"default:created;index"`
 	ServiceType                  string         `json:"service_type,omitempty" gorm:"default:null"`
 	WithChemistry                bool           `json:"with_chemistry" gorm:"default:false"`
-	RentalTimeMinutes            int            `json:"rental_time_minutes" gorm:"default:5"` // Время аренды в минутах
+	RentalTimeMinutes            int            `json:"rental_time_minutes" gorm:"default:5"`    // Время аренды в минутах
+	ExtensionTimeMinutes         int            `json:"extension_time_minutes" gorm:"default:0"` // Время продления в минутах
 	IdempotencyKey               string         `json:"idempotency_key,omitempty" gorm:"index"`
 	IsExpiringNotificationSent   bool           `json:"is_expiring_notification_sent" gorm:"default:false"`
 	IsCompletingNotificationSent bool           `json:"is_completing_notification_sent" gorm:"default:false"`
@@ -100,4 +101,15 @@ type GetUserSessionHistoryRequest struct {
 // GetUserSessionHistoryResponse представляет ответ на получение истории сессий пользователя
 type GetUserSessionHistoryResponse struct {
 	Sessions []Session `json:"sessions"`
+}
+
+// ExtendSessionRequest представляет запрос на продление сессии
+type ExtendSessionRequest struct {
+	SessionID            uuid.UUID `json:"session_id" binding:"required"`
+	ExtensionTimeMinutes int       `json:"extension_time_minutes" binding:"required"`
+}
+
+// ExtendSessionResponse представляет ответ на продление сессии
+type ExtendSessionResponse struct {
+	Session *Session `json:"session"`
 }

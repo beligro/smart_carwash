@@ -32,6 +32,7 @@ func (h *Handler) RegisterRoutes(router *gin.RouterGroup) {
 		sessionRoutes.GET("/by-id", h.getSessionByID)          // session_id в query параметре
 		sessionRoutes.POST("/start", h.startSession)           // session_id в теле запроса
 		sessionRoutes.POST("/complete", h.completeSession)     // session_id в теле запроса
+		sessionRoutes.POST("/extend", h.extendSession)         // session_id и extension_time_minutes в теле запроса
 		sessionRoutes.GET("/history", h.getUserSessionHistory) // user_id в query параметре
 	}
 }
@@ -153,6 +154,27 @@ func (h *Handler) completeSession(c *gin.Context) {
 
 	// Возвращаем обновленную сессию
 	c.JSON(http.StatusOK, models.CompleteSessionResponse{Session: session})
+}
+
+// extendSession обработчик для продления сессии
+func (h *Handler) extendSession(c *gin.Context) {
+	var req models.ExtendSessionRequest
+
+	// Парсим JSON из тела запроса
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	// Продлеваем сессию
+	session, err := h.service.ExtendSession(&req)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	// Возвращаем обновленную сессию
+	c.JSON(http.StatusOK, models.ExtendSessionResponse{Session: session})
 }
 
 // getUserSessionHistory обработчик для получения истории сессий пользователя

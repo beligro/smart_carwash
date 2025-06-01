@@ -123,6 +123,20 @@ const ApiService = {
     }
   },
   
+  // Продление сессии (добавление времени к активной сессии)
+  extendSession: async (sessionId, extensionTimeMinutes) => {
+    try {
+      const response = await api.post('/sessions/extend', { 
+        session_id: sessionId,
+        extension_time_minutes: extensionTimeMinutes
+      });
+      return response.data;
+    } catch (error) {
+      console.error('Ошибка при продлении сессии:', error);
+      throw error;
+    }
+  },
+  
   // Получение истории сессий пользователя
   getUserSessionHistory: async (userId, limit = 10, offset = 0) => {
     try {
