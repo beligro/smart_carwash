@@ -28,6 +28,8 @@ import (
 	washboxHandlers "carwash_backend/internal/domain/washbox/handlers"
 	washboxRepo "carwash_backend/internal/domain/washbox/repository"
 	washboxService "carwash_backend/internal/domain/washbox/service"
+	"carwash_backend/internal/logger"
+	"carwash_backend/internal/metrics"
 
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
@@ -45,6 +47,13 @@ func main() {
 	if err != nil {
 		log.Fatalf("Ошибка загрузки конфигурации: %v", err)
 	}
+
+	// Инициализируем логгер
+	logger.Init(logger.Config{
+		Level:      cfg.LogLevel,
+		Pretty:     cfg.LogPretty,
+		TimeFormat: time.RFC3339,
+	})
 
 	// Применяем миграции
 	if err := runMigrations(cfg); err != nil {
@@ -104,7 +113,18 @@ func main() {
 	settingsHandler := settingsHandlers.NewHandler(settingsSvc)
 
 	// Создаем роутер
-	router := gin.Default()
+	router := gin.New()
+
+	// Добавляем middleware для логирования и восстановления после паники
+	router.Use(gin.Recovery())
+	router.Use(logger.LoggerMiddleware())
+	router.Use(logger.ExtractUserInfo())
+
+	// Добавляем middleware для метрик, если они включены
+	if cfg.MetricsEnabled {
+		router.Use(metrics.MetricsMiddleware())
+		metrics.SetupMetricsEndpoint(router)
+	}
 
 	// Настраиваем CORS
 	router.Use(cors.New(cors.Config{
@@ -176,11 +196,37 @@ func main() {
 		for {
 			select {
 			case <-ticker.C:
-				log.Println("Запуск обработки очереди...")
+				ctx := logger.ContextWithTraceID()
+				logger.Info(ctx, "Запуск обработки очереди")
 				if err := sessionSvc.ProcessQueue(); err != nil {
-					log.Printf("Ошибка обработки очереди: %v", err)
+					logger.Error(ctx, "Ошибка обработки очереди", err)
 				} else {
-					log.Println("Обработка очереди завершена успешно")
+					logger.Info(ctx, "Обработка очереди завершена успешно")
+				}
+
+				// Обновляем метрики очереди
+				if cfg.MetricsEnabled {
+					queueStatus, err := queueSvc.GetQueueStatus()
+					if err == nil {
+						metrics.UpdateQueueSize("wash", float64(queueStatus.WashQueue.QueueSize))
+						metrics.UpdateQueueSize("air_dry", float64(queueStatus.AirDryQueue.QueueSize))
+						metrics.UpdateQueueSize("vacuum", float64(queueStatus.VacuumQueue.QueueSize))
+
+						// Обновляем метрики статуса боксов
+						boxStatusCounts := make(map[string]map[string]int)
+						for _, box := range queueStatus.AllBoxes {
+							if _, ok := boxStatusCounts[box.Status]; !ok {
+								boxStatusCounts[box.Status] = make(map[string]int)
+							}
+							boxStatusCounts[box.Status][box.ServiceType]++
+						}
+
+						for status, serviceTypes := range boxStatusCounts {
+							for serviceType, count := range serviceTypes {
+								metrics.UpdateBoxesStatus(status, serviceType, float64(count))
+							}
+						}
+					}
 				}
 			case <-quit:
 				return
@@ -196,11 +242,20 @@ func main() {
 		for {
 			select {
 			case <-ticker.C:
-				log.Println("Запуск проверки истекших сессий...")
+				ctx := logger.ContextWithTraceID()
+				logger.Info(ctx, "Запуск проверки истекших сессий")
 				if err := sessionSvc.CheckAndCompleteExpiredSessions(); err != nil {
-					log.Printf("Ошибка проверки истекших сессий: %v", err)
+					logger.Error(ctx, "Ошибка проверки истекших сессий", err)
 				} else {
-					log.Println("Проверка истекших сессий завершена успешно")
+					logger.Info(ctx, "Проверка истекших сессий завершена успешно")
+				}
+
+				// Обновляем метрику активных сессий
+				if cfg.MetricsEnabled {
+					activeSessions, err := sessionRepository.CountSessionsByStatus("active")
+					if err == nil {
+						metrics.UpdateActiveSessions(float64(activeSessions))
+					}
 				}
 			case <-quit:
 				return
@@ -216,11 +271,12 @@ func main() {
 		for {
 			select {
 			case <-ticker.C:
-				log.Println("Запуск проверки зарезервированных сессий...")
+				ctx := logger.ContextWithTraceID()
+				logger.Info(ctx, "Запуск проверки зарезервированных сессий")
 				if err := sessionSvc.CheckAndExpireReservedSessions(); err != nil {
-					log.Printf("Ошибка проверки зарезервированных сессий: %v", err)
+					logger.Error(ctx, "Ошибка проверки зарезервированных сессий", err)
 				} else {
-					log.Println("Проверка зарезервированных сессий завершена успешно")
+					logger.Info(ctx, "Проверка зарезервированных сессий завершена успешно")
 				}
 			case <-quit:
 				return
@@ -236,11 +292,12 @@ func main() {
 		for {
 			select {
 			case <-ticker.C:
-				log.Println("Запуск проверки сессий для отправки уведомлений о скором истечении...")
+				ctx := logger.ContextWithTraceID()
+				logger.Info(ctx, "Запуск проверки сессий для отправки уведомлений о скором истечении")
 				if err := sessionSvc.CheckAndNotifyExpiringReservedSessions(); err != nil {
-					log.Printf("Ошибка отправки уведомлений о скором истечении сессий: %v", err)
+					logger.Error(ctx, "Ошибка отправки уведомлений о скором истечении сессий", err)
 				} else {
-					log.Println("Проверка сессий для отправки уведомлений о скором истечении завершена успешно")
+					logger.Info(ctx, "Проверка сессий для отправки уведомлений о скором истечении завершена успешно")
 				}
 			case <-quit:
 				return
@@ -256,11 +313,12 @@ func main() {
 		for {
 			select {
 			case <-ticker.C:
-				log.Println("Запуск проверки сессий для отправки уведомлений о скором завершении...")
+				ctx := logger.ContextWithTraceID()
+				logger.Info(ctx, "Запуск проверки сессий для отправки уведомлений о скором завершении")
 				if err := sessionSvc.CheckAndNotifyCompletingSessions(); err != nil {
-					log.Printf("Ошибка отправки уведомлений о скором завершении сессий: %v", err)
+					logger.Error(ctx, "Ошибка отправки уведомлений о скором завершении сессий", err)
 				} else {
-					log.Println("Проверка сессий для отправки уведомлений о скором завершении завершена успешно")
+					logger.Info(ctx, "Проверка сессий для отправки уведомлений о скором завершении завершена успешно")
 				}
 			case <-quit:
 				return
@@ -280,12 +338,13 @@ func main() {
 		log.Fatalf("Ошибка завершения сервера: %v", err)
 	}
 
-	log.Println("Сервер остановлен")
+	logger.Info(context.Background(), "Сервер остановлен")
 }
 
 // runMigrations применяет миграции к базе данных
 func runMigrations(cfg *config.Config) error {
-	log.Println("Применение миграций...")
+	ctx := logger.ContextWithTraceID()
+	logger.Info(ctx, "Применение миграций")
 
 	// Формируем DSN для миграций
 	dsn := fmt.Sprintf("postgres://%s:%s@%s:%d/%s?sslmode=disable",
@@ -309,7 +368,7 @@ func runMigrations(cfg *config.Config) error {
 		return fmt.Errorf("ошибка получения пути к миграциям: %v", err)
 	}
 
-	log.Printf("Путь к миграциям: %s", migrationsPath)
+	logger.Info(ctx, "Путь к миграциям", map[string]interface{}{"path": migrationsPath})
 
 	// Создаем URL для миграций
 	migrationsURL := fmt.Sprintf("file://%s", migrationsPath)
@@ -325,6 +384,6 @@ func runMigrations(cfg *config.Config) error {
 		return fmt.Errorf("ошибка применения миграций: %v", err)
 	}
 
-	log.Println("Миграции успешно применены")
+	logger.Info(ctx, "Миграции успешно применены")
 	return nil
 }

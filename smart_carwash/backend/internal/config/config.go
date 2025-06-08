@@ -19,6 +19,9 @@ type Config struct {
 	TelegramToken    string
 	TelegramUsername string
 	ServerIP         string
+	LogLevel         string
+	LogPretty        bool
+	MetricsEnabled   bool
 }
 
 // LoadConfig загружает конфигурацию из переменных окружения
@@ -37,6 +40,10 @@ func LoadConfig() (*Config, error) {
 		return nil, fmt.Errorf("неверный формат BACKEND_PORT: %v", err)
 	}
 
+	// Парсим логические значения
+	logPretty, _ := strconv.ParseBool(getEnv("LOG_PRETTY", "false"))
+	metricsEnabled, _ := strconv.ParseBool(getEnv("METRICS_ENABLED", "true"))
+
 	return &Config{
 		PostgresUser:     getEnv("POSTGRES_USER", "postgres"),
 		PostgresPassword: getEnv("POSTGRES_PASSWORD", "postgres"),
@@ -47,6 +54,9 @@ func LoadConfig() (*Config, error) {
 		TelegramToken:    getEnv("TELEGRAM_BOT_TOKEN", ""),
 		TelegramUsername: getEnv("TELEGRAM_BOT_USERNAME", ""),
 		ServerIP:         getEnv("SERVER_IP", "localhost"),
+		LogLevel:         getEnv("LOG_LEVEL", "info"),
+		LogPretty:        logPretty,
+		MetricsEnabled:   metricsEnabled,
 	}, nil
 }
 
