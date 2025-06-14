@@ -79,13 +79,13 @@ smart_carwash/
    >
    > Для получения доверенного SSL сертификата можно использовать один из скриптов:
    > ```bash
-   > # Для получения сертификата от Let's Encrypt с использованием сервиса nip.io (работает в РФ)
+   > # Для получения сертификата от Let's Encrypt для домена h2o-nsk.ru (работает в РФ)
    > ./get_letsencrypt_ssl.sh
    > 
    > # Для получения сертификата от ZeroSSL (может не работать в РФ)
    > ./get_trusted_ssl.sh
    > ```
-   > Скрипт `get_letsencrypt_ssl.sh` автоматически создаст доменное имя на основе вашего IP-адреса с помощью сервиса nip.io и получит для него доверенный SSL сертификат от Let's Encrypt.
+   > Скрипт `get_letsencrypt_ssl.sh` получит доверенный SSL сертификат от Let's Encrypt для домена h2o-nsk.ru.
 
 3. Собрать и запустить проект:
    ```bash
@@ -99,8 +99,8 @@ smart_carwash/
    ```
 
 5. Проверить работу приложения:
-   - Бэкенд API: https://158.160.105.190/api/wash-info
-   - Фронтенд: https://158.160.105.190
+   - Бэкенд API: https://h2o-nsk.ru/api/wash-info
+   - Фронтенд: https://h2o-nsk.ru
    - Telegram бот: https://t.me/carwash_grom_test_bot
 
 ### Управление проектом
