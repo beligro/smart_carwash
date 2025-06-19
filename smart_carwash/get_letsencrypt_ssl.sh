@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# Скрипт для получения SSL сертификата с помощью Let's Encrypt и сервиса nip.io
+# Скрипт для получения SSL сертификата с помощью Let's Encrypt для домена h2o-nsk.ru
 
 # Проверяем, установлен ли certbot
 if ! command -v certbot &> /dev/null; then
@@ -18,8 +18,8 @@ if [ -z "$SERVER_IP" ]; then
     exit 1
 fi
 
-# Создаем доменное имя на основе IP-адреса с помощью сервиса nip.io
-DOMAIN="${SERVER_IP}.nip.io"
+# Используем новый домен
+DOMAIN="h2o-nsk.ru"
 
 echo "Получаем SSL сертификат для домена: $DOMAIN (IP: $SERVER_IP)"
 
@@ -49,13 +49,13 @@ if sudo test -d "/etc/letsencrypt/live/$DOMAIN"; then
     sudo chmod 600 nginx/ssl/privkey.pem
     sudo chown $(whoami):$(whoami) nginx/ssl/fullchain.pem nginx/ssl/privkey.pem
     
-    # Обновляем .env файл, заменяя SERVER_IP на DOMAIN
+    # Обновляем .env файл, устанавливая новый домен
     echo "Обновляем .env файл..."
-    sed -i "s/SERVER_IP=$SERVER_IP/SERVER_IP=$DOMAIN/g" .env
+    sed -i "s/SERVER_IP=.*/SERVER_IP=$DOMAIN/g" .env
     
-    # Обновляем nginx.conf, заменяя IP-адрес на доменное имя
+    # Обновляем nginx.conf, устанавливая новый домен
     echo "Обновляем nginx.conf..."
-    sed -i "s/server_name $SERVER_IP;/server_name $DOMAIN;/g" nginx/nginx.conf
+    sed -i "s/server_name .*;/server_name $DOMAIN;/g" nginx/nginx.conf
     
     # Обновляем URL в боте
     echo "Обновляем URL в боте..."
