@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import styles from './ServiceSelector.module.css';
 import { Card, Button } from '../../../../shared/components/UI';
-import ApiService from '../../shared/services/ApiService';
+import ApiService from '../../../../shared/services/ApiService';
 
 /**
  * Компонент ServiceSelector - позволяет выбрать тип услуги и дополнительные опции

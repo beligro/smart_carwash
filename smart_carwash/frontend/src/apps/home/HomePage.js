@@ -85,7 +85,7 @@ const HomePage = () => {
       
       <ButtonContainer>
         <StyledButton 
-          href="https://t.me/your_bot_name?start=webapp" 
+          href="https://t.me/carwash_grom_test_bot?start=webapp" 
           target="_blank" 
           rel="noopener noreferrer"
         >

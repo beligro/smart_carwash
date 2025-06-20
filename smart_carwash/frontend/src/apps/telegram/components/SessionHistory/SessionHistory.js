@@ -2,9 +2,9 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import styles from './SessionHistory.module.css';
 import { Card, Button, StatusBadge } from '../../../../shared/components/UI';
-import { formatDate } from '../../utils/formatters';
-import { getSessionStatusDescription } from '../../utils/statusHelpers';
-import ApiService from '../../services/ApiService';
+import { formatDate } from '../../../../shared/utils/formatters';
+import { getSessionStatusDescription } from '../../../../shared/utils/statusHelpers';
+import ApiService from '../../../../shared/services/ApiService';
 
 /**
  * Компонент SessionHistory - отображает историю сессий пользователя
