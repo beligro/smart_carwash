@@ -13,8 +13,23 @@ RUN npm install
 # Копируем исходный код
 COPY . .
 
-# Собираем приложение
-RUN npm run build
+# Аргумент для выбора приложения (по умолчанию - все приложения)
+ARG APP_TYPE=all
+
+# Собираем приложение в зависимости от типа
+RUN if [ "$APP_TYPE" = "telegram" ]; then \
+        echo "Building Telegram Mini App only"; \
+        REACT_APP_STANDALONE=true REACT_APP_APP_TYPE=telegram npm run build; \
+    elif [ "$APP_TYPE" = "admin" ]; then \
+        echo "Building Admin App only"; \
+        REACT_APP_STANDALONE=true REACT_APP_APP_TYPE=admin npm run build; \
+    elif [ "$APP_TYPE" = "cashier" ]; then \
+        echo "Building Cashier App only"; \
+        REACT_APP_STANDALONE=true REACT_APP_APP_TYPE=cashier npm run build; \
+    else \
+        echo "Building all apps"; \
+        npm run build; \
+    fi
 
 # Этап запуска
 FROM nginx:alpine

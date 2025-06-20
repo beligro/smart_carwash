@@ -1,7 +1,7 @@
 import React from 'react';
 import WebApp from '@twa-dev/sdk';
 import styles from './WelcomeMessage.module.css';
-import { Card } from '../UI';
+import { Card } from '../../../../shared/components/UI';
 
 /**
  * Компонент WelcomeMessage - отображает приветственное сообщение

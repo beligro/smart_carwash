@@ -116,4 +116,3 @@ const lightTheme = {
   };
   
   export { lightTheme, darkTheme, getTheme };
-  

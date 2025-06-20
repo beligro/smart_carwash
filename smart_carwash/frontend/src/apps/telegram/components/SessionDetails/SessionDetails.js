@@ -1,11 +1,11 @@
 import React, { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import styles from './SessionDetails.module.css';
-import { Card, Button, StatusBadge, Timer } from '../UI';
-import { formatDate } from '../../utils/formatters';
-import { getServiceTypeDescription } from '../../utils/statusHelpers';
-import ApiService from '../../services/ApiService';
-import useTimer from '../../hooks/useTimer';
+import { Card, Button, StatusBadge, Timer } from '../../../../shared/components/UI';
+import { formatDate } from '../../../../shared/utils/formatters';
+import { getServiceTypeDescription } from '../../../../shared/utils/statusHelpers';
+import ApiService from '../../../../shared/services/ApiService';
+import useTimer from '../../../../shared/hooks/useTimer';
 
 /**
  * Компонент SessionDetails - отображает детальную информацию о сессии

@@ -1,11 +1,11 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import styles from './WashInfo.module.css';
-import { Card, Button, StatusBadge, Timer } from '../UI';
+import { Card, Button, StatusBadge, Timer } from '../../../../shared/components/UI';
 import ServiceSelector from '../ServiceSelector';
-import { formatDate } from '../../utils/formatters';
-import { getSessionStatusDescription, getServiceTypeDescription } from '../../utils/statusHelpers';
-import useTimer from '../../hooks/useTimer';
+import { formatDate } from '../../../../shared/utils/formatters';
+import { getSessionStatusDescription, getServiceTypeDescription } from '../../../../shared/utils/statusHelpers';
+import useTimer from '../../../../shared/hooks/useTimer';
 
 /**
  * Компонент WashInfo - отображает информацию о мойке
