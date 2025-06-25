@@ -1,6 +1,10 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import styled from 'styled-components';
+import { Routes, Route, Link, useNavigate } from 'react-router-dom';
 import { getTheme } from '../../shared/styles/theme';
+import AuthService from '../../shared/services/AuthService';
+import CashierManagement from './components/CashierManagement';
+import Dashboard from './components/Dashboard';
 
 const AdminContainer = styled.div`
   display: flex;
@@ -24,6 +28,65 @@ const Title = styled.h1`
   font-size: 1.5rem;
 `;
 
+const Navigation = styled.nav`
+  background-color: ${props => props.theme.cardBackground};
+  padding: 10px 20px;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+`;
+
+const NavList = styled.ul`
+  display: flex;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+`;
+
+const NavItem = styled.li`
+  margin-right: 20px;
+  
+  &:last-child {
+    margin-right: 0;
+  }
+`;
+
+const NavLink = styled(Link)`
+  color: ${props => props.theme.textColor};
+  text-decoration: none;
+  font-weight: 500;
+  padding: 5px 0;
+  
+  &:hover {
+    color: ${props => props.theme.primaryColor};
+  }
+  
+  &.active {
+    color: ${props => props.theme.primaryColor};
+    border-bottom: 2px solid ${props => props.theme.primaryColor};
+  }
+`;
+
+const LogoutButton = styled.button`
+  background: none;
+  border: none;
+  color: ${props => props.theme.textColor};
+  cursor: pointer;
+  font-size: 1rem;
+  
+  &:hover {
+    color: ${props => props.theme.primaryColor};
+  }
+`;
+
+const UserInfo = styled.div`
+  display: flex;
+  align-items: center;
+`;
+
+const Username = styled.span`
+  margin-right: 15px;
+  font-weight: 500;
+`;
+
 const Content = styled.main`
   flex: 1;
   padding: 20px;
@@ -32,35 +95,66 @@ const Content = styled.main`
   width: 100%;
 `;
 
-const Card = styled.div`
-  background-color: ${props => props.theme.cardBackground};
-  border-radius: 8px;
-  padding: 20px;
-  margin-bottom: 20px;
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
-`;
-
+/**
+ * Приложение администратора
+ * @returns {React.ReactNode} - Приложение администратора
+ */
 const AdminApp = () => {
   const theme = getTheme('light');
-
+  const navigate = useNavigate();
+  const [user, setUser] = useState(null);
+  
+  useEffect(() => {
+    // Получаем текущего пользователя
+    const currentUser = AuthService.getCurrentUser();
+    setUser(currentUser);
+    
+    // Проверяем, авторизован ли пользователь и является ли он администратором
+    if (!AuthService.isAuthenticated() || !AuthService.isAdmin()) {
+      navigate('/admin/login');
+    }
+  }, [navigate]);
+  
+  // Обработчик выхода из системы
+  const handleLogout = async () => {
+    await AuthService.logout();
+    navigate('/admin/login');
+  };
+  
   return (
     <AdminContainer theme={theme}>
       <Header theme={theme}>
         <Title>Интерфейс администратора</Title>
+        {user && (
+          <UserInfo>
+            <Username>{user.username}</Username>
+            <LogoutButton onClick={handleLogout} theme={theme}>
+              Выйти
+            </LogoutButton>
+          </UserInfo>
+        )}
       </Header>
+      
+      <Navigation theme={theme}>
+        <NavList>
+          <NavItem>
+            <NavLink to="/admin" theme={theme}>
+              Панель управления
+            </NavLink>
+          </NavItem>
+          <NavItem>
+            <NavLink to="/admin/cashiers" theme={theme}>
+              Управление кассирами
+            </NavLink>
+          </NavItem>
+        </NavList>
+      </Navigation>
+      
       <Content>
-        <Card theme={theme}>
-          <h2>Добро пожаловать в интерфейс администратора</h2>
-          <p>
-            Этот интерфейс предназначен для администрирования системы умной автомойки. 
-            Здесь будет реализован функционал для управления боксами, настройки параметров системы, 
-            просмотра статистики и аналитики, а также другие административные функции.
-          </p>
-          <p>
-            В настоящее время интерфейс находится в разработке. 
-            Скоро здесь появятся все необходимые функции.
-          </p>
-        </Card>
+        <Routes>
+          <Route path="/" element={<Dashboard />} />
+          <Route path="/cashiers" element={<CashierManagement />} />
+        </Routes>
       </Content>
     </AdminContainer>
   );

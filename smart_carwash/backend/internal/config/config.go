@@ -19,6 +19,11 @@ type Config struct {
 	TelegramToken    string
 	TelegramUsername string
 	ServerIP         string
+
+	// Настройки авторизации
+	AdminUsername string
+	AdminPassword string
+	JWTSecret     string
 }
 
 // LoadConfig загружает конфигурацию из переменных окружения
@@ -47,6 +52,11 @@ func LoadConfig() (*Config, error) {
 		TelegramToken:    getEnv("TELEGRAM_BOT_TOKEN", ""),
 		TelegramUsername: getEnv("TELEGRAM_BOT_USERNAME", ""),
 		ServerIP:         getEnv("SERVER_IP", "localhost"),
+
+		// Настройки авторизации
+		AdminUsername: getEnv("ADMIN_USERNAME", "admin"),
+		AdminPassword: getEnv("ADMIN_PASSWORD", "admin"),
+		JWTSecret:     getEnv("JWT_SECRET", "your-secret-key"),
 	}, nil
 }
 

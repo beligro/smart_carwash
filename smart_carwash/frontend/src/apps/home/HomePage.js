@@ -92,11 +92,11 @@ const HomePage = () => {
           Открыть в Telegram
         </StyledButton>
         
-        <StyledLink to="/cashier">
+        <StyledLink to="/cashier/login">
           Интерфейс кассира
         </StyledLink>
         
-        <StyledLink to="/admin">
+        <StyledLink to="/admin/login">
           Интерфейс администратора
         </StyledLink>
       </ButtonContainer>
