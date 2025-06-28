@@ -9,9 +9,178 @@ const api = axios.create({
   },
 });
 
+// Добавляем перехватчик для добавления токена к запросам
+api.interceptors.request.use(
+  (config) => {
+    const token = localStorage.getItem('token');
+    if (token) {
+      config.headers['Authorization'] = `Bearer ${token}`;
+    }
+    return config;
+  },
+  (error) => {
+    return Promise.reject(error);
+  }
+);
 
 // Сервис для работы с API
 const ApiService = {
+  // === МЕТОДЫ ДЛЯ РАБОТЫ С БОКСАМИ ===
+  
+  // Получение списка боксов
+  getWashBoxes: async () => {
+    try {
+      const response = await api.get('/admin/washboxes');
+      return response.data;
+    } catch (error) {
+      console.error('Ошибка при получении списка боксов:', error);
+      throw error;
+    }
+  },
+
+  // Создание бокса
+  createWashBox: async (washBoxData) => {
+    try {
+      const response = await api.post('/admin/washboxes', washBoxData);
+      return response.data;
+    } catch (error) {
+      console.error('Ошибка при создании бокса:', error);
+      throw error;
+    }
+  },
+
+  // Обновление бокса
+  updateWashBox: async (id, washBoxData) => {
+    try {
+      const response = await api.put(`/admin/washboxes/${id}`, washBoxData);
+      return response.data;
+    } catch (error) {
+      console.error('Ошибка при обновлении бокса:', error);
+      throw error;
+    }
+  },
+
+  // Удаление бокса
+  deleteWashBox: async (id) => {
+    try {
+      const response = await api.delete(`/admin/washboxes/${id}`);
+      return response.data;
+    } catch (error) {
+      console.error('Ошибка при удалении бокса:', error);
+      throw error;
+    }
+  },
+
+  // === МЕТОДЫ ДЛЯ РАБОТЫ С СЕССИЯМИ ===
+  
+  // Получение списка сессий
+  getSessions: async (filters = {}) => {
+    try {
+      const params = new URLSearchParams();
+      Object.keys(filters).forEach(key => {
+        if (filters[key] !== undefined && filters[key] !== '') {
+          params.append(key, filters[key]);
+        }
+      });
+      
+      const response = await api.get(`/admin/sessions?${params.toString()}`);
+      return response.data;
+    } catch (error) {
+      console.error('Ошибка при получении списка сессий:', error);
+      throw error;
+    }
+  },
+
+  // Обновление сессии
+  updateSession: async (id, sessionData) => {
+    try {
+      const response = await api.put(`/admin/sessions/${id}`, sessionData);
+      return response.data;
+    } catch (error) {
+      console.error('Ошибка при обновлении сессии:', error);
+      throw error;
+    }
+  },
+
+  // Удаление сессии
+  deleteSession: async (id) => {
+    try {
+      const response = await api.delete(`/admin/sessions/${id}`);
+      return response.data;
+    } catch (error) {
+      console.error('Ошибка при удалении сессии:', error);
+      throw error;
+    }
+  },
+
+  // === МЕТОДЫ ДЛЯ РАБОТЫ С ОЧЕРЕДЬЮ ===
+  
+  // Получение статуса очереди
+  getQueueStatus: async () => {
+    try {
+      const response = await api.get('/admin/queue');
+      return response.data;
+    } catch (error) {
+      console.error('Ошибка при получении статуса очереди:', error);
+      throw error;
+    }
+  },
+
+  // Удаление из очереди
+  removeFromQueue: async (id) => {
+    try {
+      const response = await api.delete(`/admin/queue/${id}`);
+      return response.data;
+    } catch (error) {
+      console.error('Ошибка при удалении из очереди:', error);
+      throw error;
+    }
+  },
+
+  // === МЕТОДЫ ДЛЯ РАБОТЫ С ПОЛЬЗОВАТЕЛЯМИ ===
+  
+  // Получение списка пользователей
+  getUsers: async (filters = {}) => {
+    try {
+      const params = new URLSearchParams();
+      Object.keys(filters).forEach(key => {
+        if (filters[key] !== undefined && filters[key] !== '') {
+          params.append(key, filters[key]);
+        }
+      });
+      
+      const response = await api.get(`/admin/users?${params.toString()}`);
+      return response.data;
+    } catch (error) {
+      console.error('Ошибка при получении списка пользователей:', error);
+      throw error;
+    }
+  },
+
+  // Обновление пользователя
+  updateUser: async (id, userData) => {
+    try {
+      const response = await api.put(`/admin/users/${id}`, userData);
+      return response.data;
+    } catch (error) {
+      console.error('Ошибка при обновлении пользователя:', error);
+      throw error;
+    }
+  },
+
+  // Удаление пользователя
+  deleteUser: async (id) => {
+    try {
+      const response = await api.delete(`/admin/users/${id}`);
+      return response.data;
+    } catch (error) {
+      console.error('Ошибка при удалении пользователя:', error);
+      throw error;
+    }
+  },
+
+  // === СУЩЕСТВУЮЩИЕ МЕТОДЫ ===
+
   // Получение доступного времени аренды для определенного типа услуги
   getAvailableRentalTimes: async (serviceType) => {
     try {
@@ -30,17 +199,6 @@ const ApiService = {
       return response.data;
     } catch (error) {
       console.error('Ошибка при получении пользователя по telegram_id:', error);
-      throw error;
-    }
-  },
-
-  // Получение статуса очереди и боксов
-  getQueueStatus: async () => {
-    try {
-      const response = await api.get('/queue-status');
-      return response.data;
-    } catch (error) {
-      console.error('Ошибка при получении статуса очереди:', error);
       throw error;
     }
   },
@@ -169,4 +327,4 @@ api.interceptors.response.use(
   }
 );
 
-export default ApiService;
+export default ApiService; 

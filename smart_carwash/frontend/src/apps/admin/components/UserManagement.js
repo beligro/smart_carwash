@@ -122,15 +122,16 @@ const UserManagement = () => {
       setLoading(true);
       setError('');
       
-      const params = new URLSearchParams();
-      params.append('limit', pagination.limit.toString());
-      params.append('offset', pagination.offset.toString());
+      const filters = {
+        limit: pagination.limit,
+        offset: pagination.offset
+      };
       
-      const response = await ApiService.get(`/admin/users?${params.toString()}`);
-      setUsers(response.data.users || []);
+      const response = await ApiService.getUsers(filters);
+      setUsers(response.users || []);
       setPagination(prev => ({
         ...prev,
-        total: response.data.total || 0
+        total: response.total || 0
       }));
     } catch (err) {
       setError('Ошибка при загрузке пользователей');

@@ -250,12 +250,8 @@ const WashBoxManagement = () => {
       setLoading(true);
       setError('');
       
-      const params = new URLSearchParams();
-      if (filters.status) params.append('status', filters.status);
-      if (filters.serviceType) params.append('service_type', filters.serviceType);
-      
-      const response = await ApiService.get(`/admin/washboxes?${params.toString()}`);
-      setWashBoxes(response.data.wash_boxes || []);
+      const response = await ApiService.getWashBoxes();
+      setWashBoxes(response.wash_boxes || []);
     } catch (err) {
       setError('Ошибка при загрузке боксов');
       console.error('Error fetching wash boxes:', err);
@@ -281,7 +277,7 @@ const WashBoxManagement = () => {
       setLoading(true);
       setError('');
       
-      await ApiService.post('/admin/washboxes', formData);
+      await ApiService.createWashBox(formData);
       setSuccess('Бокс успешно создан');
       setShowCreateModal(false);
       setFormData({ number: '', status: 'free', serviceType: 'wash' });
@@ -305,10 +301,7 @@ const WashBoxManagement = () => {
       setLoading(true);
       setError('');
       
-      await ApiService.put('/admin/washboxes', {
-        id: editingWashBox.id,
-        ...formData
-      });
+      await ApiService.updateWashBox(editingWashBox.id, formData);
       setSuccess('Бокс успешно обновлен');
       setShowEditModal(false);
       setEditingWashBox(null);
@@ -335,7 +328,7 @@ const WashBoxManagement = () => {
       setLoading(true);
       setError('');
       
-      await ApiService.delete('/admin/washboxes', { data: { id } });
+      await ApiService.deleteWashBox(id);
       setSuccess('Бокс успешно удален');
       fetchWashBoxes();
     } catch (err) {

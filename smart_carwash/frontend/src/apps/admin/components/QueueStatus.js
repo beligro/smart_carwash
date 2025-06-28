@@ -205,8 +205,8 @@ const QueueStatus = () => {
       setLoading(true);
       setError('');
       
-      const response = await ApiService.get(`/admin/queue/status?include_details=${includeDetails}`);
-      setQueueData(response.data);
+      const response = await ApiService.getQueueStatus();
+      setQueueData(response);
     } catch (err) {
       setError('Ошибка при загрузке статуса очереди');
       console.error('Error fetching queue status:', err);

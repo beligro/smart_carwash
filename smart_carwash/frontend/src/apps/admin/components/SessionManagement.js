@@ -201,19 +201,17 @@ const SessionManagement = () => {
       setLoading(true);
       setError('');
       
-      const params = new URLSearchParams();
-      if (filters.status) params.append('status', filters.status);
-      if (filters.serviceType) params.append('service_type', filters.serviceType);
-      if (filters.dateFrom) params.append('date_from', filters.dateFrom);
-      if (filters.dateTo) params.append('date_to', filters.dateTo);
-      params.append('limit', pagination.limit.toString());
-      params.append('offset', pagination.offset.toString());
+      const filtersData = {
+        ...filters,
+        limit: pagination.limit,
+        offset: pagination.offset
+      };
       
-      const response = await ApiService.get(`/admin/sessions?${params.toString()}`);
-      setSessions(response.data.sessions || []);
+      const response = await ApiService.getSessions(filtersData);
+      setSessions(response.sessions || []);
       setPagination(prev => ({
         ...prev,
-        total: response.data.total || 0
+        total: response.total || 0
       }));
     } catch (err) {
       setError('Ошибка при загрузке сессий');
