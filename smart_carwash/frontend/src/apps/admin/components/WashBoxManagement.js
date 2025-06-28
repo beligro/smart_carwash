@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import styled from 'styled-components';
+import { useNavigate } from 'react-router-dom';
 import { getTheme } from '../../../shared/styles/theme';
 import ApiService from '../../../shared/services/ApiService';
 
@@ -243,6 +244,7 @@ const WashBoxManagement = () => {
     status: 'free',
     serviceType: 'wash'
   });
+  const navigate = useNavigate();
 
   // Загрузка боксов
   const fetchWashBoxes = async () => {
@@ -475,8 +477,12 @@ const WashBoxManagement = () => {
                 <ActionButton 
                   theme={theme}
                   onClick={() => {
-                    // Здесь можно добавить переход к сессиям бокса
-                    console.log('Переход к сессиям бокса:', washBox.id);
+                    navigate('/admin/sessions', { 
+                      state: { 
+                        filters: { boxNumber: washBox.number },
+                        showBoxFilter: true 
+                      } 
+                    });
                   }}
                 >
                   Сессии

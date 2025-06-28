@@ -2,6 +2,12 @@
 
 ## Последние обновления
 
+### Исправления от 2024-12-19 (Часть 3)
+- ✅ Исправлен delete для боксов - ID теперь передается в body запроса
+- ✅ Добавлены реальные переходы по полезным ссылкам между страницами
+- ✅ Исправлен API вызов для получения деталей пользователя - используется правильная ручка
+- ✅ Добавлена поддержка фильтров по пользователю и номеру бокса в SessionManagement
+
 ### Исправления от 2024-12-19 (Часть 2)
 - ✅ Исправлены все API вызовы - убраны переменные из путей
 - ✅ Все ID теперь передаются в query параметрах или body
@@ -47,7 +53,7 @@ src/
 - `getWashBoxes(filters)` - получение списка боксов
 - `createWashBox(data)` - создание бокса
 - `updateWashBox(id, data)` - обновление бокса (ID в body)
-- `deleteWashBox(id)` - удаление бокса (ID в query)
+- `deleteWashBox(id)` - удаление бокса (ID в body)
 - `getUsers(filters)` - получение списка пользователей
 - `getUserById(userId)` - получение деталей пользователя (ID в query)
 - `updateUser(id, data)` - обновление пользователя (ID в body)
@@ -83,22 +89,24 @@ const lightTheme = {
 - ❌ НЕ используем переменные в путях: `/admin/users/${id}`
 - ✅ Используем query параметры: `/admin/users?id=${id}`
 - ✅ Используем body для обновлений: `{ ...data, id }`
+- ✅ Используем body для DELETE: `{ data: { id } }`
 
 ### Примеры правильных вызовов:
 
 ```javascript
 // ✅ Правильно - ID в query
 ApiService.getUserById(userId);
-// => GET /admin/users?id=123
+// => GET /admin/users/by-id?id=123
 
 // ✅ Правильно - ID в body
 ApiService.updateUser(id, data);
 // => PUT /admin/users
 // Body: { ...data, id: 123 }
 
-// ✅ Правильно - ID в query
-ApiService.deleteUser(id);
-// => DELETE /admin/users?id=123
+// ✅ Правильно - ID в body для DELETE
+ApiService.deleteWashBox(id);
+// => DELETE /admin/washboxes
+// Body: { id: 123 }
 
 // ❌ Неправильно - ID в пути
 // GET /admin/users/123
@@ -124,6 +132,42 @@ ApiService.createWashBox({
 ### Обработка ошибок
 Все API методы включают обработку ошибок и логирование.
 
+## Навигация между страницами
+
+### Полезные ссылки
+Реализована система переходов между связанными сущностями:
+
+```javascript
+// Переход от пользователя к его сессиям
+navigate('/admin/sessions', { 
+  state: { 
+    filters: { userId: userId },
+    showUserFilter: true 
+  } 
+});
+
+// Переход от бокса к его сессиям
+navigate('/admin/sessions', { 
+  state: { 
+    filters: { boxNumber: boxNumber },
+    showBoxFilter: true 
+  } 
+});
+
+// Переход от сессии к пользователю
+navigate(`/users/${sessionDetails.user_id}`);
+
+// Переход от сессии к боксу
+navigate(`/boxes/${sessionDetails.box_number}`);
+```
+
+### Фильтры в SessionManagement
+- Фильтр по ID пользователя
+- Фильтр по номеру бокса
+- Фильтр по статусу
+- Фильтр по типу услуги
+- Фильтр по датам
+
 ## Компоненты админки
 
 ### WashBoxManagement
@@ -132,6 +176,7 @@ ApiService.createWashBox({
 - Фильтрация по статусу и типу услуги
 - **Номер бокса нельзя редактировать**
 - **Все API вызовы соответствуют правилам бэкенда**
+- **Реальные переходы к сессиям бокса**
 
 ### UserManagement
 - Управление пользователями
@@ -139,12 +184,15 @@ ApiService.createWashBox({
 - Навигация к сессиям пользователя
 - **Реальные API вызовы для получения деталей**
 - **ID передается в query параметрах**
+- **Реальные переходы к сессиям пользователя**
 
 ### SessionManagement
 - Управление сессиями
 - Детальная информация о сессиях
 - Навигация между связанными сущностями
 - **Все операции используют правильные API вызовы**
+- **Поддержка фильтров по пользователю и боксу**
+- **Реальные переходы к пользователям и боксам**
 
 ## Безопасность
 

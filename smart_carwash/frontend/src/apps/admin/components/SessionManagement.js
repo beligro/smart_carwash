@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import styled from 'styled-components';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { getTheme } from '../../../shared/styles/theme';
 import ApiService from '../../../shared/services/ApiService';
 
@@ -264,6 +265,8 @@ const LinkButton = styled.button`
 
 const SessionManagement = () => {
   const theme = getTheme('light');
+  const location = useLocation();
+  const navigate = useNavigate();
   const [sessions, setSessions] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -271,7 +274,9 @@ const SessionManagement = () => {
     status: '',
     serviceType: '',
     dateFrom: '',
-    dateTo: ''
+    dateTo: '',
+    userId: '',
+    boxNumber: ''
   });
   const [pagination, setPagination] = useState({
     limit: 20,
@@ -284,6 +289,13 @@ const SessionManagement = () => {
   const [selectedSession, setSelectedSession] = useState(null);
   const [sessionDetails, setSessionDetails] = useState(null);
   const [sessionDetailsLoading, setSessionDetailsLoading] = useState(false);
+
+  // Инициализация фильтров из state (при переходе от пользователей)
+  useEffect(() => {
+    if (location.state?.filters) {
+      setFilters(prev => ({ ...prev, ...location.state.filters }));
+    }
+  }, [location.state]);
 
   // Загрузка сессий
   const fetchSessions = async () => {
@@ -302,6 +314,8 @@ const SessionManagement = () => {
       if (filters.serviceType) filtersData.service_type = filters.serviceType;
       if (filters.dateFrom) filtersData.date_from = filters.dateFrom;
       if (filters.dateTo) filtersData.date_to = filters.dateTo;
+      if (filters.userId) filtersData.user_id = filters.userId;
+      if (filters.boxNumber) filtersData.box_number = filters.boxNumber;
       
       const response = await ApiService.getSessions(filtersData);
       setSessions(response.sessions || []);
@@ -422,6 +436,20 @@ const SessionManagement = () => {
           <option value="air_dry">Обдув</option>
           <option value="vacuum">Пылесос</option>
         </FilterSelect>
+
+        <FilterInput
+          type="text"
+          value={filters.userId}
+          onChange={(e) => setFilters({ ...filters, userId: e.target.value })}
+          placeholder="ID пользователя"
+        />
+
+        <FilterInput
+          type="number"
+          value={filters.boxNumber}
+          onChange={(e) => setFilters({ ...filters, boxNumber: e.target.value })}
+          placeholder="Номер бокса"
+        />
 
         <FilterInput
           type="date"
@@ -628,21 +656,21 @@ const SessionManagement = () => {
                   <div style={{ display: 'flex', gap: '15px', flexWrap: 'wrap' }}>
                     <LinkButton theme={theme} onClick={() => {
                       // Здесь можно добавить переход к пользователю
-                      console.log('Переход к пользователю:', sessionDetails.user_id);
+                      navigate(`/users/${sessionDetails.user_id}`);
                     }}>
                       Посмотреть пользователя
                     </LinkButton>
                     {sessionDetails.box_number && (
                       <LinkButton theme={theme} onClick={() => {
                         // Здесь можно добавить переход к боксу
-                        console.log('Переход к боксу:', sessionDetails.box_number);
+                        navigate(`/boxes/${sessionDetails.box_number}`);
                       }}>
                         Посмотреть бокс №{sessionDetails.box_number}
                       </LinkButton>
                     )}
                     <LinkButton theme={theme} onClick={() => {
                       // Здесь можно добавить переход к сессиям пользователя
-                      console.log('Переход к сессиям пользователя:', sessionDetails.user_id);
+                      navigate(`/sessions/user/${sessionDetails.user_id}`);
                     }}>
                       Все сессии пользователя
                     </LinkButton>

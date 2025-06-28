@@ -67,7 +67,7 @@ const ApiService = {
   // Удаление бокса
   deleteWashBox: async (id) => {
     try {
-      const response = await api.delete(`/admin/washboxes?id=${id}`);
+      const response = await api.delete('/admin/washboxes', { data: { id } });
       return response.data;
     } catch (error) {
       console.error('Ошибка при удалении бокса:', error);
@@ -138,7 +138,7 @@ const ApiService = {
   // Получение пользователя по ID
   getUserById: async (userId) => {
     try {
-      const response = await api.get(`/admin/users?id=${userId}`);
+      const response = await api.get(`/admin/users/by-id?id=${userId}`);
       return response.data;
     } catch (error) {
       console.error('Ошибка при получении пользователя по ID:', error);

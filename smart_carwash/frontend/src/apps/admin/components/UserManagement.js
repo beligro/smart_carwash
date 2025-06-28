@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import styled from 'styled-components';
+import { useNavigate } from 'react-router-dom';
 import { getTheme } from '../../../shared/styles/theme';
 import ApiService from '../../../shared/services/ApiService';
 
@@ -218,6 +219,8 @@ const UserManagement = () => {
   const [userDetails, setUserDetails] = useState(null);
   const [userDetailsLoading, setUserDetailsLoading] = useState(false);
 
+  const navigate = useNavigate();
+
   // Загрузка пользователей
   const fetchUsers = async () => {
     try {
@@ -279,10 +282,13 @@ const UserManagement = () => {
 
   // Переход к сессиям пользователя
   const goToUserSessions = (userId) => {
-    // Здесь можно добавить навигацию к сессиям пользователя
-    // Пока просто закрываем модальное окно и показываем сообщение
     closeUserModal();
-    alert(`Переход к сессиям пользователя ${userId} будет добавлен позже`);
+    navigate('/admin/sessions', { 
+      state: { 
+        filters: { userId: userId },
+        showUserFilter: true 
+      } 
+    });
   };
 
   const handlePageChange = (newOffset) => {
