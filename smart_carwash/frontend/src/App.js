@@ -7,6 +7,11 @@ import HomePage from './apps/home/HomePage';
 import TelegramApp from './apps/telegram/TelegramApp';
 import AdminApp from './apps/admin/AdminApp';
 import CashierApp from './apps/cashier/CashierApp';
+import AdminLoginPage from './apps/admin/AdminLoginPage';
+import CashierLoginPage from './apps/cashier/CashierLoginPage';
+
+// Импорт компонентов
+import ProtectedRoute from './shared/components/ProtectedRoute';
 
 /**
  * Главный компонент приложения, который маршрутизирует запросы между разными интерфейсами
@@ -22,10 +27,26 @@ function App() {
         <Route path="/telegram/*" element={<TelegramApp />} />
         
         {/* Маршруты для интерфейса администратора */}
-        <Route path="/admin/*" element={<AdminApp />} />
+        <Route path="/admin/login" element={<AdminLoginPage />} />
+        <Route 
+          path="/admin/*" 
+          element={
+            <ProtectedRoute requireAdmin={true}>
+              <AdminApp />
+            </ProtectedRoute>
+          } 
+        />
         
         {/* Маршруты для интерфейса кассира */}
-        <Route path="/cashier/*" element={<CashierApp />} />
+        <Route path="/cashier/login" element={<CashierLoginPage />} />
+        <Route 
+          path="/cashier/*" 
+          element={
+            <ProtectedRoute requireAdmin={false}>
+              <CashierApp />
+            </ProtectedRoute>
+          } 
+        />
         
         {/* Перенаправление неизвестных маршрутов на главную страницу */}
         <Route path="*" element={<Navigate to="/" />} />

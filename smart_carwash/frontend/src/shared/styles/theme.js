@@ -6,6 +6,16 @@ const lightTheme = {
     textColor: '#000000',
     secondaryTextColor: '#666666',
     borderColor: '#EEEEEE',
+    primaryColor: '#007BFF',
+    primaryColorHover: '#0056b3',
+    secondaryColor: '#6c757d',
+    secondaryColorHover: '#5a6268',
+    dangerColor: '#dc3545',
+    dangerColorHover: '#bd2130',
+    successColor: '#28a745',
+    errorColor: '#dc3545',
+    disabledColor: '#cccccc',
+    inputBackground: '#FFFFFF',
     
     // Статусы
     statusColors: {
@@ -61,6 +71,16 @@ const lightTheme = {
     textColor: '#FFFFFF',
     secondaryTextColor: '#E0E0E0',
     borderColor: '#444444',
+    primaryColor: '#0D6EFD',
+    primaryColorHover: '#0b5ed7',
+    secondaryColor: '#6c757d',
+    secondaryColorHover: '#5a6268',
+    dangerColor: '#dc3545',
+    dangerColorHover: '#bd2130',
+    successColor: '#28a745',
+    errorColor: '#dc3545',
+    disabledColor: '#555555',
+    inputBackground: '#3C3C3C',
     
     // Статусы
     statusColors: {
