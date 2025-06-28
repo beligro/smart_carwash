@@ -54,13 +54,13 @@ const AuthService = {
   loginAdmin: async (username, password) => {
     try {
       const response = await api.post('/auth/admin/login', { username, password });
-      const { token, expiresAt, isAdmin } = response.data;
+      const { token, expires_at, is_admin } = response.data;
       
       // Сохраняем данные в localStorage
       localStorage.setItem('token', token);
-      localStorage.setItem('expiresAt', expiresAt);
-      localStorage.setItem('isAdmin', isAdmin);
-      localStorage.setItem('user', JSON.stringify({ username, isAdmin }));
+      localStorage.setItem('expiresAt', expires_at);
+      localStorage.setItem('isAdmin', is_admin);
+      localStorage.setItem('user', JSON.stringify({ username, is_admin }));
       
       return response.data;
     } catch (error) {
@@ -73,13 +73,13 @@ const AuthService = {
   loginCashier: async (username, password) => {
     try {
       const response = await api.post('/auth/cashier/login', { username, password });
-      const { token, expiresAt, isAdmin } = response.data;
+      const { token, expires_at, is_admin } = response.data;
       
       // Сохраняем данные в localStorage
       localStorage.setItem('token', token);
-      localStorage.setItem('expiresAt', expiresAt);
-      localStorage.setItem('isAdmin', isAdmin);
-      localStorage.setItem('user', JSON.stringify({ username, isAdmin }));
+      localStorage.setItem('expiresAt', expires_at);
+      localStorage.setItem('isAdmin', is_admin);
+      localStorage.setItem('user', JSON.stringify({ username, is_admin }));
       
       return response.data;
     } catch (error) {
