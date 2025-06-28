@@ -134,6 +134,35 @@ const AuthService = {
     return isAdmin === 'true';
   },
   
+  // Получение правильного пути для перенаправления после авторизации
+  getRedirectPath: () => {
+    const isAdmin = AuthService.isAdmin();
+    return isAdmin ? '/admin' : '/cashier';
+  },
+  
+  // Проверка, нужно ли перенаправить пользователя
+  shouldRedirect: (currentPath) => {
+    const isAuthenticated = AuthService.isAuthenticated();
+    const isAdmin = AuthService.isAdmin();
+    
+    // Если пользователь не авторизован, не нужно перенаправлять
+    if (!isAuthenticated) {
+      return false;
+    }
+    
+    // Если администратор находится на странице кассира, перенаправляем
+    if (isAdmin && currentPath.startsWith('/cashier')) {
+      return '/admin';
+    }
+    
+    // Если кассир находится на странице администратора, перенаправляем
+    if (!isAdmin && currentPath.startsWith('/admin')) {
+      return '/cashier';
+    }
+    
+    return false;
+  },
+  
   // Получение списка кассиров (только для администратора)
   getCashiers: async () => {
     try {

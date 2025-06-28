@@ -12,6 +12,7 @@ import CashierLoginPage from './apps/cashier/CashierLoginPage';
 
 // Импорт компонентов
 import ProtectedRoute from './shared/components/ProtectedRoute';
+import AuthDebug from './shared/components/AuthDebug';
 
 /**
  * Главный компонент приложения, который маршрутизирует запросы между разными интерфейсами
@@ -19,6 +20,7 @@ import ProtectedRoute from './shared/components/ProtectedRoute';
 function App() {
   return (
     <Router>
+      <AuthDebug />
       <Routes>
         {/* Главная страница */}
         <Route path="/" element={<HomePage />} />

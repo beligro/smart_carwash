@@ -33,6 +33,11 @@ const ProtectedRoute = ({ children, requireAdmin = false }) => {
     return <Navigate to="/admin" replace />;
   }
 
+  // Если кассир пытается получить доступ к странице администратора
+  if (requireAdmin && !isAdmin && location.pathname.startsWith('/admin')) {
+    return <Navigate to="/cashier" replace />;
+  }
+
   // Если все проверки пройдены, отображаем защищенный контент
   return children;
 };

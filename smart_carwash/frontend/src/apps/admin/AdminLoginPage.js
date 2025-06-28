@@ -54,7 +54,8 @@ const AdminLoginPage = () => {
       <Content>
         <LoginForm 
           title="Вход для администратора" 
-          onLogin={handleLogin} 
+          onLogin={handleLogin}
+          redirectPath="/admin"
         />
       </Content>
     </LoginContainer>

@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import styled from 'styled-components';
-import { Routes, Route, Link, useNavigate } from 'react-router-dom';
+import { Routes, Route, Link, useNavigate, useLocation } from 'react-router-dom';
 import { getTheme } from '../../shared/styles/theme';
 import AuthService from '../../shared/services/AuthService';
 import CashierManagement from './components/CashierManagement';
@@ -107,17 +107,35 @@ const Content = styled.main`
 const AdminApp = () => {
   const theme = getTheme('light');
   const navigate = useNavigate();
+  const location = useLocation();
   const [user, setUser] = useState(null);
+  const [isLoading, setIsLoading] = useState(true);
   
   useEffect(() => {
-    // Получаем текущего пользователя
-    const currentUser = AuthService.getCurrentUser();
-    setUser(currentUser);
+    // Проверяем авторизацию при загрузке компонента
+    const checkAuth = () => {
+      const currentUser = AuthService.getCurrentUser();
+      const isAuthenticated = AuthService.isAuthenticated();
+      const isAdmin = AuthService.isAdmin();
+      
+      // Если пользователь не авторизован, перенаправляем на страницу входа
+      if (!isAuthenticated) {
+        navigate('/admin/login', { replace: true });
+        return;
+      }
+      
+      // Если пользователь не администратор, перенаправляем на страницу кассира
+      if (!isAdmin) {
+        navigate('/cashier', { replace: true });
+        return;
+      }
+      
+      // Если все проверки пройдены, устанавливаем пользователя
+      setUser(currentUser);
+      setIsLoading(false);
+    };
     
-    // Проверяем, авторизован ли пользователь и является ли он администратором
-    if (!AuthService.isAuthenticated() || !AuthService.isAdmin()) {
-      navigate('/admin/login');
-    }
+    checkAuth();
   }, [navigate]);
   
   // Обработчик выхода из системы
@@ -125,6 +143,11 @@ const AdminApp = () => {
     await AuthService.logout();
     navigate('/admin/login');
   };
+  
+  // Если идет загрузка, показываем пустой контент
+  if (isLoading) {
+    return null;
+  }
   
   return (
     <AdminContainer theme={theme}>

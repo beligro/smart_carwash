@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import styled from 'styled-components';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { getTheme } from '../../shared/styles/theme';
 import AuthService from '../../shared/services/AuthService';
 
@@ -71,17 +71,35 @@ const Username = styled.span`
 const CashierApp = () => {
   const theme = getTheme('light');
   const navigate = useNavigate();
+  const location = useLocation();
   const [user, setUser] = useState(null);
+  const [isLoading, setIsLoading] = useState(true);
   
   useEffect(() => {
-    // Получаем текущего пользователя
-    const currentUser = AuthService.getCurrentUser();
-    setUser(currentUser);
+    // Проверяем авторизацию при загрузке компонента
+    const checkAuth = () => {
+      const currentUser = AuthService.getCurrentUser();
+      const isAuthenticated = AuthService.isAuthenticated();
+      const isAdmin = AuthService.isAdmin();
+      
+      // Если пользователь не авторизован, перенаправляем на страницу входа
+      if (!isAuthenticated) {
+        navigate('/cashier/login', { replace: true });
+        return;
+      }
+      
+      // Если пользователь администратор, перенаправляем на страницу администратора
+      if (isAdmin) {
+        navigate('/admin', { replace: true });
+        return;
+      }
+      
+      // Если все проверки пройдены, устанавливаем пользователя
+      setUser(currentUser);
+      setIsLoading(false);
+    };
     
-    // Проверяем, авторизован ли пользователь
-    if (!AuthService.isAuthenticated()) {
-      navigate('/cashier/login');
-    }
+    checkAuth();
   }, [navigate]);
   
   // Обработчик выхода из системы
@@ -89,6 +107,11 @@ const CashierApp = () => {
     await AuthService.logout();
     navigate('/cashier/login');
   };
+  
+  // Если идет загрузка, показываем пустой контент
+  if (isLoading) {
+    return null;
+  }
   
   return (
     <CashierContainer theme={theme}>
