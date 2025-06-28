@@ -28,6 +28,10 @@ type Service interface {
 	CountSessionsByStatus(status string) (int, error)
 	GetSessionsByStatus(status string) ([]models.Session, error)
 	GetUserSessionHistory(req *models.GetUserSessionHistoryRequest) ([]models.Session, error)
+
+	// Административные методы
+	AdminListSessions(req *models.AdminListSessionsRequest) (*models.AdminListSessionsResponse, error)
+	AdminGetSession(req *models.AdminGetSessionRequest) (*models.AdminGetSessionResponse, error)
 }
 
 // ServiceImpl реализация Service
@@ -534,4 +538,52 @@ func (s *ServiceImpl) GetUserSessionHistory(req *models.GetUserSessionHistoryReq
 	}
 
 	return s.repo.GetUserSessionHistory(req.UserID, limit, offset)
+}
+
+// AdminListSessions список сессий для администратора
+func (s *ServiceImpl) AdminListSessions(req *models.AdminListSessionsRequest) (*models.AdminListSessionsResponse, error) {
+	// Устанавливаем значения по умолчанию
+	limit := 50
+	offset := 0
+
+	if req.Limit != nil {
+		limit = *req.Limit
+	}
+	if req.Offset != nil {
+		offset = *req.Offset
+	}
+
+	// Получаем сессии с фильтрацией
+	sessions, total, err := s.repo.GetSessionsWithFilters(
+		req.UserID,
+		req.BoxID,
+		req.Status,
+		req.ServiceType,
+		req.DateFrom,
+		req.DateTo,
+		limit,
+		offset,
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	return &models.AdminListSessionsResponse{
+		Sessions: sessions,
+		Total:    total,
+		Limit:    limit,
+		Offset:   offset,
+	}, nil
+}
+
+// AdminGetSession получение информации о сессии для администратора
+func (s *ServiceImpl) AdminGetSession(req *models.AdminGetSessionRequest) (*models.AdminGetSessionResponse, error) {
+	session, err := s.repo.GetSessionByID(req.ID)
+	if err != nil {
+		return nil, err
+	}
+
+	return &models.AdminGetSessionResponse{
+		Session: *session,
+	}, nil
 }

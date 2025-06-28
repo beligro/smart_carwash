@@ -5,6 +5,10 @@ import { getTheme } from '../../shared/styles/theme';
 import AuthService from '../../shared/services/AuthService';
 import CashierManagement from './components/CashierManagement';
 import Dashboard from './components/Dashboard';
+import WashBoxManagement from './components/WashBoxManagement';
+import SessionManagement from './components/SessionManagement';
+import QueueStatus from './components/QueueStatus';
+import UserManagement from './components/UserManagement';
 
 const AdminContainer = styled.div`
   display: flex;
@@ -39,6 +43,7 @@ const NavList = styled.ul`
   list-style: none;
   margin: 0;
   padding: 0;
+  flex-wrap: wrap;
 `;
 
 const NavItem = styled.li`
@@ -143,6 +148,26 @@ const AdminApp = () => {
             </NavLink>
           </NavItem>
           <NavItem>
+            <NavLink to="/admin/washboxes" theme={theme}>
+              Боксы мойки
+            </NavLink>
+          </NavItem>
+          <NavItem>
+            <NavLink to="/admin/sessions" theme={theme}>
+              Сессии мойки
+            </NavLink>
+          </NavItem>
+          <NavItem>
+            <NavLink to="/admin/queue" theme={theme}>
+              Очередь
+            </NavLink>
+          </NavItem>
+          <NavItem>
+            <NavLink to="/admin/users" theme={theme}>
+              Пользователи
+            </NavLink>
+          </NavItem>
+          <NavItem>
             <NavLink to="/admin/cashiers" theme={theme}>
               Управление кассирами
             </NavLink>
@@ -153,6 +178,10 @@ const AdminApp = () => {
       <Content>
         <Routes>
           <Route path="/" element={<Dashboard />} />
+          <Route path="/washboxes" element={<WashBoxManagement />} />
+          <Route path="/sessions" element={<SessionManagement />} />
+          <Route path="/queue" element={<QueueStatus />} />
+          <Route path="/users" element={<UserManagement />} />
           <Route path="/cashiers" element={<CashierManagement />} />
         </Routes>
       </Content>

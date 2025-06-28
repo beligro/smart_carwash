@@ -21,3 +21,33 @@ type QueueStatus struct {
 	TotalQueueSize int                     `json:"total_queue_size"`
 	HasAnyQueue    bool                    `json:"has_any_queue"`
 }
+
+// Административные модели
+
+// AdminQueueStatusRequest запрос на получение статуса очереди для администратора
+type AdminQueueStatusRequest struct {
+	IncludeDetails bool `json:"include_details"`
+}
+
+// AdminQueueStatusResponse ответ на получение статуса очереди для администратора
+type AdminQueueStatusResponse struct {
+	QueueStatus QueueStatus   `json:"queue_status"`
+	Details     *QueueDetails `json:"details,omitempty"`
+}
+
+// QueueDetails детальная информация об очереди
+type QueueDetails struct {
+	UsersInQueue []QueueUser `json:"users_in_queue"`
+	QueueOrder   []string    `json:"queue_order"` // Список ID пользователей в порядке очереди
+}
+
+// QueueUser информация о пользователе в очереди
+type QueueUser struct {
+	UserID       string `json:"user_id"`
+	Username     string `json:"username"`
+	FirstName    string `json:"first_name"`
+	LastName     string `json:"last_name"`
+	ServiceType  string `json:"service_type"`
+	Position     int    `json:"position"`
+	WaitingSince string `json:"waiting_since"` // Время добавления в очередь
+}

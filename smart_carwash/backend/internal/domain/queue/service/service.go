@@ -11,6 +11,9 @@ import (
 // Service интерфейс для бизнес-логики очереди
 type Service interface {
 	GetQueueStatus() (*models.QueueStatus, error)
+
+	// Административные методы
+	AdminGetQueueStatus(req *models.AdminQueueStatusRequest) (*models.AdminQueueStatusResponse, error)
 }
 
 // ServiceImpl реализация Service
@@ -105,5 +108,71 @@ func (s *ServiceImpl) GetQueueStatus() (*models.QueueStatus, error) {
 		VacuumQueue:    *vacuumQueueInfo,
 		TotalQueueSize: totalQueueSize,
 		HasAnyQueue:    hasAnyQueue,
+	}, nil
+}
+
+// AdminGetQueueStatus получает детальный статус очереди для администратора
+func (s *ServiceImpl) AdminGetQueueStatus(req *models.AdminQueueStatusRequest) (*models.AdminQueueStatusResponse, error) {
+	// Получаем базовый статус очереди
+	queueStatus, err := s.GetQueueStatus()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &models.AdminQueueStatusResponse{
+		QueueStatus: *queueStatus,
+	}
+
+	// Если запрошены детали, добавляем их
+	if req.IncludeDetails {
+		details, err := s.getQueueDetails()
+		if err != nil {
+			return nil, err
+		}
+		response.Details = details
+	}
+
+	return response, nil
+}
+
+// getQueueDetails получает детальную информацию об очереди
+func (s *ServiceImpl) getQueueDetails() (*models.QueueDetails, error) {
+	// Получаем все сессии со статусом "created" (в очереди)
+	createdSessions, err := s.sessionService.GetSessionsByStatus(sessionModels.SessionStatusCreated)
+	if err != nil {
+		return nil, err
+	}
+
+	// Группируем сессии по типу услуги
+	sessionsByType := make(map[string][]sessionModels.Session)
+	for _, session := range createdSessions {
+		sessionsByType[session.ServiceType] = append(sessionsByType[session.ServiceType], session)
+	}
+
+	var usersInQueue []models.QueueUser
+	var queueOrder []string
+
+	// Обрабатываем каждый тип услуги
+	for serviceType, sessions := range sessionsByType {
+		for i, session := range sessions {
+			// Здесь нужно получить информацию о пользователе
+			// Пока используем базовую информацию
+			user := models.QueueUser{
+				UserID:       session.UserID.String(),
+				Username:     "Пользователь", // Нужно получить из user service
+				FirstName:    "Имя",          // Нужно получить из user service
+				LastName:     "Фамилия",      // Нужно получить из user service
+				ServiceType:  serviceType,
+				Position:     i + 1,
+				WaitingSince: session.CreatedAt.Format("2006-01-02 15:04:05"),
+			}
+			usersInQueue = append(usersInQueue, user)
+			queueOrder = append(queueOrder, session.UserID.String())
+		}
+	}
+
+	return &models.QueueDetails{
+		UsersInQueue: usersInQueue,
+		QueueOrder:   queueOrder,
 	}, nil
 }
