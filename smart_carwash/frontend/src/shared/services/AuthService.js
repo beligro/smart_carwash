@@ -188,7 +188,7 @@ const AuthService = {
   // Обновление кассира (только для администратора)
   updateCashier: async (id, data) => {
     try {
-      const response = await api.put(`/auth/cashiers/${id}`, data);
+      const response = await api.put('/auth/cashiers', { ...data, id });
       return response.data;
     } catch (error) {
       console.error('Ошибка при обновлении кассира:', error);
@@ -199,7 +199,7 @@ const AuthService = {
   // Удаление кассира (только для администратора)
   deleteCashier: async (id) => {
     try {
-      const response = await api.delete(`/auth/cashiers/${id}`);
+      const response = await api.delete(`/auth/cashiers?id=${id}`);
       return response.data;
     } catch (error) {
       console.error('Ошибка при удалении кассира:', error);

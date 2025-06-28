@@ -59,15 +59,15 @@ const ApiService = {
 
   // Обновление бокса
   updateWashBox: async (id, data) => {
-    const snakeData = toSnakeCase(data);
-    const response = await api.put(`/admin/washboxes/${id}`, snakeData);
+    const snakeData = toSnakeCase({ ...data, id });
+    const response = await api.put('/admin/washboxes', snakeData);
     return response.data;
   },
 
   // Удаление бокса
   deleteWashBox: async (id) => {
     try {
-      const response = await api.delete(`/admin/washboxes/${id}`);
+      const response = await api.delete(`/admin/washboxes?id=${id}`);
       return response.data;
     } catch (error) {
       console.error('Ошибка при удалении бокса:', error);
@@ -86,15 +86,15 @@ const ApiService = {
 
   // Обновление сессии
   updateSession: async (id, data) => {
-    const snakeData = toSnakeCase(data);
-    const response = await api.put(`/admin/sessions/${id}`, snakeData);
+    const snakeData = toSnakeCase({ ...data, id });
+    const response = await api.put('/admin/sessions', snakeData);
     return response.data;
   },
 
   // Удаление сессии
   deleteSession: async (id) => {
     try {
-      const response = await api.delete(`/admin/sessions/${id}`);
+      const response = await api.delete(`/admin/sessions?id=${id}`);
       return response.data;
     } catch (error) {
       console.error('Ошибка при удалении сессии:', error);
@@ -118,7 +118,7 @@ const ApiService = {
   // Удаление из очереди
   removeFromQueue: async (id) => {
     try {
-      const response = await api.delete(`/admin/queue/${id}`);
+      const response = await api.delete(`/admin/queue?id=${id}`);
       return response.data;
     } catch (error) {
       console.error('Ошибка при удалении из очереди:', error);
@@ -138,7 +138,7 @@ const ApiService = {
   // Получение пользователя по ID
   getUserById: async (userId) => {
     try {
-      const response = await api.get(`/admin/users/${userId}`);
+      const response = await api.get(`/admin/users?id=${userId}`);
       return response.data;
     } catch (error) {
       console.error('Ошибка при получении пользователя по ID:', error);
@@ -148,15 +148,15 @@ const ApiService = {
 
   // Обновление пользователя
   updateUser: async (id, data) => {
-    const snakeData = toSnakeCase(data);
-    const response = await api.put(`/admin/users/${id}`, snakeData);
+    const snakeData = toSnakeCase({ ...data, id });
+    const response = await api.put('/admin/users', snakeData);
     return response.data;
   },
 
   // Удаление пользователя
   deleteUser: async (id) => {
     try {
-      const response = await api.delete(`/admin/users/${id}`);
+      const response = await api.delete(`/admin/users?id=${id}`);
       return response.data;
     } catch (error) {
       console.error('Ошибка при удалении пользователя:', error);
