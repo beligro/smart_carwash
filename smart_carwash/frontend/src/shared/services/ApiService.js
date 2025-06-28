@@ -67,7 +67,7 @@ const ApiService = {
   // Удаление бокса
   deleteWashBox: async (id) => {
     try {
-      const response = await api.delete('/admin/washboxes', { data: { id } });
+      const response = await api.delete('/admin/washboxes', { id: id });
       return response.data;
     } catch (error) {
       console.error('Ошибка при удалении бокса:', error);
@@ -89,17 +89,6 @@ const ApiService = {
     const snakeData = toSnakeCase({ ...data, id });
     const response = await api.put('/admin/sessions', snakeData);
     return response.data;
-  },
-
-  // Удаление сессии
-  deleteSession: async (id) => {
-    try {
-      const response = await api.delete(`/admin/sessions?id=${id}`);
-      return response.data;
-    } catch (error) {
-      console.error('Ошибка при удалении сессии:', error);
-      throw error;
-    }
   },
 
   // === МЕТОДЫ ДЛЯ РАБОТЫ С ОЧЕРЕДЬЮ ===
@@ -151,17 +140,6 @@ const ApiService = {
     const snakeData = toSnakeCase({ ...data, id });
     const response = await api.put('/admin/users', snakeData);
     return response.data;
-  },
-
-  // Удаление пользователя
-  deleteUser: async (id) => {
-    try {
-      const response = await api.delete(`/admin/users?id=${id}`);
-      return response.data;
-    } catch (error) {
-      console.error('Ошибка при удалении пользователя:', error);
-      throw error;
-    }
   },
 
   // === СУЩЕСТВУЮЩИЕ МЕТОДЫ ===

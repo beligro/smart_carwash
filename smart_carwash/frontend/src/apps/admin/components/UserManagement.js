@@ -255,7 +255,7 @@ const UserManagement = () => {
     try {
       setUserDetailsLoading(true);
       const response = await ApiService.getUserById(userId);
-      setUserDetails(response.user || response);
+      setUserDetails(response.user);
     } catch (err) {
       console.error('Error fetching user details:', err);
       setError('Ошибка при загрузке деталей пользователя');
@@ -422,7 +422,7 @@ const UserManagement = () => {
                   </DetailGroup>
                   
                   <DetailGroup>
-                    <DetailLabel theme={theme}>Имя пользователя:</DetailLabel>
+                    <DetailLabel theme={theme}>Ник:</DetailLabel>
                     <DetailValue theme={theme}>{userDetails.username || 'Не указано'}</DetailValue>
                   </DetailGroup>
                   
