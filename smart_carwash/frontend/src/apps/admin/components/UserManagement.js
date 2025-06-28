@@ -184,11 +184,20 @@ const LinkButton = styled.button`
   cursor: pointer;
   text-decoration: underline;
   font-size: 14px;
-  padding: 0;
+  padding: 5px 10px;
   margin: 0;
+  border-radius: 4px;
+  transition: all 0.2s ease;
+  position: relative;
+  z-index: 10;
   
   &:hover {
     color: ${props => props.theme.primaryColorDark};
+    background-color: rgba(0, 123, 255, 0.1);
+  }
+  
+  &:active {
+    transform: translateY(1px);
   }
 `;
 
@@ -242,12 +251,12 @@ const UserManagement = () => {
   const fetchUserDetails = async (userId) => {
     try {
       setUserDetailsLoading(true);
-      // Здесь можно добавить API вызов для получения деталей пользователя
-      // Пока используем данные из списка
-      setUserDetails(selectedUser);
+      const response = await ApiService.getUserById(userId);
+      setUserDetails(response.user || response);
     } catch (err) {
       console.error('Error fetching user details:', err);
       setError('Ошибка при загрузке деталей пользователя');
+      setUserDetails(null);
     } finally {
       setUserDetailsLoading(false);
     }
@@ -266,6 +275,14 @@ const UserManagement = () => {
     setSelectedUser(null);
     setUserDetails(null);
     setError('');
+  };
+
+  // Переход к сессиям пользователя
+  const goToUserSessions = (userId) => {
+    // Здесь можно добавить навигацию к сессиям пользователя
+    // Пока просто закрываем модальное окно и показываем сообщение
+    closeUserModal();
+    alert(`Переход к сессиям пользователя ${userId} будет добавлен позже`);
   };
 
   const handlePageChange = (newOffset) => {
@@ -438,10 +455,7 @@ const UserManagement = () => {
                 <div style={{ marginTop: '20px', padding: '15px', backgroundColor: '#f8f9fa', borderRadius: '5px' }}>
                   <h4 style={{ margin: '0 0 10px 0', color: theme.textColor }}>Полезные ссылки:</h4>
                   <div style={{ display: 'flex', gap: '15px', flexWrap: 'wrap' }}>
-                    <LinkButton theme={theme} onClick={() => {
-                      // Здесь можно добавить переход к сессиям пользователя
-                      console.log('Переход к сессиям пользователя:', userDetails.id);
-                    }}>
+                    <LinkButton theme={theme} onClick={() => goToUserSessions(userDetails.id)}>
                       Посмотреть сессии пользователя
                     </LinkButton>
                   </div>

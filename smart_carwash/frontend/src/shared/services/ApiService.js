@@ -135,6 +135,17 @@ const ApiService = {
     return response.data;
   },
 
+  // Получение пользователя по ID
+  getUserById: async (userId) => {
+    try {
+      const response = await api.get(`/admin/users/${userId}`);
+      return response.data;
+    } catch (error) {
+      console.error('Ошибка при получении пользователя по ID:', error);
+      throw error;
+    }
+  },
+
   // Обновление пользователя
   updateUser: async (id, data) => {
     const snakeData = toSnakeCase(data);

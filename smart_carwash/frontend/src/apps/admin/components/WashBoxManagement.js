@@ -437,6 +437,7 @@ const WashBoxManagement = () => {
       <Table theme={theme}>
         <thead>
           <tr>
+            <Th theme={theme}>ID</Th>
             <Th theme={theme}>Номер</Th>
             <Th theme={theme}>Статус</Th>
             <Th theme={theme}>Тип услуги</Th>
@@ -447,6 +448,7 @@ const WashBoxManagement = () => {
         <tbody>
           {washBoxes.map((washBox) => (
             <tr key={washBox.id}>
+              <Td>{washBox.id}</Td>
               <Td>{washBox.number}</Td>
               <Td>
                 <StatusBadge className={washBox.status}>
@@ -547,12 +549,15 @@ const WashBoxManagement = () => {
             <Form onSubmit={handleUpdate}>
               <FormGroup>
                 <Label theme={theme}>Номер бокса</Label>
-                <Input
-                  type="number"
-                  value={formData.number}
-                  onChange={(e) => setFormData({ ...formData, number: e.target.value })}
-                  required
-                />
+                <div style={{ 
+                  padding: '8px 12px', 
+                  border: '1px solid #ddd', 
+                  borderRadius: '4px', 
+                  backgroundColor: '#f5f5f5',
+                  color: '#666'
+                }}>
+                  {formData.number}
+                </div>
               </FormGroup>
               
               <FormGroup>
