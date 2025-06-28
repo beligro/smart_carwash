@@ -81,9 +81,10 @@ const ErrorMessage = styled.div`
  * @param {Object} props - Свойства компонента
  * @param {string} props.title - Заголовок формы
  * @param {Function} props.onLogin - Функция для авторизации
+ * @param {string} props.redirectPath - Путь для перенаправления после успешной авторизации
  * @returns {React.ReactNode} - Форма авторизации
  */
-const LoginForm = ({ title, onLogin }) => {
+const LoginForm = ({ title, onLogin, redirectPath }) => {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
@@ -94,7 +95,7 @@ const LoginForm = ({ title, onLogin }) => {
   const theme = getTheme('light');
   
   // Получаем путь для перенаправления после успешной авторизации
-  const from = location.state?.from?.pathname || '/';
+  const from = location.state?.from?.pathname || redirectPath || '/';
   
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -110,10 +111,22 @@ const LoginForm = ({ title, onLogin }) => {
     
     try {
       // Вызываем функцию авторизации
-      await onLogin(username, password);
+      const response = await onLogin(username, password);
       
-      // Перенаправляем пользователя на предыдущую страницу или на главную
-      navigate(from, { replace: true });
+      // Определяем, куда перенаправить пользователя
+      let redirectTo = from;
+      
+      // Если нет сохраненного пути или это главная страница, перенаправляем на соответствующий интерфейс
+      if (from === '/' || from === '/admin/login' || from === '/cashier/login') {
+        if (response.is_admin) {
+          redirectTo = '/admin';
+        } else {
+          redirectTo = '/cashier';
+        }
+      }
+      
+      // Перенаправляем пользователя
+      navigate(redirectTo, { replace: true });
     } catch (err) {
       // Обрабатываем ошибку авторизации
       if (err.response && err.response.data && err.response.data.error) {

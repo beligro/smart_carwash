@@ -3,6 +3,7 @@ package handlers
 import (
 	"net/http"
 	"strconv"
+	"time"
 
 	"carwash_backend/internal/domain/session/models"
 	"carwash_backend/internal/domain/session/service"
@@ -34,6 +35,13 @@ func (h *Handler) RegisterRoutes(router *gin.RouterGroup) {
 		sessionRoutes.POST("/complete", h.completeSession)     // session_id в теле запроса
 		sessionRoutes.POST("/extend", h.extendSession)         // session_id и extension_time_minutes в теле запроса
 		sessionRoutes.GET("/history", h.getUserSessionHistory) // user_id в query параметре
+	}
+
+	// Административные маршруты
+	adminRoutes := router.Group("/admin/sessions")
+	{
+		adminRoutes.GET("", h.adminListSessions)
+		adminRoutes.GET("/by-id", h.adminGetSession)
 	}
 }
 
@@ -179,50 +187,168 @@ func (h *Handler) extendSession(c *gin.Context) {
 
 // getUserSessionHistory обработчик для получения истории сессий пользователя
 func (h *Handler) getUserSessionHistory(c *gin.Context) {
-	// Получаем ID пользователя из query параметра
+	// Получаем user_id из query параметра
 	userIDStr := c.Query("user_id")
 	if userIDStr == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Не указан ID пользователя"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Не указан User ID"})
 		return
 	}
 
+	// Преобразуем строку в uuid.UUID
 	userID, err := uuid.Parse(userIDStr)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Некорректный ID пользователя"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Некорректный User ID"})
 		return
 	}
 
-	// Получаем лимит и смещение из query параметров
-	limit := 10 // По умолчанию 10 сессий
-	offset := 0 // По умолчанию начинаем с первой сессии
+	// Получаем параметры пагинации
+	limit := 10
+	offset := 0
 
-	limitStr := c.Query("limit")
-	if limitStr != "" {
-		limitVal, err := strconv.Atoi(limitStr)
-		if err == nil && limitVal > 0 {
-			limit = limitVal
+	if limitStr := c.Query("limit"); limitStr != "" {
+		if l, err := strconv.Atoi(limitStr); err == nil {
+			limit = l
 		}
 	}
 
-	offsetStr := c.Query("offset")
-	if offsetStr != "" {
-		offsetVal, err := strconv.Atoi(offsetStr)
-		if err == nil && offsetVal >= 0 {
-			offset = offsetVal
+	if offsetStr := c.Query("offset"); offsetStr != "" {
+		if o, err := strconv.Atoi(offsetStr); err == nil {
+			offset = o
 		}
 	}
 
-	// Получаем историю сессий пользователя
-	sessions, err := h.service.GetUserSessionHistory(&models.GetUserSessionHistoryRequest{
+	// Создаем запрос
+	req := models.GetUserSessionHistoryRequest{
 		UserID: userID,
 		Limit:  limit,
 		Offset: offset,
-	})
+	}
+
+	// Получаем историю сессий
+	sessions, err := h.service.GetUserSessionHistory(&req)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Не удалось получить историю сессий"})
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
 
-	// Возвращаем историю сессий пользователя
+	// Возвращаем историю сессий
 	c.JSON(http.StatusOK, models.GetUserSessionHistoryResponse{Sessions: sessions})
+}
+
+// adminListSessions обработчик для получения списка сессий для администратора
+func (h *Handler) adminListSessions(c *gin.Context) {
+	// Получаем параметры фильтрации из query
+	var req models.AdminListSessionsRequest
+
+	// User ID
+	if userIDStr := c.Query("user_id"); userIDStr != "" {
+		if userID, err := uuid.Parse(userIDStr); err == nil {
+			req.UserID = &userID
+		}
+	}
+
+	// Box ID
+	if boxIDStr := c.Query("box_id"); boxIDStr != "" {
+		if boxID, err := uuid.Parse(boxIDStr); err == nil {
+			req.BoxID = &boxID
+		}
+	}
+
+	// Статус
+	if status := c.Query("status"); status != "" {
+		req.Status = &status
+	}
+
+	// Тип услуги
+	if serviceType := c.Query("service_type"); serviceType != "" {
+		req.ServiceType = &serviceType
+	}
+
+	// Дата от
+	if dateFromStr := c.Query("date_from"); dateFromStr != "" {
+		if dateFrom, err := time.Parse("2006-01-02", dateFromStr); err == nil {
+			req.DateFrom = &dateFrom
+		}
+	}
+
+	// Дата до
+	if dateToStr := c.Query("date_to"); dateToStr != "" {
+		if dateTo, err := time.Parse("2006-01-02", dateToStr); err == nil {
+			req.DateTo = &dateTo
+		}
+	}
+
+	// Лимит
+	if limitStr := c.Query("limit"); limitStr != "" {
+		if limit, err := strconv.Atoi(limitStr); err == nil {
+			req.Limit = &limit
+		}
+	}
+
+	// Смещение
+	if offsetStr := c.Query("offset"); offsetStr != "" {
+		if offset, err := strconv.Atoi(offsetStr); err == nil {
+			req.Offset = &offset
+		}
+	}
+
+	// Получаем список сессий
+	resp, err := h.service.AdminListSessions(&req)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	// Логируем мета-параметры
+	c.Set("meta", gin.H{
+		"filters": gin.H{
+			"user_id":      req.UserID,
+			"box_id":       req.BoxID,
+			"status":       req.Status,
+			"service_type": req.ServiceType,
+			"date_from":    req.DateFrom,
+			"date_to":      req.DateTo,
+			"limit":        req.Limit,
+			"offset":       req.Offset,
+		},
+		"total": resp.Total,
+	})
+
+	c.JSON(http.StatusOK, resp)
+}
+
+// adminGetSession обработчик для получения сессии по ID для администратора
+func (h *Handler) adminGetSession(c *gin.Context) {
+	var req models.AdminGetSessionRequest
+
+	// Получаем ID из query параметра
+	idStr := c.Query("id")
+	if idStr == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "ID сессии обязателен"})
+		return
+	}
+
+	id, err := uuid.Parse(idStr)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Некорректный ID сессии"})
+		return
+	}
+
+	req.ID = id
+
+	// Получаем сессию
+	resp, err := h.service.AdminGetSession(&req)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
+		return
+	}
+
+	// Логируем мета-параметры
+	c.Set("meta", gin.H{
+		"session_id": req.ID,
+		"user_id":    resp.Session.UserID,
+		"status":     resp.Session.Status,
+	})
+
+	c.JSON(http.StatusOK, resp)
 }

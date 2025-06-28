@@ -8,6 +8,7 @@ import (
 	"carwash_backend/internal/domain/user/service"
 
 	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
 )
 
 // Handler структура для обработчиков HTTP запросов пользователей
@@ -28,6 +29,13 @@ func (h *Handler) RegisterRoutes(router *gin.RouterGroup) {
 	{
 		userRoutes.POST("", h.createUser)
 		userRoutes.GET("/by-telegram-id", h.getUserByTelegramID) // telegram_id в query параметре
+	}
+
+	// Административные маршруты
+	adminRoutes := router.Group("/admin/users")
+	{
+		adminRoutes.GET("", h.adminListUsers)
+		adminRoutes.GET("/by-id", h.adminGetUser)
 	}
 }
 
@@ -77,4 +85,75 @@ func (h *Handler) createUser(c *gin.Context) {
 
 	// Возвращаем созданного пользователя
 	c.JSON(http.StatusOK, models.CreateUserResponse{User: *user})
+}
+
+// adminListUsers обработчик для получения списка пользователей для администратора
+func (h *Handler) adminListUsers(c *gin.Context) {
+	// Получаем параметры пагинации из query
+	var req models.AdminListUsersRequest
+
+	// Лимит
+	if limitStr := c.Query("limit"); limitStr != "" {
+		if limit, err := strconv.Atoi(limitStr); err == nil {
+			req.Limit = &limit
+		}
+	}
+
+	// Смещение
+	if offsetStr := c.Query("offset"); offsetStr != "" {
+		if offset, err := strconv.Atoi(offsetStr); err == nil {
+			req.Offset = &offset
+		}
+	}
+
+	// Получаем список пользователей
+	resp, err := h.service.AdminListUsers(&req)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	// Логируем мета-параметры
+	c.Set("meta", gin.H{
+		"limit":  req.Limit,
+		"offset": req.Offset,
+		"total":  resp.Total,
+	})
+
+	c.JSON(http.StatusOK, resp)
+}
+
+// adminGetUser обработчик для получения пользователя по ID для администратора
+func (h *Handler) adminGetUser(c *gin.Context) {
+	var req models.AdminGetUserRequest
+
+	// Получаем ID из query параметра
+	idStr := c.Query("id")
+	if idStr == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "ID пользователя обязателен"})
+		return
+	}
+
+	id, err := uuid.Parse(idStr)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Некорректный ID пользователя"})
+		return
+	}
+
+	req.ID = id
+
+	// Получаем пользователя
+	resp, err := h.service.AdminGetUser(&req)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
+		return
+	}
+
+	// Логируем мета-параметры
+	c.Set("meta", gin.H{
+		"user_id":     req.ID,
+		"telegram_id": resp.User.TelegramID,
+	})
+
+	c.JSON(http.StatusOK, resp)
 }

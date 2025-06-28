@@ -134,6 +134,35 @@ const AuthService = {
     return isAdmin === 'true';
   },
   
+  // Получение правильного пути для перенаправления после авторизации
+  getRedirectPath: () => {
+    const isAdmin = AuthService.isAdmin();
+    return isAdmin ? '/admin' : '/cashier';
+  },
+  
+  // Проверка, нужно ли перенаправить пользователя
+  shouldRedirect: (currentPath) => {
+    const isAuthenticated = AuthService.isAuthenticated();
+    const isAdmin = AuthService.isAdmin();
+    
+    // Если пользователь не авторизован, не нужно перенаправлять
+    if (!isAuthenticated) {
+      return false;
+    }
+    
+    // Если администратор находится на странице кассира, перенаправляем
+    if (isAdmin && currentPath.startsWith('/cashier')) {
+      return '/admin';
+    }
+    
+    // Если кассир находится на странице администратора, перенаправляем
+    if (!isAdmin && currentPath.startsWith('/admin')) {
+      return '/cashier';
+    }
+    
+    return false;
+  },
+  
   // Получение списка кассиров (только для администратора)
   getCashiers: async () => {
     try {
@@ -159,7 +188,7 @@ const AuthService = {
   // Обновление кассира (только для администратора)
   updateCashier: async (id, data) => {
     try {
-      const response = await api.put(`/auth/cashiers/${id}`, data);
+      const response = await api.put('/auth/cashiers', { ...data, id });
       return response.data;
     } catch (error) {
       console.error('Ошибка при обновлении кассира:', error);
@@ -170,7 +199,7 @@ const AuthService = {
   // Удаление кассира (только для администратора)
   deleteCashier: async (id) => {
     try {
-      const response = await api.delete(`/auth/cashiers/${id}`);
+      const response = await api.delete(`/auth/cashiers?id=${id}`);
       return response.data;
     } catch (error) {
       console.error('Ошибка при удалении кассира:', error);

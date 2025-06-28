@@ -113,3 +113,35 @@ type ExtendSessionRequest struct {
 type ExtendSessionResponse struct {
 	Session *Session `json:"session"`
 }
+
+// Административные модели
+
+// AdminListSessionsRequest запрос на получение списка сессий с фильтрацией
+type AdminListSessionsRequest struct {
+	UserID      *uuid.UUID `json:"user_id"`
+	BoxID       *uuid.UUID `json:"box_id"`
+	Status      *string    `json:"status" binding:"omitempty,oneof=created assigned active complete canceled expired"`
+	ServiceType *string    `json:"service_type" binding:"omitempty,oneof=wash air_dry vacuum"`
+	DateFrom    *time.Time `json:"date_from"`
+	DateTo      *time.Time `json:"date_to"`
+	Limit       *int       `json:"limit"`
+	Offset      *int       `json:"offset"`
+}
+
+// AdminGetSessionRequest запрос на получение сессии по ID
+type AdminGetSessionRequest struct {
+	ID uuid.UUID `json:"id" binding:"required"`
+}
+
+// AdminListSessionsResponse ответ на получение списка сессий
+type AdminListSessionsResponse struct {
+	Sessions []Session `json:"sessions"`
+	Total    int       `json:"total"`
+	Limit    int       `json:"limit"`
+	Offset   int       `json:"offset"`
+}
+
+// AdminGetSessionResponse ответ на получение сессии
+type AdminGetSessionResponse struct {
+	Session Session `json:"session"`
+}

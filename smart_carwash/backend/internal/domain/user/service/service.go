@@ -12,6 +12,10 @@ type Service interface {
 	CreateUser(req *models.CreateUserRequest) (*models.User, error)
 	GetUserByTelegramID(telegramID int64) (*models.User, error)
 	GetUserByID(id uuid.UUID) (*models.User, error)
+
+	// Административные методы
+	AdminListUsers(req *models.AdminListUsersRequest) (*models.AdminListUsersResponse, error)
+	AdminGetUser(req *models.AdminGetUserRequest) (*models.AdminGetUserResponse, error)
 }
 
 // ServiceImpl реализация Service
@@ -59,4 +63,43 @@ func (s *ServiceImpl) GetUserByTelegramID(telegramID int64) (*models.User, error
 // GetUserByID получает пользователя по ID
 func (s *ServiceImpl) GetUserByID(id uuid.UUID) (*models.User, error) {
 	return s.repo.GetUserByID(id)
+}
+
+// AdminListUsers получает список пользователей для администратора
+func (s *ServiceImpl) AdminListUsers(req *models.AdminListUsersRequest) (*models.AdminListUsersResponse, error) {
+	// Устанавливаем значения по умолчанию
+	limit := 50
+	offset := 0
+
+	if req.Limit != nil {
+		limit = *req.Limit
+	}
+	if req.Offset != nil {
+		offset = *req.Offset
+	}
+
+	// Получаем пользователей с пагинацией
+	users, total, err := s.repo.GetUsersWithPagination(limit, offset)
+	if err != nil {
+		return nil, err
+	}
+
+	return &models.AdminListUsersResponse{
+		Users:  users,
+		Total:  total,
+		Limit:  limit,
+		Offset: offset,
+	}, nil
+}
+
+// AdminGetUser получает пользователя по ID для администратора
+func (s *ServiceImpl) AdminGetUser(req *models.AdminGetUserRequest) (*models.AdminGetUserResponse, error) {
+	user, err := s.repo.GetUserByID(req.ID)
+	if err != nil {
+		return nil, err
+	}
+
+	return &models.AdminGetUserResponse{
+		User: *user,
+	}, nil
 }

@@ -13,6 +13,9 @@ type Repository interface {
 	GetUserByTelegramID(telegramID int64) (*models.User, error)
 	GetUserByID(id uuid.UUID) (*models.User, error)
 	UpdateUser(user *models.User) error
+
+	// Административные методы
+	GetUsersWithPagination(limit int, offset int) ([]models.User, int, error)
 }
 
 // PostgresRepository реализация Repository для PostgreSQL
@@ -53,4 +56,24 @@ func (r *PostgresRepository) GetUserByID(id uuid.UUID) (*models.User, error) {
 // UpdateUser обновляет пользователя
 func (r *PostgresRepository) UpdateUser(user *models.User) error {
 	return r.db.Save(user).Error
+}
+
+// GetUsersWithPagination получает пользователей с пагинацией
+func (r *PostgresRepository) GetUsersWithPagination(limit int, offset int) ([]models.User, int, error) {
+	var users []models.User
+	var total int64
+
+	// Получаем общее количество пользователей
+	err := r.db.Model(&models.User{}).Count(&total).Error
+	if err != nil {
+		return nil, 0, err
+	}
+
+	// Получаем пользователей с пагинацией и сортировкой
+	err = r.db.Order("created_at DESC").Limit(limit).Offset(offset).Find(&users).Error
+	if err != nil {
+		return nil, 0, err
+	}
+
+	return users, int(total), nil
 }

@@ -2,6 +2,7 @@ package repository
 
 import (
 	"carwash_backend/internal/domain/session/models"
+	"time"
 
 	"github.com/google/uuid"
 	"gorm.io/gorm"
@@ -17,6 +18,9 @@ type Repository interface {
 	GetSessionsByStatus(status string) ([]models.Session, error)
 	CountSessionsByStatus(status string) (int, error)
 	GetUserSessionHistory(userID uuid.UUID, limit, offset int) ([]models.Session, error)
+
+	// Административные методы
+	GetSessionsWithFilters(userID *uuid.UUID, boxID *uuid.UUID, status *string, serviceType *string, dateFrom *time.Time, dateTo *time.Time, limit int, offset int) ([]models.Session, int, error)
 }
 
 // PostgresRepository реализация Repository для PostgreSQL
@@ -125,4 +129,57 @@ func (r *PostgresRepository) GetUserSessionHistory(userID uuid.UUID, limit, offs
 
 	err := query.Find(&sessions).Error
 	return sessions, err
+}
+
+// GetSessionsWithFilters получает сессии с фильтрацией для администратора
+func (r *PostgresRepository) GetSessionsWithFilters(userID *uuid.UUID, boxID *uuid.UUID, status *string, serviceType *string, dateFrom *time.Time, dateTo *time.Time, limit int, offset int) ([]models.Session, int, error) {
+	var sessions []models.Session
+	var total int64
+
+	query := r.db.Model(&models.Session{})
+
+	// Применяем фильтры
+	if userID != nil {
+		query = query.Where("user_id = ?", *userID)
+	}
+	if boxID != nil {
+		query = query.Where("box_id = ?", *boxID)
+	}
+	if status != nil {
+		query = query.Where("status = ?", *status)
+	}
+	if serviceType != nil {
+		query = query.Where("service_type = ?", *serviceType)
+	}
+	if dateFrom != nil {
+		query = query.Where("created_at >= ?", *dateFrom)
+	}
+	if dateTo != nil {
+		query = query.Where("created_at <= ?", *dateTo)
+	}
+
+	// Получаем общее количество
+	err := query.Count(&total).Error
+	if err != nil {
+		return nil, 0, err
+	}
+
+	// Получаем данные с пагинацией и сортировкой
+	err = query.Order("created_at DESC").Limit(limit).Offset(offset).Find(&sessions).Error
+	if err != nil {
+		return nil, 0, err
+	}
+
+	// Для каждой сессии получаем номер бокса, если он есть
+	for i := range sessions {
+		if sessions[i].BoxID != nil {
+			var boxNumber int
+			err = r.db.Table("wash_boxes").Where("id = ?", *sessions[i].BoxID).Select("number").Scan(&boxNumber).Error
+			if err == nil {
+				sessions[i].BoxNumber = &boxNumber
+			}
+		}
+	}
+
+	return sessions, int(total), nil
 }

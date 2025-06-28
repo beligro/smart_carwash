@@ -54,7 +54,8 @@ const CashierLoginPage = () => {
       <Content>
         <LoginForm 
           title="Вход для кассира" 
-          onLogin={handleLogin} 
+          onLogin={handleLogin}
+          redirectPath="/cashier"
         />
       </Content>
     </LoginContainer>
