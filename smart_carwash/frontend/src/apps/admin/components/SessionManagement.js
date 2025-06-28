@@ -178,6 +178,78 @@ const PageButton = styled.button`
   }
 `;
 
+// Модальное окно для деталей сессии
+const Modal = styled.div`
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background-color: rgba(0, 0, 0, 0.5);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 1000;
+`;
+
+const ModalContent = styled.div`
+  background-color: white;
+  padding: 30px;
+  border-radius: 8px;
+  width: 600px;
+  max-width: 90%;
+  max-height: 80vh;
+  overflow-y: auto;
+`;
+
+const ModalHeader = styled.div`
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 20px;
+`;
+
+const ModalTitle = styled.h3`
+  margin: 0;
+  color: ${props => props.theme.textColor};
+`;
+
+const CloseButton = styled.button`
+  background: none;
+  border: none;
+  font-size: 24px;
+  cursor: pointer;
+  color: ${props => props.theme.textColor};
+  
+  &:hover {
+    color: ${props => props.theme.primaryColor};
+  }
+`;
+
+const SessionDetails = styled.div`
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 20px;
+  margin-bottom: 20px;
+`;
+
+const DetailGroup = styled.div`
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+`;
+
+const DetailLabel = styled.span`
+  font-weight: 500;
+  color: ${props => props.theme.textColor};
+  font-size: 14px;
+`;
+
+const DetailValue = styled.span`
+  color: ${props => props.theme.textColor};
+  font-size: 14px;
+`;
+
 const SessionManagement = () => {
   const theme = getTheme('light');
   const [sessions, setSessions] = useState([]);
@@ -194,6 +266,12 @@ const SessionManagement = () => {
     offset: 0,
     total: 0
   });
+  
+  // Состояние для модального окна деталей сессии
+  const [showSessionModal, setShowSessionModal] = useState(false);
+  const [selectedSession, setSelectedSession] = useState(null);
+  const [sessionDetails, setSessionDetails] = useState(null);
+  const [sessionDetailsLoading, setSessionDetailsLoading] = useState(false);
 
   // Загрузка сессий
   const fetchSessions = async () => {
@@ -229,6 +307,35 @@ const SessionManagement = () => {
   useEffect(() => {
     setPagination(prev => ({ ...prev, offset: 0 }));
   }, [filters]);
+
+  // Загрузка деталей сессии
+  const fetchSessionDetails = async (sessionId) => {
+    try {
+      setSessionDetailsLoading(true);
+      const response = await ApiService.getSessionById(sessionId);
+      setSessionDetails(response.session);
+    } catch (err) {
+      console.error('Error fetching session details:', err);
+      setError('Ошибка при загрузке деталей сессии');
+    } finally {
+      setSessionDetailsLoading(false);
+    }
+  };
+
+  // Открытие модального окна с деталями сессии
+  const openSessionModal = async (session) => {
+    setSelectedSession(session);
+    setShowSessionModal(true);
+    await fetchSessionDetails(session.id);
+  };
+
+  // Закрытие модального окна
+  const closeSessionModal = () => {
+    setShowSessionModal(false);
+    setSelectedSession(null);
+    setSessionDetails(null);
+    setError('');
+  };
 
   const handlePageChange = (newOffset) => {
     setPagination(prev => ({ ...prev, offset: newOffset }));
@@ -345,7 +452,7 @@ const SessionManagement = () => {
               <Td>{session.rental_time_minutes} мин</Td>
               <Td>{formatDate(session.created_at)}</Td>
               <Td>
-                <ActionButton theme={theme} onClick={() => window.open(`/admin/sessions/by-id?id=${session.id}`, '_blank')}>
+                <ActionButton theme={theme} onClick={() => openSessionModal(session)}>
                   Подробнее
                 </ActionButton>
               </Td>
@@ -394,9 +501,102 @@ const SessionManagement = () => {
         </Pagination>
       )}
 
-      <div style={{ marginTop: '20px', textAlign: 'center', color: theme.textColor }}>
-        Показано {sessions.length} из {pagination.total} сессий
-      </div>
+      {/* Модальное окно с деталями сессии */}
+      {showSessionModal && (
+        <Modal>
+          <ModalContent>
+            <ModalHeader>
+              <ModalTitle theme={theme}>Детали сессии</ModalTitle>
+              <CloseButton onClick={closeSessionModal} theme={theme}>
+                &times;
+              </CloseButton>
+            </ModalHeader>
+            
+            {sessionDetailsLoading ? (
+              <div style={{ textAlign: 'center', padding: '20px' }}>
+                Загрузка деталей...
+              </div>
+            ) : sessionDetails ? (
+              <div>
+                <SessionDetails>
+                  <DetailGroup>
+                    <DetailLabel theme={theme}>ID сессии:</DetailLabel>
+                    <DetailValue theme={theme}>{sessionDetails.id}</DetailValue>
+                  </DetailGroup>
+                  
+                  <DetailGroup>
+                    <DetailLabel theme={theme}>ID пользователя:</DetailLabel>
+                    <DetailValue theme={theme}>{sessionDetails.user_id}</DetailValue>
+                  </DetailGroup>
+                  
+                  <DetailGroup>
+                    <DetailLabel theme={theme}>Номер бокса:</DetailLabel>
+                    <DetailValue theme={theme}>{sessionDetails.box_number || 'Не назначен'}</DetailValue>
+                  </DetailGroup>
+                  
+                  <DetailGroup>
+                    <DetailLabel theme={theme}>Статус:</DetailLabel>
+                    <DetailValue theme={theme}>
+                      <StatusBadge className={sessionDetails.status}>
+                        {getStatusText(sessionDetails.status)}
+                      </StatusBadge>
+                    </DetailValue>
+                  </DetailGroup>
+                  
+                  <DetailGroup>
+                    <DetailLabel theme={theme}>Тип услуги:</DetailLabel>
+                    <DetailValue theme={theme}>
+                      <ServiceTypeBadge className={sessionDetails.service_type}>
+                        {getServiceTypeText(sessionDetails.service_type)}
+                      </ServiceTypeBadge>
+                    </DetailValue>
+                  </DetailGroup>
+                  
+                  <DetailGroup>
+                    <DetailLabel theme={theme}>Время аренды:</DetailLabel>
+                    <DetailValue theme={theme}>{sessionDetails.rental_time_minutes} минут</DetailValue>
+                  </DetailGroup>
+                  
+                  <DetailGroup>
+                    <DetailLabel theme={theme}>Дата создания:</DetailLabel>
+                    <DetailValue theme={theme}>{formatDate(sessionDetails.created_at)}</DetailValue>
+                  </DetailGroup>
+                  
+                  <DetailGroup>
+                    <DetailLabel theme={theme}>Дата обновления:</DetailLabel>
+                    <DetailValue theme={theme}>{formatDate(sessionDetails.updated_at)}</DetailValue>
+                  </DetailGroup>
+                  
+                  {sessionDetails.started_at && (
+                    <DetailGroup>
+                      <DetailLabel theme={theme}>Дата начала:</DetailLabel>
+                      <DetailValue theme={theme}>{formatDate(sessionDetails.started_at)}</DetailValue>
+                    </DetailGroup>
+                  )}
+                  
+                  {sessionDetails.completed_at && (
+                    <DetailGroup>
+                      <DetailLabel theme={theme}>Дата завершения:</DetailLabel>
+                      <DetailValue theme={theme}>{formatDate(sessionDetails.completed_at)}</DetailValue>
+                    </DetailGroup>
+                  )}
+                  
+                  {sessionDetails.extension_time_minutes && (
+                    <DetailGroup>
+                      <DetailLabel theme={theme}>Продление времени:</DetailLabel>
+                      <DetailValue theme={theme}>{sessionDetails.extension_time_minutes} минут</DetailValue>
+                    </DetailGroup>
+                  )}
+                </SessionDetails>
+              </div>
+            ) : (
+              <div style={{ textAlign: 'center', padding: '20px', color: theme.textColor }}>
+                Детали сессии не найдены
+              </div>
+            )}
+          </ModalContent>
+        </Modal>
+      )}
     </Container>
   );
 };

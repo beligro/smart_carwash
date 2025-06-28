@@ -277,7 +277,13 @@ const WashBoxManagement = () => {
       setLoading(true);
       setError('');
       
-      await ApiService.createWashBox(formData);
+      // Преобразуем number в число
+      const washBoxData = {
+        ...formData,
+        number: parseInt(formData.number, 10)
+      };
+      
+      await ApiService.createWashBox(washBoxData);
       setSuccess('Бокс успешно создан');
       setShowCreateModal(false);
       setFormData({ number: '', status: 'free', serviceType: 'wash' });
@@ -301,7 +307,13 @@ const WashBoxManagement = () => {
       setLoading(true);
       setError('');
       
-      await ApiService.updateWashBox(editingWashBox.id, formData);
+      // Преобразуем number в число
+      const washBoxData = {
+        ...formData,
+        number: parseInt(formData.number, 10)
+      };
+      
+      await ApiService.updateWashBox(editingWashBox.id, washBoxData);
       setSuccess('Бокс успешно обновлен');
       setShowEditModal(false);
       setEditingWashBox(null);

@@ -118,7 +118,7 @@ const ApiService = {
   // Получение статуса очереди
   getQueueStatus: async () => {
     try {
-      const response = await api.get('/admin/queue');
+      const response = await api.get('/admin/queue/status');
       return response.data;
     } catch (error) {
       console.error('Ошибка при получении статуса очереди:', error);
