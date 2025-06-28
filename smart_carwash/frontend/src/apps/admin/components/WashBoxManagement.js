@@ -277,10 +277,11 @@ const WashBoxManagement = () => {
       setLoading(true);
       setError('');
       
-      // Преобразуем number в число
+      // Исправляем названия полей для JSON
       const washBoxData = {
-        ...formData,
-        number: parseInt(formData.number, 10)
+        number: parseInt(formData.number, 10),
+        status: formData.status,
+        service_type: formData.serviceType
       };
       
       await ApiService.createWashBox(washBoxData);
@@ -307,10 +308,11 @@ const WashBoxManagement = () => {
       setLoading(true);
       setError('');
       
-      // Преобразуем number в число
+      // Исправляем названия полей для JSON
       const washBoxData = {
-        ...formData,
-        number: parseInt(formData.number, 10)
+        number: parseInt(formData.number, 10),
+        status: formData.status,
+        service_type: formData.serviceType
       };
       
       await ApiService.updateWashBox(editingWashBox.id, washBoxData);
@@ -467,6 +469,15 @@ const WashBoxManagement = () => {
                   onClick={() => handleDelete(washBox.id)}
                 >
                   Удалить
+                </ActionButton>
+                <ActionButton 
+                  theme={theme}
+                  onClick={() => {
+                    // Здесь можно добавить переход к сессиям бокса
+                    console.log('Переход к сессиям бокса:', washBox.id);
+                  }}
+                >
+                  Сессии
                 </ActionButton>
               </Td>
             </tr>

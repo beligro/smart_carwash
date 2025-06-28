@@ -339,9 +339,27 @@ const QueueStatus = () => {
                       Ожидает с: {user.waiting_since}
                     </UserDetails>
                   </UserInfo>
-                  <UserPosition theme={theme}>
-                    Позиция {user.position}
-                  </UserPosition>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                    <UserPosition theme={theme}>
+                      Позиция {user.position}
+                    </UserPosition>
+                    <button
+                      style={{
+                        background: 'none',
+                        border: 'none',
+                        color: theme.primaryColor,
+                        cursor: 'pointer',
+                        fontSize: '12px',
+                        textDecoration: 'underline'
+                      }}
+                      onClick={() => {
+                        // Здесь можно добавить переход к пользователю
+                        console.log('Переход к пользователю:', user.user_id);
+                      }}
+                    >
+                      Подробнее
+                    </button>
+                  </div>
                 </UserItem>
               ))}
           </UsersList>
@@ -385,9 +403,27 @@ const QueueStatus = () => {
                       Ожидает с: {user.waiting_since}
                     </UserDetails>
                   </UserInfo>
-                  <UserPosition theme={theme}>
-                    Позиция {user.position}
-                  </UserPosition>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                    <UserPosition theme={theme}>
+                      Позиция {user.position}
+                    </UserPosition>
+                    <button
+                      style={{
+                        background: 'none',
+                        border: 'none',
+                        color: theme.primaryColor,
+                        cursor: 'pointer',
+                        fontSize: '12px',
+                        textDecoration: 'underline'
+                      }}
+                      onClick={() => {
+                        // Здесь можно добавить переход к пользователю
+                        console.log('Переход к пользователю:', user.user_id);
+                      }}
+                    >
+                      Подробнее
+                    </button>
+                  </div>
                 </UserItem>
               ))}
           </UsersList>
@@ -431,9 +467,27 @@ const QueueStatus = () => {
                       Ожидает с: {user.waiting_since}
                     </UserDetails>
                   </UserInfo>
-                  <UserPosition theme={theme}>
-                    Позиция {user.position}
-                  </UserPosition>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                    <UserPosition theme={theme}>
+                      Позиция {user.position}
+                    </UserPosition>
+                    <button
+                      style={{
+                        background: 'none',
+                        border: 'none',
+                        color: theme.primaryColor,
+                        cursor: 'pointer',
+                        fontSize: '12px',
+                        textDecoration: 'underline'
+                      }}
+                      onClick={() => {
+                        // Здесь можно добавить переход к пользователю
+                        console.log('Переход к пользователю:', user.user_id);
+                      }}
+                    >
+                      Подробнее
+                    </button>
+                  </div>
                 </UserItem>
               ))}
           </UsersList>

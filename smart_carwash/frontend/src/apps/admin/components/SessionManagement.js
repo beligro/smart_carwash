@@ -250,6 +250,18 @@ const DetailValue = styled.span`
   font-size: 14px;
 `;
 
+const LinkButton = styled.button`
+  background: none;
+  border: none;
+  color: ${props => props.theme.primaryColor};
+  cursor: pointer;
+  font-size: 14px;
+  
+  &:hover {
+    text-decoration: underline;
+  }
+`;
+
 const SessionManagement = () => {
   const theme = getTheme('light');
   const [sessions, setSessions] = useState([]);
@@ -279,11 +291,17 @@ const SessionManagement = () => {
       setLoading(true);
       setError('');
       
+      // Исправляем названия полей для API
       const filtersData = {
-        ...filters,
         limit: pagination.limit,
         offset: pagination.offset
       };
+      
+      // Добавляем фильтры с правильными названиями полей
+      if (filters.status) filtersData.status = filters.status;
+      if (filters.serviceType) filtersData.service_type = filters.serviceType;
+      if (filters.dateFrom) filtersData.date_from = filters.dateFrom;
+      if (filters.dateTo) filtersData.date_to = filters.dateTo;
       
       const response = await ApiService.getSessions(filtersData);
       setSessions(response.sessions || []);
@@ -548,6 +566,8 @@ const SessionManagement = () => {
                     <DetailValue theme={theme}>
                       <ServiceTypeBadge className={sessionDetails.service_type}>
                         {getServiceTypeText(sessionDetails.service_type)}
+                        {sessionDetails.with_chemistry && ' с химией'}
+                        {sessionDetails.with_vacuum && ' + пылесос'}
                       </ServiceTypeBadge>
                     </DetailValue>
                   </DetailGroup>
@@ -555,6 +575,20 @@ const SessionManagement = () => {
                   <DetailGroup>
                     <DetailLabel theme={theme}>Время аренды:</DetailLabel>
                     <DetailValue theme={theme}>{sessionDetails.rental_time_minutes} минут</DetailValue>
+                  </DetailGroup>
+                  
+                  <DetailGroup>
+                    <DetailLabel theme={theme}>С химией:</DetailLabel>
+                    <DetailValue theme={theme}>
+                      {sessionDetails.with_chemistry ? 'Да' : 'Нет'}
+                    </DetailValue>
+                  </DetailGroup>
+                  
+                  <DetailGroup>
+                    <DetailLabel theme={theme}>С пылесосом:</DetailLabel>
+                    <DetailValue theme={theme}>
+                      {sessionDetails.with_vacuum ? 'Да' : 'Нет'}
+                    </DetailValue>
                   </DetailGroup>
                   
                   <DetailGroup>
@@ -588,6 +622,32 @@ const SessionManagement = () => {
                     </DetailGroup>
                   )}
                 </SessionDetails>
+                
+                <div style={{ marginTop: '20px', padding: '15px', backgroundColor: '#f8f9fa', borderRadius: '5px' }}>
+                  <h4 style={{ margin: '0 0 10px 0', color: theme.textColor }}>Полезные ссылки:</h4>
+                  <div style={{ display: 'flex', gap: '15px', flexWrap: 'wrap' }}>
+                    <LinkButton theme={theme} onClick={() => {
+                      // Здесь можно добавить переход к пользователю
+                      console.log('Переход к пользователю:', sessionDetails.user_id);
+                    }}>
+                      Посмотреть пользователя
+                    </LinkButton>
+                    {sessionDetails.box_number && (
+                      <LinkButton theme={theme} onClick={() => {
+                        // Здесь можно добавить переход к боксу
+                        console.log('Переход к боксу:', sessionDetails.box_number);
+                      }}>
+                        Посмотреть бокс №{sessionDetails.box_number}
+                      </LinkButton>
+                    )}
+                    <LinkButton theme={theme} onClick={() => {
+                      // Здесь можно добавить переход к сессиям пользователя
+                      console.log('Переход к сессиям пользователя:', sessionDetails.user_id);
+                    }}>
+                      Все сессии пользователя
+                    </LinkButton>
+                  </div>
+                </div>
               </div>
             ) : (
               <div style={{ textAlign: 'center', padding: '20px', color: theme.textColor }}>

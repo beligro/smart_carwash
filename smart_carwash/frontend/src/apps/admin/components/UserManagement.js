@@ -105,6 +105,93 @@ const AdminBadge = styled.span`
   text-transform: uppercase;
 `;
 
+// Модальное окно для деталей пользователя
+const Modal = styled.div`
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background-color: rgba(0, 0, 0, 0.5);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 1000;
+`;
+
+const ModalContent = styled.div`
+  background-color: white;
+  padding: 30px;
+  border-radius: 8px;
+  width: 600px;
+  max-width: 90%;
+  max-height: 80vh;
+  overflow-y: auto;
+`;
+
+const ModalHeader = styled.div`
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 20px;
+`;
+
+const ModalTitle = styled.h3`
+  margin: 0;
+  color: ${props => props.theme.textColor};
+`;
+
+const CloseButton = styled.button`
+  background: none;
+  border: none;
+  font-size: 24px;
+  cursor: pointer;
+  color: ${props => props.theme.textColor};
+  
+  &:hover {
+    color: ${props => props.theme.primaryColor};
+  }
+`;
+
+const UserDetails = styled.div`
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 20px;
+  margin-bottom: 20px;
+`;
+
+const DetailGroup = styled.div`
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+`;
+
+const DetailLabel = styled.span`
+  font-weight: 500;
+  color: ${props => props.theme.textColor};
+  font-size: 14px;
+`;
+
+const DetailValue = styled.span`
+  color: ${props => props.theme.textColor};
+  font-size: 14px;
+`;
+
+const LinkButton = styled.button`
+  background: none;
+  border: none;
+  color: ${props => props.theme.primaryColor};
+  cursor: pointer;
+  text-decoration: underline;
+  font-size: 14px;
+  padding: 0;
+  margin: 0;
+  
+  &:hover {
+    color: ${props => props.theme.primaryColorDark};
+  }
+`;
+
 const UserManagement = () => {
   const theme = getTheme('light');
   const [users, setUsers] = useState([]);
@@ -115,6 +202,12 @@ const UserManagement = () => {
     offset: 0,
     total: 0
   });
+  
+  // Состояние для модального окна деталей пользователя
+  const [showUserModal, setShowUserModal] = useState(false);
+  const [selectedUser, setSelectedUser] = useState(null);
+  const [userDetails, setUserDetails] = useState(null);
+  const [userDetailsLoading, setUserDetailsLoading] = useState(false);
 
   // Загрузка пользователей
   const fetchUsers = async () => {
@@ -144,6 +237,36 @@ const UserManagement = () => {
   useEffect(() => {
     fetchUsers();
   }, [pagination.limit, pagination.offset]);
+
+  // Загрузка деталей пользователя
+  const fetchUserDetails = async (userId) => {
+    try {
+      setUserDetailsLoading(true);
+      // Здесь можно добавить API вызов для получения деталей пользователя
+      // Пока используем данные из списка
+      setUserDetails(selectedUser);
+    } catch (err) {
+      console.error('Error fetching user details:', err);
+      setError('Ошибка при загрузке деталей пользователя');
+    } finally {
+      setUserDetailsLoading(false);
+    }
+  };
+
+  // Открытие модального окна с деталями пользователя
+  const openUserModal = async (user) => {
+    setSelectedUser(user);
+    setShowUserModal(true);
+    await fetchUserDetails(user.id);
+  };
+
+  // Закрытие модального окна
+  const closeUserModal = () => {
+    setShowUserModal(false);
+    setSelectedUser(null);
+    setUserDetails(null);
+    setError('');
+  };
 
   const handlePageChange = (newOffset) => {
     setPagination(prev => ({ ...prev, offset: newOffset }));
@@ -198,7 +321,7 @@ const UserManagement = () => {
               </Td>
               <Td>{formatDate(user.created_at)}</Td>
               <Td>
-                <ActionButton theme={theme} onClick={() => window.open(`/admin/users/by-id?id=${user.id}`, '_blank')}>
+                <ActionButton theme={theme} onClick={() => openUserModal(user)}>
                   Подробнее
                 </ActionButton>
               </Td>
@@ -247,9 +370,91 @@ const UserManagement = () => {
         </Pagination>
       )}
 
-      <div style={{ marginTop: '20px', textAlign: 'center', color: theme.textColor }}>
-        Показано {users.length} из {pagination.total} пользователей
-      </div>
+      {/* Модальное окно с деталями пользователя */}
+      {showUserModal && (
+        <Modal>
+          <ModalContent>
+            <ModalHeader>
+              <ModalTitle theme={theme}>Детали пользователя</ModalTitle>
+              <CloseButton onClick={closeUserModal} theme={theme}>
+                &times;
+              </CloseButton>
+            </ModalHeader>
+            
+            {userDetailsLoading ? (
+              <div style={{ textAlign: 'center', padding: '20px' }}>
+                Загрузка деталей...
+              </div>
+            ) : userDetails ? (
+              <div>
+                <UserDetails>
+                  <DetailGroup>
+                    <DetailLabel theme={theme}>ID пользователя:</DetailLabel>
+                    <DetailValue theme={theme}>{userDetails.id}</DetailValue>
+                  </DetailGroup>
+                  
+                  <DetailGroup>
+                    <DetailLabel theme={theme}>Telegram ID:</DetailLabel>
+                    <DetailValue theme={theme}>{userDetails.telegram_id}</DetailValue>
+                  </DetailGroup>
+                  
+                  <DetailGroup>
+                    <DetailLabel theme={theme}>Имя пользователя:</DetailLabel>
+                    <DetailValue theme={theme}>{userDetails.username || 'Не указано'}</DetailValue>
+                  </DetailGroup>
+                  
+                  <DetailGroup>
+                    <DetailLabel theme={theme}>Имя:</DetailLabel>
+                    <DetailValue theme={theme}>{userDetails.first_name || 'Не указано'}</DetailValue>
+                  </DetailGroup>
+                  
+                  <DetailGroup>
+                    <DetailLabel theme={theme}>Фамилия:</DetailLabel>
+                    <DetailValue theme={theme}>{userDetails.last_name || 'Не указано'}</DetailValue>
+                  </DetailGroup>
+                  
+                  <DetailGroup>
+                    <DetailLabel theme={theme}>Роль:</DetailLabel>
+                    <DetailValue theme={theme}>
+                      {userDetails.is_admin ? (
+                        <AdminBadge>Администратор</AdminBadge>
+                      ) : (
+                        'Пользователь'
+                      )}
+                    </DetailValue>
+                  </DetailGroup>
+                  
+                  <DetailGroup>
+                    <DetailLabel theme={theme}>Дата регистрации:</DetailLabel>
+                    <DetailValue theme={theme}>{formatDate(userDetails.created_at)}</DetailValue>
+                  </DetailGroup>
+                  
+                  <DetailGroup>
+                    <DetailLabel theme={theme}>Дата обновления:</DetailLabel>
+                    <DetailValue theme={theme}>{formatDate(userDetails.updated_at)}</DetailValue>
+                  </DetailGroup>
+                </UserDetails>
+                
+                <div style={{ marginTop: '20px', padding: '15px', backgroundColor: '#f8f9fa', borderRadius: '5px' }}>
+                  <h4 style={{ margin: '0 0 10px 0', color: theme.textColor }}>Полезные ссылки:</h4>
+                  <div style={{ display: 'flex', gap: '15px', flexWrap: 'wrap' }}>
+                    <LinkButton theme={theme} onClick={() => {
+                      // Здесь можно добавить переход к сессиям пользователя
+                      console.log('Переход к сессиям пользователя:', userDetails.id);
+                    }}>
+                      Посмотреть сессии пользователя
+                    </LinkButton>
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <div style={{ textAlign: 'center', padding: '20px', color: theme.textColor }}>
+                Детали пользователя не найдены
+              </div>
+            )}
+          </ModalContent>
+        </Modal>
+      )}
     </Container>
   );
 };
