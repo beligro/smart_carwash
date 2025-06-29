@@ -4,6 +4,8 @@ import (
 	"carwash_backend/internal/domain/queue/models"
 	sessionModels "carwash_backend/internal/domain/session/models"
 	sessionService "carwash_backend/internal/domain/session/service"
+	userModels "carwash_backend/internal/domain/user/models"
+	userService "carwash_backend/internal/domain/user/service"
 	washboxModels "carwash_backend/internal/domain/washbox/models"
 	washboxService "carwash_backend/internal/domain/washbox/service"
 )
@@ -20,13 +22,15 @@ type Service interface {
 type ServiceImpl struct {
 	sessionService sessionService.Service
 	washboxService washboxService.Service
+	userService    userService.Service
 }
 
 // NewService создает новый экземпляр Service
-func NewService(sessionService sessionService.Service, washboxService washboxService.Service) *ServiceImpl {
+func NewService(sessionService sessionService.Service, washboxService washboxService.Service, userService userService.Service) *ServiceImpl {
 	return &ServiceImpl{
 		sessionService: sessionService,
 		washboxService: washboxService,
+		userService:    userService,
 	}
 }
 
@@ -44,11 +48,37 @@ func (s *ServiceImpl) getServiceQueueInfo(serviceType string) (*models.ServiceQu
 		return nil, err
 	}
 
-	// Подсчитываем количество сессий для данного типа услуги
+	// Подсчитываем количество сессий для данного типа услуги и собираем пользователей в очереди
 	queueSize := 0
+	var usersInQueue []models.QueueUser
+
 	for _, session := range createdSessions {
 		if session.ServiceType == serviceType {
 			queueSize++
+
+			// Получаем информацию о пользователе
+			user, err := s.userService.GetUserByID(session.UserID)
+			if err != nil {
+				// Если не удалось получить пользователя, используем базовую информацию
+				user = &userModels.User{
+					ID:        session.UserID,
+					Username:  "Неизвестный пользователь",
+					FirstName: "Имя",
+					LastName:  "Фамилия",
+				}
+			}
+
+			// Добавляем пользователя в очередь
+			queueUser := models.QueueUser{
+				UserID:       session.UserID.String(),
+				Username:     user.Username,
+				FirstName:    user.FirstName,
+				LastName:     user.LastName,
+				ServiceType:  serviceType,
+				Position:     queueSize, // Позиция в очереди
+				WaitingSince: session.CreatedAt.Format("2006-01-02 15:04:05"),
+			}
+			usersInQueue = append(usersInQueue, queueUser)
 		}
 	}
 
@@ -63,10 +93,11 @@ func (s *ServiceImpl) getServiceQueueInfo(serviceType string) (*models.ServiceQu
 
 	// Формируем ответ
 	return &models.ServiceQueueInfo{
-		ServiceType: serviceType,
-		Boxes:       boxes,
-		QueueSize:   queueSize,
-		HasQueue:    hasQueue,
+		ServiceType:  serviceType,
+		Boxes:        boxes,
+		QueueSize:    queueSize,
+		HasQueue:     hasQueue,
+		UsersInQueue: usersInQueue,
 	}, nil
 }
 

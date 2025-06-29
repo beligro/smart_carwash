@@ -120,6 +120,7 @@ type ExtendSessionResponse struct {
 type AdminListSessionsRequest struct {
 	UserID      *uuid.UUID `json:"user_id"`
 	BoxID       *uuid.UUID `json:"box_id"`
+	BoxNumber   *int       `json:"box_number"`
 	Status      *string    `json:"status" binding:"omitempty,oneof=created assigned active complete canceled expired"`
 	ServiceType *string    `json:"service_type" binding:"omitempty,oneof=wash air_dry vacuum"`
 	DateFrom    *time.Time `json:"date_from"`

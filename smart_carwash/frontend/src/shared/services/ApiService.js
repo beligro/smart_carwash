@@ -67,7 +67,7 @@ const ApiService = {
   // Удаление бокса
   deleteWashBox: async (id) => {
     try {
-      const response = await api.delete('/admin/washboxes', { id: id });
+      const response = await api.delete('/admin/washboxes', { data: { id } });
       return response.data;
     } catch (error) {
       console.error('Ошибка при удалении бокса:', error);

@@ -318,6 +318,7 @@ const SessionManagement = () => {
       if (filters.boxNumber) filtersData.box_number = filters.boxNumber;
       
       const response = await ApiService.getSessions(filtersData);
+      
       setSessions(response.sessions || []);
       setPagination(prev => ({
         ...prev,
@@ -655,22 +656,27 @@ const SessionManagement = () => {
                   <h4 style={{ margin: '0 0 10px 0', color: theme.textColor }}>Полезные ссылки:</h4>
                   <div style={{ display: 'flex', gap: '15px', flexWrap: 'wrap' }}>
                     <LinkButton theme={theme} onClick={() => {
-                      // Здесь можно добавить переход к пользователю
-                      navigate(`/users/${sessionDetails.user_id}`);
+                      closeSessionModal();
+                      navigate(`/admin/users?highlight=${sessionDetails.user_id}`);
                     }}>
                       Посмотреть пользователя
                     </LinkButton>
                     {sessionDetails.box_number && (
                       <LinkButton theme={theme} onClick={() => {
-                        // Здесь можно добавить переход к боксу
-                        navigate(`/boxes/${sessionDetails.box_number}`);
+                        closeSessionModal();
+                        navigate(`/admin/washboxes?highlight=${sessionDetails.box_number}`);
                       }}>
                         Посмотреть бокс №{sessionDetails.box_number}
                       </LinkButton>
                     )}
                     <LinkButton theme={theme} onClick={() => {
-                      // Здесь можно добавить переход к сессиям пользователя
-                      navigate(`/sessions/user/${sessionDetails.user_id}`);
+                      closeSessionModal();
+                      navigate('/admin/sessions', { 
+                        state: { 
+                          filters: { userId: sessionDetails.user_id },
+                          showUserFilter: true 
+                        } 
+                      });
                     }}>
                       Все сессии пользователя
                     </LinkButton>

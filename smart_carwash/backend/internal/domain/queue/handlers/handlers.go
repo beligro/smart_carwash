@@ -46,14 +46,9 @@ func (h *Handler) getQueueStatus(c *gin.Context) {
 
 // adminGetQueueStatus обработчик для получения детального статуса очереди для администратора
 func (h *Handler) adminGetQueueStatus(c *gin.Context) {
-	// Получаем параметры из query
-	includeDetails := false
-	if detailsStr := c.Query("include_details"); detailsStr == "true" {
-		includeDetails = true
-	}
-
+	// Получаем детальный статус очереди (всегда включаем детали)
 	req := &models.AdminQueueStatusRequest{
-		IncludeDetails: includeDetails,
+		IncludeDetails: true,
 	}
 
 	// Получаем детальный статус очереди
@@ -65,7 +60,7 @@ func (h *Handler) adminGetQueueStatus(c *gin.Context) {
 
 	// Логируем мета-параметры
 	c.Set("meta", gin.H{
-		"include_details":  includeDetails,
+		"include_details":  true,
 		"total_queue_size": resp.QueueStatus.TotalQueueSize,
 		"has_any_queue":    resp.QueueStatus.HasAnyQueue,
 	})

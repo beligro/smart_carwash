@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import styled from 'styled-components';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { getTheme } from '../../../shared/styles/theme';
 import ApiService from '../../../shared/services/ApiService';
 
@@ -74,6 +74,11 @@ const Th = styled.th`
 const Td = styled.td`
   padding: 12px;
   border-bottom: 1px solid #eee;
+`;
+
+const HighlightedRow = styled.tr`
+  background-color: rgba(0, 123, 255, 0.1) !important;
+  border-left: 4px solid ${props => props.theme.primaryColor};
 `;
 
 const StatusBadge = styled.span`
@@ -245,6 +250,8 @@ const WashBoxManagement = () => {
     serviceType: 'wash'
   });
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const highlightedBoxNumber = searchParams.get('highlight');
 
   // Загрузка боксов
   const fetchWashBoxes = async () => {
@@ -265,6 +272,18 @@ const WashBoxManagement = () => {
   useEffect(() => {
     fetchWashBoxes();
   }, [filters]);
+
+  // Автоматическое открытие модального окна при переходе с выделенным боксом
+  useEffect(() => {
+    if (highlightedBoxNumber && washBoxes.length > 0) {
+      const washBox = washBoxes.find(box => box.number.toString() === highlightedBoxNumber);
+      if (washBox) {
+        openEditModal(washBox);
+        // Убираем параметр из URL
+        navigate('/admin/washboxes', { replace: true });
+      }
+    }
+  }, [highlightedBoxNumber, washBoxes]);
 
   // Создание бокса
   const handleCreate = async (e) => {
@@ -448,48 +467,53 @@ const WashBoxManagement = () => {
           </tr>
         </thead>
         <tbody>
-          {washBoxes.map((washBox) => (
-            <tr key={washBox.id}>
-              <Td>{washBox.id}</Td>
-              <Td>{washBox.number}</Td>
-              <Td>
-                <StatusBadge className={washBox.status}>
-                  {getStatusText(washBox.status)}
-                </StatusBadge>
-              </Td>
-              <Td>
-                <ServiceTypeBadge className={washBox.service_type}>
-                  {getServiceTypeText(washBox.service_type)}
-                </ServiceTypeBadge>
-              </Td>
-              <Td>{new Date(washBox.created_at).toLocaleDateString('ru-RU')}</Td>
-              <Td>
-                <ActionButton theme={theme} onClick={() => openEditModal(washBox)}>
-                  Редактировать
-                </ActionButton>
-                <ActionButton 
-                  theme={theme} 
-                  className="delete"
-                  onClick={() => handleDelete(washBox.id)}
-                >
-                  Удалить
-                </ActionButton>
-                <ActionButton 
-                  theme={theme}
-                  onClick={() => {
-                    navigate('/admin/sessions', { 
-                      state: { 
-                        filters: { boxNumber: washBox.number },
-                        showBoxFilter: true 
-                      } 
-                    });
-                  }}
-                >
-                  Сессии
-                </ActionButton>
-              </Td>
-            </tr>
-          ))}
+          {washBoxes.map((washBox) => {
+            const isHighlighted = washBox.number.toString() === highlightedBoxNumber;
+            const RowComponent = isHighlighted ? HighlightedRow : 'tr';
+            
+            return (
+              <RowComponent key={washBox.id} theme={theme}>
+                <Td>{washBox.id}</Td>
+                <Td>{washBox.number}</Td>
+                <Td>
+                  <StatusBadge className={washBox.status}>
+                    {getStatusText(washBox.status)}
+                  </StatusBadge>
+                </Td>
+                <Td>
+                  <ServiceTypeBadge className={washBox.service_type}>
+                    {getServiceTypeText(washBox.service_type)}
+                  </ServiceTypeBadge>
+                </Td>
+                <Td>{new Date(washBox.created_at).toLocaleDateString('ru-RU')}</Td>
+                <Td>
+                  <ActionButton theme={theme} onClick={() => openEditModal(washBox)}>
+                    Редактировать
+                  </ActionButton>
+                  <ActionButton 
+                    theme={theme} 
+                    className="delete"
+                    onClick={() => handleDelete(washBox.id)}
+                  >
+                    Удалить
+                  </ActionButton>
+                  <ActionButton 
+                    theme={theme}
+                    onClick={() => {
+                      navigate('/admin/sessions', { 
+                        state: { 
+                          filters: { boxNumber: washBox.number },
+                          showBoxFilter: true 
+                        } 
+                      });
+                    }}
+                  >
+                    Сессии
+                  </ActionButton>
+                </Td>
+              </RowComponent>
+            );
+          })}
         </tbody>
       </Table>
 

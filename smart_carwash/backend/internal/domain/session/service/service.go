@@ -8,7 +8,6 @@ import (
 	washboxModels "carwash_backend/internal/domain/washbox/models"
 	washboxService "carwash_backend/internal/domain/washbox/service"
 	"fmt"
-	"log"
 	"time"
 )
 
@@ -424,14 +423,12 @@ func (s *ServiceImpl) CheckAndNotifyExpiringReservedSessions() error {
 				// Получаем пользователя
 				user, err := s.userService.GetUserByID(session.UserID)
 				if err != nil {
-					log.Printf("Ошибка получения пользователя: %v", err)
 					continue
 				}
 
 				// Отправляем уведомление
 				err = s.telegramBot.SendSessionNotification(user.TelegramID, telegram.NotificationTypeSessionExpiringSoon)
 				if err != nil {
-					log.Printf("Ошибка отправки уведомления: %v", err)
 					continue
 				}
 
@@ -439,7 +436,7 @@ func (s *ServiceImpl) CheckAndNotifyExpiringReservedSessions() error {
 				session.IsExpiringNotificationSent = true
 				err = s.repo.UpdateSession(&session)
 				if err != nil {
-					log.Printf("Ошибка обновления сессии: %v", err)
+					continue
 				}
 			}
 		}
@@ -490,14 +487,12 @@ func (s *ServiceImpl) CheckAndNotifyCompletingSessions() error {
 				// Получаем пользователя
 				user, err := s.userService.GetUserByID(session.UserID)
 				if err != nil {
-					log.Printf("Ошибка получения пользователя: %v", err)
 					continue
 				}
 
 				// Отправляем уведомление
 				err = s.telegramBot.SendSessionNotification(user.TelegramID, telegram.NotificationTypeSessionCompletingSoon)
 				if err != nil {
-					log.Printf("Ошибка отправки уведомления: %v", err)
 					continue
 				}
 
@@ -505,7 +500,7 @@ func (s *ServiceImpl) CheckAndNotifyCompletingSessions() error {
 				session.IsCompletingNotificationSent = true
 				err = s.repo.UpdateSession(&session)
 				if err != nil {
-					log.Printf("Ошибка обновления сессии: %v", err)
+					continue
 				}
 			}
 		}
@@ -557,6 +552,7 @@ func (s *ServiceImpl) AdminListSessions(req *models.AdminListSessionsRequest) (*
 	sessions, total, err := s.repo.GetSessionsWithFilters(
 		req.UserID,
 		req.BoxID,
+		req.BoxNumber,
 		req.Status,
 		req.ServiceType,
 		req.DateFrom,

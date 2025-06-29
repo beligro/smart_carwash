@@ -37,9 +37,9 @@ func (h *Handler) RegisterRoutes(router *gin.RouterGroup) {
 		{
 			cashierRoutes.POST("", h.createCashier)
 			cashierRoutes.GET("", h.getCashiers)
-			cashierRoutes.GET("/:id", h.getCashierByID)
-			cashierRoutes.PUT("/:id", h.updateCashier)
-			cashierRoutes.DELETE("/:id", h.deleteCashier)
+			cashierRoutes.GET("/by-id", h.getCashierByID)
+			cashierRoutes.PUT("", h.updateCashier)
+			cashierRoutes.DELETE("", h.deleteCashier)
 		}
 	}
 }
@@ -137,8 +137,13 @@ func (h *Handler) getCashiers(c *gin.Context) {
 
 // getCashierByID обработчик для получения кассира по ID
 func (h *Handler) getCashierByID(c *gin.Context) {
-	// Получаем ID кассира из URL
-	idStr := c.Param("id")
+	// Получаем ID кассира из query параметра
+	idStr := c.Query("id")
+	if idStr == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "ID кассира обязателен"})
+		return
+	}
+
 	id, err := uuid.Parse(idStr)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Некорректный ID кассира"})
@@ -152,20 +157,18 @@ func (h *Handler) getCashierByID(c *gin.Context) {
 		return
 	}
 
+	// Логируем мета-параметры
+	c.Set("meta", gin.H{
+		"cashier_id": id,
+		"username":   cashier.Username,
+	})
+
 	// Возвращаем кассира
 	c.JSON(http.StatusOK, gin.H{"cashier": cashier})
 }
 
 // updateCashier обработчик для обновления кассира
 func (h *Handler) updateCashier(c *gin.Context) {
-	// Получаем ID кассира из URL
-	idStr := c.Param("id")
-	id, err := uuid.Parse(idStr)
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Некорректный ID кассира"})
-		return
-	}
-
 	var req models.UpdateCashierRequest
 
 	// Парсим JSON из тела запроса
@@ -174,9 +177,6 @@ func (h *Handler) updateCashier(c *gin.Context) {
 		return
 	}
 
-	// Устанавливаем ID кассира
-	req.ID = id
-
 	// Обновляем кассира
 	resp, err := h.service.UpdateCashier(&req)
 	if err != nil {
@@ -184,25 +184,36 @@ func (h *Handler) updateCashier(c *gin.Context) {
 		return
 	}
 
+	// Логируем мета-параметры
+	c.Set("meta", gin.H{
+		"cashier_id": req.ID,
+		"username":   resp.Username,
+	})
+
 	// Возвращаем обновленного кассира
 	c.JSON(http.StatusOK, resp)
 }
 
 // deleteCashier обработчик для удаления кассира
 func (h *Handler) deleteCashier(c *gin.Context) {
-	// Получаем ID кассира из URL
-	idStr := c.Param("id")
-	id, err := uuid.Parse(idStr)
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Некорректный ID кассира"})
+	var req models.DeleteCashierRequest
+
+	// Парсим JSON из тела запроса
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
 
 	// Удаляем кассира
-	if err := h.service.DeleteCashier(id); err != nil {
+	if err := h.service.DeleteCashier(req.ID); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
+
+	// Логируем мета-параметры
+	c.Set("meta", gin.H{
+		"cashier_id": req.ID,
+	})
 
 	c.JSON(http.StatusOK, gin.H{"message": "Кассир успешно удален"})
 }
