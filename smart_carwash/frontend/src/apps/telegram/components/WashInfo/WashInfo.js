@@ -20,16 +20,16 @@ const WashInfo = ({ washInfo, theme = 'light', onCreateSession, onViewHistory, u
   const navigate = useNavigate();
   const [showServiceSelector, setShowServiceSelector] = useState(false);
   
-  // Получаем данные из washInfo
-  const allBoxes = washInfo?.all_boxes || [];
-  const washQueue = washInfo?.wash_queue || { queue_size: 0, has_queue: false };
-  const airDryQueue = washInfo?.air_dry_queue || { queue_size: 0, has_queue: false };
-  const vacuumQueue = washInfo?.vacuum_queue || { queue_size: 0, has_queue: false };
-  const totalQueueSize = washInfo?.total_queue_size || 0;
-  const hasAnyQueue = washInfo?.has_any_queue || false;
+  // Получаем данные из washInfo (теперь в camelCase)
+  const allBoxes = washInfo?.allBoxes || [];
+  const washQueue = washInfo?.washQueue || { queueSize: 0, hasQueue: false };
+  const airDryQueue = washInfo?.airDryQueue || { queueSize: 0, hasQueue: false };
+  const vacuumQueue = washInfo?.vacuumQueue || { queueSize: 0, hasQueue: false };
+  const totalQueueSize = washInfo?.totalQueueSize || 0;
+  const hasAnyQueue = washInfo?.hasAnyQueue || false;
   
   // Используем userSession из washInfo
-  const userSession = washInfo?.user_session;
+  const userSession = washInfo?.userSession;
   
   // Используем хук для таймера
   const { timeLeft } = useTimer(userSession);
@@ -87,25 +87,25 @@ const WashInfo = ({ washInfo, theme = 'light', onCreateSession, onViewHistory, u
             <div className={styles.queueTypeItem}>
               <h4 className={`${styles.queueTypeTitle} ${themeClass}`}>Мойка</h4>
               <StatusBadge 
-                status={washQueue.has_queue ? 'busy' : 'free'} 
+                status={washQueue.hasQueue ? 'busy' : 'free'} 
                 theme={theme}
-                text={washQueue.has_queue ? `В очереди: ${washQueue.queue_size}` : 'Нет очереди'}
+                text={washQueue.hasQueue ? `В очереди: ${washQueue.queueSize}` : 'Нет очереди'}
               />
             </div>
             <div className={styles.queueTypeItem}>
               <h4 className={`${styles.queueTypeTitle} ${themeClass}`}>Обдув</h4>
               <StatusBadge 
-                status={airDryQueue.has_queue ? 'busy' : 'free'} 
+                status={airDryQueue.hasQueue ? 'busy' : 'free'} 
                 theme={theme}
-                text={airDryQueue.has_queue ? `В очереди: ${airDryQueue.queue_size}` : 'Нет очереди'}
+                text={airDryQueue.hasQueue ? `В очереди: ${airDryQueue.queueSize}` : 'Нет очереди'}
               />
             </div>
             <div className={styles.queueTypeItem}>
               <h4 className={`${styles.queueTypeTitle} ${themeClass}`}>Пылесос</h4>
               <StatusBadge 
-                status={vacuumQueue.has_queue ? 'busy' : 'free'} 
+                status={vacuumQueue.hasQueue ? 'busy' : 'free'} 
                 theme={theme}
-                text={vacuumQueue.has_queue ? `В очереди: ${vacuumQueue.queue_size}` : 'Нет очереди'}
+                text={vacuumQueue.hasQueue ? `В очереди: ${vacuumQueue.queueSize}` : 'Нет очереди'}
               />
             </div>
           </div>
@@ -134,19 +134,19 @@ const WashInfo = ({ washInfo, theme = 'light', onCreateSession, onViewHistory, u
             <>
               <StatusBadge status={userSession.status} theme={theme} />
               <p className={`${styles.sessionInfo} ${themeClass}`}>
-                Создана: {formatDate(userSession.created_at)}
+                Создана: {formatDate(userSession.createdAt)}
               </p>
               <p className={`${styles.sessionInfo} ${themeClass}`}>
-                Услуга: {getServiceTypeDescription(userSession.service_type)}
-                {userSession.with_chemistry && ' (с химией)'}
+                Услуга: {getServiceTypeDescription(userSession.serviceType)}
+                {userSession.withChemistry && ' (с химией)'}
               </p>
-              {(userSession.box_id || userSession.box_number) && (
+              {(userSession.boxId || userSession.boxNumber) && (
                 <p className={`${styles.sessionInfo} ${themeClass}`}>
                   Назначен бокс: #{
                     // Используем номер бокса из сессии, если он есть
-                    userSession.box_number || 
+                    userSession.boxNumber || 
                     // Иначе находим номер бокса по его ID
-                    allBoxes.find(box => box.id === userSession.box_id)?.number || 
+                    allBoxes.find(box => box.id === userSession.boxId)?.number || 
                     'Неизвестный бокс'
                   }
                 </p>
@@ -220,7 +220,7 @@ const WashInfo = ({ washInfo, theme = 'light', onCreateSession, onViewHistory, u
             <h3 className={`${styles.subtitle} ${themeClass}`}>Мойка</h3>
             <div className={styles.boxesGrid}>
               {allBoxes
-                .filter(box => box.service_type === 'wash')
+                .filter(box => box.serviceType === 'wash')
                 .map((box) => (
                   <Card key={box.id} theme={theme} className={styles.boxCard}>
                     <h3 className={`${styles.boxNumber} ${themeClass}`}>Бокс #{box.number}</h3>
@@ -232,7 +232,7 @@ const WashInfo = ({ washInfo, theme = 'light', onCreateSession, onViewHistory, u
             <h3 className={`${styles.subtitle} ${themeClass}`}>Обдув</h3>
             <div className={styles.boxesGrid}>
               {allBoxes
-                .filter(box => box.service_type === 'air_dry')
+                .filter(box => box.serviceType === 'air_dry')
                 .map((box) => (
                   <Card key={box.id} theme={theme} className={styles.boxCard}>
                     <h3 className={`${styles.boxNumber} ${themeClass}`}>Бокс #{box.number}</h3>
@@ -244,7 +244,7 @@ const WashInfo = ({ washInfo, theme = 'light', onCreateSession, onViewHistory, u
             <h3 className={`${styles.subtitle} ${themeClass}`}>Пылесос</h3>
             <div className={styles.boxesGrid}>
               {allBoxes
-                .filter(box => box.service_type === 'vacuum')
+                .filter(box => box.serviceType === 'vacuum')
                 .map((box) => (
                   <Card key={box.id} theme={theme} className={styles.boxCard}>
                     <h3 className={`${styles.boxNumber} ${themeClass}`}>Бокс #{box.number}</h3>
