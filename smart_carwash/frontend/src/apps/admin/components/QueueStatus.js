@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import styled from 'styled-components';
+import { useNavigate } from 'react-router-dom';
 import { getTheme } from '../../../shared/styles/theme';
 import ApiService from '../../../shared/services/ApiService';
 
@@ -197,6 +198,7 @@ const QueueStatus = () => {
   const [queueData, setQueueData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const navigate = useNavigate();
 
   // Загрузка данных очереди
   const fetchQueueStatus = async () => {
@@ -321,7 +323,21 @@ const QueueStatus = () => {
               <UserItem key={user.user_id}>
                 <UserInfo theme={theme}>
                   <UserName theme={theme}>
-                    {user.first_name} {user.last_name}
+                    {(() => {
+                      let displayName = '';
+                      if (user.first_name && user.last_name) {
+                        displayName = `${user.first_name} ${user.last_name}`;
+                      } else if (user.first_name) {
+                        displayName = user.first_name;
+                      } else if (user.last_name) {
+                        displayName = user.last_name;
+                      } else {
+                        displayName = `Пользователь ${user.user_id.substring(0, 8)}`;
+                      }
+                      
+                      const username = user.username ? ` (${user.username})` : '';
+                      return displayName + username;
+                    })()}
                   </UserName>
                   <UserDetails>
                     Ожидает с: {user.waiting_since}
@@ -341,8 +357,7 @@ const QueueStatus = () => {
                       textDecoration: 'underline'
                     }}
                     onClick={() => {
-                      // Здесь можно добавить переход к пользователю
-                      console.log('Переход к пользователю:', user.user_id);
+                      navigate(`/admin/users?highlight=${user.user_id}`);
                     }}
                   >
                     Подробнее
@@ -383,7 +398,21 @@ const QueueStatus = () => {
               <UserItem key={user.user_id}>
                 <UserInfo theme={theme}>
                   <UserName theme={theme}>
-                    {user.first_name} {user.last_name}
+                    {(() => {
+                      let displayName = '';
+                      if (user.first_name && user.last_name) {
+                        displayName = `${user.first_name} ${user.last_name}`;
+                      } else if (user.first_name) {
+                        displayName = user.first_name;
+                      } else if (user.last_name) {
+                        displayName = user.last_name;
+                      } else {
+                        displayName = `Пользователь ${user.user_id.substring(0, 8)}`;
+                      }
+                      
+                      const username = user.username ? ` (${user.username})` : '';
+                      return displayName + username;
+                    })()}
                   </UserName>
                   <UserDetails>
                     Ожидает с: {user.waiting_since}
@@ -403,8 +432,7 @@ const QueueStatus = () => {
                       textDecoration: 'underline'
                     }}
                     onClick={() => {
-                      // Здесь можно добавить переход к пользователю
-                      console.log('Переход к пользователю:', user.user_id);
+                      navigate(`/admin/users?highlight=${user.user_id}`);
                     }}
                   >
                     Подробнее
@@ -445,7 +473,21 @@ const QueueStatus = () => {
               <UserItem key={user.user_id}>
                 <UserInfo theme={theme}>
                   <UserName theme={theme}>
-                    {user.first_name} {user.last_name}
+                    {(() => {
+                      let displayName = '';
+                      if (user.first_name && user.last_name) {
+                        displayName = `${user.first_name} ${user.last_name}`;
+                      } else if (user.first_name) {
+                        displayName = user.first_name;
+                      } else if (user.last_name) {
+                        displayName = user.last_name;
+                      } else {
+                        displayName = `Пользователь ${user.user_id.substring(0, 8)}`;
+                      }
+                      
+                      const username = user.username ? ` (${user.username})` : '';
+                      return displayName + username;
+                    })()}
                   </UserName>
                   <UserDetails>
                     Ожидает с: {user.waiting_since}
@@ -465,8 +507,7 @@ const QueueStatus = () => {
                       textDecoration: 'underline'
                     }}
                     onClick={() => {
-                      // Здесь можно добавить переход к пользователю
-                      console.log('Переход к пользователю:', user.user_id);
+                      navigate(`/admin/users?highlight=${user.user_id}`);
                     }}
                   >
                     Подробнее

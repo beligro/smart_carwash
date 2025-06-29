@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import styled from 'styled-components';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { getTheme } from '../../../shared/styles/theme';
 import ApiService from '../../../shared/services/ApiService';
 
@@ -40,6 +40,11 @@ const Th = styled.th`
 const Td = styled.td`
   padding: 12px;
   border-bottom: 1px solid #eee;
+`;
+
+const HighlightedRow = styled.tr`
+  background-color: rgba(0, 123, 255, 0.1) !important;
+  border-left: 4px solid ${props => props.theme.primaryColor};
 `;
 
 const ActionButton = styled.button`
@@ -220,6 +225,8 @@ const UserManagement = () => {
   const [userDetailsLoading, setUserDetailsLoading] = useState(false);
 
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const highlightedUserId = searchParams.get('highlight');
 
   // Загрузка пользователей
   const fetchUsers = async () => {
@@ -249,6 +256,18 @@ const UserManagement = () => {
   useEffect(() => {
     fetchUsers();
   }, [pagination.limit, pagination.offset]);
+
+  // Автоматическое открытие модального окна при переходе с выделенным пользователем
+  useEffect(() => {
+    if (highlightedUserId && users.length > 0) {
+      const user = users.find(u => u.id === highlightedUserId);
+      if (user) {
+        openUserModal(user);
+        // Убираем параметр из URL
+        navigate('/admin/users', { replace: true });
+      }
+    }
+  }, [highlightedUserId, users]);
 
   // Загрузка деталей пользователя
   const fetchUserDetails = async (userId) => {
@@ -328,28 +347,33 @@ const UserManagement = () => {
           </tr>
         </thead>
         <tbody>
-          {users.map((user) => (
-            <tr key={user.id}>
-              <Td>{user.id.substring(0, 8)}...</Td>
-              <Td>{user.telegram_id}</Td>
-              <Td>{user.username || '-'}</Td>
-              <Td>{user.first_name || '-'}</Td>
-              <Td>{user.last_name || '-'}</Td>
-              <Td>
-                {user.is_admin ? (
-                  <AdminBadge>Администратор</AdminBadge>
-                ) : (
-                  'Пользователь'
-                )}
-              </Td>
-              <Td>{formatDate(user.created_at)}</Td>
-              <Td>
-                <ActionButton theme={theme} onClick={() => openUserModal(user)}>
-                  Подробнее
-                </ActionButton>
-              </Td>
-            </tr>
-          ))}
+          {users.map((user) => {
+            const isHighlighted = user.id === highlightedUserId;
+            const RowComponent = isHighlighted ? HighlightedRow : 'tr';
+            
+            return (
+              <RowComponent key={user.id} theme={theme}>
+                <Td>{user.id.substring(0, 8)}...</Td>
+                <Td>{user.telegram_id}</Td>
+                <Td>{user.username || '-'}</Td>
+                <Td>{user.first_name || '-'}</Td>
+                <Td>{user.last_name || '-'}</Td>
+                <Td>
+                  {user.is_admin ? (
+                    <AdminBadge>Администратор</AdminBadge>
+                  ) : (
+                    'Пользователь'
+                  )}
+                </Td>
+                <Td>{formatDate(user.created_at)}</Td>
+                <Td>
+                  <ActionButton theme={theme} onClick={() => openUserModal(user)}>
+                    Подробнее
+                  </ActionButton>
+                </Td>
+              </RowComponent>
+            );
+          })}
         </tbody>
       </Table>
 
@@ -434,6 +458,27 @@ const UserManagement = () => {
                   <DetailGroup>
                     <DetailLabel theme={theme}>Фамилия:</DetailLabel>
                     <DetailValue theme={theme}>{userDetails.last_name || 'Не указано'}</DetailValue>
+                  </DetailGroup>
+                  
+                  <DetailGroup>
+                    <DetailLabel theme={theme}>Отображаемое имя:</DetailLabel>
+                    <DetailValue theme={theme}>
+                      {(() => {
+                        let displayName = '';
+                        if (userDetails.first_name && userDetails.last_name) {
+                          displayName = `${userDetails.first_name} ${userDetails.last_name}`;
+                        } else if (userDetails.first_name) {
+                          displayName = userDetails.first_name;
+                        } else if (userDetails.last_name) {
+                          displayName = userDetails.last_name;
+                        } else {
+                          displayName = `Пользователь ${userDetails.id.substring(0, 8)}`;
+                        }
+                        
+                        const username = userDetails.username ? ` (${userDetails.username})` : '';
+                        return displayName + username;
+                      })()}
+                    </DetailValue>
                   </DetailGroup>
                   
                   <DetailGroup>
