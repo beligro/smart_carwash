@@ -185,6 +185,17 @@ const AuthService = {
     }
   },
   
+  // Получение кассира по ID (только для администратора)
+  getCashierById: async (id) => {
+    try {
+      const response = await api.get(`/auth/cashiers/by-id?id=${id}`);
+      return response.data;
+    } catch (error) {
+      console.error('Ошибка при получении кассира по ID:', error);
+      throw error;
+    }
+  },
+  
   // Обновление кассира (только для администратора)
   updateCashier: async (id, data) => {
     try {
@@ -199,7 +210,7 @@ const AuthService = {
   // Удаление кассира (только для администратора)
   deleteCashier: async (id) => {
     try {
-      const response = await api.delete(`/auth/cashiers?id=${id}`);
+      const response = await api.delete('/auth/cashiers', { data: { id } });
       return response.data;
     } catch (error) {
       console.error('Ошибка при удалении кассира:', error);

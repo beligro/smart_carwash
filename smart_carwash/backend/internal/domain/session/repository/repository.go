@@ -20,7 +20,7 @@ type Repository interface {
 	GetUserSessionHistory(userID uuid.UUID, limit, offset int) ([]models.Session, error)
 
 	// Административные методы
-	GetSessionsWithFilters(userID *uuid.UUID, boxID *uuid.UUID, status *string, serviceType *string, dateFrom *time.Time, dateTo *time.Time, limit int, offset int) ([]models.Session, int, error)
+	GetSessionsWithFilters(userID *uuid.UUID, boxID *uuid.UUID, boxNumber *int, status *string, serviceType *string, dateFrom *time.Time, dateTo *time.Time, limit int, offset int) ([]models.Session, int, error)
 }
 
 // PostgresRepository реализация Repository для PostgreSQL
@@ -132,7 +132,7 @@ func (r *PostgresRepository) GetUserSessionHistory(userID uuid.UUID, limit, offs
 }
 
 // GetSessionsWithFilters получает сессии с фильтрацией для администратора
-func (r *PostgresRepository) GetSessionsWithFilters(userID *uuid.UUID, boxID *uuid.UUID, status *string, serviceType *string, dateFrom *time.Time, dateTo *time.Time, limit int, offset int) ([]models.Session, int, error) {
+func (r *PostgresRepository) GetSessionsWithFilters(userID *uuid.UUID, boxID *uuid.UUID, boxNumber *int, status *string, serviceType *string, dateFrom *time.Time, dateTo *time.Time, limit int, offset int) ([]models.Session, int, error) {
 	var sessions []models.Session
 	var total int64
 
@@ -140,22 +140,27 @@ func (r *PostgresRepository) GetSessionsWithFilters(userID *uuid.UUID, boxID *uu
 
 	// Применяем фильтры
 	if userID != nil {
-		query = query.Where("user_id = ?", *userID)
+		query = query.Where("sessions.user_id = ?", *userID)
 	}
 	if boxID != nil {
-		query = query.Where("box_id = ?", *boxID)
+		query = query.Where("sessions.box_id = ?", *boxID)
+	}
+	if boxNumber != nil {
+		// Используем JOIN для фильтрации по номеру бокса
+		query = query.Joins("JOIN wash_boxes ON sessions.box_id = wash_boxes.id").
+			Where("wash_boxes.number = ?", *boxNumber)
 	}
 	if status != nil {
-		query = query.Where("status = ?", *status)
+		query = query.Where("sessions.status = ?", *status)
 	}
 	if serviceType != nil {
-		query = query.Where("service_type = ?", *serviceType)
+		query = query.Where("sessions.service_type = ?", *serviceType)
 	}
 	if dateFrom != nil {
-		query = query.Where("created_at >= ?", *dateFrom)
+		query = query.Where("sessions.created_at >= ?", *dateFrom)
 	}
 	if dateTo != nil {
-		query = query.Where("created_at <= ?", *dateTo)
+		query = query.Where("sessions.created_at <= ?", *dateTo)
 	}
 
 	// Получаем общее количество
@@ -165,7 +170,7 @@ func (r *PostgresRepository) GetSessionsWithFilters(userID *uuid.UUID, boxID *uu
 	}
 
 	// Получаем данные с пагинацией и сортировкой
-	err = query.Order("created_at DESC").Limit(limit).Offset(offset).Find(&sessions).Error
+	err = query.Order("sessions.created_at DESC").Limit(limit).Offset(offset).Find(&sessions).Error
 	if err != nil {
 		return nil, 0, err
 	}

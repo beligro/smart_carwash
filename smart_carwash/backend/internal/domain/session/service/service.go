@@ -557,6 +557,7 @@ func (s *ServiceImpl) AdminListSessions(req *models.AdminListSessionsRequest) (*
 	sessions, total, err := s.repo.GetSessionsWithFilters(
 		req.UserID,
 		req.BoxID,
+		req.BoxNumber,
 		req.Status,
 		req.ServiceType,
 		req.DateFrom,

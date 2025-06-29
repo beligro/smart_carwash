@@ -254,6 +254,13 @@ func (h *Handler) adminListSessions(c *gin.Context) {
 		}
 	}
 
+	// Box Number
+	if boxNumberStr := c.Query("box_number"); boxNumberStr != "" {
+		if boxNumber, err := strconv.Atoi(boxNumberStr); err == nil {
+			req.BoxNumber = &boxNumber
+		}
+	}
+
 	// Статус
 	if status := c.Query("status"); status != "" {
 		req.Status = &status
@@ -304,6 +311,7 @@ func (h *Handler) adminListSessions(c *gin.Context) {
 		"filters": gin.H{
 			"user_id":      req.UserID,
 			"box_id":       req.BoxID,
+			"box_number":   req.BoxNumber,
 			"status":       req.Status,
 			"service_type": req.ServiceType,
 			"date_from":    req.DateFrom,
