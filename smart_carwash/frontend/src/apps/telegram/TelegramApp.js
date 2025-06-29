@@ -3,14 +3,14 @@ import WebApp from '@twa-dev/sdk';
 import { Routes, Route, Navigate, useNavigate } from 'react-router-dom';
 import styled from 'styled-components';
 
+// Ленивая загрузка компонентов
+const SessionDetails = lazy(() => import('./components/SessionDetails'));
+const SessionHistory = lazy(() => import('./components/SessionHistory'));
+
 // Компоненты
 import Header from './components/Header';
 import WelcomeMessage from './components/WelcomeMessage/WelcomeMessage';
 import WashInfo from './components/WashInfo/WashInfo';
-
-// Ленивая загрузка компонентов
-const SessionDetails = lazy(() => import('./components/SessionDetails'));
-const SessionHistory = lazy(() => import('./components/SessionHistory'));
 
 // Сервисы и утилиты
 import ApiService from '../../shared/services/ApiService';
