@@ -93,8 +93,8 @@ func main() {
 	// Создаем сервис сессий с зависимостями
 	sessionSvc := sessionService.NewService(sessionRepository, washboxSvc, userSvc, bot)
 
-	// Создаем сервис очереди, который зависит от сервисов сессий и боксов
-	queueSvc := queueService.NewService(sessionSvc, washboxSvc)
+	// Создаем сервис очереди, который зависит от сервисов сессий, боксов и пользователей
+	queueSvc := queueService.NewService(sessionSvc, washboxSvc, userSvc)
 
 	// Устанавливаем вебхук для бота
 	if err := bot.SetWebhook(); err != nil {

@@ -197,7 +197,6 @@ const QueueStatus = () => {
   const [queueData, setQueueData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-  const [includeDetails, setIncludeDetails] = useState(false);
 
   // Загрузка данных очереди
   const fetchQueueStatus = async () => {
@@ -217,13 +216,13 @@ const QueueStatus = () => {
 
   useEffect(() => {
     fetchQueueStatus();
-  }, [includeDetails]);
+  }, []);
 
   // Автообновление каждые 30 секунд
   useEffect(() => {
     const interval = setInterval(fetchQueueStatus, 30000);
     return () => clearInterval(interval);
-  }, [includeDetails]);
+  }, []);
 
   const getStatusText = (status) => {
     const statusMap = {
@@ -259,15 +258,6 @@ const QueueStatus = () => {
       <Header>
         <Title theme={theme}>Текущее состояние очереди</Title>
         <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
-          <label style={{ fontSize: '14px', color: theme.textColor }}>
-            <input
-              type="checkbox"
-              checked={includeDetails}
-              onChange={(e) => setIncludeDetails(e.target.checked)}
-              style={{ marginRight: '5px' }}
-            />
-            Показать детали
-          </label>
           <RefreshButton theme={theme} onClick={fetchQueueStatus} disabled={loading}>
             {loading ? 'Обновление...' : 'Обновить'}
           </RefreshButton>
@@ -324,44 +314,42 @@ const QueueStatus = () => {
           ))}
         </BoxesGrid>
 
-        {includeDetails && details && (
+        {queue_status.wash_queue.users_in_queue && queue_status.wash_queue.users_in_queue.length > 0 && (
           <UsersList>
             <h4 style={{ margin: '0 0 10px 0', color: theme.textColor }}>Пользователи в очереди:</h4>
-            {details.users_in_queue
-              .filter(user => user.service_type === 'wash')
-              .map((user, index) => (
-                <UserItem key={user.user_id}>
-                  <UserInfo theme={theme}>
-                    <UserName theme={theme}>
-                      {user.first_name} {user.last_name}
-                    </UserName>
-                    <UserDetails>
-                      Ожидает с: {user.waiting_since}
-                    </UserDetails>
-                  </UserInfo>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                    <UserPosition theme={theme}>
-                      Позиция {user.position}
-                    </UserPosition>
-                    <button
-                      style={{
-                        background: 'none',
-                        border: 'none',
-                        color: theme.primaryColor,
-                        cursor: 'pointer',
-                        fontSize: '12px',
-                        textDecoration: 'underline'
-                      }}
-                      onClick={() => {
-                        // Здесь можно добавить переход к пользователю
-                        console.log('Переход к пользователю:', user.user_id);
-                      }}
-                    >
-                      Подробнее
-                    </button>
-                  </div>
-                </UserItem>
-              ))}
+            {queue_status.wash_queue.users_in_queue.map((user, index) => (
+              <UserItem key={user.user_id}>
+                <UserInfo theme={theme}>
+                  <UserName theme={theme}>
+                    {user.first_name} {user.last_name}
+                  </UserName>
+                  <UserDetails>
+                    Ожидает с: {user.waiting_since}
+                  </UserDetails>
+                </UserInfo>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                  <UserPosition theme={theme}>
+                    Позиция {user.position}
+                  </UserPosition>
+                  <button
+                    style={{
+                      background: 'none',
+                      border: 'none',
+                      color: theme.primaryColor,
+                      cursor: 'pointer',
+                      fontSize: '12px',
+                      textDecoration: 'underline'
+                    }}
+                    onClick={() => {
+                      // Здесь можно добавить переход к пользователю
+                      console.log('Переход к пользователю:', user.user_id);
+                    }}
+                  >
+                    Подробнее
+                  </button>
+                </div>
+              </UserItem>
+            ))}
           </UsersList>
         )}
       </QueueSection>
@@ -388,44 +376,42 @@ const QueueStatus = () => {
           ))}
         </BoxesGrid>
 
-        {includeDetails && details && (
+        {queue_status.air_dry_queue.users_in_queue && queue_status.air_dry_queue.users_in_queue.length > 0 && (
           <UsersList>
             <h4 style={{ margin: '0 0 10px 0', color: theme.textColor }}>Пользователи в очереди:</h4>
-            {details.users_in_queue
-              .filter(user => user.service_type === 'air_dry')
-              .map((user, index) => (
-                <UserItem key={user.user_id}>
-                  <UserInfo theme={theme}>
-                    <UserName theme={theme}>
-                      {user.first_name} {user.last_name}
-                    </UserName>
-                    <UserDetails>
-                      Ожидает с: {user.waiting_since}
-                    </UserDetails>
-                  </UserInfo>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                    <UserPosition theme={theme}>
-                      Позиция {user.position}
-                    </UserPosition>
-                    <button
-                      style={{
-                        background: 'none',
-                        border: 'none',
-                        color: theme.primaryColor,
-                        cursor: 'pointer',
-                        fontSize: '12px',
-                        textDecoration: 'underline'
-                      }}
-                      onClick={() => {
-                        // Здесь можно добавить переход к пользователю
-                        console.log('Переход к пользователю:', user.user_id);
-                      }}
-                    >
-                      Подробнее
-                    </button>
-                  </div>
-                </UserItem>
-              ))}
+            {queue_status.air_dry_queue.users_in_queue.map((user, index) => (
+              <UserItem key={user.user_id}>
+                <UserInfo theme={theme}>
+                  <UserName theme={theme}>
+                    {user.first_name} {user.last_name}
+                  </UserName>
+                  <UserDetails>
+                    Ожидает с: {user.waiting_since}
+                  </UserDetails>
+                </UserInfo>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                  <UserPosition theme={theme}>
+                    Позиция {user.position}
+                  </UserPosition>
+                  <button
+                    style={{
+                      background: 'none',
+                      border: 'none',
+                      color: theme.primaryColor,
+                      cursor: 'pointer',
+                      fontSize: '12px',
+                      textDecoration: 'underline'
+                    }}
+                    onClick={() => {
+                      // Здесь можно добавить переход к пользователю
+                      console.log('Переход к пользователю:', user.user_id);
+                    }}
+                  >
+                    Подробнее
+                  </button>
+                </div>
+              </UserItem>
+            ))}
           </UsersList>
         )}
       </QueueSection>
@@ -452,44 +438,42 @@ const QueueStatus = () => {
           ))}
         </BoxesGrid>
 
-        {includeDetails && details && (
+        {queue_status.vacuum_queue.users_in_queue && queue_status.vacuum_queue.users_in_queue.length > 0 && (
           <UsersList>
             <h4 style={{ margin: '0 0 10px 0', color: theme.textColor }}>Пользователи в очереди:</h4>
-            {details.users_in_queue
-              .filter(user => user.service_type === 'vacuum')
-              .map((user, index) => (
-                <UserItem key={user.user_id}>
-                  <UserInfo theme={theme}>
-                    <UserName theme={theme}>
-                      {user.first_name} {user.last_name}
-                    </UserName>
-                    <UserDetails>
-                      Ожидает с: {user.waiting_since}
-                    </UserDetails>
-                  </UserInfo>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                    <UserPosition theme={theme}>
-                      Позиция {user.position}
-                    </UserPosition>
-                    <button
-                      style={{
-                        background: 'none',
-                        border: 'none',
-                        color: theme.primaryColor,
-                        cursor: 'pointer',
-                        fontSize: '12px',
-                        textDecoration: 'underline'
-                      }}
-                      onClick={() => {
-                        // Здесь можно добавить переход к пользователю
-                        console.log('Переход к пользователю:', user.user_id);
-                      }}
-                    >
-                      Подробнее
-                    </button>
-                  </div>
-                </UserItem>
-              ))}
+            {queue_status.vacuum_queue.users_in_queue.map((user, index) => (
+              <UserItem key={user.user_id}>
+                <UserInfo theme={theme}>
+                  <UserName theme={theme}>
+                    {user.first_name} {user.last_name}
+                  </UserName>
+                  <UserDetails>
+                    Ожидает с: {user.waiting_since}
+                  </UserDetails>
+                </UserInfo>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                  <UserPosition theme={theme}>
+                    Позиция {user.position}
+                  </UserPosition>
+                  <button
+                    style={{
+                      background: 'none',
+                      border: 'none',
+                      color: theme.primaryColor,
+                      cursor: 'pointer',
+                      fontSize: '12px',
+                      textDecoration: 'underline'
+                    }}
+                    onClick={() => {
+                      // Здесь можно добавить переход к пользователю
+                      console.log('Переход к пользователю:', user.user_id);
+                    }}
+                  >
+                    Подробнее
+                  </button>
+                </div>
+              </UserItem>
+            ))}
           </UsersList>
         )}
       </QueueSection>
