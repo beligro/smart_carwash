@@ -113,26 +113,26 @@ const TelegramApp = () => {
         // Если это первая загрузка или предыдущих данных нет
         if (!prevInfo) {
           return {
-            allBoxes: data.all_boxes || [],
-            washQueue: data.wash_queue || { queue_size: 0, has_queue: false },
-            airDryQueue: data.air_dry_queue || { queue_size: 0, has_queue: false },
-            vacuumQueue: data.vacuum_queue || { queue_size: 0, has_queue: false },
-            totalQueueSize: data.total_queue_size || 0,
-            hasAnyQueue: data.has_any_queue || false,
-            userSession: data.user_session || null
+            all_boxes: data.all_boxes || [],
+            wash_queue: data.wash_queue || { queue_size: 0, has_queue: false },
+            air_dry_queue: data.air_dry_queue || { queue_size: 0, has_queue: false },
+            vacuum_queue: data.vacuum_queue || { queue_size: 0, has_queue: false },
+            total_queue_size: data.total_queue_size || 0,
+            has_any_queue: data.has_any_queue || false,
+            user_session: data.user_session || null
           };
         }
         
         // Обновляем только изменившиеся данные
         return {
           ...prevInfo,
-          allBoxes: data.all_boxes || prevInfo.allBoxes,
-          washQueue: data.wash_queue || prevInfo.washQueue,
-          airDryQueue: data.air_dry_queue || prevInfo.airDryQueue,
-          vacuumQueue: data.vacuum_queue || prevInfo.vacuumQueue,
-          totalQueueSize: data.total_queue_size || prevInfo.totalQueueSize,
-          hasAnyQueue: data.has_any_queue || prevInfo.hasAnyQueue,
-          userSession: data.user_session || prevInfo.userSession
+          all_boxes: data.all_boxes || prevInfo.all_boxes,
+          wash_queue: data.wash_queue || prevInfo.wash_queue,
+          air_dry_queue: data.air_dry_queue || prevInfo.air_dry_queue,
+          vacuum_queue: data.vacuum_queue || prevInfo.vacuum_queue,
+          total_queue_size: data.total_queue_size || prevInfo.total_queue_size,
+          has_any_queue: data.has_any_queue || prevInfo.has_any_queue,
+          user_session: data.user_session || prevInfo.user_session
         };
       });
       
@@ -144,13 +144,13 @@ const TelegramApp = () => {
       // Создаем пустой объект с необходимой структурой только если нет предыдущих данных
       if (!washInfo) {
         setWashInfo({
-          allBoxes: [],
-          washQueue: { serviceType: 'wash', boxes: [], queue_size: 0, has_queue: false },
-          airDryQueue: { serviceType: 'air_dry', boxes: [], queue_size: 0, has_queue: false },
-          vacuumQueue: { serviceType: 'vacuum', boxes: [], queue_size: 0, has_queue: false },
-          totalQueueSize: 0,
-          hasAnyQueue: false,
-          userSession: null
+          all_boxes: [],
+          wash_queue: { serviceType: 'wash', boxes: [], queue_size: 0, has_queue: false },
+          air_dry_queue: { serviceType: 'air_dry', boxes: [], queue_size: 0, has_queue: false },
+          vacuum_queue: { serviceType: 'vacuum', boxes: [], queue_size: 0, has_queue: false },
+          total_queue_size: 0,
+          has_any_queue: false,
+          user_session: null
         });
       }
     } finally {
@@ -184,7 +184,7 @@ const TelegramApp = () => {
       // Обновляем информацию о сессии в состоянии
       setWashInfo(prevInfo => ({
         ...prevInfo,
-        userSession: response.session
+        user_session: response.session
       }));
       
       // Запускаем поллинг для обновления статуса сессии по session_id
@@ -225,7 +225,7 @@ const TelegramApp = () => {
             console.log('Обновление сессии в washInfo:', sessionData.session);
             return {
               ...prevInfo,
-              userSession: sessionData.session
+              user_session: sessionData.session
             };
           });
           
@@ -241,7 +241,7 @@ const TelegramApp = () => {
             setTimeout(() => {
               setWashInfo(prevInfo => ({
                 ...prevInfo,
-                userSession: null
+                user_session: null
               }));
             }, 5000);
           }
@@ -276,7 +276,7 @@ const TelegramApp = () => {
             // Обновляем данные сессии пользователя
             setWashInfo(prevInfo => ({
               ...prevInfo,
-              userSession: sessionResponse.session
+              user_session: sessionResponse.session
             }));
             
             // Если у пользователя есть активная сессия, запускаем поллинг для неё по ID сессии

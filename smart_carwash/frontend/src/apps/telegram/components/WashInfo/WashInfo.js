@@ -21,15 +21,15 @@ const WashInfo = ({ washInfo, theme = 'light', onCreateSession, onViewHistory, u
   const [showServiceSelector, setShowServiceSelector] = useState(false);
   
   // Получаем данные из washInfo
-  const allBoxes = washInfo?.allBoxes || [];
-  const washQueue = washInfo?.washQueue || { queue_size: 0, has_queue: false };
-  const airDryQueue = washInfo?.airDryQueue || { queue_size: 0, has_queue: false };
-  const vacuumQueue = washInfo?.vacuumQueue || { queue_size: 0, has_queue: false };
-  const totalQueueSize = washInfo?.totalQueueSize || 0;
-  const hasAnyQueue = washInfo?.hasAnyQueue || false;
+  const allBoxes = washInfo?.all_boxes || [];
+  const washQueue = washInfo?.wash_queue || { queue_size: 0, has_queue: false };
+  const airDryQueue = washInfo?.air_dry_queue || { queue_size: 0, has_queue: false };
+  const vacuumQueue = washInfo?.vacuum_queue || { queue_size: 0, has_queue: false };
+  const totalQueueSize = washInfo?.total_queue_size || 0;
+  const hasAnyQueue = washInfo?.has_any_queue || false;
   
   // Используем userSession из washInfo
-  const userSession = washInfo?.userSession;
+  const userSession = washInfo?.user_session;
   
   // Используем хук для таймера
   const { timeLeft } = useTimer(userSession);
@@ -37,7 +37,7 @@ const WashInfo = ({ washInfo, theme = 'light', onCreateSession, onViewHistory, u
   // Функция для перехода на страницу сессии
   const handleViewSessionDetails = () => {
     if (userSession && userSession.id) {
-      navigate(`/session/${userSession.id}`);
+      navigate(`/telegram/session/${userSession.id}`);
     }
   };
 

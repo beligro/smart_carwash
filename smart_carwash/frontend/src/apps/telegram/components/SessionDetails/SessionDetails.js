@@ -215,7 +215,7 @@ const SessionDetails = ({ theme = 'light', user }) => {
   
   // Функция для возврата на главную страницу
   const handleBack = () => {
-    navigate('/');
+    navigate('/telegram');
   };
 
   const themeClass = theme === 'dark' ? styles.dark : styles.light;
