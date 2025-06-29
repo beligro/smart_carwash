@@ -14,8 +14,9 @@ import useTimer from '../../../../shared/hooks/useTimer';
  * @param {string} props.theme - Тема оформления ('light' или 'dark')
  * @param {Function} props.onCreateSession - Функция для создания сессии
  * @param {Function} props.onViewHistory - Функция для просмотра истории сессий
+ * @param {Object} props.user - Данные пользователя
  */
-const WashInfo = ({ washInfo, theme = 'light', onCreateSession, onViewHistory }) => {
+const WashInfo = ({ washInfo, theme = 'light', onCreateSession, onViewHistory, user }) => {
   const navigate = useNavigate();
   const [showServiceSelector, setShowServiceSelector] = useState(false);
   
@@ -60,6 +61,7 @@ const WashInfo = ({ washInfo, theme = 'light', onCreateSession, onViewHistory })
         <ServiceSelector 
           onSelect={handleServiceSelect} 
           theme={theme} 
+          user={user}
         />
         <div className={styles.buttonContainer}>
           <Button 

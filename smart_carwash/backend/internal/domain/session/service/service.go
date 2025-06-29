@@ -51,7 +51,7 @@ func NewService(repo repository.Repository, washboxService washboxService.Servic
 	}
 }
 
-// CreateSession создает новую сессию мойки
+// CreateSession создает новую сессию
 func (s *ServiceImpl) CreateSession(req *models.CreateSessionRequest) (*models.Session, error) {
 	// Проверяем идемпотентность запроса
 	existingSessionByKey, err := s.repo.GetSessionByIdempotencyKey(req.IdempotencyKey)
@@ -74,6 +74,7 @@ func (s *ServiceImpl) CreateSession(req *models.CreateSessionRequest) (*models.S
 		Status:            models.SessionStatusCreated,
 		ServiceType:       req.ServiceType,
 		WithChemistry:     req.WithChemistry,
+		CarNumber:         req.CarNumber,
 		RentalTimeMinutes: req.RentalTimeMinutes,
 		IdempotencyKey:    req.IdempotencyKey,
 		StatusUpdatedAt:   now, // Инициализируем время изменения статуса

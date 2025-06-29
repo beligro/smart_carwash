@@ -4,6 +4,9 @@ import (
 	"carwash_backend/internal/domain/user/models"
 	"carwash_backend/internal/domain/user/repository"
 
+	"fmt"
+	"regexp"
+
 	"github.com/google/uuid"
 )
 
@@ -12,6 +15,7 @@ type Service interface {
 	CreateUser(req *models.CreateUserRequest) (*models.User, error)
 	GetUserByTelegramID(telegramID int64) (*models.User, error)
 	GetUserByID(id uuid.UUID) (*models.User, error)
+	UpdateCarNumber(req *models.UpdateCarNumberRequest) (*models.UpdateCarNumberResponse, error)
 
 	// Административные методы
 	AdminListUsers(req *models.AdminListUsersRequest) (*models.AdminListUsersResponse, error)
@@ -101,5 +105,32 @@ func (s *ServiceImpl) AdminGetUser(req *models.AdminGetUserRequest) (*models.Adm
 
 	return &models.AdminGetUserResponse{
 		User: *user,
+	}, nil
+}
+
+// UpdateCarNumber обновляет номер машины пользователя
+func (s *ServiceImpl) UpdateCarNumber(req *models.UpdateCarNumberRequest) (*models.UpdateCarNumberResponse, error) {
+	// Валидация номера машины (российский формат: О111ОО799)
+	carNumberRegex := regexp.MustCompile(`^[АВЕКМНОРСТУХ]\d{3}[АВЕКМНОРСТУХ]{2}\d{2,3}$`)
+	if !carNumberRegex.MatchString(req.CarNumber) {
+		return nil, fmt.Errorf("неверный формат номера машины. Используйте формат: О111ОО799")
+	}
+
+	// Получаем пользователя
+	user, err := s.repo.GetUserByID(req.UserID)
+	if err != nil {
+		return nil, err
+	}
+
+	// Обновляем номер машины
+	user.CarNumber = req.CarNumber
+	err = s.repo.UpdateUser(user)
+	if err != nil {
+		return nil, err
+	}
+
+	return &models.UpdateCarNumberResponse{
+		Success: true,
+		User:    *user,
 	}, nil
 }

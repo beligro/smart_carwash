@@ -29,6 +29,7 @@ func (h *Handler) RegisterRoutes(router *gin.RouterGroup) {
 	{
 		userRoutes.POST("", h.createUser)
 		userRoutes.GET("/by-telegram-id", h.getUserByTelegramID) // telegram_id в query параметре
+		userRoutes.PUT("/car-number", h.updateCarNumber)         // Обновление номера машины
 	}
 
 	// Административные маршруты
@@ -85,6 +86,33 @@ func (h *Handler) createUser(c *gin.Context) {
 
 	// Возвращаем созданного пользователя
 	c.JSON(http.StatusOK, models.CreateUserResponse{User: *user})
+}
+
+// updateCarNumber обработчик для обновления номера машины
+func (h *Handler) updateCarNumber(c *gin.Context) {
+	var req models.UpdateCarNumberRequest
+
+	// Парсим JSON из тела запроса
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	// Логируем мета-параметры
+	c.Set("meta", gin.H{
+		"user_id":    req.UserID.String(),
+		"car_number": req.CarNumber,
+	})
+
+	// Обновляем номер машины
+	resp, err := h.service.UpdateCarNumber(&req)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	// Возвращаем результат
+	c.JSON(http.StatusOK, resp)
 }
 
 // adminListUsers обработчик для получения списка пользователей для администратора

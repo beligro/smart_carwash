@@ -240,3 +240,105 @@
     box-shadow: 0 0 0 0 rgba(255, 193, 7, 0);
   }
 }
+
+/* Адаптивность для мобильных устройств */
+@media (max-width: 768px) {
+  .container {
+    padding: 12px;
+  }
+  
+  .title {
+    font-size: 18px;
+    margin-bottom: 12px;
+  }
+  
+  .subtitle {
+    font-size: 16px;
+    margin-bottom: 10px;
+  }
+  
+  .boxesGrid {
+    grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+    gap: 12px;
+    margin-bottom: 20px;
+  }
+  
+  .boxCard {
+    padding: 12px;
+  }
+  
+  .boxNumber {
+    font-size: 16px;
+  }
+  
+  .queueTypesContainer {
+    flex-direction: column;
+    gap: 12px;
+  }
+  
+  .queueTypeItem {
+    min-width: auto;
+    padding: 10px;
+  }
+}
+
+@media (max-width: 480px) {
+  .container {
+    padding: 8px;
+  }
+  
+  .title {
+    font-size: 16px;
+    margin-bottom: 10px;
+  }
+  
+  .subtitle {
+    font-size: 14px;
+    margin-bottom: 8px;
+  }
+  
+  .boxesGrid {
+    grid-template-columns: 1fr;
+    gap: 8px;
+    margin-bottom: 16px;
+  }
+  
+  .boxCard {
+    padding: 10px;
+  }
+  
+  .boxNumber {
+    font-size: 14px;
+  }
+  
+  .sessionInfo {
+    font-size: 13px;
+    margin-bottom: 6px;
+  }
+  
+  .queueTypeItem {
+    padding: 8px;
+  }
+  
+  .queueTypeTitle {
+    font-size: 14px;
+  }
+}
+
+/* Улучшения для touch-устройств */
+@media (hover: none) and (pointer: coarse) {
+  .boxCard {
+    min-height: 60px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+  
+  .boxCard:hover {
+    transform: none;
+  }
+  
+  .boxCard:active {
+    transform: scale(0.98);
+  }
+}

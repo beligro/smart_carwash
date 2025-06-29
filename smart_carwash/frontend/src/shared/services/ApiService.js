@@ -142,6 +142,20 @@ const ApiService = {
     return response.data;
   },
 
+  // Обновление номера машины пользователя
+  updateCarNumber: async (userId, carNumber) => {
+    try {
+      const response = await api.put('/users/car-number', {
+        user_id: userId,
+        car_number: carNumber
+      });
+      return response.data;
+    } catch (error) {
+      console.error('Ошибка при обновлении номера машины:', error);
+      throw error;
+    }
+  },
+
   // === СУЩЕСТВУЮЩИЕ МЕТОДЫ ===
 
   // Получение доступного времени аренды для определенного типа услуги

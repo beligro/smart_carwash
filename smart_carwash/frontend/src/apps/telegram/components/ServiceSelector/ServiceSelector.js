@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import styles from './ServiceSelector.module.css';
 import { Card, Button } from '../../../../shared/components/UI';
+import CarNumberInput from '../CarNumberInput';
 import ApiService from '../../../../shared/services/ApiService';
 
 /**
@@ -8,15 +9,26 @@ import ApiService from '../../../../shared/services/ApiService';
  * @param {Object} props - Свойства компонента
  * @param {Function} props.onSelect - Функция, вызываемая при выборе услуги
  * @param {string} props.theme - Тема оформления ('light' или 'dark')
+ * @param {Object} props.user - Данные пользователя (для получения сохраненного номера)
  */
-const ServiceSelector = ({ onSelect, theme = 'light' }) => {
+const ServiceSelector = ({ onSelect, theme = 'light', user }) => {
   const [selectedService, setSelectedService] = useState(null);
   const [withChemistry, setWithChemistry] = useState(false);
   const [rentalTimes, setRentalTimes] = useState([]);
   const [selectedRentalTime, setSelectedRentalTime] = useState(null);
   const [loading, setLoading] = useState(false);
+  const [carNumber, setCarNumber] = useState('');
+  const [rememberCarNumber, setRememberCarNumber] = useState(false);
+  const [savingCarNumber, setSavingCarNumber] = useState(false);
   
   const themeClass = theme === 'dark' ? styles.dark : styles.light;
+  
+  // Инициализация номера машины из данных пользователя
+  useEffect(() => {
+    if (user && user.car_number) {
+      setCarNumber(user.car_number);
+    }
+  }, [user]);
   
   // Типы услуг
   const serviceTypes = [
@@ -67,16 +79,62 @@ const ServiceSelector = ({ onSelect, theme = 'light' }) => {
     setSelectedRentalTime(time);
   };
 
+  // Обработчик изменения номера машины
+  const handleCarNumberChange = (value) => {
+    setCarNumber(value);
+  };
+
+  // Обработчик изменения чекбокса "запомнить номер"
+  const handleRememberCarNumberChange = (checked) => {
+    setRememberCarNumber(checked);
+  };
+
+  // Сохранение номера машины пользователя
+  const saveCarNumber = async () => {
+    if (!user || !carNumber || !rememberCarNumber) {
+      return;
+    }
+
+    setSavingCarNumber(true);
+    try {
+      await ApiService.updateCarNumber(user.id, carNumber);
+      console.log('Номер машины сохранен');
+    } catch (error) {
+      console.error('Ошибка при сохранении номера машины:', error);
+    } finally {
+      setSavingCarNumber(false);
+    }
+  };
+
   // Обработчик подтверждения выбора
-  const handleConfirm = () => {
-    if (selectedService && selectedRentalTime) {
+  const handleConfirm = async () => {
+    if (selectedService && selectedRentalTime && carNumber) {
+      // Если пользователь хочет запомнить номер, сохраняем его
+      if (rememberCarNumber) {
+        await saveCarNumber();
+      }
+
       onSelect({
         serviceType: selectedService.id,
         withChemistry: selectedService.hasChemistry ? withChemistry : false,
-        rentalTimeMinutes: selectedRentalTime
+        rentalTimeMinutes: selectedRentalTime,
+        carNumber: carNumber
       });
     }
   };
+
+  // Проверяем, можно ли подтвердить выбор
+  const canConfirm = selectedService && 
+    selectedRentalTime && 
+    carNumber && 
+    carNumber.length === 9 && 
+    /^[АВЕКМНОРСТУХ]\d{3}[АВЕКМНОРСТУХ]{2}\d{2,3}$/.test(carNumber);
+
+  // Определяем, нужно ли показывать чекбокс "запомнить номер"
+  const showRememberCheckbox = user && 
+    carNumber && 
+    carNumber !== user.car_number && 
+    /^[АВЕКМНОРСТУХ]\d{3}[АВЕКМНОРСТУХ]{2}\d{2,3}$/.test(carNumber);
   
   return (
     <div className={styles.container}>
@@ -101,6 +159,17 @@ const ServiceSelector = ({ onSelect, theme = 'light' }) => {
       
       {selectedService && (
         <div className={styles.optionsContainer}>
+          {/* Ввод номера машины */}
+          <CarNumberInput
+            value={carNumber}
+            onChange={handleCarNumberChange}
+            theme={theme}
+            showRememberCheckbox={showRememberCheckbox}
+            rememberChecked={rememberCarNumber}
+            onRememberChange={handleRememberCarNumberChange}
+            savedCarNumber={user?.car_number || ''}
+          />
+
           {selectedService.hasChemistry && (
             <Card theme={theme} className={styles.optionCard}>
               <div className={styles.optionRow}>
@@ -147,10 +216,10 @@ const ServiceSelector = ({ onSelect, theme = 'light' }) => {
         <Button 
           theme={theme} 
           onClick={handleConfirm}
-          disabled={!selectedService || !selectedRentalTime || loading}
+          disabled={!canConfirm || loading || savingCarNumber}
           className={styles.confirmButton}
         >
-          Подтвердить выбор
+          {savingCarNumber ? 'Сохранение...' : 'Подтвердить выбор'}
         </Button>
       </div>
     </div>

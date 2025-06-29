@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, Suspense, lazy } from 'react';
 import WebApp from '@twa-dev/sdk';
 import { Routes, Route, Navigate, useNavigate } from 'react-router-dom';
 import styled from 'styled-components';
@@ -7,8 +7,10 @@ import styled from 'styled-components';
 import Header from './components/Header';
 import WelcomeMessage from './components/WelcomeMessage/WelcomeMessage';
 import WashInfo from './components/WashInfo/WashInfo';
-import SessionDetails from './components/SessionDetails';
-import SessionHistory from './components/SessionHistory';
+
+// Ленивая загрузка компонентов
+const SessionDetails = lazy(() => import('./components/SessionDetails'));
+const SessionHistory = lazy(() => import('./components/SessionHistory'));
 
 // Сервисы и утилиты
 import ApiService from '../../shared/services/ApiService';
@@ -172,11 +174,12 @@ const TelegramApp = () => {
       
       setLoading(true);
       
-      // Добавляем данные о типе услуги и химии в запрос
+      // Добавляем данные о типе услуги, химии и номере машины в запрос
       const response = await ApiService.createSession({ 
         user_id: user.id,
         service_type: serviceData.serviceType,
         with_chemistry: serviceData.withChemistry,
+        car_number: serviceData.carNumber,
         rental_time_minutes: serviceData.rentalTimeMinutes
       });
       
@@ -329,6 +332,7 @@ const TelegramApp = () => {
                       theme={theme} 
                       onCreateSession={handleCreateSession}
                       onViewHistory={handleViewHistory}
+                      user={user}
                     />
                   )}
                 </>
@@ -337,20 +341,24 @@ const TelegramApp = () => {
             <Route 
               path="/session/:sessionId" 
               element={
-                <SessionDetails 
-                  theme={theme} 
-                  user={user}
-                />
+                <Suspense fallback={<div>Загрузка информации о сессии...</div>}>
+                  <SessionDetails 
+                    theme={theme} 
+                    user={user}
+                  />
+                </Suspense>
               } 
             />
             <Route 
               path="/history" 
               element={
-                <SessionHistory 
-                  theme={theme} 
-                  user={user}
-                  onBack={handleBackToHome}
-                />
+                <Suspense fallback={<div>Загрузка истории сессий...</div>}>
+                  <SessionHistory 
+                    theme={theme} 
+                    user={user}
+                    onBack={handleBackToHome}
+                  />
+                </Suspense>
               } 
             />
             <Route path="*" element={<Navigate to="/telegram" />} />
