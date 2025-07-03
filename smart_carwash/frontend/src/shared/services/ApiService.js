@@ -18,14 +18,14 @@ import { toSnakeCase, toSnakeCaseQuery, fromSnakeCase } from '../utils/snakeCase
 
 // Создаем экземпляр axios с базовой конфигурацией
 const api = axios.create({
-  baseURL: process.env.REACT_APP_API_URL || 'http://localhost:8080/api',
+  baseURL: process.env.REACT_APP_API_URL || 'http://localhost:8080',
   timeout: 10000,
   headers: {
     'Content-Type': 'application/json',
   },
 });
 
-console.log('API base URL:', process.env.REACT_APP_API_URL || 'http://localhost:8080/api');
+console.log('API base URL:', process.env.REACT_APP_API_URL || 'http://localhost:8080');
 
 // Добавляем перехватчик для добавления токена к запросам
 api.interceptors.request.use(

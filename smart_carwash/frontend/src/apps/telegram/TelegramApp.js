@@ -404,7 +404,7 @@ const TelegramApp = () => {
             <div>Error: {error || 'none'}</div>
             <div>User: {user ? `ID: ${user.id}, Name: ${user.firstName || user.first_name || 'N/A'}` : 'none'}</div>
             <div>WashInfo: {washInfo ? `Boxes: ${(washInfo.allBoxes || washInfo.all_boxes || []).length}, Queues: ${washInfo.hasAnyQueue || washInfo.has_any_queue ? 'yes' : 'no'}` : 'none'}</div>
-            <div>API URL: {process.env.REACT_APP_API_URL || 'http://localhost:8080/api'}</div>
+            <div>API URL: {process.env.REACT_APP_API_URL || 'http://localhost:8080'}</div>
           </div>
           
           <Routes>
