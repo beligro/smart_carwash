@@ -52,7 +52,7 @@ const TelegramApp = () => {
         console.log('Checking API health...');
         const apiHealth = await ApiService.checkApiHealth();
         if (!apiHealth) {
-          setError('API недоступен. Проверьте, что бэкенд запущен на http://localhost:8080');
+          setError('API недоступен. Проверьте, что бэкенд доступен по адресу https://h2o-nsk.ru/api');
           return;
         }
         console.log('API is healthy');
@@ -404,7 +404,7 @@ const TelegramApp = () => {
             <div>Error: {error || 'none'}</div>
             <div>User: {user ? `ID: ${user.id}, Name: ${user.firstName || user.first_name || 'N/A'}` : 'none'}</div>
             <div>WashInfo: {washInfo ? `Boxes: ${(washInfo.allBoxes || washInfo.all_boxes || []).length}, Queues: ${washInfo.hasAnyQueue || washInfo.has_any_queue ? 'yes' : 'no'}` : 'none'}</div>
-            <div>API URL: {process.env.REACT_APP_API_URL || 'http://localhost:8080'}</div>
+            <div>API URL: {process.env.REACT_APP_API_URL || '/api'}</div>
           </div>
           
           <Routes>
