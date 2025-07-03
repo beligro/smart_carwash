@@ -46,10 +46,16 @@ const ApiService = {
   // Проверка доступности API
   checkApiHealth: async () => {
     try {
-      const response = await api.get('/health');
-      console.log('API health check response:', response.data);
+      // Используем существующий эндпоинт для проверки здоровья API
+      const response = await api.get('/users/by-telegram-id?telegram_id=0');
+      console.log('API health check response:', response.status);
       return true;
     } catch (error) {
+      // Если получаем 404, это нормально - пользователь не найден, но API работает
+      if (error.response && error.response.status === 404) {
+        console.log('API is healthy (404 is expected for non-existent user)');
+        return true;
+      }
       console.error('API health check failed:', error);
       return false;
     }
