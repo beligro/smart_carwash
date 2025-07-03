@@ -25,6 +25,8 @@ const api = axios.create({
   },
 });
 
+console.log('API base URL:', process.env.REACT_APP_API_URL || 'http://localhost:8080/api/v1');
+
 // Добавляем перехватчик для добавления токена к запросам
 api.interceptors.request.use(
   (config) => {
@@ -99,7 +101,7 @@ const ApiService = {
       const response = await api.get('/admin/queue/status');
       console.log('Raw API response:', response.data);
       
-      // Временно отключаем fromSnakeCase для отладки
+      // Временно отключаем все преобразования для отладки
       const data = response.data;
       
       // API возвращает структуру { queueStatus: {...} }, нужно извлечь данные
@@ -186,7 +188,9 @@ const ApiService = {
   getUserByTelegramId: async (telegramId) => {
     try {
       const response = await api.get(`/users/by-telegram-id?telegram_id=${telegramId}`);
-      return fromSnakeCase(response.data);
+      console.log('getUserByTelegramId raw response:', response.data);
+      // Временно отключаем fromSnakeCase
+      return response.data;
     } catch (error) {
       console.error('Ошибка при получении пользователя по telegram_id:', error);
       throw error;
@@ -211,7 +215,9 @@ const ApiService = {
   getUserSession: async (userId) => {
     try {
       const response = await api.get(`/sessions?user_id=${userId}`);
-      return fromSnakeCase(response.data);
+      console.log('getUserSession raw response:', response.data);
+      // Временно отключаем fromSnakeCase
+      return response.data;
     } catch (error) {
       console.error('Ошибка при получении сессии пользователя:', error);
       return { session: null };
