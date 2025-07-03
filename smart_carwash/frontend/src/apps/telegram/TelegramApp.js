@@ -107,36 +107,36 @@ const TelegramApp = () => {
       
       const data = await ApiService.getQueueStatus();
       console.log('Queue status data:', data);
-      console.log('All boxes:', data.allBoxes);
-      console.log('Wash queue:', data.washQueue);
-      console.log('Air dry queue:', data.airDryQueue);
-      console.log('Vacuum queue:', data.vacuumQueue);
+      console.log('All boxes:', data.all_boxes || data.allBoxes);
+      console.log('Wash queue:', data.wash_queue || data.washQueue);
+      console.log('Air dry queue:', data.air_dry_queue || data.airDryQueue);
+      console.log('Vacuum queue:', data.vacuum_queue || data.vacuumQueue);
       
       // Обновляем данные, сохраняя структуру объекта
       setWashInfo(prevInfo => {
         // Если это первая загрузка или предыдущих данных нет
         if (!prevInfo) {
           return {
-            allBoxes: data.allBoxes || [],
-            washQueue: data.washQueue || { queueSize: 0, hasQueue: false },
-            airDryQueue: data.airDryQueue || { queueSize: 0, hasQueue: false },
-            vacuumQueue: data.vacuumQueue || { queueSize: 0, hasQueue: false },
-            totalQueueSize: data.totalQueueSize || 0,
-            hasAnyQueue: data.hasAnyQueue || false,
-            userSession: data.userSession || null
+            allBoxes: data.all_boxes || data.allBoxes || [],
+            washQueue: data.wash_queue || data.washQueue || { queueSize: 0, hasQueue: false },
+            airDryQueue: data.air_dry_queue || data.airDryQueue || { queueSize: 0, hasQueue: false },
+            vacuumQueue: data.vacuum_queue || data.vacuumQueue || { queueSize: 0, hasQueue: false },
+            totalQueueSize: data.total_queue_size || data.totalQueueSize || 0,
+            hasAnyQueue: data.has_any_queue || data.hasAnyQueue || false,
+            userSession: data.user_session || data.userSession || null
           };
         }
         
         // Обновляем только изменившиеся данные
         return {
           ...prevInfo,
-          allBoxes: data.allBoxes || prevInfo.allBoxes,
-          washQueue: data.washQueue || prevInfo.washQueue,
-          airDryQueue: data.airDryQueue || prevInfo.airDryQueue,
-          vacuumQueue: data.vacuumQueue || prevInfo.vacuumQueue,
-          totalQueueSize: data.totalQueueSize || prevInfo.totalQueueSize,
-          hasAnyQueue: data.hasAnyQueue || prevInfo.hasAnyQueue,
-          userSession: data.userSession || prevInfo.userSession
+          allBoxes: data.all_boxes || data.allBoxes || prevInfo.allBoxes,
+          washQueue: data.wash_queue || data.washQueue || prevInfo.washQueue,
+          airDryQueue: data.air_dry_queue || data.airDryQueue || prevInfo.airDryQueue,
+          vacuumQueue: data.vacuum_queue || data.vacuumQueue || prevInfo.vacuumQueue,
+          totalQueueSize: data.total_queue_size || data.totalQueueSize || prevInfo.totalQueueSize,
+          hasAnyQueue: data.has_any_queue || data.hasAnyQueue || prevInfo.hasAnyQueue,
+          userSession: data.user_session || data.userSession || prevInfo.userSession
         };
       });
       

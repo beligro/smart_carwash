@@ -97,14 +97,19 @@ const ApiService = {
   getQueueStatus: async () => {
     try {
       const response = await api.get('/admin/queue/status');
-      const data = fromSnakeCase(response.data);
+      console.log('Raw API response:', response.data);
+      
+      // Временно отключаем fromSnakeCase для отладки
+      const data = response.data;
       
       // API возвращает структуру { queueStatus: {...} }, нужно извлечь данные
       if (data.queueStatus) {
+        console.log('Extracted queueStatus:', data.queueStatus);
         return data.queueStatus;
       }
       
       // Если структура другая, возвращаем как есть
+      console.log('Returning data as is:', data);
       return data;
     } catch (error) {
       console.error('Ошибка при получении статуса очереди:', error);
