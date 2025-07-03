@@ -44,49 +44,62 @@ const TelegramApp = () => {
 
   // Инициализация приложения
   useEffect(() => {
-    try {
-      console.log('Starting TelegramApp initialization...');
-      
-      // Инициализация Telegram Mini App
-      WebApp.ready();
-      
-      // Установка темы в соответствии с темой Telegram
-      const colorScheme = WebApp.colorScheme || 'light';
-      setTheme(colorScheme);
-      
-      // Настройка основного цвета
-      document.documentElement.style.setProperty(
-        '--tg-theme-button-color', 
-        (WebApp.themeParams && WebApp.themeParams.button_color) || '#2481cc'
-      );
-      
-      // Настройка цвета текста
-      document.documentElement.style.setProperty(
-        '--tg-theme-text-color', 
-        (WebApp.themeParams && WebApp.themeParams.text_color) || '#000000'
-      );
-      
-      console.log('Telegram WebApp инициализирован успешно');
-      
-      // Получаем данные пользователя из Telegram
-      if (WebApp.initDataUnsafe && WebApp.initDataUnsafe.user) {
-        const telegramUser = WebApp.initDataUnsafe.user;
-        console.log('Telegram user found:', telegramUser);
+    const initializeApp = async () => {
+      try {
+        console.log('Starting TelegramApp initialization...');
         
-        // Получаем пользователя по telegram_id
-        getUserByTelegramId(telegramUser.id);
-      } else {
-        console.log('No Telegram user, using test user');
+        // Проверяем доступность API
+        console.log('Checking API health...');
+        const apiHealth = await ApiService.checkApiHealth();
+        if (!apiHealth) {
+          setError('API недоступен. Проверьте, что бэкенд запущен на http://localhost:8080');
+          return;
+        }
+        console.log('API is healthy');
+        
+        // Инициализация Telegram Mini App
+        WebApp.ready();
+        
+        // Установка темы в соответствии с темой Telegram
+        const colorScheme = WebApp.colorScheme || 'light';
+        setTheme(colorScheme);
+        
+        // Настройка основного цвета
+        document.documentElement.style.setProperty(
+          '--tg-theme-button-color', 
+          (WebApp.themeParams && WebApp.themeParams.button_color) || '#2481cc'
+        );
+        
+        // Настройка цвета текста
+        document.documentElement.style.setProperty(
+          '--tg-theme-text-color', 
+          (WebApp.themeParams && WebApp.themeParams.text_color) || '#000000'
+        );
+        
+        console.log('Telegram WebApp инициализирован успешно');
+        
+        // Получаем данные пользователя из Telegram
+        if (WebApp.initDataUnsafe && WebApp.initDataUnsafe.user) {
+          const telegramUser = WebApp.initDataUnsafe.user;
+          console.log('Telegram user found:', telegramUser);
+          
+          // Получаем пользователя по telegram_id
+          getUserByTelegramId(telegramUser.id);
+        } else {
+          console.log('No Telegram user, using test user');
+          // Для разработки используем тестового пользователя
+          getUserByTelegramId(12345678);
+        }
+      } catch (err) {
+        console.error('Ошибка инициализации Telegram WebApp:', err);
+        console.log('Продолжаем работу в режиме разработки');
+        
         // Для разработки используем тестового пользователя
         getUserByTelegramId(12345678);
       }
-    } catch (err) {
-      console.error('Ошибка инициализации Telegram WebApp:', err);
-      console.log('Продолжаем работу в режиме разработки');
-      
-      // Для разработки используем тестового пользователя
-      getUserByTelegramId(12345678);
-    }
+    };
+    
+    initializeApp();
   }, []);
   
   // Функция для получения пользователя по telegram_id
@@ -99,7 +112,27 @@ const TelegramApp = () => {
       console.log('Пользователь получен:', response.user);
     } catch (err) {
       console.error('Ошибка получения пользователя:', err);
-      setError('Не удалось получить пользователя. Возможно, вы не зарегистрированы в боте. Пожалуйста, нажмите /start в боте.');
+      
+      // Если это тестовый пользователь, попробуем создать его
+      if (telegramId === 12345678) {
+        console.log('Trying to create test user...');
+        try {
+          const createResponse = await ApiService.createUser({
+            telegramId: telegramId,
+            username: 'test_user',
+            firstName: 'Test',
+            lastName: 'User'
+          });
+          console.log('Test user created:', createResponse);
+          setUser(createResponse.user);
+          console.log('Тестовый пользователь создан:', createResponse.user);
+        } catch (createErr) {
+          console.error('Ошибка создания тестового пользователя:', createErr);
+          setError('Не удалось создать тестового пользователя. Проверьте, что бэкенд запущен и доступен.');
+        }
+      } else {
+        setError('Не удалось получить пользователя. Возможно, вы не зарегистрированы в боте. Пожалуйста, нажмите /start в боте.');
+      }
     }
   };
 
@@ -369,8 +402,9 @@ const TelegramApp = () => {
           }}>
             <div>Loading: {loading ? 'true' : 'false'}</div>
             <div>Error: {error || 'none'}</div>
-            <div>User: {user ? `ID: ${user.id}` : 'none'}</div>
-            <div>WashInfo: {washInfo ? 'loaded' : 'none'}</div>
+            <div>User: {user ? `ID: ${user.id}, Name: ${user.firstName || user.first_name || 'N/A'}` : 'none'}</div>
+            <div>WashInfo: {washInfo ? `Boxes: ${(washInfo.allBoxes || washInfo.all_boxes || []).length}, Queues: ${washInfo.hasAnyQueue || washInfo.has_any_queue ? 'yes' : 'no'}` : 'none'}</div>
+            <div>API URL: {process.env.REACT_APP_API_URL || 'http://localhost:8080/api/v1'}</div>
           </div>
           
           <Routes>

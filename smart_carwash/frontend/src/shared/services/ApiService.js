@@ -43,6 +43,18 @@ api.interceptors.request.use(
 
 // Сервис для работы с API
 const ApiService = {
+  // Проверка доступности API
+  checkApiHealth: async () => {
+    try {
+      const response = await api.get('/health');
+      console.log('API health check response:', response.data);
+      return true;
+    } catch (error) {
+      console.error('API health check failed:', error);
+      return false;
+    }
+  },
+
   // === МЕТОДЫ ДЛЯ РАБОТЫ С БОКСАМИ ===
   
   // Получение списка боксов
