@@ -20,18 +20,26 @@ const useTimer = (session) => {
     if (sessionData.status === 'active') {
       // Для активной сессии - используем выбранное время аренды (по умолчанию 5 минут)
       // Время начала сессии - это время последнего обновления статуса на active
-      const startTimeStr = sessionData.status_updated_at || sessionData.updated_at;
+      let startTimeStr = sessionData.status_updated_at || sessionData.updated_at || sessionData.created_at;
       console.log('calculateTimeLeft: startTimeStr =', startTimeStr);
       
       if (!startTimeStr) {
-        console.warn('Отсутствует время обновления статуса для активной сессии');
-        return null;
+        console.warn('Отсутствует время обновления статуса для активной сессии, используем текущее время');
+        // Если нет временных полей, используем текущее время как fallback
+        startTimeStr = new Date().toISOString();
       }
       
       const startTime = new Date(startTimeStr);
       if (isNaN(startTime.getTime())) {
-        console.warn('Некорректное время обновления статуса для активной сессии:', startTimeStr);
-        return null;
+        console.warn('Некорректное время обновления статуса для активной сессии:', startTimeStr, 'используем текущее время');
+        // Если дата некорректная, используем текущее время как fallback
+        const now = new Date();
+        const rentalTimeMinutes = sessionData.rental_time_minutes || 5;
+        const extensionTimeMinutes = sessionData.extension_time_minutes || 0;
+        const totalDuration = (rentalTimeMinutes + extensionTimeMinutes) * 60;
+        const remainingSeconds = Math.max(0, totalDuration);
+        console.log('calculateTimeLeft: active session with fallback, remainingSeconds =', remainingSeconds);
+        return remainingSeconds;
       }
       
       const now = new Date();
@@ -56,18 +64,24 @@ const useTimer = (session) => {
     } else if (sessionData.status === 'assigned') {
       // Для назначенной сессии - 3 минуты с момента назначения
       // Время назначения сессии - это время последнего обновления статуса на assigned
-      const assignedTimeStr = sessionData.status_updated_at || sessionData.updated_at;
+      let assignedTimeStr = sessionData.status_updated_at || sessionData.updated_at || sessionData.created_at;
       console.log('calculateTimeLeft: assignedTimeStr =', assignedTimeStr);
       
       if (!assignedTimeStr) {
-        console.warn('Отсутствует время обновления статуса для назначенной сессии');
-        return null;
+        console.warn('Отсутствует время обновления статуса для назначенной сессии, используем текущее время');
+        // Если нет временных полей, используем текущее время как fallback
+        assignedTimeStr = new Date().toISOString();
       }
       
       const assignedTime = new Date(assignedTimeStr);
       if (isNaN(assignedTime.getTime())) {
-        console.warn('Некорректное время обновления статуса для назначенной сессии:', assignedTimeStr);
-        return null;
+        console.warn('Некорректное время обновления статуса для назначенной сессии:', assignedTimeStr, 'используем текущее время');
+        // Если дата некорректная, используем текущее время как fallback
+        const now = new Date();
+        const totalDuration = 180; // 3 минуты в секундах
+        const remainingSeconds = Math.max(0, totalDuration);
+        console.log('calculateTimeLeft: assigned session with fallback, remainingSeconds =', remainingSeconds);
+        return remainingSeconds;
       }
       
       const now = new Date();
