@@ -403,7 +403,8 @@ const SessionManagement = () => {
     const result = serviceMap[serviceType];
     if (!result) {
       console.warn('getServiceTypeText: unknown serviceType =', serviceType);
-      return 'Неизвестная услуга';
+      // Возвращаем исходное значение вместо "Неизвестная услуга"
+      return serviceType;
     }
     
     return result;
@@ -417,12 +418,14 @@ const SessionManagement = () => {
     try {
       const date = new Date(dateString);
       if (isNaN(date.getTime())) {
-        return 'Некорректная дата';
+        // Возвращаем исходную строку вместо "Некорректная дата"
+        return dateString;
       }
       return date.toLocaleString('ru-RU');
     } catch (error) {
       console.error('Ошибка форматирования даты:', error, 'dateString:', dateString);
-      return 'Ошибка форматирования даты';
+      // Возвращаем исходную строку вместо "Ошибка форматирования даты"
+      return dateString;
     }
   };
 

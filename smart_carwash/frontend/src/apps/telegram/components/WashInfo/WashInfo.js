@@ -152,6 +152,11 @@ const WashInfo = ({ washInfo, theme = 'light', onCreateSession, onViewHistory, u
                 Услуга: {getServiceTypeDescription(userSession.serviceType || userSession.service_type)}
                 {(userSession.withChemistry || userSession.with_chemistry) && ' (с химией)'}
               </p>
+              {/* Отладочная информация */}
+              <p className={`${styles.sessionInfo} ${themeClass}`} style={{ fontSize: '12px', color: '#666' }}>
+                Отладка: status={userSession.status}, serviceType={userSession.serviceType || userSession.service_type}, 
+                createdAt={userSession.createdAt || userSession.created_at}
+              </p>
               {(userSession.boxId || userSession.box_id || userSession.boxNumber || userSession.box_number) && (
                 <p className={`${styles.sessionInfo} ${themeClass}`}>
                   Назначен бокс: #{

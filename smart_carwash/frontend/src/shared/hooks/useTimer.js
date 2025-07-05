@@ -15,10 +15,14 @@ const useTimer = (session) => {
       return null;
     }
     
+    console.log('calculateTimeLeft: sessionData =', sessionData);
+    
     if (sessionData.status === 'active') {
       // Для активной сессии - используем выбранное время аренды (по умолчанию 5 минут)
       // Время начала сессии - это время последнего обновления статуса на active
       const startTimeStr = sessionData.status_updated_at || sessionData.updated_at;
+      console.log('calculateTimeLeft: startTimeStr =', startTimeStr);
+      
       if (!startTimeStr) {
         console.warn('Отсутствует время обновления статуса для активной сессии');
         return null;
@@ -47,11 +51,14 @@ const useTimer = (session) => {
       // Оставшееся время в секундах
       const remainingSeconds = Math.max(0, totalDuration - elapsedSeconds);
       
+      console.log('calculateTimeLeft: active session, remainingSeconds =', remainingSeconds);
       return remainingSeconds;
     } else if (sessionData.status === 'assigned') {
       // Для назначенной сессии - 3 минуты с момента назначения
       // Время назначения сессии - это время последнего обновления статуса на assigned
       const assignedTimeStr = sessionData.status_updated_at || sessionData.updated_at;
+      console.log('calculateTimeLeft: assignedTimeStr =', assignedTimeStr);
+      
       if (!assignedTimeStr) {
         console.warn('Отсутствует время обновления статуса для назначенной сессии');
         return null;
@@ -74,9 +81,11 @@ const useTimer = (session) => {
       // Оставшееся время в секундах
       const remainingSeconds = Math.max(0, totalDuration - elapsedSeconds);
       
+      console.log('calculateTimeLeft: assigned session, remainingSeconds =', remainingSeconds);
       return remainingSeconds;
     }
     
+    console.log('calculateTimeLeft: unknown status =', sessionData.status);
     return null;
   }, []);
   

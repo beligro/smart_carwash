@@ -16,12 +16,14 @@ export const formatDate = (dateString) => {
     const date = new Date(dateString);
     if (isNaN(date.getTime())) {
       console.warn('formatDate: invalid date string:', dateString);
-      return 'Некорректная дата';
+      // Возвращаем исходную строку вместо "Некорректная дата"
+      return dateString;
     }
     return format(date, 'dd MMMM yyyy, HH:mm', { locale: ru });
   } catch (error) {
     console.error('Ошибка форматирования даты:', error, 'dateString:', dateString);
-    return 'Ошибка форматирования даты';
+    // Возвращаем исходную строку вместо "Ошибка форматирования даты"
+    return dateString;
   }
 };
 
