@@ -212,7 +212,7 @@ const TelegramApp = () => {
       
       if (response.session) {
         // Переходим на страницу сессии
-        navigate(`/session/${response.session.id}`);
+        navigate(`/telegram/session/${response.session.id}`);
         
         // Запускаем поллинг для обновления статуса сессии
         startSessionPolling(response.session.id);

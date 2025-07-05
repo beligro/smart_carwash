@@ -7,12 +7,21 @@ import { ru } from 'date-fns/locale';
  * @returns {string} - Отформатированная дата
  */
 export const formatDate = (dateString) => {
+  if (!dateString) {
+    console.warn('formatDate: dateString is null or undefined');
+    return 'Дата не указана';
+  }
+  
   try {
     const date = new Date(dateString);
+    if (isNaN(date.getTime())) {
+      console.warn('formatDate: invalid date string:', dateString);
+      return 'Некорректная дата';
+    }
     return format(date, 'dd MMMM yyyy, HH:mm', { locale: ru });
   } catch (error) {
-    console.error('Ошибка форматирования даты:', error);
-    return dateString;
+    console.error('Ошибка форматирования даты:', error, 'dateString:', dateString);
+    return 'Ошибка форматирования даты';
   }
 };
 

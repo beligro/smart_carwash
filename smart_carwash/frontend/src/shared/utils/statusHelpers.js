@@ -72,6 +72,14 @@ export const getSessionStatusText = (status) => {
    * @returns {string} - Описание типа услуги
    */
   export const getServiceTypeDescription = (serviceType) => {
+    // Добавляем логирование для отладки
+    if (!serviceType) {
+      console.warn('getServiceTypeDescription: serviceType is null or undefined');
+      return 'Тип услуги не указан';
+    }
+    
+    console.log('getServiceTypeDescription: serviceType =', serviceType);
+    
     switch (serviceType) {
       case 'wash':
         return 'Мойка';
@@ -80,6 +88,7 @@ export const getSessionStatusText = (status) => {
       case 'vacuum':
         return 'Пылесос';
       default:
+        console.warn('getServiceTypeDescription: unknown serviceType =', serviceType);
         return 'Неизвестная услуга';
     }
   };

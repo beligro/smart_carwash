@@ -387,16 +387,43 @@ const SessionManagement = () => {
   };
 
   const getServiceTypeText = (serviceType) => {
+    if (!serviceType) {
+      console.warn('getServiceTypeText: serviceType is null or undefined');
+      return 'Тип услуги не указан';
+    }
+    
+    console.log('getServiceTypeText: serviceType =', serviceType);
+    
     const serviceMap = {
       wash: 'Мойка',
       air_dry: 'Обдув',
       vacuum: 'Пылесос'
     };
-    return serviceMap[serviceType] || serviceType;
+    
+    const result = serviceMap[serviceType];
+    if (!result) {
+      console.warn('getServiceTypeText: unknown serviceType =', serviceType);
+      return 'Неизвестная услуга';
+    }
+    
+    return result;
   };
 
   const formatDate = (dateString) => {
-    return new Date(dateString).toLocaleString('ru-RU');
+    if (!dateString) {
+      return 'Дата не указана';
+    }
+    
+    try {
+      const date = new Date(dateString);
+      if (isNaN(date.getTime())) {
+        return 'Некорректная дата';
+      }
+      return date.toLocaleString('ru-RU');
+    } catch (error) {
+      console.error('Ошибка форматирования даты:', error, 'dateString:', dateString);
+      return 'Ошибка форматирования даты';
+    }
   };
 
   const totalPages = Math.ceil(pagination.total / pagination.limit);
