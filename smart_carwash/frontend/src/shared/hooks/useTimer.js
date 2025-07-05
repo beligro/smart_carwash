@@ -91,9 +91,14 @@ const useTimer = (session) => {
   
   // Обновление таймера при изменении сессии
   useEffect(() => {
+    console.log('useTimer useEffect: session =', session);
+    
     if (session && (session.status === 'active' || session.status === 'assigned')) {
+      console.log('useTimer: session status is active or assigned, calculating time...');
+      
       // Рассчитываем оставшееся время
       const remaining = calculateTimeLeft(session);
+      console.log('useTimer: calculated remaining time =', remaining);
       setTimeLeft(remaining);
       
       // Обновляем таймер каждую секунду
@@ -110,6 +115,7 @@ const useTimer = (session) => {
       // Очищаем интервал при размонтировании компонента
       return () => clearInterval(timerId);
     } else {
+      console.log('useTimer: session is not active or assigned, resetting timer');
       // Если сессия не активна и не назначена, сбрасываем таймер
       setTimeLeft(null);
     }

@@ -185,6 +185,14 @@ const WashInfo = ({ washInfo, theme = 'light', onCreateSession, onViewHistory, u
                 </>
               )}
               
+              {/* Отладочная информация для таймера */}
+              <p className={`${styles.sessionInfo} ${themeClass}`} style={{ fontSize: '12px', color: '#666' }}>
+                Отладка таймера: status={userSession.status}, timeLeft={timeLeft}, 
+                status_updated_at={userSession.status_updated_at || 'null'}, 
+                updated_at={userSession.updated_at || 'null'},
+                createdAt={userSession.created_at || 'null'}
+              </p>
+              
               {/* Отображаем таймер для назначенной сессии */}
               {userSession.status === 'assigned' && timeLeft !== null && (
                 <>
@@ -199,6 +207,17 @@ const WashInfo = ({ washInfo, theme = 'light', onCreateSession, onViewHistory, u
                     Начните мойку до истечения времени, иначе резерв будет снят
                   </p>
                 </>
+              )}
+              
+              {/* Показываем информацию, если таймер не отображается */}
+              {userSession.status === 'assigned' && timeLeft === null && (
+                <p className={`${styles.sessionInfo} ${themeClass}`} style={{ 
+                  color: '#C62828', 
+                  textAlign: 'center',
+                  fontSize: '12px'
+                }}>
+                  ⚠️ Таймер не отображается (timeLeft = null)
+                </p>
               )}
               <Button 
                 theme={theme} 
