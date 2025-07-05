@@ -31,7 +31,7 @@ const CarNumberInput = ({
   // Обеспечиваем безопасность value
   const safeValue = value || '';
 
-  // Валидация российского номера машины (формат: О111ОО799)
+  // Валидация номера машины (гибкий формат)
   const validateCarNumber = (number) => {
     try {
       if (!number) {
@@ -47,12 +47,30 @@ const CarNumberInput = ({
         return false;
       }
 
-      // Регулярное выражение для российского номера
-      const carNumberRegex = /^[АВЕКМНОРСТУХ]\d{3}[АВЕКМНОРСТУХ]{2}\d{2,3}$/;
+      // Проверяем минимальную длину
+      if (number.length < 6) {
+        setIsValid(false);
+        setErrorMessage('Номер должен содержать минимум 6 символов');
+        return false;
+      }
+
+      // Регулярное выражение для гибкого формата номера
+      // Разрешаем русские буквы (АВЕКМНОРСТУХ), латинские буквы (ABEKMHOPCTYX) и цифры
+      const carNumberRegex = /^[АВЕКМНОРСТУХABEKMHOPCTYX0-9]+$/;
       
       if (!carNumberRegex.test(number)) {
         setIsValid(false);
-        setErrorMessage('Неверный формат номера. Используйте формат: О111ОО799');
+        setErrorMessage('Номер может содержать только буквы (А-Я, A-Z) и цифры');
+        return false;
+      }
+
+      // Проверяем, что есть хотя бы одна буква и одна цифра
+      const hasLetter = /[АВЕКМНОРСТУХABEKMHOPCTYX]/.test(number);
+      const hasDigit = /[0-9]/.test(number);
+      
+      if (!hasLetter || !hasDigit) {
+        setIsValid(false);
+        setErrorMessage('Номер должен содержать и буквы, и цифры');
         return false;
       }
 
@@ -108,9 +126,9 @@ const CarNumberInput = ({
       // Убираем все пробелы и дефисы
       let formatted = input.replace(/[\s-]/g, '');
       
-      // Ограничиваем длину
-      if (formatted.length > 9) {
-        formatted = formatted.substring(0, 9);
+      // Ограничиваем длину (увеличиваем до 12 символов)
+      if (formatted.length > 12) {
+        formatted = formatted.substring(0, 12);
       }
       
       return formatted;
@@ -149,9 +167,9 @@ const CarNumberInput = ({
             onChange={handleInput}
             onFocus={handleFocus}
             onBlur={handleBlur}
-            placeholder="О111ОО799"
+            placeholder="А123ВК456"
             className={`${styles.input} ${themeClass}`}
-            maxLength={9}
+            maxLength={12}
           />
           {!isValid && (
             <div className={styles.errorIcon}>⚠️</div>
@@ -161,7 +179,7 @@ const CarNumberInput = ({
           <div className={styles.errorMessage}>{errorMessage}</div>
         )}
         <div className={styles.helpText}>
-          Введите номер в формате: О111ОО799
+          Введите номер машины (минимум 6 символов, буквы и цифры)
         </div>
       </div>
 
