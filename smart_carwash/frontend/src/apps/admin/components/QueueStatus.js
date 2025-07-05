@@ -206,7 +206,7 @@ const QueueStatus = () => {
       setLoading(true);
       setError('');
       
-      const response = await ApiService.getQueueStatus();
+      const response = await ApiService.getAdminQueue();
       setQueueData(response);
     } catch (err) {
       setError('Ошибка при загрузке статуса очереди');

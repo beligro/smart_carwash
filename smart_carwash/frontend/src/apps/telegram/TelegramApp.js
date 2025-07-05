@@ -46,13 +46,6 @@ const TelegramApp = () => {
   useEffect(() => {
     const initializeApp = async () => {
       try {
-        // Проверяем доступность API
-        const apiHealth = await ApiService.checkApiHealth();
-        if (!apiHealth) {
-          setError('API недоступен. Проверьте, что бэкенд доступен.');
-          return;
-        }
-        
         // Инициализация Telegram Mini App
         WebApp.ready();
         
@@ -78,15 +71,9 @@ const TelegramApp = () => {
           
           // Получаем пользователя по telegram_id
           getUserByTelegramId(telegramUser.id);
-        } else {
-          // Для разработки используем тестового пользователя
-          getUserByTelegramId(12345678);
         }
       } catch (err) {
         console.error('Ошибка инициализации Telegram WebApp:', err);
-        
-        // Для разработки используем тестового пользователя
-        getUserByTelegramId(12345678);
       }
     };
     

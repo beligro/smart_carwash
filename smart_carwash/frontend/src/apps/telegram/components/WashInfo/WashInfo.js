@@ -25,8 +25,6 @@ const WashInfo = ({ washInfo, theme = 'light', onCreateSession, onViewHistory, u
   const washQueue = washInfo?.washQueue || washInfo?.wash_queue || { queue_size: 0, has_queue: false };
   const airDryQueue = washInfo?.airDryQueue || washInfo?.air_dry_queue || { queue_size: 0, has_queue: false };
   const vacuumQueue = washInfo?.vacuumQueue || washInfo?.vacuum_queue || { queue_size: 0, has_queue: false };
-  const totalQueueSize = washInfo?.totalQueueSize || washInfo?.total_queue_size || 0;
-  const hasAnyQueue = washInfo?.hasAnyQueue || washInfo?.has_any_queue || false;
   
   // Используем userSession из washInfo
   const userSession = washInfo?.userSession || washInfo?.user_session;
@@ -152,11 +150,6 @@ const WashInfo = ({ washInfo, theme = 'light', onCreateSession, onViewHistory, u
                 Услуга: {getServiceTypeDescription(userSession.serviceType || userSession.service_type)}
                 {(userSession.withChemistry || userSession.with_chemistry) && ' (с химией)'}
               </p>
-              {/* Отладочная информация */}
-              <p className={`${styles.sessionInfo} ${themeClass}`} style={{ fontSize: '12px', color: '#666' }}>
-                Отладка: status={userSession.status}, serviceType={userSession.serviceType || userSession.service_type}, 
-                createdAt={userSession.createdAt || userSession.created_at}
-              </p>
               {(userSession.boxId || userSession.box_id || userSession.boxNumber || userSession.box_number) && (
                 <p className={`${styles.sessionInfo} ${themeClass}`}>
                   Назначен бокс: #{
@@ -184,14 +177,6 @@ const WashInfo = ({ washInfo, theme = 'light', onCreateSession, onViewHistory, u
                   <Timer seconds={timeLeft} theme={theme} />
                 </>
               )}
-              
-              {/* Отладочная информация для таймера */}
-              <p className={`${styles.sessionInfo} ${themeClass}`} style={{ fontSize: '12px', color: '#666' }}>
-                Отладка таймера: status={userSession.status}, timeLeft={timeLeft}, 
-                status_updated_at={userSession.status_updated_at || 'null'}, 
-                updated_at={userSession.updated_at || 'null'},
-                createdAt={userSession.created_at || 'null'}
-              </p>
               
               {/* Отображаем таймер для назначенной сессии */}
               {userSession.status === 'assigned' && timeLeft !== null && (
@@ -241,56 +226,6 @@ const WashInfo = ({ washInfo, theme = 'light', onCreateSession, onViewHistory, u
             </>
           )}
         </Card>
-      </section>
-
-      {/* Информация о боксах */}
-      <section className={styles.section}>
-        <h2 className={`${styles.title} ${themeClass}`}>Боксы автомойки</h2>
-        {allBoxes.length > 0 ? (
-          <>
-            <h3 className={`${styles.subtitle} ${themeClass}`}>Мойка</h3>
-            <div className={styles.boxesGrid}>
-              {allBoxes
-                .filter(box => (box.serviceType || box.service_type) === 'wash')
-                .map((box) => (
-                  <Card key={box.id} theme={theme} className={styles.boxCard}>
-                    <h3 className={`${styles.boxNumber} ${themeClass}`}>Бокс #{box.number}</h3>
-                    <StatusBadge status={box.status} theme={theme} />
-                  </Card>
-                ))}
-            </div>
-            
-            <h3 className={`${styles.subtitle} ${themeClass}`}>Обдув</h3>
-            <div className={styles.boxesGrid}>
-              {allBoxes
-                .filter(box => (box.serviceType || box.service_type) === 'air_dry')
-                .map((box) => (
-                  <Card key={box.id} theme={theme} className={styles.boxCard}>
-                    <h3 className={`${styles.boxNumber} ${themeClass}`}>Бокс #{box.number}</h3>
-                    <StatusBadge status={box.status} theme={theme} />
-                  </Card>
-                ))}
-            </div>
-            
-            <h3 className={`${styles.subtitle} ${themeClass}`}>Пылесос</h3>
-            <div className={styles.boxesGrid}>
-              {allBoxes
-                .filter(box => (box.serviceType || box.service_type) === 'vacuum')
-                .map((box) => (
-                  <Card key={box.id} theme={theme} className={styles.boxCard}>
-                    <h3 className={`${styles.boxNumber} ${themeClass}`}>Бокс #{box.number}</h3>
-                    <StatusBadge status={box.status} theme={theme} />
-                  </Card>
-                ))}
-            </div>
-          </>
-        ) : (
-          <Card theme={theme}>
-            <p className={`${styles.sessionInfo} ${themeClass}`} style={{ textAlign: 'center' }}>
-              Информация о боксах отсутствует
-            </p>
-          </Card>
-        )}
       </section>
     </div>
   );

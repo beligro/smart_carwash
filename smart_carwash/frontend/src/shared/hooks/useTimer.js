@@ -15,32 +15,8 @@ const useTimer = (session) => {
       return null;
     }
     
-    console.log('calculateTimeLeft: sessionData =', sessionData);
-    
     if (sessionData.status === 'active') {
-      // Для активной сессии - используем выбранное время аренды (по умолчанию 5 минут)
-      // Время начала сессии - это время последнего обновления статуса на active
-      let startTimeStr = sessionData.status_updated_at || sessionData.updated_at || sessionData.created_at;
-      console.log('calculateTimeLeft: startTimeStr =', startTimeStr);
-      
-      if (!startTimeStr) {
-        console.warn('Отсутствует время обновления статуса для активной сессии, используем текущее время');
-        // Если нет временных полей, используем текущее время как fallback
-        startTimeStr = new Date().toISOString();
-      }
-      
-      const startTime = new Date(startTimeStr);
-      if (isNaN(startTime.getTime())) {
-        console.warn('Некорректное время обновления статуса для активной сессии:', startTimeStr, 'используем текущее время');
-        // Если дата некорректная, используем текущее время как fallback
-        const now = new Date();
-        const rentalTimeMinutes = sessionData.rental_time_minutes || 5;
-        const extensionTimeMinutes = sessionData.extension_time_minutes || 0;
-        const totalDuration = (rentalTimeMinutes + extensionTimeMinutes) * 60;
-        const remainingSeconds = Math.max(0, totalDuration);
-        console.log('calculateTimeLeft: active session with fallback, remainingSeconds =', remainingSeconds);
-        return remainingSeconds;
-      }
+      const startTime = new Date(sessionData.status_updated_at || sessionData.updated_at);
       
       const now = new Date();
       
@@ -59,30 +35,9 @@ const useTimer = (session) => {
       // Оставшееся время в секундах
       const remainingSeconds = Math.max(0, totalDuration - elapsedSeconds);
       
-      console.log('calculateTimeLeft: active session, remainingSeconds =', remainingSeconds);
       return remainingSeconds;
     } else if (sessionData.status === 'assigned') {
-      // Для назначенной сессии - 3 минуты с момента назначения
-      // Время назначения сессии - это время последнего обновления статуса на assigned
-      let assignedTimeStr = sessionData.status_updated_at || sessionData.updated_at || sessionData.created_at;
-      console.log('calculateTimeLeft: assignedTimeStr =', assignedTimeStr);
-      
-      if (!assignedTimeStr) {
-        console.warn('Отсутствует время обновления статуса для назначенной сессии, используем текущее время');
-        // Если нет временных полей, используем текущее время как fallback
-        assignedTimeStr = new Date().toISOString();
-      }
-      
-      const assignedTime = new Date(assignedTimeStr);
-      if (isNaN(assignedTime.getTime())) {
-        console.warn('Некорректное время обновления статуса для назначенной сессии:', assignedTimeStr, 'используем текущее время');
-        // Если дата некорректная, используем текущее время как fallback
-        const now = new Date();
-        const totalDuration = 180; // 3 минуты в секундах
-        const remainingSeconds = Math.max(0, totalDuration);
-        console.log('calculateTimeLeft: assigned session with fallback, remainingSeconds =', remainingSeconds);
-        return remainingSeconds;
-      }
+      const assignedTime = new Date(sessionData.status_updated_at || sessionData.updated_at);
       
       const now = new Date();
       
@@ -95,24 +50,17 @@ const useTimer = (session) => {
       // Оставшееся время в секундах
       const remainingSeconds = Math.max(0, totalDuration - elapsedSeconds);
       
-      console.log('calculateTimeLeft: assigned session, remainingSeconds =', remainingSeconds);
       return remainingSeconds;
     }
     
-    console.log('calculateTimeLeft: unknown status =', sessionData.status);
     return null;
   }, []);
   
   // Обновление таймера при изменении сессии
   useEffect(() => {
-    console.log('useTimer useEffect: session =', session);
-    
     if (session && (session.status === 'active' || session.status === 'assigned')) {
-      console.log('useTimer: session status is active or assigned, calculating time...');
-      
       // Рассчитываем оставшееся время
       const remaining = calculateTimeLeft(session);
-      console.log('useTimer: calculated remaining time =', remaining);
       setTimeLeft(remaining);
       
       // Обновляем таймер каждую секунду
