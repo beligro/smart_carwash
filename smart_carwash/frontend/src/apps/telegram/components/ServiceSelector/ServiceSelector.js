@@ -121,15 +121,29 @@ const ServiceSelector = ({ onSelect, theme = 'light', user }) => {
     }
   };
 
-  // Безопасная проверка номера машины
+  // Безопасная проверка номера машины (гибкая валидация)
   const isValidCarNumber = (number) => {
     try {
       if (!number || typeof number !== 'string') {
         return false;
       }
       
-      const carNumberRegex = /^[АВЕКМНОРСТУХ]\d{3}[АВЕКМНОРСТУХ]{2}\d{2,3}$/;
-      return carNumberRegex.test(number);
+      // Проверяем минимальную длину
+      if (number.length < 6) {
+        return false;
+      }
+      
+      // Проверяем, что номер содержит только буквы и цифры
+      const carNumberRegex = /^[А-ЯA-Z0-9]+$/;
+      if (!carNumberRegex.test(number)) {
+        return false;
+      }
+      
+      // Проверяем, что есть хотя бы одна буква и одна цифра
+      const hasLetter = /[А-ЯA-Z]/.test(number);
+      const hasDigit = /[0-9]/.test(number);
+      
+      return hasLetter && hasDigit;
     } catch (error) {
       console.error('Ошибка в isValidCarNumber:', error);
       return false;
@@ -178,7 +192,7 @@ const ServiceSelector = ({ onSelect, theme = 'light', user }) => {
   const canConfirm = selectedService && 
     selectedRentalTime && 
     carNumber && 
-    carNumber.length === 9 && 
+    carNumber.length >= 6 && 
     isValidCarNumber(carNumber);
 
   // Определяем, нужно ли показывать чекбокс "запомнить номер"

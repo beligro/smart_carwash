@@ -55,8 +55,8 @@ const CarNumberInput = ({
       }
 
       // Регулярное выражение для гибкого формата номера
-      // Разрешаем русские буквы (АВЕКМНОРСТУХ), латинские буквы (ABEKMHOPCTYX) и цифры
-      const carNumberRegex = /^[АВЕКМНОРСТУХABEKMHOPCTYX0-9]+$/;
+      // Разрешаем все русские буквы (А-Я) и латинские буквы (A-Z) и цифры
+      const carNumberRegex = /^[А-ЯA-Z0-9]+$/;
       
       if (!carNumberRegex.test(number)) {
         setIsValid(false);
@@ -65,7 +65,7 @@ const CarNumberInput = ({
       }
 
       // Проверяем, что есть хотя бы одна буква и одна цифра
-      const hasLetter = /[АВЕКМНОРСТУХABEKMHOPCTYX]/.test(number);
+      const hasLetter = /[А-ЯA-Z]/.test(number);
       const hasDigit = /[0-9]/.test(number);
       
       if (!hasLetter || !hasDigit) {
