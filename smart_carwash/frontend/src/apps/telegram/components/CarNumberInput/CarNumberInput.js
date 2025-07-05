@@ -28,70 +28,113 @@ const CarNumberInput = ({
 
   const themeClass = theme === 'dark' ? styles.dark : styles.light;
 
+  // Обеспечиваем безопасность value
+  const safeValue = value || '';
+
   // Валидация российского номера машины (формат: О111ОО799)
   const validateCarNumber = (number) => {
-    if (!number) {
+    try {
+      if (!number) {
+        setIsValid(false);
+        setErrorMessage('Введите номер машины');
+        return false;
+      }
+
+      // Проверяем, что number - это строка
+      if (typeof number !== 'string') {
+        setIsValid(false);
+        setErrorMessage('Некорректный тип данных');
+        return false;
+      }
+
+      // Регулярное выражение для российского номера
+      const carNumberRegex = /^[АВЕКМНОРСТУХ]\d{3}[АВЕКМНОРСТУХ]{2}\d{2,3}$/;
+      
+      if (!carNumberRegex.test(number)) {
+        setIsValid(false);
+        setErrorMessage('Неверный формат номера. Используйте формат: О111ОО799');
+        return false;
+      }
+
+      setIsValid(true);
+      setErrorMessage('');
+      return true;
+    } catch (error) {
+      console.error('Ошибка валидации номера машины:', error);
       setIsValid(false);
-      setErrorMessage('Введите номер машины');
+      setErrorMessage('Ошибка валидации');
       return false;
     }
-
-    // Регулярное выражение для российского номера
-    const carNumberRegex = /^[АВЕКМНОРСТУХ]\d{3}[АВЕКМНОРСТУХ]{2}\d{2,3}$/;
-    
-    if (!carNumberRegex.test(number)) {
-      setIsValid(false);
-      setErrorMessage('Неверный формат номера. Используйте формат: О111ОО799');
-      return false;
-    }
-
-    setIsValid(true);
-    setErrorMessage('');
-    return true;
   };
 
   // Обработчик изменения значения
   const handleChange = (e) => {
-    const newValue = e.target.value.toUpperCase();
-    onChange(newValue);
-    validateCarNumber(newValue);
+    try {
+      const newValue = e.target.value.toUpperCase();
+      onChange(newValue);
+      validateCarNumber(newValue);
+    } catch (error) {
+      console.error('Ошибка в handleChange:', error);
+    }
   };
 
   // Обработчик потери фокуса
   const handleBlur = () => {
-    setIsFocused(false);
-    validateCarNumber(value);
+    try {
+      setIsFocused(false);
+      validateCarNumber(safeValue);
+    } catch (error) {
+      console.error('Ошибка в handleBlur:', error);
+    }
   };
 
   // Обработчик получения фокуса
   const handleFocus = () => {
-    setIsFocused(true);
+    try {
+      setIsFocused(true);
+    } catch (error) {
+      console.error('Ошибка в handleFocus:', error);
+    }
   };
 
   // Автоматическое форматирование при вводе
   const formatCarNumber = (input) => {
-    // Убираем все пробелы и дефисы
-    let formatted = input.replace(/[\s-]/g, '');
-    
-    // Ограничиваем длину
-    if (formatted.length > 9) {
-      formatted = formatted.substring(0, 9);
+    try {
+      // Проверяем, что input - это строка
+      if (typeof input !== 'string') {
+        return '';
+      }
+      
+      // Убираем все пробелы и дефисы
+      let formatted = input.replace(/[\s-]/g, '');
+      
+      // Ограничиваем длину
+      if (formatted.length > 9) {
+        formatted = formatted.substring(0, 9);
+      }
+      
+      return formatted;
+    } catch (error) {
+      console.error('Ошибка в formatCarNumber:', error);
+      return '';
     }
-    
-    return formatted;
   };
 
   // Обработчик ввода с форматированием
   const handleInput = (e) => {
-    const formatted = formatCarNumber(e.target.value.toUpperCase());
-    onChange(formatted);
+    try {
+      const formatted = formatCarNumber(e.target.value.toUpperCase());
+      onChange(formatted);
+    } catch (error) {
+      console.error('Ошибка в handleInput:', error);
+    }
   };
 
   // Определяем, нужно ли показывать чекбокс "запомнить"
   const shouldShowRememberCheckbox = showRememberCheckbox && 
-    value && 
-    value !== savedCarNumber && 
-    validateCarNumber(value);
+    safeValue && 
+    safeValue !== savedCarNumber && 
+    isValid;
 
   return (
     <Card theme={theme} className={styles.container}>
@@ -102,7 +145,7 @@ const CarNumberInput = ({
         <div className={`${styles.inputWrapper} ${!isValid ? styles.error : ''} ${isFocused ? styles.focused : ''}`}>
           <input
             type="text"
-            value={value}
+            value={safeValue}
             onChange={handleInput}
             onFocus={handleFocus}
             onBlur={handleBlur}

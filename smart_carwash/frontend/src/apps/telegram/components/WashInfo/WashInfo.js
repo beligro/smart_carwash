@@ -36,20 +36,32 @@ const WashInfo = ({ washInfo, theme = 'light', onCreateSession, onViewHistory, u
   
   // Функция для перехода на страницу сессии
   const handleViewSessionDetails = () => {
-    if (userSession && userSession.id) {
-      navigate(`/telegram/session/${userSession.id}`);
+    try {
+      if (userSession && userSession.id) {
+        navigate(`/telegram/session/${userSession.id}`);
+      }
+    } catch (error) {
+      console.error('Ошибка при переходе к деталям сессии:', error);
     }
   };
 
   // Обработчик нажатия на кнопку "Записаться на мойку"
   const handleCreateSessionClick = () => {
-    setShowServiceSelector(true);
+    try {
+      setShowServiceSelector(true);
+    } catch (error) {
+      console.error('Ошибка при открытии выбора услуг:', error);
+    }
   };
 
   // Обработчик выбора услуги
   const handleServiceSelect = (serviceData) => {
-    setShowServiceSelector(false);
-    onCreateSession(serviceData);
+    try {
+      setShowServiceSelector(false);
+      onCreateSession(serviceData);
+    } catch (error) {
+      console.error('Ошибка при выборе услуги:', error);
+    }
   };
 
   const themeClass = theme === 'dark' ? styles.dark : styles.light;
@@ -198,15 +210,10 @@ const WashInfo = ({ washInfo, theme = 'light', onCreateSession, onViewHistory, u
               <Button 
                 theme={theme} 
                 onClick={handleCreateSessionClick}
-                disabled={hasAnyQueue && totalQueueSize > 5}
+                className={styles.createSessionButton}
               >
                 Записаться на мойку
               </Button>
-              {hasAnyQueue && totalQueueSize > 5 && (
-                <p className={`${styles.sessionInfo} ${themeClass}`} style={{ marginTop: '8px', color: '#C62828' }}>
-                  Очередь слишком большая, попробуйте позже
-                </p>
-              )}
             </>
           )}
         </Card>

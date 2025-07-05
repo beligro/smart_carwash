@@ -25,8 +25,12 @@ const ServiceSelector = ({ onSelect, theme = 'light', user }) => {
   
   // Инициализация номера машины из данных пользователя
   useEffect(() => {
-    if (user && user.car_number) {
-      setCarNumber(user.car_number);
+    try {
+      if (user && user.car_number) {
+        setCarNumber(user.car_number);
+      }
+    } catch (error) {
+      console.error('Ошибка при инициализации номера машины:', error);
     }
   }, [user]);
   
@@ -39,54 +43,97 @@ const ServiceSelector = ({ onSelect, theme = 'light', user }) => {
   
   // Загрузка доступного времени аренды при выборе услуги
   useEffect(() => {
-    if (selectedService) {
-      setLoading(true);
-      ApiService.getAvailableRentalTimes(selectedService.id)
-        .then(data => {
-          setRentalTimes(data.available_times || [5]);
-          setSelectedRentalTime(data.available_times && data.available_times.length > 0 ? data.available_times[0] : 5);
-        })
-        .catch(error => {
-          console.error('Ошибка при загрузке времени аренды:', error);
-          setRentalTimes([5]);
-          setSelectedRentalTime(5);
-        })
-        .finally(() => {
-          setLoading(false);
-        });
-    } else {
-      setRentalTimes([]);
-      setSelectedRentalTime(null);
+    try {
+      if (selectedService) {
+        setLoading(true);
+        ApiService.getAvailableRentalTimes(selectedService.id)
+          .then(data => {
+            setRentalTimes(data.available_times || [5]);
+            setSelectedRentalTime(data.available_times && data.available_times.length > 0 ? data.available_times[0] : 5);
+          })
+          .catch(error => {
+            console.error('Ошибка при загрузке времени аренды:', error);
+            setRentalTimes([5]);
+            setSelectedRentalTime(5);
+          })
+          .finally(() => {
+            setLoading(false);
+          });
+      } else {
+        setRentalTimes([]);
+        setSelectedRentalTime(null);
+      }
+    } catch (error) {
+      console.error('Ошибка в useEffect для загрузки времени аренды:', error);
+      setRentalTimes([5]);
+      setSelectedRentalTime(5);
+      setLoading(false);
     }
   }, [selectedService]);
 
   // Обработчик выбора услуги
   const handleServiceSelect = (serviceType) => {
-    setSelectedService(serviceType);
-    // Если выбрана услуга без химии, сбрасываем флаг
-    if (!serviceType.hasChemistry) {
-      setWithChemistry(false);
+    try {
+      setSelectedService(serviceType);
+      // Если выбрана услуга без химии, сбрасываем флаг
+      if (!serviceType.hasChemistry) {
+        setWithChemistry(false);
+      }
+    } catch (error) {
+      console.error('Ошибка в handleServiceSelect:', error);
     }
   };
   
   // Обработчик переключения опции химии
   const handleChemistryToggle = () => {
-    setWithChemistry(!withChemistry);
+    try {
+      setWithChemistry(!withChemistry);
+    } catch (error) {
+      console.error('Ошибка в handleChemistryToggle:', error);
+    }
   };
   
   // Обработчик выбора времени аренды
   const handleRentalTimeSelect = (time) => {
-    setSelectedRentalTime(time);
+    try {
+      setSelectedRentalTime(time);
+    } catch (error) {
+      console.error('Ошибка в handleRentalTimeSelect:', error);
+    }
   };
 
   // Обработчик изменения номера машины
   const handleCarNumberChange = (value) => {
-    setCarNumber(value);
+    try {
+      setCarNumber(value || '');
+    } catch (error) {
+      console.error('Ошибка в handleCarNumberChange:', error);
+      setCarNumber('');
+    }
   };
 
   // Обработчик изменения чекбокса "запомнить номер"
   const handleRememberCarNumberChange = (checked) => {
-    setRememberCarNumber(checked);
+    try {
+      setRememberCarNumber(checked);
+    } catch (error) {
+      console.error('Ошибка в handleRememberCarNumberChange:', error);
+    }
+  };
+
+  // Безопасная проверка номера машины
+  const isValidCarNumber = (number) => {
+    try {
+      if (!number || typeof number !== 'string') {
+        return false;
+      }
+      
+      const carNumberRegex = /^[АВЕКМНОРСТУХ]\d{3}[АВЕКМНОРСТУХ]{2}\d{2,3}$/;
+      return carNumberRegex.test(number);
+    } catch (error) {
+      console.error('Ошибка в isValidCarNumber:', error);
+      return false;
+    }
   };
 
   // Сохранение номера машины пользователя
@@ -108,18 +155,22 @@ const ServiceSelector = ({ onSelect, theme = 'light', user }) => {
 
   // Обработчик подтверждения выбора
   const handleConfirm = async () => {
-    if (selectedService && selectedRentalTime && carNumber) {
-      // Если пользователь хочет запомнить номер, сохраняем его
-      if (rememberCarNumber) {
-        await saveCarNumber();
-      }
+    try {
+      if (selectedService && selectedRentalTime && carNumber) {
+        // Если пользователь хочет запомнить номер, сохраняем его
+        if (rememberCarNumber) {
+          await saveCarNumber();
+        }
 
-      onSelect({
-        serviceType: selectedService.id,
-        withChemistry: selectedService.hasChemistry ? withChemistry : false,
-        rentalTimeMinutes: selectedRentalTime,
-        carNumber: carNumber
-      });
+        onSelect({
+          serviceType: selectedService.id,
+          withChemistry: selectedService.hasChemistry ? withChemistry : false,
+          rentalTimeMinutes: selectedRentalTime,
+          carNumber: carNumber
+        });
+      }
+    } catch (error) {
+      console.error('Ошибка в handleConfirm:', error);
     }
   };
 
@@ -128,13 +179,13 @@ const ServiceSelector = ({ onSelect, theme = 'light', user }) => {
     selectedRentalTime && 
     carNumber && 
     carNumber.length === 9 && 
-    /^[АВЕКМНОРСТУХ]\d{3}[АВЕКМНОРСТУХ]{2}\d{2,3}$/.test(carNumber);
+    isValidCarNumber(carNumber);
 
   // Определяем, нужно ли показывать чекбокс "запомнить номер"
   const showRememberCheckbox = user && 
     carNumber && 
     carNumber !== user.car_number && 
-    /^[АВЕКМНОРСТУХ]\d{3}[АВЕКМНОРСТУХ]{2}\d{2,3}$/.test(carNumber);
+    isValidCarNumber(carNumber);
   
   return (
     <div className={styles.container}>
@@ -161,7 +212,7 @@ const ServiceSelector = ({ onSelect, theme = 'light', user }) => {
         <div className={styles.optionsContainer}>
           {/* Ввод номера машины */}
           <CarNumberInput
-            value={carNumber}
+            value={carNumber || ''}
             onChange={handleCarNumberChange}
             theme={theme}
             showRememberCheckbox={showRememberCheckbox}
@@ -196,7 +247,7 @@ const ServiceSelector = ({ onSelect, theme = 'light', user }) => {
               <p className={`${styles.loadingText} ${themeClass}`}>Загрузка доступного времени...</p>
             ) : (
               <div className={styles.rentalTimeGrid}>
-                {rentalTimes.map((time) => (
+                {(rentalTimes || []).map((time) => (
                   <div 
                     key={time} 
                     className={`${styles.rentalTimeItem} ${selectedRentalTime === time ? styles.selectedTime : ''}`}

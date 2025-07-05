@@ -195,28 +195,33 @@ const TelegramApp = () => {
       
       setLoading(true);
       
+      // Проверяем, что все необходимые данные присутствуют
+      if (!serviceData.serviceType || !serviceData.carNumber) {
+        setError('Не все данные заполнены');
+        return;
+      }
+      
       // Добавляем данные о типе услуги, химии и номере машины в запрос
       const response = await ApiService.createSession({ 
         user_id: user.id,
         service_type: serviceData.serviceType,
-        with_chemistry: serviceData.withChemistry,
-        car_number: serviceData.carNumber,
-        rental_time_minutes: serviceData.rentalTimeMinutes
+        with_chemistry: serviceData.withChemistry || false,
+        rental_time_minutes: serviceData.rentalTimeMinutes || 5,
+        car_number: serviceData.carNumber
       });
       
-      // Обновляем информацию о сессии в состоянии
-      setWashInfo(prevInfo => ({
-        ...prevInfo,
-        userSession: response.session
-      }));
-      
-      // Запускаем поллинг для обновления статуса сессии по session_id
-      if (response.session && ['created', 'assigned', 'active'].includes(response.session.status)) {
+      if (response.session) {
+        // Переходим на страницу сессии
+        navigate(`/session/${response.session.id}`);
+        
+        // Запускаем поллинг для обновления статуса сессии
         startSessionPolling(response.session.id);
+      } else {
+        setError('Не удалось создать сессию');
       }
     } catch (err) {
-      setError('Не удалось создать сессию');
       console.error('Ошибка создания сессии:', err);
+      setError('Не удалось создать сессию. Попробуйте еще раз.');
     } finally {
       setLoading(false);
     }
@@ -341,6 +346,12 @@ const TelegramApp = () => {
   };
 
   const themeObject = getTheme(theme);
+
+  // Обработка ошибок рендеринга
+  if (!themeObject) {
+    console.error('Ошибка: не удалось получить тему');
+    return <div>Ошибка загрузки приложения</div>;
+  }
 
   return (
     <AppContainer theme={themeObject}>
