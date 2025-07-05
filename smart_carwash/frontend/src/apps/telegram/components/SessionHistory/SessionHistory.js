@@ -106,6 +106,13 @@ const SessionHistory = ({ user, theme = 'light', onBack }) => {
                       {getSessionStatusDescription(session.status)}
                     </span>
                   </div>
+                  {session.car_number && (
+                    <div className={styles.carNumberInfo}>
+                      <span className={`${styles.carNumberText} ${themeClass}`}>
+                        Номер машины: {session.car_number}
+                      </span>
+                    </div>
+                  )}
                 </div>
                 
                 <Button 

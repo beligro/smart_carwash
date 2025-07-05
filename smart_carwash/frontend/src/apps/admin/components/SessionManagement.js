@@ -632,6 +632,11 @@ const SessionManagement = () => {
                   </DetailGroup>
                   
                   <DetailGroup>
+                    <DetailLabel theme={theme}>Номер машины:</DetailLabel>
+                    <DetailValue theme={theme}>{sessionDetails.car_number || 'Не указан'}</DetailValue>
+                  </DetailGroup>
+                  
+                  <DetailGroup>
                     <DetailLabel theme={theme}>Время аренды:</DetailLabel>
                     <DetailValue theme={theme}>{sessionDetails.rental_time_minutes} минут</DetailValue>
                   </DetailGroup>

@@ -341,6 +341,7 @@ const QueueStatus = () => {
                   </UserName>
                   <UserDetails>
                     Ожидает с: {user.waiting_since}
+                    {user.car_number && ` • Номер машины: ${user.car_number}`}
                   </UserDetails>
                 </UserInfo>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
@@ -416,6 +417,7 @@ const QueueStatus = () => {
                   </UserName>
                   <UserDetails>
                     Ожидает с: {user.waiting_since}
+                    {user.car_number && ` • Номер машины: ${user.car_number}`}
                   </UserDetails>
                 </UserInfo>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
@@ -491,6 +493,7 @@ const QueueStatus = () => {
                   </UserName>
                   <UserDetails>
                     Ожидает с: {user.waiting_since}
+                    {user.car_number && ` • Номер машины: ${user.car_number}`}
                   </UserDetails>
                 </UserInfo>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>

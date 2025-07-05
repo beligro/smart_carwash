@@ -120,6 +120,23 @@
   color: #eee;
 }
 
+.carNumberInfo {
+  margin-top: 8px;
+}
+
+.carNumberText {
+  font-size: 0.9rem;
+  font-weight: 500;
+}
+
+.carNumberText.light {
+  color: #555;
+}
+
+.carNumberText.dark {
+  color: #ccc;
+}
+
 .boxInfo {
   font-size: 0.9rem;
   margin: 8px 0;

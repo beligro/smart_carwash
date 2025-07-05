@@ -150,6 +150,9 @@ const WashInfo = ({ washInfo, theme = 'light', onCreateSession, onViewHistory, u
                 Услуга: {getServiceTypeDescription(userSession.serviceType || userSession.service_type)}
                 {(userSession.withChemistry || userSession.with_chemistry) && ' (с химией)'}
               </p>
+              <p className={`${styles.sessionInfo} ${themeClass}`}>
+                Номер машины: {userSession.carNumber || userSession.car_number || 'Не указан'}
+              </p>
               {(userSession.boxId || userSession.box_id || userSession.boxNumber || userSession.box_number) && (
                 <p className={`${styles.sessionInfo} ${themeClass}`}>
                   Назначен бокс: #{

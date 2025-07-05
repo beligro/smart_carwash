@@ -51,4 +51,5 @@ type QueueUser struct {
 	ServiceType  string `json:"service_type"`
 	Position     int    `json:"position"`
 	WaitingSince string `json:"waiting_since"` // Время добавления в очередь
+	CarNumber    string `json:"car_number"`    // Номер машины
 }

@@ -77,6 +77,7 @@ func (s *ServiceImpl) getServiceQueueInfo(serviceType string) (*models.ServiceQu
 				ServiceType:  serviceType,
 				Position:     queueSize, // Позиция в очереди
 				WaitingSince: session.CreatedAt.Format("2006-01-02 15:04:05"),
+				CarNumber:    session.CarNumber, // Номер машины из сессии
 			}
 			usersInQueue = append(usersInQueue, queueUser)
 		}
@@ -196,6 +197,7 @@ func (s *ServiceImpl) getQueueDetails() (*models.QueueDetails, error) {
 				ServiceType:  serviceType,
 				Position:     i + 1,
 				WaitingSince: session.CreatedAt.Format("2006-01-02 15:04:05"),
+				CarNumber:    session.CarNumber, // Номер машины из сессии
 			}
 			usersInQueue = append(usersInQueue, user)
 			queueOrder = append(queueOrder, session.UserID.String())
