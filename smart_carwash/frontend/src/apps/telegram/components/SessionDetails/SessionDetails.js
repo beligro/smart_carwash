@@ -287,6 +287,11 @@ const SessionDetails = ({ theme = 'light', user }) => {
         </div>
         
         <div className={`${styles.infoRow} ${themeClass}`}>
+          <div className={`${styles.infoLabel} ${themeClass}`}>Номер машины:</div>
+          <div className={`${styles.infoValue} ${themeClass}`}>{session.car_number || 'Не указан'}</div>
+        </div>
+        
+        <div className={`${styles.infoRow} ${themeClass}`}>
           <div className={`${styles.infoLabel} ${themeClass}`}>Время аренды:</div>
           <div className={`${styles.infoValue} ${themeClass}`}>
             {session.rental_time_minutes || 5} минут

@@ -14,7 +14,7 @@
 
 import axios from 'axios';
 import { v4 as uuidv4 } from 'uuid';
-import { toSnakeCase, toSnakeCaseQuery, fromSnakeCase } from '../utils/snakeCase';
+import { toSnakeCase, toSnakeCaseQuery } from '../utils/snakeCase';
 
 // Создаем экземпляр axios с базовой конфигурацией
 const api = axios.create({
@@ -47,28 +47,28 @@ const ApiService = {
   getWashBoxes: async (filters = {}) => {
     const queryString = toSnakeCaseQuery(filters);
     const response = await api.get(`/admin/washboxes?${queryString}`);
-    return fromSnakeCase(response.data);
+    return response.data;
   },
 
   // Создание бокса
   createWashBox: async (data) => {
     const snakeData = toSnakeCase(data);
     const response = await api.post('/admin/washboxes', snakeData);
-    return fromSnakeCase(response.data);
+    return response.data;
   },
 
   // Обновление бокса
   updateWashBox: async (id, data) => {
     const snakeData = toSnakeCase({ ...data, id });
     const response = await api.put('/admin/washboxes', snakeData);
-    return fromSnakeCase(response.data);
+    return response.data;
   },
 
   // Удаление бокса
   deleteWashBox: async (id) => {
     try {
       const response = await api.delete('/admin/washboxes', { data: { id } });
-      return fromSnakeCase(response.data);
+      return response.data;
     } catch (error) {
       console.error('Ошибка при удалении бокса:', error);
       throw error;
@@ -81,14 +81,14 @@ const ApiService = {
   getSessions: async (filters = {}) => {
     const queryString = toSnakeCaseQuery(filters);
     const response = await api.get(`/admin/sessions?${queryString}`);
-    return fromSnakeCase(response.data);
+    return response.data;
   },
 
   // Обновление сессии
   updateSession: async (id, data) => {
     const snakeData = toSnakeCase({ ...data, id });
     const response = await api.put('/admin/sessions', snakeData);
-    return fromSnakeCase(response.data);
+    return response.data;
   },
 
   // === МЕТОДЫ ДЛЯ РАБОТЫ С ОЧЕРЕДЬЮ ===
@@ -119,7 +119,7 @@ const ApiService = {
   removeFromQueue: async (id) => {
     try {
       const response = await api.delete(`/admin/queue?id=${id}`);
-      return fromSnakeCase(response.data);
+      return response.data;
     } catch (error) {
       console.error('Ошибка при удалении из очереди:', error);
       throw error;
@@ -132,14 +132,14 @@ const ApiService = {
   getUsers: async (filters = {}) => {
     const queryString = toSnakeCaseQuery(filters);
     const response = await api.get(`/admin/users?${queryString}`);
-    return fromSnakeCase(response.data);
+    return response.data;
   },
 
   // Получение пользователя по ID
   getUserById: async (userId) => {
     try {
       const response = await api.get(`/admin/users/by-id?id=${userId}`);
-      return fromSnakeCase(response.data);
+      return response.data;
     } catch (error) {
       console.error('Ошибка при получении пользователя по ID:', error);
       throw error;
@@ -150,7 +150,7 @@ const ApiService = {
   updateUser: async (id, data) => {
     const snakeData = toSnakeCase({ ...data, id });
     const response = await api.put('/admin/users', snakeData);
-    return fromSnakeCase(response.data);
+    return response.data;
   },
 
   // Обновление номера машины пользователя

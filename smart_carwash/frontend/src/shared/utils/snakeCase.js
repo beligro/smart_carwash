@@ -36,41 +36,6 @@ export function toSnakeCase(obj) {
 }
 
 /**
- * Рекурсивно преобразует все ключи объекта из snake_case в camelCase
- * Поддерживает вложенные объекты, массивы и примитивы
- * 
- * @param {any} obj - объект для преобразования
- * @returns {any} - объект с ключами в camelCase
- * 
- * @example
- * fromSnakeCase({ user_info: { first_name: 'John', last_name: 'Doe' } })
- * // => { userInfo: { firstName: 'John', lastName: 'Doe' } }
- * 
- * @example
- * fromSnakeCase({ service_type: 'wash', rental_time_minutes: 30 })
- * // => { serviceType: 'wash', rentalTimeMinutes: 30 }
- */
-export function fromSnakeCase(obj) {
-  // Если это массив - обрабатываем каждый элемент
-  if (Array.isArray(obj)) {
-    return obj.map(fromSnakeCase);
-  }
-  
-  // Если это объект (но не null, не Date, не примитив)
-  if (obj && typeof obj === 'object' && obj.constructor === Object) {
-    return Object.fromEntries(
-      Object.entries(obj).map(([key, value]) => [
-        _.camelCase(key), 
-        fromSnakeCase(value)
-      ])
-    );
-  }
-  
-  // Для примитивов, null, undefined, Date и других типов - возвращаем как есть
-  return obj;
-}
-
-/**
  * Преобразует объект фильтров в query-строку с snake_case ключами
  * 
  * @param {Object} filters - объект фильтров
