@@ -16,9 +16,8 @@ const useTimer = (session) => {
     }
     
     if (sessionData.status === 'active') {
-      // Для активной сессии - используем выбранное время аренды (по умолчанию 5 минут)
-      // Время начала сессии - это время последнего обновления статуса на active
       const startTime = new Date(sessionData.status_updated_at || sessionData.updated_at);
+      
       const now = new Date();
       
       // Получаем выбранное время аренды в минутах (по умолчанию 5 минут)
@@ -38,9 +37,8 @@ const useTimer = (session) => {
       
       return remainingSeconds;
     } else if (sessionData.status === 'assigned') {
-      // Для назначенной сессии - 3 минуты с момента назначения
-      // Время назначения сессии - это время последнего обновления статуса на assigned
       const assignedTime = new Date(sessionData.status_updated_at || sessionData.updated_at);
+      
       const now = new Date();
       
       // Общая продолжительность резерва - 3 минуты (180 секунд)
@@ -79,6 +77,7 @@ const useTimer = (session) => {
       // Очищаем интервал при размонтировании компонента
       return () => clearInterval(timerId);
     } else {
+      console.log('useTimer: session is not active or assigned, resetting timer');
       // Если сессия не активна и не назначена, сбрасываем таймер
       setTimeLeft(null);
     }

@@ -1,18 +1,16 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, Suspense, lazy } from 'react';
 import WebApp from '@twa-dev/sdk';
 import { Routes, Route, Navigate, useNavigate } from 'react-router-dom';
 import styled from 'styled-components';
-
-// Компоненты
 import Header from './components/Header';
 import WelcomeMessage from './components/WelcomeMessage/WelcomeMessage';
 import WashInfo from './components/WashInfo/WashInfo';
-import SessionDetails from './components/SessionDetails';
-import SessionHistory from './components/SessionHistory';
-
-// Сервисы и утилиты
 import ApiService from '../../shared/services/ApiService';
 import { getTheme } from '../../shared/styles/theme';
+
+// Ленивая загрузка компонентов
+const SessionDetails = lazy(() => import('./components/SessionDetails'));
+const SessionHistory = lazy(() => import('./components/SessionHistory'));
 
 // Стилизованные компоненты
 const AppContainer = styled.div`
@@ -46,45 +44,40 @@ const TelegramApp = () => {
 
   // Инициализация приложения
   useEffect(() => {
-    try {
-      // Инициализация Telegram Mini App
-      WebApp.ready();
-      
-      // Установка темы в соответствии с темой Telegram
-      const colorScheme = WebApp.colorScheme || 'light';
-      setTheme(colorScheme);
-      
-      // Настройка основного цвета
-      document.documentElement.style.setProperty(
-        '--tg-theme-button-color', 
-        (WebApp.themeParams && WebApp.themeParams.button_color) || '#2481cc'
-      );
-      
-      // Настройка цвета текста
-      document.documentElement.style.setProperty(
-        '--tg-theme-text-color', 
-        (WebApp.themeParams && WebApp.themeParams.text_color) || '#000000'
-      );
-      
-      console.log('Telegram WebApp инициализирован успешно');
-      
-      // Получаем данные пользователя из Telegram
-      if (WebApp.initDataUnsafe && WebApp.initDataUnsafe.user) {
-        const telegramUser = WebApp.initDataUnsafe.user;
+    const initializeApp = async () => {
+      try {
+        // Инициализация Telegram Mini App
+        WebApp.ready();
         
-        // Получаем пользователя по telegram_id
-        getUserByTelegramId(telegramUser.id);
-      } else {
-        // Для разработки используем тестового пользователя
-        getUserByTelegramId(12345678);
+        // Установка темы в соответствии с темой Telegram
+        const colorScheme = WebApp.colorScheme || 'light';
+        setTheme(colorScheme);
+        
+        // Настройка основного цвета
+        document.documentElement.style.setProperty(
+          '--tg-theme-button-color', 
+          (WebApp.themeParams && WebApp.themeParams.button_color) || '#2481cc'
+        );
+        
+        // Настройка цвета текста
+        document.documentElement.style.setProperty(
+          '--tg-theme-text-color', 
+          (WebApp.themeParams && WebApp.themeParams.text_color) || '#000000'
+        );
+        
+        // Получаем данные пользователя из Telegram
+        if (WebApp.initDataUnsafe && WebApp.initDataUnsafe.user) {
+          const telegramUser = WebApp.initDataUnsafe.user;
+          
+          // Получаем пользователя по telegram_id
+          getUserByTelegramId(telegramUser.id);
+        }
+      } catch (err) {
+        console.error('Ошибка инициализации Telegram WebApp:', err);
       }
-    } catch (err) {
-      console.error('Ошибка инициализации Telegram WebApp:', err);
-      console.log('Продолжаем работу в режиме разработки');
-      
-      // Для разработки используем тестового пользователя
-      getUserByTelegramId(12345678);
-    }
+    };
+    
+    initializeApp();
   }, []);
   
   // Функция для получения пользователя по telegram_id
@@ -92,10 +85,26 @@ const TelegramApp = () => {
     try {
       const response = await ApiService.getUserByTelegramId(telegramId);
       setUser(response.user);
-      console.log('Пользователь получен:', response.user);
     } catch (err) {
       console.error('Ошибка получения пользователя:', err);
-      setError('Не удалось получить пользователя. Возможно, вы не зарегистрированы в боте. Пожалуйста, нажмите /start в боте.');
+      
+      // Если это тестовый пользователь, попробуем создать его
+      if (telegramId === 12345678) {
+        try {
+          const createResponse = await ApiService.createUser({
+            telegramId: telegramId,
+            username: 'test_user',
+            firstName: 'Test',
+            lastName: 'User'
+          });
+          setUser(createResponse.user);
+        } catch (createErr) {
+          console.error('Ошибка создания тестового пользователя:', createErr);
+          setError('Не удалось создать тестового пользователя. Проверьте, что бэкенд запущен и доступен.');
+        }
+      } else {
+        setError('Не удалось получить пользователя. Возможно, вы не зарегистрированы в боте. Пожалуйста, нажмите /start в боте.');
+      }
     }
   };
 
@@ -108,13 +117,12 @@ const TelegramApp = () => {
       }
       
       const data = await ApiService.getQueueStatus();
-      console.log('Queue status data:', data);
       
       // Обновляем данные, сохраняя структуру объекта
       setWashInfo(prevInfo => {
         // Если это первая загрузка или предыдущих данных нет
         if (!prevInfo) {
-          return {
+          const newInfo = {
             allBoxes: data.all_boxes || [],
             washQueue: data.wash_queue || { queue_size: 0, has_queue: false },
             airDryQueue: data.air_dry_queue || { queue_size: 0, has_queue: false },
@@ -123,10 +131,11 @@ const TelegramApp = () => {
             hasAnyQueue: data.has_any_queue || false,
             userSession: data.user_session || null
           };
+          return newInfo;
         }
         
         // Обновляем только изменившиеся данные
-        return {
+        const updatedInfo = {
           ...prevInfo,
           allBoxes: data.all_boxes || prevInfo.allBoxes,
           washQueue: data.wash_queue || prevInfo.washQueue,
@@ -136,20 +145,21 @@ const TelegramApp = () => {
           hasAnyQueue: data.has_any_queue || prevInfo.hasAnyQueue,
           userSession: data.user_session || prevInfo.userSession
         };
+        return updatedInfo;
       });
       
       setError(null);
     } catch (err) {
-      setError('Не удалось загрузить информацию о мойке');
       console.error('Ошибка загрузки информации о мойке:', err);
+      setError('Не удалось загрузить информацию о мойке');
       
       // Создаем пустой объект с необходимой структурой только если нет предыдущих данных
       if (!washInfo) {
         setWashInfo({
           allBoxes: [],
-          washQueue: { serviceType: 'wash', boxes: [], queue_size: 0, has_queue: false },
-          airDryQueue: { serviceType: 'air_dry', boxes: [], queue_size: 0, has_queue: false },
-          vacuumQueue: { serviceType: 'vacuum', boxes: [], queue_size: 0, has_queue: false },
+          washQueue: { serviceType: 'wash', boxes: [], queueSize: 0, hasQueue: false },
+          airDryQueue: { serviceType: 'air_dry', boxes: [], queueSize: 0, hasQueue: false },
+          vacuumQueue: { serviceType: 'vacuum', boxes: [], queueSize: 0, hasQueue: false },
           totalQueueSize: 0,
           hasAnyQueue: false,
           userSession: null
@@ -172,29 +182,33 @@ const TelegramApp = () => {
       
       setLoading(true);
       
-      // Добавляем данные о типе услуги и химии в запрос
+      // Проверяем, что все необходимые данные присутствуют
+      if (!serviceData.serviceType || !serviceData.carNumber) {
+        setError('Не все данные заполнены');
+        return;
+      }
+      
+      // Добавляем данные о типе услуги, химии и номере машины в запрос
       const response = await ApiService.createSession({ 
         user_id: user.id,
         service_type: serviceData.serviceType,
-        with_chemistry: serviceData.withChemistry,
-        rental_time_minutes: serviceData.rentalTimeMinutes
+        with_chemistry: serviceData.withChemistry || false,
+        rental_time_minutes: serviceData.rentalTimeMinutes || 5,
+        car_number: serviceData.carNumber
       });
       
-      console.log('Создана сессия:', response);
-      
-      // Обновляем информацию о сессии в состоянии
-      setWashInfo(prevInfo => ({
-        ...prevInfo,
-        userSession: response.session
-      }));
-      
-      // Запускаем поллинг для обновления статуса сессии по session_id
-      if (response.session && ['created', 'assigned', 'active'].includes(response.session.status)) {
+      if (response.session) {
+        // Переходим на страницу сессии
+        navigate(`/telegram/session/${response.session.id}`);
+        
+        // Запускаем поллинг для обновления статуса сессии
         startSessionPolling(response.session.id);
+      } else {
+        setError('Не удалось создать сессию');
       }
     } catch (err) {
-      setError('Не удалось создать сессию');
       console.error('Ошибка создания сессии:', err);
+      setError('Не удалось создать сессию. Попробуйте еще раз.');
     } finally {
       setLoading(false);
     }
@@ -218,12 +232,10 @@ const TelegramApp = () => {
     const sessionPollingInterval = setInterval(async () => {
       try {
         const sessionData = await ApiService.getSessionById(sessionId);
-        console.log('Обновление статуса сессии:', sessionData);
         
         if (sessionData && sessionData.session) {
           // Обновляем данные сессии пользователя
           setWashInfo(prevInfo => {
-            console.log('Обновление сессии в washInfo:', sessionData.session);
             return {
               ...prevInfo,
               userSession: sessionData.session
@@ -260,40 +272,53 @@ const TelegramApp = () => {
   // Запускаем поллинг при монтировании компонента
   useEffect(() => {
     if (user) {
-      // Загружаем статус очереди и боксов при первой загрузке
-      fetchQueueStatus(true);
-      
-      // Запускаем поллинг статуса очереди (должен работать всегда)
-      const queueInterval = startQueuePolling();
+      try {
+        // Загружаем статус очереди и боксов при первой загрузке
+        fetchQueueStatus(true);
+        
+        // Запускаем поллинг статуса очереди (должен работать всегда)
+        const queueInterval = startQueuePolling();
 
-      // Загружаем информацию о сессии пользователя по user_id и запускаем поллинг по session_id
-      const loadUserSessionAndStartPolling = async () => {
-        try {
-          // Сначала пробуем получить сессию напрямую через getUserSession
-          const sessionResponse = await ApiService.getUserSession(user.id);
-          console.log('User session direct data:', sessionResponse);
-          
-          if (sessionResponse && sessionResponse.session) {
-            // Обновляем данные сессии пользователя
-            setWashInfo(prevInfo => ({
-              ...prevInfo,
-              userSession: sessionResponse.session
-            }));
+        // Загружаем информацию о сессии пользователя по user_id и запускаем поллинг по session_id
+        const loadUserSessionAndStartPolling = async () => {
+          try {
+            // Сначала пробуем получить сессию напрямую через getUserSession
+            const sessionResponse = await ApiService.getUserSession(user.id);
             
-            // Если у пользователя есть активная сессия, запускаем поллинг для неё по ID сессии
-            if (['created', 'assigned', 'active'].includes(sessionResponse.session.status)) {
-              startSessionPolling(sessionResponse.session.id);
+            if (sessionResponse && sessionResponse.session) {
+              // Обновляем данные сессии пользователя
+              setWashInfo(prevInfo => {
+                return {
+                  ...prevInfo,
+                  userSession: sessionResponse.session
+                };
+              });
+              
+              // Если у пользователя есть активная сессия, запускаем поллинг для неё по ID сессии
+              if (['created', 'assigned', 'active'].includes(sessionResponse.session.status)) {
+                startSessionPolling(sessionResponse.session.id);
+              }
+            } else {
+              console.log('No user session found');
             }
+          } catch (err) {
+            console.error('Ошибка загрузки информации о пользовательской сессии:', err);
           }
-        } catch (err) {
-          console.error('Ошибка загрузки информации о пользовательской сессии:', err);
-        }
-      };
-      
-      loadUserSessionAndStartPolling();
-      
-      // Очищаем интервал при размонтировании
-      return () => clearInterval(queueInterval);
+        };
+        
+        loadUserSessionAndStartPolling();
+        
+        // Очищаем интервал при размонтировании
+        return () => {
+          clearInterval(queueInterval);
+        };
+      } catch (err) {
+        console.error('Error in useEffect for polling:', err);
+        setError('Ошибка при загрузке данных');
+        setLoading(false);
+      }
+    } else {
+      console.log('No user yet, skipping data loading');
     }
   }, [user]);
 
@@ -309,6 +334,12 @@ const TelegramApp = () => {
 
   const themeObject = getTheme(theme);
 
+  // Обработка ошибок рендеринга
+  if (!themeObject) {
+    console.error('Ошибка: не удалось получить тему');
+    return <div>Ошибка загрузки приложения</div>;
+  }
+
   return (
     <AppContainer theme={themeObject}>
       <Header theme={theme} />
@@ -323,13 +354,16 @@ const TelegramApp = () => {
                     <p>Загрузка информации о мойке...</p>
                   ) : error ? (
                     <p style={{ color: 'red' }}>{error}</p>
-                  ) : (
+                  ) : washInfo ? (
                     <WashInfo 
                       washInfo={washInfo} 
                       theme={theme} 
                       onCreateSession={handleCreateSession}
                       onViewHistory={handleViewHistory}
+                      user={user}
                     />
+                  ) : (
+                    <p>Нет данных для отображения</p>
                   )}
                 </>
               } 
@@ -337,20 +371,24 @@ const TelegramApp = () => {
             <Route 
               path="/session/:sessionId" 
               element={
-                <SessionDetails 
-                  theme={theme} 
-                  user={user}
-                />
+                <Suspense fallback={<div>Загрузка информации о сессии...</div>}>
+                  <SessionDetails 
+                    theme={theme} 
+                    user={user}
+                  />
+                </Suspense>
               } 
             />
             <Route 
               path="/history" 
               element={
-                <SessionHistory 
-                  theme={theme} 
-                  user={user}
-                  onBack={handleBackToHome}
-                />
+                <Suspense fallback={<div>Загрузка истории сессий...</div>}>
+                  <SessionHistory 
+                    theme={theme} 
+                    user={user}
+                    onBack={handleBackToHome}
+                  />
+                </Suspense>
               } 
             />
             <Route path="*" element={<Navigate to="/telegram" />} />

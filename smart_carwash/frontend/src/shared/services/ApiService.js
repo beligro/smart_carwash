@@ -14,15 +14,15 @@
 
 import axios from 'axios';
 import { v4 as uuidv4 } from 'uuid';
-import { toSnakeCase, toSnakeCaseQuery } from '../utils/snakeCase';
+import { toSnakeCase, toSnakeCaseQuery, fromSnakeCase } from '../utils/snakeCase';
 
-// Создаем экземпляр axios с базовым URL
+// Создаем экземпляр axios с базовой конфигурацией
 const api = axios.create({
   baseURL: process.env.REACT_APP_API_URL || '/api',
+  timeout: 10000,
   headers: {
     'Content-Type': 'application/json',
   },
-  withCredentials: true,
 });
 
 // Добавляем перехватчик для добавления токена к запросам
@@ -47,28 +47,28 @@ const ApiService = {
   getWashBoxes: async (filters = {}) => {
     const queryString = toSnakeCaseQuery(filters);
     const response = await api.get(`/admin/washboxes?${queryString}`);
-    return response.data;
+    return fromSnakeCase(response.data);
   },
 
   // Создание бокса
   createWashBox: async (data) => {
     const snakeData = toSnakeCase(data);
     const response = await api.post('/admin/washboxes', snakeData);
-    return response.data;
+    return fromSnakeCase(response.data);
   },
 
   // Обновление бокса
   updateWashBox: async (id, data) => {
     const snakeData = toSnakeCase({ ...data, id });
     const response = await api.put('/admin/washboxes', snakeData);
-    return response.data;
+    return fromSnakeCase(response.data);
   },
 
   // Удаление бокса
   deleteWashBox: async (id) => {
     try {
       const response = await api.delete('/admin/washboxes', { data: { id } });
-      return response.data;
+      return fromSnakeCase(response.data);
     } catch (error) {
       console.error('Ошибка при удалении бокса:', error);
       throw error;
@@ -81,20 +81,31 @@ const ApiService = {
   getSessions: async (filters = {}) => {
     const queryString = toSnakeCaseQuery(filters);
     const response = await api.get(`/admin/sessions?${queryString}`);
-    return response.data;
+    return fromSnakeCase(response.data);
   },
 
   // Обновление сессии
   updateSession: async (id, data) => {
     const snakeData = toSnakeCase({ ...data, id });
     const response = await api.put('/admin/sessions', snakeData);
-    return response.data;
+    return fromSnakeCase(response.data);
   },
 
   // === МЕТОДЫ ДЛЯ РАБОТЫ С ОЧЕРЕДЬЮ ===
   
   // Получение статуса очереди
   getQueueStatus: async () => {
+    try {
+      const response = await api.get('/queue-status');
+      return response.data;
+    } catch (error) {
+      console.error('Ошибка при получении статуса очереди:', error);
+      throw error;
+    }
+  },
+  
+  // Получение статуса очереди
+  getAdminQueue: async () => {
     try {
       const response = await api.get('/admin/queue/status');
       return response.data;
@@ -108,7 +119,7 @@ const ApiService = {
   removeFromQueue: async (id) => {
     try {
       const response = await api.delete(`/admin/queue?id=${id}`);
-      return response.data;
+      return fromSnakeCase(response.data);
     } catch (error) {
       console.error('Ошибка при удалении из очереди:', error);
       throw error;
@@ -121,14 +132,14 @@ const ApiService = {
   getUsers: async (filters = {}) => {
     const queryString = toSnakeCaseQuery(filters);
     const response = await api.get(`/admin/users?${queryString}`);
-    return response.data;
+    return fromSnakeCase(response.data);
   },
 
   // Получение пользователя по ID
   getUserById: async (userId) => {
     try {
       const response = await api.get(`/admin/users/by-id?id=${userId}`);
-      return response.data;
+      return fromSnakeCase(response.data);
     } catch (error) {
       console.error('Ошибка при получении пользователя по ID:', error);
       throw error;
@@ -139,10 +150,24 @@ const ApiService = {
   updateUser: async (id, data) => {
     const snakeData = toSnakeCase({ ...data, id });
     const response = await api.put('/admin/users', snakeData);
-    return response.data;
+    return fromSnakeCase(response.data);
   },
 
-  // === СУЩЕСТВУЮЩИЕ МЕТОДЫ ===
+  // Обновление номера машины пользователя
+  updateCarNumber: async (userId, carNumber) => {
+    try {
+      const response = await api.put('/users/car-number', {
+        user_id: userId,
+        car_number: carNumber
+      });
+      return response.data;
+    } catch (error) {
+      console.error('Ошибка при обновлении номера машины:', error);
+      throw error;
+    }
+  },
+
+  // === МЕТОДЫ ДЛЯ TELEGRAM ПРИЛОЖЕНИЯ ===
 
   // Получение доступного времени аренды для определенного типа услуги
   getAvailableRentalTimes: async (serviceType) => {
@@ -151,7 +176,7 @@ const ApiService = {
       return response.data;
     } catch (error) {
       console.error('Ошибка при получении доступного времени аренды:', error);
-      return { available_times: [5] }; // Значение по умолчанию
+      return { availableTimes: [5] }; // Значение по умолчанию
     }
   },
 
@@ -166,18 +191,40 @@ const ApiService = {
     }
   },
 
-  // Создание пользователя
+  // Создание пользователя (для Telegram приложения)
   createUser: async (data) => {
-    const snakeData = toSnakeCase(data);
-    const response = await api.post('/admin/users', snakeData);
-    return response.data;
+    try {
+      // Добавляем обязательное поле idempotency_key
+      const userData = {
+        ...data,
+        idempotencyKey: uuidv4() // Генерируем уникальный ключ
+      };
+      
+      const snakeData = toSnakeCase(userData);
+      const response = await api.post('/users', snakeData);
+      return response.data;
+    } catch (error) {
+      console.error('Ошибка при создании пользователя:', error);
+      throw error;
+    }
   },
 
-  // Создание сессии
+  // Создание сессии (для Telegram приложения)
   createSession: async (data) => {
-    const snakeData = toSnakeCase(data);
-    const response = await api.post('/admin/sessions', snakeData);
-    return response.data;
+    try {
+      // Добавляем обязательное поле idempotency_key
+      const sessionData = {
+        ...data,
+        idempotencyKey: uuidv4() // Генерируем уникальный ключ
+      };
+      
+      const snakeData = toSnakeCase(sessionData);
+      const response = await api.post('/sessions', snakeData);
+      return response.data;
+    } catch (error) {
+      console.error('Ошибка при создании сессии:', error);
+      throw error;
+    }
   },
 
   // Получение сессии пользователя
@@ -247,13 +294,6 @@ const ApiService = {
       console.error('Ошибка при получении истории сессий:', error);
       throw error;
     }
-  },
-
-  // Пример для GET с query-параметрами (универсальный подход)
-  getSessionHistory: async (filters = {}) => {
-    const queryString = toSnakeCaseQuery(filters);
-    const response = await api.get(`/admin/sessions/history?${queryString}`);
-    return response.data;
   },
 };
 

@@ -14,6 +14,7 @@ type User struct {
 	Username   string         `json:"username"`
 	FirstName  string         `json:"first_name"`
 	LastName   string         `json:"last_name"`
+	CarNumber  string         `json:"car_number"`
 	IsAdmin    bool           `json:"is_admin" gorm:"default:false"`
 	CreatedAt  time.Time      `json:"created_at"`
 	UpdatedAt  time.Time      `json:"updated_at"`
@@ -68,4 +69,16 @@ type AdminListUsersResponse struct {
 // AdminGetUserResponse ответ на получение пользователя
 type AdminGetUserResponse struct {
 	User User `json:"user"`
+}
+
+// UpdateCarNumberRequest запрос на обновление номера машины
+type UpdateCarNumberRequest struct {
+	UserID    uuid.UUID `json:"user_id" binding:"required"`
+	CarNumber string    `json:"car_number" binding:"required"`
+}
+
+// UpdateCarNumberResponse ответ на обновление номера машины
+type UpdateCarNumberResponse struct {
+	Success bool `json:"success"`
+	User    User `json:"user"`
 }

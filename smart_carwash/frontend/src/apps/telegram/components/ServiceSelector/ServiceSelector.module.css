@@ -267,3 +267,142 @@
 .confirmButton {
   min-width: 200px;
 }
+
+/* Адаптивность для мобильных устройств */
+@media (max-width: 768px) {
+  .container {
+    padding: 12px;
+  }
+  
+  .title {
+    font-size: 18px;
+    margin-bottom: 16px;
+  }
+  
+  .serviceGrid {
+    grid-template-columns: 1fr;
+    gap: 12px;
+  }
+  
+  .serviceCard {
+    padding: 16px;
+  }
+  
+  .serviceName {
+    font-size: 16px;
+  }
+  
+  .serviceDescription {
+    font-size: 14px;
+  }
+  
+  .optionCard {
+    padding: 16px;
+  }
+  
+  .optionTitle {
+    font-size: 16px;
+  }
+  
+  .rentalTimeGrid {
+    grid-template-columns: repeat(auto-fit, minmax(60px, 1fr));
+    gap: 8px;
+  }
+  
+  .rentalTimeItem {
+    padding: 12px 8px;
+  }
+  
+  .rentalTimeValue {
+    font-size: 16px;
+  }
+  
+  .rentalTimeUnit {
+    font-size: 12px;
+  }
+}
+
+@media (max-width: 480px) {
+  .container {
+    padding: 8px;
+  }
+  
+  .title {
+    font-size: 16px;
+    margin-bottom: 12px;
+  }
+  
+  .serviceCard {
+    padding: 12px;
+  }
+  
+  .serviceName {
+    font-size: 15px;
+  }
+  
+  .serviceDescription {
+    font-size: 13px;
+  }
+  
+  .optionCard {
+    padding: 12px;
+  }
+  
+  .optionTitle {
+    font-size: 15px;
+  }
+  
+  .rentalTimeGrid {
+    grid-template-columns: repeat(3, 1fr);
+    gap: 6px;
+  }
+  
+  .rentalTimeItem {
+    padding: 10px 6px;
+  }
+  
+  .rentalTimeValue {
+    font-size: 14px;
+  }
+  
+  .rentalTimeUnit {
+    font-size: 11px;
+  }
+  
+  .confirmButton {
+    min-width: 100%;
+    padding: 14px;
+    font-size: 16px;
+  }
+}
+
+/* Улучшения для touch-устройств */
+@media (hover: none) and (pointer: coarse) {
+  .serviceCard {
+    min-height: 80px;
+  }
+  
+  .serviceCard:hover {
+    transform: none;
+  }
+  
+  .serviceCard:active {
+    transform: scale(0.98);
+  }
+  
+  .rentalTimeItem {
+    min-height: 50px;
+  }
+  
+  .rentalTimeItem:hover {
+    transform: none;
+  }
+  
+  .rentalTimeItem:active {
+    transform: scale(0.95);
+  }
+  
+  .confirmButton {
+    min-height: 48px;
+  }
+}

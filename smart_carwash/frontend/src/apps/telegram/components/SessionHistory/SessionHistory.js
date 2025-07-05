@@ -67,7 +67,7 @@ const SessionHistory = ({ user, theme = 'light', onBack }) => {
 
   // Функция для перехода на страницу сессии
   const handleViewSessionDetails = (sessionId) => {
-    navigate(`/session/${sessionId}`);
+    navigate(`/telegram/session/${sessionId}`);
   };
 
   return (

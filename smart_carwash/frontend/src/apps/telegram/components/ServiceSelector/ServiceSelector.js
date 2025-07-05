@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import styles from './ServiceSelector.module.css';
 import { Card, Button } from '../../../../shared/components/UI';
+import CarNumberInput from '../CarNumberInput';
 import ApiService from '../../../../shared/services/ApiService';
 
 /**
@@ -8,15 +9,30 @@ import ApiService from '../../../../shared/services/ApiService';
  * @param {Object} props - Свойства компонента
  * @param {Function} props.onSelect - Функция, вызываемая при выборе услуги
  * @param {string} props.theme - Тема оформления ('light' или 'dark')
+ * @param {Object} props.user - Данные пользователя (для получения сохраненного номера)
  */
-const ServiceSelector = ({ onSelect, theme = 'light' }) => {
+const ServiceSelector = ({ onSelect, theme = 'light', user }) => {
   const [selectedService, setSelectedService] = useState(null);
   const [withChemistry, setWithChemistry] = useState(false);
   const [rentalTimes, setRentalTimes] = useState([]);
   const [selectedRentalTime, setSelectedRentalTime] = useState(null);
   const [loading, setLoading] = useState(false);
+  const [carNumber, setCarNumber] = useState('');
+  const [rememberCarNumber, setRememberCarNumber] = useState(false);
+  const [savingCarNumber, setSavingCarNumber] = useState(false);
   
   const themeClass = theme === 'dark' ? styles.dark : styles.light;
+  
+  // Инициализация номера машины из данных пользователя
+  useEffect(() => {
+    try {
+      if (user && user.car_number) {
+        setCarNumber(user.car_number);
+      }
+    } catch (error) {
+      console.error('Ошибка при инициализации номера машины:', error);
+    }
+  }, [user]);
   
   // Типы услуг
   const serviceTypes = [
@@ -27,56 +43,149 @@ const ServiceSelector = ({ onSelect, theme = 'light' }) => {
   
   // Загрузка доступного времени аренды при выборе услуги
   useEffect(() => {
-    if (selectedService) {
-      setLoading(true);
-      ApiService.getAvailableRentalTimes(selectedService.id)
-        .then(data => {
-          setRentalTimes(data.available_times || [5]);
-          setSelectedRentalTime(data.available_times && data.available_times.length > 0 ? data.available_times[0] : 5);
-        })
-        .catch(error => {
-          console.error('Ошибка при загрузке времени аренды:', error);
-          setRentalTimes([5]);
-          setSelectedRentalTime(5);
-        })
-        .finally(() => {
-          setLoading(false);
-        });
-    } else {
-      setRentalTimes([]);
-      setSelectedRentalTime(null);
+    try {
+      if (selectedService) {
+        setLoading(true);
+        ApiService.getAvailableRentalTimes(selectedService.id)
+          .then(data => {
+            setRentalTimes(data.available_times || [5]);
+            setSelectedRentalTime(data.available_times && data.available_times.length > 0 ? data.available_times[0] : 5);
+          })
+          .catch(error => {
+            console.error('Ошибка при загрузке времени аренды:', error);
+            setRentalTimes([5]);
+            setSelectedRentalTime(5);
+          })
+          .finally(() => {
+            setLoading(false);
+          });
+      } else {
+        setRentalTimes([]);
+        setSelectedRentalTime(null);
+      }
+    } catch (error) {
+      console.error('Ошибка в useEffect для загрузки времени аренды:', error);
+      setRentalTimes([5]);
+      setSelectedRentalTime(5);
+      setLoading(false);
     }
   }, [selectedService]);
 
   // Обработчик выбора услуги
   const handleServiceSelect = (serviceType) => {
-    setSelectedService(serviceType);
-    // Если выбрана услуга без химии, сбрасываем флаг
-    if (!serviceType.hasChemistry) {
-      setWithChemistry(false);
+    try {
+      setSelectedService(serviceType);
+      // Если выбрана услуга без химии, сбрасываем флаг
+      if (!serviceType.hasChemistry) {
+        setWithChemistry(false);
+      }
+    } catch (error) {
+      console.error('Ошибка в handleServiceSelect:', error);
     }
   };
   
   // Обработчик переключения опции химии
   const handleChemistryToggle = () => {
-    setWithChemistry(!withChemistry);
+    try {
+      setWithChemistry(!withChemistry);
+    } catch (error) {
+      console.error('Ошибка в handleChemistryToggle:', error);
+    }
   };
   
   // Обработчик выбора времени аренды
   const handleRentalTimeSelect = (time) => {
-    setSelectedRentalTime(time);
+    try {
+      setSelectedRentalTime(time);
+    } catch (error) {
+      console.error('Ошибка в handleRentalTimeSelect:', error);
+    }
+  };
+
+  // Обработчик изменения номера машины
+  const handleCarNumberChange = (value) => {
+    try {
+      setCarNumber(value || '');
+    } catch (error) {
+      console.error('Ошибка в handleCarNumberChange:', error);
+      setCarNumber('');
+    }
+  };
+
+  // Обработчик изменения чекбокса "запомнить номер"
+  const handleRememberCarNumberChange = (checked) => {
+    try {
+      setRememberCarNumber(checked);
+    } catch (error) {
+      console.error('Ошибка в handleRememberCarNumberChange:', error);
+    }
+  };
+
+  // Безопасная проверка номера машины
+  const isValidCarNumber = (number) => {
+    try {
+      if (!number || typeof number !== 'string') {
+        return false;
+      }
+      
+      const carNumberRegex = /^[АВЕКМНОРСТУХ]\d{3}[АВЕКМНОРСТУХ]{2}\d{2,3}$/;
+      return carNumberRegex.test(number);
+    } catch (error) {
+      console.error('Ошибка в isValidCarNumber:', error);
+      return false;
+    }
+  };
+
+  // Сохранение номера машины пользователя
+  const saveCarNumber = async () => {
+    if (!user || !carNumber || !rememberCarNumber) {
+      return;
+    }
+
+    setSavingCarNumber(true);
+    try {
+      await ApiService.updateCarNumber(user.id, carNumber);
+      console.log('Номер машины сохранен');
+    } catch (error) {
+      console.error('Ошибка при сохранении номера машины:', error);
+    } finally {
+      setSavingCarNumber(false);
+    }
   };
 
   // Обработчик подтверждения выбора
-  const handleConfirm = () => {
-    if (selectedService && selectedRentalTime) {
-      onSelect({
-        serviceType: selectedService.id,
-        withChemistry: selectedService.hasChemistry ? withChemistry : false,
-        rentalTimeMinutes: selectedRentalTime
-      });
+  const handleConfirm = async () => {
+    try {
+      if (selectedService && selectedRentalTime && carNumber) {
+        // Если пользователь хочет запомнить номер, сохраняем его
+        if (rememberCarNumber) {
+          await saveCarNumber();
+        }
+
+        onSelect({
+          serviceType: selectedService.id,
+          withChemistry: selectedService.hasChemistry ? withChemistry : false,
+          rentalTimeMinutes: selectedRentalTime,
+          carNumber: carNumber
+        });
+      }
+    } catch (error) {
+      console.error('Ошибка в handleConfirm:', error);
     }
   };
+
+  // Проверяем, можно ли подтвердить выбор
+  const canConfirm = selectedService && 
+    selectedRentalTime && 
+    carNumber && 
+    carNumber.length === 9 && 
+    isValidCarNumber(carNumber);
+
+  // Определяем, нужно ли показывать чекбокс "запомнить номер"
+  const showRememberCheckbox = user && 
+    carNumber && 
+    carNumber !== user.car_number && 
+    isValidCarNumber(carNumber);
   
   return (
     <div className={styles.container}>
@@ -101,6 +210,17 @@ const ServiceSelector = ({ onSelect, theme = 'light' }) => {
       
       {selectedService && (
         <div className={styles.optionsContainer}>
+          {/* Ввод номера машины */}
+          <CarNumberInput
+            value={carNumber || ''}
+            onChange={handleCarNumberChange}
+            theme={theme}
+            showRememberCheckbox={showRememberCheckbox}
+            rememberChecked={rememberCarNumber}
+            onRememberChange={handleRememberCarNumberChange}
+            savedCarNumber={user?.car_number || ''}
+          />
+
           {selectedService.hasChemistry && (
             <Card theme={theme} className={styles.optionCard}>
               <div className={styles.optionRow}>
@@ -127,7 +247,7 @@ const ServiceSelector = ({ onSelect, theme = 'light' }) => {
               <p className={`${styles.loadingText} ${themeClass}`}>Загрузка доступного времени...</p>
             ) : (
               <div className={styles.rentalTimeGrid}>
-                {rentalTimes.map((time) => (
+                {(rentalTimes || []).map((time) => (
                   <div 
                     key={time} 
                     className={`${styles.rentalTimeItem} ${selectedRentalTime === time ? styles.selectedTime : ''}`}
@@ -147,10 +267,10 @@ const ServiceSelector = ({ onSelect, theme = 'light' }) => {
         <Button 
           theme={theme} 
           onClick={handleConfirm}
-          disabled={!selectedService || !selectedRentalTime || loading}
+          disabled={!canConfirm || loading || savingCarNumber}
           className={styles.confirmButton}
         >
-          Подтвердить выбор
+          {savingCarNumber ? 'Сохранение...' : 'Подтвердить выбор'}
         </Button>
       </div>
     </div>

@@ -199,7 +199,7 @@ const CashierManagement = () => {
     id: '',
     username: '',
     password: '',
-    isActive: true,
+    is_active: true,
   });
   
   // Загрузка списка кассиров при монтировании компонента
@@ -281,7 +281,7 @@ const CashierManagement = () => {
       await AuthService.updateCashier(editCashier.id, {
         username: editCashier.username,
         password: editCashier.password, // Если пароль пустой, он не будет изменен на бэкенде
-        isActive: editCashier.isActive,
+        is_active: editCashier.is_active,
       });
       setSuccess('Кассир успешно обновлен');
       setShowEditModal(false);
@@ -325,7 +325,7 @@ const CashierManagement = () => {
       id: cashier.id,
       username: cashier.username,
       password: '',
-      isActive: cashier.is_active,
+      is_active: cashier.is_active,
     });
     setShowEditModal(true);
   };
@@ -486,8 +486,8 @@ const CashierManagement = () => {
                 <CheckboxLabel theme={theme}>
                   <Checkbox
                     type="checkbox"
-                    name="isActive"
-                    checked={editCashier.isActive}
+                    name="is_active"
+                    checked={editCashier.is_active}
                     onChange={handleEditChange}
                   />
                   Активен

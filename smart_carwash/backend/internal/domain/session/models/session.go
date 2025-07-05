@@ -26,6 +26,7 @@ type Session struct {
 	Status                       string         `json:"status" gorm:"default:created;index"`
 	ServiceType                  string         `json:"service_type,omitempty" gorm:"default:null"`
 	WithChemistry                bool           `json:"with_chemistry" gorm:"default:false"`
+	CarNumber                    string         `json:"car_number"`                              // Номер машины в сессии
 	RentalTimeMinutes            int            `json:"rental_time_minutes" gorm:"default:5"`    // Время аренды в минутах
 	ExtensionTimeMinutes         int            `json:"extension_time_minutes" gorm:"default:0"` // Время продления в минутах
 	IdempotencyKey               string         `json:"idempotency_key,omitempty" gorm:"index"`
@@ -42,6 +43,7 @@ type CreateSessionRequest struct {
 	UserID            uuid.UUID `json:"user_id" binding:"required"`
 	ServiceType       string    `json:"service_type" binding:"required"`
 	WithChemistry     bool      `json:"with_chemistry"`
+	CarNumber         string    `json:"car_number" binding:"required"`
 	RentalTimeMinutes int       `json:"rental_time_minutes" binding:"required"`
 	IdempotencyKey    string    `json:"idempotency_key" binding:"required"`
 }

@@ -56,10 +56,68 @@ a:hover {
 @media (max-width: 768px) {
   body {
     font-size: 14px;
+    line-height: 1.4;
   }
   
-  button {
-    padding: 8px 14px;
-    font-size: 14px;
+  h1, h2, h3, h4, h5, h6 {
+    line-height: 1.2;
+  }
+  
+  /* Увеличиваем touch-зоны */
+  button, 
+  input[type="button"], 
+  input[type="submit"], 
+  input[type="reset"],
+  .clickable {
+    min-height: 44px;
+    min-width: 44px;
+  }
+  
+  /* Улучшаем читаемость на маленьких экранах */
+  p, span, div {
+    word-wrap: break-word;
+    overflow-wrap: break-word;
+  }
+}
+
+@media (max-width: 480px) {
+  body {
+    font-size: 13px;
+  }
+  
+  /* Оптимизация для очень маленьких экранов */
+  .container {
+    padding: 8px;
+  }
+  
+  /* Убираем hover эффекты на touch-устройствах */
+  @media (hover: none) and (pointer: coarse) {
+    *:hover {
+      transform: none !important;
+      box-shadow: none !important;
+    }
+  }
+}
+
+/* Оптимизация производительности */
+* {
+  box-sizing: border-box;
+}
+
+/* Улучшение рендеринга на мобильных устройствах */
+body {
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+}
+
+/* Оптимизация анимаций */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
   }
 }

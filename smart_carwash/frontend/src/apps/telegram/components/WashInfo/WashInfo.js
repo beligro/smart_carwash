@@ -14,41 +14,52 @@ import useTimer from '../../../../shared/hooks/useTimer';
  * @param {string} props.theme - Тема оформления ('light' или 'dark')
  * @param {Function} props.onCreateSession - Функция для создания сессии
  * @param {Function} props.onViewHistory - Функция для просмотра истории сессий
+ * @param {Object} props.user - Данные пользователя
  */
-const WashInfo = ({ washInfo, theme = 'light', onCreateSession, onViewHistory }) => {
+const WashInfo = ({ washInfo, theme = 'light', onCreateSession, onViewHistory, user }) => {
   const navigate = useNavigate();
   const [showServiceSelector, setShowServiceSelector] = useState(false);
   
-  // Получаем данные из washInfo
-  const allBoxes = washInfo?.allBoxes || [];
-  const washQueue = washInfo?.washQueue || { queue_size: 0, has_queue: false };
-  const airDryQueue = washInfo?.airDryQueue || { queue_size: 0, has_queue: false };
-  const vacuumQueue = washInfo?.vacuumQueue || { queue_size: 0, has_queue: false };
-  const totalQueueSize = washInfo?.totalQueueSize || 0;
-  const hasAnyQueue = washInfo?.hasAnyQueue || false;
+  // Получаем данные из washInfo (поддерживаем оба формата)
+  const allBoxes = washInfo?.allBoxes || washInfo?.all_boxes || [];
+  const washQueue = washInfo?.washQueue || washInfo?.wash_queue || { queue_size: 0, has_queue: false };
+  const airDryQueue = washInfo?.airDryQueue || washInfo?.air_dry_queue || { queue_size: 0, has_queue: false };
+  const vacuumQueue = washInfo?.vacuumQueue || washInfo?.vacuum_queue || { queue_size: 0, has_queue: false };
   
   // Используем userSession из washInfo
-  const userSession = washInfo?.userSession;
+  const userSession = washInfo?.userSession || washInfo?.user_session;
   
   // Используем хук для таймера
   const { timeLeft } = useTimer(userSession);
   
   // Функция для перехода на страницу сессии
   const handleViewSessionDetails = () => {
-    if (userSession && userSession.id) {
-      navigate(`/session/${userSession.id}`);
+    try {
+      if (userSession && userSession.id) {
+        navigate(`/telegram/session/${userSession.id}`);
+      }
+    } catch (error) {
+      console.error('Ошибка при переходе к деталям сессии:', error);
     }
   };
 
   // Обработчик нажатия на кнопку "Записаться на мойку"
   const handleCreateSessionClick = () => {
-    setShowServiceSelector(true);
+    try {
+      setShowServiceSelector(true);
+    } catch (error) {
+      console.error('Ошибка при открытии выбора услуг:', error);
+    }
   };
 
   // Обработчик выбора услуги
   const handleServiceSelect = (serviceData) => {
-    setShowServiceSelector(false);
-    onCreateSession(serviceData);
+    try {
+      setShowServiceSelector(false);
+      onCreateSession(serviceData);
+    } catch (error) {
+      console.error('Ошибка при выборе услуги:', error);
+    }
   };
 
   const themeClass = theme === 'dark' ? styles.dark : styles.light;
@@ -60,6 +71,7 @@ const WashInfo = ({ washInfo, theme = 'light', onCreateSession, onViewHistory })
         <ServiceSelector 
           onSelect={handleServiceSelect} 
           theme={theme} 
+          user={user}
         />
         <div className={styles.buttonContainer}>
           <Button 
@@ -132,19 +144,19 @@ const WashInfo = ({ washInfo, theme = 'light', onCreateSession, onViewHistory })
             <>
               <StatusBadge status={userSession.status} theme={theme} />
               <p className={`${styles.sessionInfo} ${themeClass}`}>
-                Создана: {formatDate(userSession.created_at)}
+                Создана: {formatDate(userSession.createdAt || userSession.created_at)}
               </p>
               <p className={`${styles.sessionInfo} ${themeClass}`}>
-                Услуга: {getServiceTypeDescription(userSession.service_type)}
-                {userSession.with_chemistry && ' (с химией)'}
+                Услуга: {getServiceTypeDescription(userSession.serviceType || userSession.service_type)}
+                {(userSession.withChemistry || userSession.with_chemistry) && ' (с химией)'}
               </p>
-              {(userSession.box_id || userSession.box_number) && (
+              {(userSession.boxId || userSession.box_id || userSession.boxNumber || userSession.box_number) && (
                 <p className={`${styles.sessionInfo} ${themeClass}`}>
                   Назначен бокс: #{
                     // Используем номер бокса из сессии, если он есть
-                    userSession.box_number || 
+                    userSession.boxNumber || userSession.box_number || 
                     // Иначе находим номер бокса по его ID
-                    allBoxes.find(box => box.id === userSession.box_id)?.number || 
+                    allBoxes.find(box => box.id === (userSession.boxId || userSession.box_id))?.number || 
                     'Неизвестный бокс'
                   }
                 </p>
@@ -181,6 +193,17 @@ const WashInfo = ({ washInfo, theme = 'light', onCreateSession, onViewHistory })
                   </p>
                 </>
               )}
+              
+              {/* Показываем информацию, если таймер не отображается */}
+              {userSession.status === 'assigned' && timeLeft === null && (
+                <p className={`${styles.sessionInfo} ${themeClass}`} style={{ 
+                  color: '#C62828', 
+                  textAlign: 'center',
+                  fontSize: '12px'
+                }}>
+                  ⚠️ Таймер не отображается (timeLeft = null)
+                </p>
+              )}
               <Button 
                 theme={theme} 
                 onClick={handleViewSessionDetails}
@@ -196,68 +219,13 @@ const WashInfo = ({ washInfo, theme = 'light', onCreateSession, onViewHistory })
               <Button 
                 theme={theme} 
                 onClick={handleCreateSessionClick}
-                disabled={hasAnyQueue && totalQueueSize > 5}
+                className={styles.createSessionButton}
               >
                 Записаться на мойку
               </Button>
-              {hasAnyQueue && totalQueueSize > 5 && (
-                <p className={`${styles.sessionInfo} ${themeClass}`} style={{ marginTop: '8px', color: '#C62828' }}>
-                  Очередь слишком большая, попробуйте позже
-                </p>
-              )}
             </>
           )}
         </Card>
-      </section>
-
-      {/* Информация о боксах */}
-      <section className={styles.section}>
-        <h2 className={`${styles.title} ${themeClass}`}>Боксы автомойки</h2>
-        {allBoxes.length > 0 ? (
-          <>
-            <h3 className={`${styles.subtitle} ${themeClass}`}>Мойка</h3>
-            <div className={styles.boxesGrid}>
-              {allBoxes
-                .filter(box => box.service_type === 'wash')
-                .map((box) => (
-                  <Card key={box.id} theme={theme} className={styles.boxCard}>
-                    <h3 className={`${styles.boxNumber} ${themeClass}`}>Бокс #{box.number}</h3>
-                    <StatusBadge status={box.status} theme={theme} />
-                  </Card>
-                ))}
-            </div>
-            
-            <h3 className={`${styles.subtitle} ${themeClass}`}>Обдув</h3>
-            <div className={styles.boxesGrid}>
-              {allBoxes
-                .filter(box => box.service_type === 'air_dry')
-                .map((box) => (
-                  <Card key={box.id} theme={theme} className={styles.boxCard}>
-                    <h3 className={`${styles.boxNumber} ${themeClass}`}>Бокс #{box.number}</h3>
-                    <StatusBadge status={box.status} theme={theme} />
-                  </Card>
-                ))}
-            </div>
-            
-            <h3 className={`${styles.subtitle} ${themeClass}`}>Пылесос</h3>
-            <div className={styles.boxesGrid}>
-              {allBoxes
-                .filter(box => box.service_type === 'vacuum')
-                .map((box) => (
-                  <Card key={box.id} theme={theme} className={styles.boxCard}>
-                    <h3 className={`${styles.boxNumber} ${themeClass}`}>Бокс #{box.number}</h3>
-                    <StatusBadge status={box.status} theme={theme} />
-                  </Card>
-                ))}
-            </div>
-          </>
-        ) : (
-          <Card theme={theme}>
-            <p className={`${styles.sessionInfo} ${themeClass}`} style={{ textAlign: 'center' }}>
-              Информация о боксах отсутствует
-            </p>
-          </Card>
-        )}
       </section>
     </div>
   );
