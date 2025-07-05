@@ -46,16 +46,12 @@ const TelegramApp = () => {
   useEffect(() => {
     const initializeApp = async () => {
       try {
-        console.log('Starting TelegramApp initialization...');
-        
         // Проверяем доступность API
-        console.log('Checking API health...');
         const apiHealth = await ApiService.checkApiHealth();
         if (!apiHealth) {
-          setError('API недоступен. Проверьте, что бэкенд доступен по адресу https://h2o-nsk.ru/api');
+          setError('API недоступен. Проверьте, что бэкенд доступен.');
           return;
         }
-        console.log('API is healthy');
         
         // Инициализация Telegram Mini App
         WebApp.ready();
@@ -76,23 +72,18 @@ const TelegramApp = () => {
           (WebApp.themeParams && WebApp.themeParams.text_color) || '#000000'
         );
         
-        console.log('Telegram WebApp инициализирован успешно');
-        
         // Получаем данные пользователя из Telegram
         if (WebApp.initDataUnsafe && WebApp.initDataUnsafe.user) {
           const telegramUser = WebApp.initDataUnsafe.user;
-          console.log('Telegram user found:', telegramUser);
           
           // Получаем пользователя по telegram_id
           getUserByTelegramId(telegramUser.id);
         } else {
-          console.log('No Telegram user, using test user');
           // Для разработки используем тестового пользователя
           getUserByTelegramId(12345678);
         }
       } catch (err) {
         console.error('Ошибка инициализации Telegram WebApp:', err);
-        console.log('Продолжаем работу в режиме разработки');
         
         // Для разработки используем тестового пользователя
         getUserByTelegramId(12345678);
@@ -105,17 +96,13 @@ const TelegramApp = () => {
   // Функция для получения пользователя по telegram_id
   const getUserByTelegramId = async (telegramId) => {
     try {
-      console.log('Getting user by telegram ID:', telegramId);
       const response = await ApiService.getUserByTelegramId(telegramId);
-      console.log('User response:', response);
       setUser(response.user);
-      console.log('Пользователь получен:', response.user);
     } catch (err) {
       console.error('Ошибка получения пользователя:', err);
       
       // Если это тестовый пользователь, попробуем создать его
       if (telegramId === 12345678) {
-        console.log('Trying to create test user...');
         try {
           const createResponse = await ApiService.createUser({
             telegramId: telegramId,
@@ -123,9 +110,7 @@ const TelegramApp = () => {
             firstName: 'Test',
             lastName: 'User'
           });
-          console.log('Test user created:', createResponse);
           setUser(createResponse.user);
-          console.log('Тестовый пользователь создан:', createResponse.user);
         } catch (createErr) {
           console.error('Ошибка создания тестового пользователя:', createErr);
           setError('Не удалось создать тестового пользователя. Проверьте, что бэкенд запущен и доступен.');
@@ -139,64 +124,50 @@ const TelegramApp = () => {
   // Функция для загрузки статуса очереди и боксов
   const fetchQueueStatus = async (isInitialLoad = false) => {
     try {
-      console.log('fetchQueueStatus called, isInitialLoad:', isInitialLoad);
-      
       // Устанавливаем loading только при первой загрузке
       if (isInitialLoad) {
         setLoading(true);
       }
       
-      console.log('Calling ApiService.getQueueStatus...');
       const data = await ApiService.getQueueStatus();
-      console.log('Queue status data received:', data);
-      console.log('All boxes:', data.all_boxes || data.allBoxes);
-      console.log('Wash queue:', data.wash_queue || data.washQueue);
-      console.log('Air dry queue:', data.air_dry_queue || data.airDryQueue);
-      console.log('Vacuum queue:', data.vacuum_queue || data.vacuumQueue);
       
       // Обновляем данные, сохраняя структуру объекта
       setWashInfo(prevInfo => {
-        console.log('Updating washInfo, prevInfo:', prevInfo);
-        
         // Если это первая загрузка или предыдущих данных нет
         if (!prevInfo) {
           const newInfo = {
-            allBoxes: data.all_boxes || data.allBoxes || [],
-            washQueue: data.wash_queue || data.washQueue || { queueSize: 0, hasQueue: false },
-            airDryQueue: data.air_dry_queue || data.airDryQueue || { queueSize: 0, hasQueue: false },
-            vacuumQueue: data.vacuum_queue || data.vacuumQueue || { queueSize: 0, hasQueue: false },
-            totalQueueSize: data.total_queue_size || data.totalQueueSize || 0,
-            hasAnyQueue: data.has_any_queue || data.hasAnyQueue || false,
-            userSession: data.user_session || data.userSession || null
+            allBoxes: data.all_boxes || [],
+            washQueue: data.wash_queue || { queue_size: 0, has_queue: false },
+            airDryQueue: data.air_dry_queue || { queue_size: 0, has_queue: false },
+            vacuumQueue: data.vacuum_queue || { queue_size: 0, has_queue: false },
+            totalQueueSize: data.total_queue_size || 0,
+            hasAnyQueue: data.has_any_queue || false,
+            userSession: data.user_session || null
           };
-          console.log('Created new washInfo:', newInfo);
           return newInfo;
         }
         
         // Обновляем только изменившиеся данные
         const updatedInfo = {
           ...prevInfo,
-          allBoxes: data.all_boxes || data.allBoxes || prevInfo.allBoxes,
-          washQueue: data.wash_queue || data.washQueue || prevInfo.washQueue,
-          airDryQueue: data.air_dry_queue || data.airDryQueue || prevInfo.airDryQueue,
-          vacuumQueue: data.vacuum_queue || data.vacuumQueue || prevInfo.vacuumQueue,
-          totalQueueSize: data.total_queue_size || data.totalQueueSize || prevInfo.totalQueueSize,
-          hasAnyQueue: data.has_any_queue || data.hasAnyQueue || prevInfo.hasAnyQueue,
-          userSession: data.user_session || data.userSession || prevInfo.userSession
+          allBoxes: data.all_boxes || prevInfo.allBoxes,
+          washQueue: data.wash_queue || prevInfo.washQueue,
+          airDryQueue: data.air_dry_queue || prevInfo.airDryQueue,
+          vacuumQueue: data.vacuum_queue || prevInfo.vacuumQueue,
+          totalQueueSize: data.total_queue_size || prevInfo.totalQueueSize,
+          hasAnyQueue: data.has_any_queue || prevInfo.hasAnyQueue,
+          userSession: data.user_session || prevInfo.userSession
         };
-        console.log('Updated washInfo:', updatedInfo);
         return updatedInfo;
       });
       
       setError(null);
-      console.log('fetchQueueStatus completed successfully');
     } catch (err) {
       console.error('Ошибка загрузки информации о мойке:', err);
       setError('Не удалось загрузить информацию о мойке');
       
       // Создаем пустой объект с необходимой структурой только если нет предыдущих данных
       if (!washInfo) {
-        console.log('Creating fallback washInfo due to error');
         setWashInfo({
           allBoxes: [],
           washQueue: { serviceType: 'wash', boxes: [], queueSize: 0, hasQueue: false },
@@ -209,7 +180,6 @@ const TelegramApp = () => {
       }
     } finally {
       if (isInitialLoad) {
-        console.log('Setting loading to false');
         setLoading(false);
       }
     }
@@ -233,8 +203,6 @@ const TelegramApp = () => {
         car_number: serviceData.carNumber,
         rental_time_minutes: serviceData.rentalTimeMinutes
       });
-      
-      console.log('Создана сессия:', response);
       
       // Обновляем информацию о сессии в состоянии
       setWashInfo(prevInfo => ({
@@ -272,12 +240,10 @@ const TelegramApp = () => {
     const sessionPollingInterval = setInterval(async () => {
       try {
         const sessionData = await ApiService.getSessionById(sessionId);
-        console.log('Обновление статуса сессии:', sessionData);
         
         if (sessionData && sessionData.session) {
           // Обновляем данные сессии пользователя
           setWashInfo(prevInfo => {
-            console.log('Обновление сессии в washInfo:', sessionData.session);
             return {
               ...prevInfo,
               userSession: sessionData.session
@@ -313,12 +279,8 @@ const TelegramApp = () => {
   
   // Запускаем поллинг при монтировании компонента
   useEffect(() => {
-    console.log('useEffect for polling started, user:', user);
-    
     if (user) {
       try {
-        console.log('User found, starting data loading...');
-        
         // Загружаем статус очереди и боксов при первой загрузке
         fetchQueueStatus(true);
         
@@ -328,16 +290,12 @@ const TelegramApp = () => {
         // Загружаем информацию о сессии пользователя по user_id и запускаем поллинг по session_id
         const loadUserSessionAndStartPolling = async () => {
           try {
-            console.log('Loading user session for user ID:', user.id);
-            
             // Сначала пробуем получить сессию напрямую через getUserSession
             const sessionResponse = await ApiService.getUserSession(user.id);
-            console.log('User session direct data:', sessionResponse);
             
             if (sessionResponse && sessionResponse.session) {
               // Обновляем данные сессии пользователя
               setWashInfo(prevInfo => {
-                console.log('Updating userSession in washInfo:', sessionResponse.session);
                 return {
                   ...prevInfo,
                   userSession: sessionResponse.session
@@ -346,7 +304,6 @@ const TelegramApp = () => {
               
               // Если у пользователя есть активная сессия, запускаем поллинг для неё по ID сессии
               if (['created', 'assigned', 'active'].includes(sessionResponse.session.status)) {
-                console.log('Starting session polling for session ID:', sessionResponse.session.id);
                 startSessionPolling(sessionResponse.session.id);
               }
             } else {
@@ -361,7 +318,6 @@ const TelegramApp = () => {
         
         // Очищаем интервал при размонтировании
         return () => {
-          console.log('Cleaning up queue interval');
           clearInterval(queueInterval);
         };
       } catch (err) {
@@ -386,27 +342,10 @@ const TelegramApp = () => {
 
   const themeObject = getTheme(theme);
 
-  console.log('TelegramApp render - loading:', loading, 'error:', error, 'user:', user, 'washInfo:', washInfo);
-
   return (
     <AppContainer theme={themeObject}>
       <Header theme={theme} />
         <ContentContainer>
-          {/* Отладочная информация */}
-          <div style={{ 
-            background: '#f0f0f0', 
-            padding: '10px', 
-            margin: '10px 0', 
-            fontSize: '12px', 
-            fontFamily: 'monospace' 
-          }}>
-            <div>Loading: {loading ? 'true' : 'false'}</div>
-            <div>Error: {error || 'none'}</div>
-            <div>User: {user ? `ID: ${user.id}, Name: ${user.firstName || user.first_name || 'N/A'}` : 'none'}</div>
-            <div>WashInfo: {washInfo ? `Boxes: ${(washInfo.allBoxes || washInfo.all_boxes || []).length}, Queues: ${washInfo.hasAnyQueue || washInfo.has_any_queue ? 'yes' : 'no'}` : 'none'}</div>
-            <div>API URL: {process.env.REACT_APP_API_URL || '/api'}</div>
-          </div>
-          
           <Routes>
             <Route 
               path="/" 

@@ -22,9 +22,9 @@ const WashInfo = ({ washInfo, theme = 'light', onCreateSession, onViewHistory, u
   
   // Получаем данные из washInfo (поддерживаем оба формата)
   const allBoxes = washInfo?.allBoxes || washInfo?.all_boxes || [];
-  const washQueue = washInfo?.washQueue || washInfo?.wash_queue || { queueSize: 0, hasQueue: false };
-  const airDryQueue = washInfo?.airDryQueue || washInfo?.air_dry_queue || { queueSize: 0, hasQueue: false };
-  const vacuumQueue = washInfo?.vacuumQueue || washInfo?.vacuum_queue || { queueSize: 0, hasQueue: false };
+  const washQueue = washInfo?.washQueue || washInfo?.wash_queue || { queue_size: 0, has_queue: false };
+  const airDryQueue = washInfo?.airDryQueue || washInfo?.air_dry_queue || { queue_size: 0, has_queue: false };
+  const vacuumQueue = washInfo?.vacuumQueue || washInfo?.vacuum_queue || { queue_size: 0, has_queue: false };
   const totalQueueSize = washInfo?.totalQueueSize || washInfo?.total_queue_size || 0;
   const hasAnyQueue = washInfo?.hasAnyQueue || washInfo?.has_any_queue || false;
   
@@ -87,25 +87,25 @@ const WashInfo = ({ washInfo, theme = 'light', onCreateSession, onViewHistory, u
             <div className={styles.queueTypeItem}>
               <h4 className={`${styles.queueTypeTitle} ${themeClass}`}>Мойка</h4>
               <StatusBadge 
-                status={(washQueue.hasQueue || washQueue.has_queue) ? 'busy' : 'free'} 
+                status={washQueue.has_queue ? 'busy' : 'free'} 
                 theme={theme}
-                text={(washQueue.hasQueue || washQueue.has_queue) ? `В очереди: ${washQueue.queueSize || washQueue.queue_size}` : 'Нет очереди'}
+                text={washQueue.has_queue ? `В очереди: ${washQueue.queue_size}` : 'Нет очереди'}
               />
             </div>
             <div className={styles.queueTypeItem}>
               <h4 className={`${styles.queueTypeTitle} ${themeClass}`}>Обдув</h4>
               <StatusBadge 
-                status={(airDryQueue.hasQueue || airDryQueue.has_queue) ? 'busy' : 'free'} 
+                status={airDryQueue.has_queue ? 'busy' : 'free'} 
                 theme={theme}
-                text={(airDryQueue.hasQueue || airDryQueue.has_queue) ? `В очереди: ${airDryQueue.queueSize || airDryQueue.queue_size}` : 'Нет очереди'}
+                text={airDryQueue.has_queue ? `В очереди: ${airDryQueue.queue_size}` : 'Нет очереди'}
               />
             </div>
             <div className={styles.queueTypeItem}>
               <h4 className={`${styles.queueTypeTitle} ${themeClass}`}>Пылесос</h4>
               <StatusBadge 
-                status={(vacuumQueue.hasQueue || vacuumQueue.has_queue) ? 'busy' : 'free'} 
+                status={vacuumQueue.has_queue ? 'busy' : 'free'} 
                 theme={theme}
-                text={(vacuumQueue.hasQueue || vacuumQueue.has_queue) ? `В очереди: ${vacuumQueue.queueSize || vacuumQueue.queue_size}` : 'Нет очереди'}
+                text={vacuumQueue.has_queue ? `В очереди: ${vacuumQueue.queue_size}` : 'Нет очереди'}
               />
             </div>
           </div>

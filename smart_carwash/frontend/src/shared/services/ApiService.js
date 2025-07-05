@@ -25,8 +25,6 @@ const api = axios.create({
   },
 });
 
-console.log('API base URL:', process.env.REACT_APP_API_URL || '/api');
-
 // Добавляем перехватчик для добавления токена к запросам
 api.interceptors.request.use(
   (config) => {
@@ -48,12 +46,10 @@ const ApiService = {
     try {
       // Используем существующий эндпоинт для проверки здоровья API
       const response = await api.get('/users/by-telegram-id?telegram_id=0');
-      console.log('API health check response:', response.status);
       return true;
     } catch (error) {
       // Если получаем 404, это нормально - пользователь не найден, но API работает
       if (error.response && error.response.status === 404) {
-        console.log('API is healthy (404 is expected for non-existent user)');
         return true;
       }
       console.error('API health check failed:', error);
@@ -116,20 +112,11 @@ const ApiService = {
   // Получение статуса очереди
   getQueueStatus: async () => {
     try {
-      const response = await api.get('/admin/queue/status');
-      console.log('Raw API response:', response.data);
+      const response = await api.get('/queue-status');
       
-      // Временно отключаем все преобразования для отладки
       const data = response.data;
       
-      // API возвращает структуру { queueStatus: {...} }, нужно извлечь данные
-      if (data.queueStatus) {
-        console.log('Extracted queueStatus:', data.queueStatus);
-        return data.queueStatus;
-      }
-      
-      // Если структура другая, возвращаем как есть
-      console.log('Returning data as is:', data);
+      // Обычная ручка возвращает QueueStatus напрямую
       return data;
     } catch (error) {
       console.error('Ошибка при получении статуса очереди:', error);
@@ -189,7 +176,7 @@ const ApiService = {
     }
   },
 
-  // === СУЩЕСТВУЮЩИЕ МЕТОДЫ ===
+  // === МЕТОДЫ ДЛЯ TELEGRAM ПРИЛОЖЕНИЯ ===
 
   // Получение доступного времени аренды для определенного типа услуги
   getAvailableRentalTimes: async (serviceType) => {
@@ -206,36 +193,54 @@ const ApiService = {
   getUserByTelegramId: async (telegramId) => {
     try {
       const response = await api.get(`/users/by-telegram-id?telegram_id=${telegramId}`);
-      console.log('getUserByTelegramId raw response:', response.data);
-      // Временно отключаем fromSnakeCase
-      return response.data;
+      return fromSnakeCase(response.data);
     } catch (error) {
       console.error('Ошибка при получении пользователя по telegram_id:', error);
       throw error;
     }
   },
 
-  // Создание пользователя
+  // Создание пользователя (для Telegram приложения)
   createUser: async (data) => {
-    const snakeData = toSnakeCase(data);
-    const response = await api.post('/admin/users', snakeData);
-    return fromSnakeCase(response.data);
+    try {
+      // Добавляем обязательное поле idempotency_key
+      const userData = {
+        ...data,
+        idempotencyKey: uuidv4() // Генерируем уникальный ключ
+      };
+      
+      const snakeData = toSnakeCase(userData);
+      const response = await api.post('/users', snakeData);
+      return fromSnakeCase(response.data);
+    } catch (error) {
+      console.error('Ошибка при создании пользователя:', error);
+      throw error;
+    }
   },
 
-  // Создание сессии
+  // Создание сессии (для Telegram приложения)
   createSession: async (data) => {
-    const snakeData = toSnakeCase(data);
-    const response = await api.post('/admin/sessions', snakeData);
-    return fromSnakeCase(response.data);
+    try {
+      // Добавляем обязательное поле idempotency_key
+      const sessionData = {
+        ...data,
+        idempotencyKey: uuidv4() // Генерируем уникальный ключ
+      };
+      
+      const snakeData = toSnakeCase(sessionData);
+      const response = await api.post('/sessions', snakeData);
+      return fromSnakeCase(response.data);
+    } catch (error) {
+      console.error('Ошибка при создании сессии:', error);
+      throw error;
+    }
   },
 
   // Получение сессии пользователя
   getUserSession: async (userId) => {
     try {
       const response = await api.get(`/sessions?user_id=${userId}`);
-      console.log('getUserSession raw response:', response.data);
-      // Временно отключаем fromSnakeCase
-      return response.data;
+      return fromSnakeCase(response.data);
     } catch (error) {
       console.error('Ошибка при получении сессии пользователя:', error);
       return { session: null };
