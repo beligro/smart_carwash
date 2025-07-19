@@ -18,7 +18,7 @@ import { toSnakeCase, toSnakeCaseQuery } from '../utils/snakeCase';
 
 // Создаем экземпляр axios с базовой конфигурацией
 const api = axios.create({
-  baseURL: process.env.REACT_APP_API_URL || '/api',
+  baseURL: process.env.REACT_APP_API_URL || '/api/v1',
   timeout: 10000,
   headers: {
     'Content-Type': 'application/json',
@@ -317,4 +317,5 @@ api.interceptors.response.use(
   }
 );
 
+export { api };
 export default ApiService; 

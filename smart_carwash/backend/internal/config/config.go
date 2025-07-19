@@ -24,6 +24,14 @@ type Config struct {
 	AdminUsername string
 	AdminPassword string
 	JWTSecret     string
+
+	// Настройки Tinkoff Kassa
+	TinkoffTerminalKey    string
+	TinkoffSecretKey      string
+	TinkoffBaseURL        string
+	PaymentSuccessURL     string
+	PaymentFailURL        string
+	PaymentWebhookURL     string
 }
 
 // LoadConfig загружает конфигурацию из переменных окружения
@@ -57,6 +65,14 @@ func LoadConfig() (*Config, error) {
 		AdminUsername: getEnv("ADMIN_USERNAME", "admin"),
 		AdminPassword: getEnv("ADMIN_PASSWORD", "admin"),
 		JWTSecret:     getEnv("JWT_SECRET", "your-secret-key"),
+
+		// Настройки Tinkoff Kassa
+		TinkoffTerminalKey: getEnv("TINKOFF_TERMINAL_KEY", ""),
+		TinkoffSecretKey:   getEnv("TINKOFF_SECRET_KEY", ""),
+		TinkoffBaseURL:     getEnv("TINKOFF_BASE_URL", "https://securepay.tinkoff.ru"),
+		PaymentSuccessURL:  getEnv("PAYMENT_SUCCESS_URL", "https://your-domain.com/telegram?payment=success"),
+		PaymentFailURL:     getEnv("PAYMENT_FAIL_URL", "https://your-domain.com/telegram?payment=fail"),
+		PaymentWebhookURL:  getEnv("PAYMENT_WEBHOOK_URL", "https://your-domain.com/api/v1/payments/webhook"),
 	}, nil
 }
 

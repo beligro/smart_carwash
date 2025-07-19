@@ -3,6 +3,8 @@ import styles from './ServiceSelector.module.css';
 import { Card, Button } from '../../../../shared/components/UI';
 import CarNumberInput from '../CarNumberInput';
 import ApiService from '../../../../shared/services/ApiService';
+import PaymentModal from '../PaymentModal';
+import PaymentService, { formatAmount } from '../../../../shared/services/PaymentService';
 
 /**
  * Компонент ServiceSelector - позволяет выбрать тип услуги и дополнительные опции
@@ -20,6 +22,10 @@ const ServiceSelector = ({ onSelect, theme = 'light', user }) => {
   const [carNumber, setCarNumber] = useState('');
   const [rememberCarNumber, setRememberCarNumber] = useState(false);
   const [savingCarNumber, setSavingCarNumber] = useState(false);
+  const [showPaymentModal, setShowPaymentModal] = useState(false);
+  const [selectedServiceData, setSelectedServiceData] = useState(null);
+  const [priceData, setPriceData] = useState(null);
+  const [priceLoading, setPriceLoading] = useState(false);
   
   const themeClass = theme === 'dark' ? styles.dark : styles.light;
   
@@ -70,6 +76,33 @@ const ServiceSelector = ({ onSelect, theme = 'light', user }) => {
       setLoading(false);
     }
   }, [selectedService]);
+
+  // Расчет цены при изменении параметров
+  useEffect(() => {
+    const calculatePrice = async () => {
+      if (!selectedService || !selectedRentalTime) {
+        setPriceData(null);
+        return;
+      }
+
+      setPriceLoading(true);
+      try {
+        const priceResponse = await PaymentService.calculatePrice(
+          selectedService.id,
+          selectedRentalTime,
+          selectedService.hasChemistry ? withChemistry : false
+        );
+        setPriceData(priceResponse);
+      } catch (error) {
+        console.error('Ошибка при расчете цены:', error);
+        setPriceData(null);
+      } finally {
+        setPriceLoading(false);
+      }
+    };
+
+    calculatePrice();
+  }, [selectedService, selectedRentalTime, withChemistry]);
 
   // Обработчик выбора услуги
   const handleServiceSelect = (serviceType) => {
@@ -176,16 +209,34 @@ const ServiceSelector = ({ onSelect, theme = 'light', user }) => {
           await saveCarNumber();
         }
 
-        onSelect({
+        // Сохраняем данные для платежа
+        const serviceData = {
           serviceType: selectedService.id,
           withChemistry: selectedService.hasChemistry ? withChemistry : false,
           rentalTimeMinutes: selectedRentalTime,
-          carNumber: carNumber
-        });
+          carNumber: carNumber,
+          priceData: priceData // Передаем рассчитанную цену
+        };
+        
+        setSelectedServiceData(serviceData);
+        setShowPaymentModal(true);
       }
     } catch (error) {
       console.error('Ошибка в handleConfirm:', error);
     }
+  };
+
+  // Обработчик успешного платежа
+  const handlePaymentSuccess = (payment) => {
+    console.log('Платеж успешно завершен:', payment);
+    setShowPaymentModal(false);
+    onSelect(selectedServiceData);
+  };
+
+  // Обработчик ошибки платежа
+  const handlePaymentError = (error) => {
+    console.error('Ошибка платежа:', error);
+    setShowPaymentModal(false);
   };
 
   // Проверяем, можно ли подтвердить выбор
@@ -200,6 +251,17 @@ const ServiceSelector = ({ onSelect, theme = 'light', user }) => {
     carNumber && 
     carNumber !== user.car_number && 
     isValidCarNumber(carNumber);
+
+  // Получаем отображаемую цену
+  const getDisplayPrice = () => {
+    if (priceLoading) {
+      return 'Загрузка...';
+    }
+    if (priceData) {
+      return formatAmount(priceData.total_price_kopecks);
+    }
+    return '—';
+  };
   
   return (
     <div className={styles.container}>
@@ -281,12 +343,24 @@ const ServiceSelector = ({ onSelect, theme = 'light', user }) => {
         <Button 
           theme={theme} 
           onClick={handleConfirm}
-          disabled={!canConfirm || loading || savingCarNumber}
+          disabled={!canConfirm || loading || savingCarNumber || priceLoading}
           className={styles.confirmButton}
         >
-          {savingCarNumber ? 'Сохранение...' : 'Подтвердить выбор'}
+          {savingCarNumber ? 'Сохранение...' : `Подтвердить выбор (${getDisplayPrice()})`}
         </Button>
       </div>
+
+      {/* Модальное окно платежа */}
+      <PaymentModal
+        isOpen={showPaymentModal}
+        onClose={() => setShowPaymentModal(false)}
+        paymentType="queue"
+        serviceType={selectedService?.id}
+        userID={user?.id}
+        priceData={priceData} // Передаем рассчитанную цену
+        onPaymentSuccess={handlePaymentSuccess}
+        onPaymentError={handlePaymentError}
+      />
     </div>
   );
 };

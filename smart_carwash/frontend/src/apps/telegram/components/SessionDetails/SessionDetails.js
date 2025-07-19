@@ -6,6 +6,7 @@ import { formatDate } from '../../../../shared/utils/formatters';
 import { getServiceTypeDescription } from '../../../../shared/utils/statusHelpers';
 import ApiService from '../../../../shared/services/ApiService';
 import useTimer from '../../../../shared/hooks/useTimer';
+import SessionExtension from '../SessionExtension';
 
 /**
  * Компонент SessionDetails - отображает детальную информацию о сессии
@@ -26,6 +27,7 @@ const SessionDetails = ({ theme = 'light', user }) => {
   const [availableRentalTimes, setAvailableRentalTimes] = useState([]);
   const [selectedExtensionTime, setSelectedExtensionTime] = useState(null);
   const [loadingRentalTimes, setLoadingRentalTimes] = useState(false);
+  const [showExtensionComponent, setShowExtensionComponent] = useState(false);
   
   // Используем хук для таймера
   const { timeLeft } = useTimer(session);
@@ -92,6 +94,37 @@ const SessionDetails = ({ theme = 'light', user }) => {
   // Функция для выбора времени продления
   const handleExtensionTimeSelect = (time) => {
     setSelectedExtensionTime(time);
+  };
+
+  // Функция для открытия компонента продления с платежом
+  const openExtensionComponent = () => {
+    setShowExtensionComponent(true);
+  };
+
+  // Функция для закрытия компонента продления
+  const closeExtensionComponent = () => {
+    setShowExtensionComponent(false);
+  };
+
+  // Обработчик успешного продления сессии
+  const handleExtensionSuccess = async (extensionMinutes) => {
+    try {
+      setActionLoading(true);
+      setError(null);
+      
+      // Вызываем API для продления сессии
+      const response = await ApiService.extendSession(sessionId, extensionMinutes);
+      
+      if (response && response.session) {
+        setSession(response.session);
+        setShowExtensionComponent(false);
+      }
+    } catch (err) {
+      console.error('Ошибка при продлении сессии:', err);
+      setError('Не удалось продлить сессию. Пожалуйста, попробуйте еще раз.');
+    } finally {
+      setActionLoading(false);
+    }
   };
 
   // Функция для завершения сессии
@@ -346,7 +379,7 @@ const SessionDetails = ({ theme = 'light', user }) => {
           <div className={styles.buttonGroup}>
             <Button 
               theme={theme} 
-              onClick={openExtendModal}
+              onClick={openExtensionComponent}
               disabled={actionLoading}
               loading={actionLoading}
               style={{ marginTop: '10px', marginRight: '10px' }}
@@ -418,6 +451,16 @@ const SessionDetails = ({ theme = 'light', user }) => {
         
         {error && <div className={`${styles.errorMessage} ${themeClass}`}>{error}</div>}
       </Card>
+
+      {/* Компонент продления сессии с платежом */}
+      {showExtensionComponent && (
+        <SessionExtension
+          session={session}
+          onExtension={handleExtensionSuccess}
+          theme={theme}
+          user={user}
+        />
+      )}
     </div>
   );
 };

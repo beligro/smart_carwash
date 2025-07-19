@@ -16,6 +16,10 @@ import (
 	authHandlers "carwash_backend/internal/domain/auth/handlers"
 	authRepo "carwash_backend/internal/domain/auth/repository"
 	authService "carwash_backend/internal/domain/auth/service"
+	paymentHandlers "carwash_backend/internal/domain/payment/handlers"
+	paymentRepo "carwash_backend/internal/domain/payment/repository"
+	paymentService "carwash_backend/internal/domain/payment/service"
+	"carwash_backend/internal/domain/payment/tinkoff"
 	queueHandlers "carwash_backend/internal/domain/queue/handlers"
 	queueService "carwash_backend/internal/domain/queue/service"
 	sessionHandlers "carwash_backend/internal/domain/session/handlers"
@@ -77,6 +81,10 @@ func main() {
 	sessionRepository := sessionRepo.NewPostgresRepository(db)
 	settingsRepository := settingsRepo.NewRepository(db)
 	authRepository := authRepo.NewPostgresRepository(db)
+	paymentRepository := paymentRepo.NewPostgresRepository(db)
+
+	// Создаем Tinkoff клиент
+	tinkoffClient := tinkoff.NewClient(cfg.TinkoffTerminalKey, cfg.TinkoffSecretKey, cfg.TinkoffBaseURL)
 
 	// Создаем сервисы
 	userSvc := userService.NewService(userRepository)
@@ -93,6 +101,9 @@ func main() {
 	// Создаем сервис сессий с зависимостями
 	sessionSvc := sessionService.NewService(sessionRepository, washboxSvc, userSvc, bot)
 
+	// Создаем сервис платежей
+	paymentSvc := paymentService.NewService(paymentRepository, tinkoffClient, cfg, sessionSvc, userSvc, settingsSvc)
+
 	// Создаем сервис очереди, который зависит от сервисов сессий, боксов и пользователей
 	queueSvc := queueService.NewService(sessionSvc, washboxSvc, userSvc)
 
@@ -108,6 +119,7 @@ func main() {
 	queueHandler := queueHandlers.NewHandler(queueSvc)
 	settingsHandler := settingsHandlers.NewHandler(settingsSvc)
 	authHandler := authHandlers.NewHandler(authSvc)
+	paymentHandler := paymentHandlers.NewHandler(paymentSvc)
 
 	// Создаем роутер
 	router := gin.Default()
@@ -123,7 +135,7 @@ func main() {
 	}))
 
 	// Инициализируем маршруты
-	api := router.Group("/")
+	api := router.Group("/api/v1")
 	{
 		// Регистрируем маршруты для каждого домена
 		userHandler.RegisterRoutes(api)
@@ -132,6 +144,7 @@ func main() {
 		queueHandler.RegisterRoutes(api)
 		settingsHandler.RegisterRoutes(api)
 		authHandler.RegisterRoutes(api)
+		paymentHandler.RegisterRoutes(api)
 
 		// Вебхук для Telegram бота
 		api.POST("/webhook", func(c *gin.Context) {
@@ -154,6 +167,12 @@ func main() {
 
 			c.JSON(http.StatusOK, gin.H{"status": "ok"})
 		})
+	}
+
+	// Регистрируем админские платежные ручки на /admin/v1/payments
+	adminApi := router.Group("/admin/v1")
+	{
+		paymentHandler.RegisterAdminRoutes(adminApi)
 	}
 
 	// Создаем HTTP сервер
@@ -268,6 +287,26 @@ func main() {
 					log.Printf("Ошибка отправки уведомлений о скором завершении сессий: %v", err)
 				} else {
 					log.Println("Проверка сессий для отправки уведомлений о скором завершении завершена успешно")
+				}
+			case <-quit:
+				return
+			}
+		}
+	}()
+
+	// Запускаем периодическую задачу для обработки ожидающих возвратов
+	go func() {
+		ticker := time.NewTicker(5 * time.Minute) // Каждые 5 минут
+		defer ticker.Stop()
+
+		for {
+			select {
+			case <-ticker.C:
+				log.Println("Запуск обработки ожидающих возвратов...")
+				if err := paymentSvc.ProcessPendingRefunds(); err != nil {
+					log.Printf("Ошибка обработки ожидающих возвратов: %v", err)
+				} else {
+					log.Println("Обработка ожидающих возвратов завершена успешно")
 				}
 			case <-quit:
 				return
