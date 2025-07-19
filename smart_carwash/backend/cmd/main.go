@@ -169,8 +169,8 @@ func main() {
 		})
 	}
 
-	// Регистрируем админские платежные ручки на /admin/v1/payments
-	adminApi := router.Group("/admin/v1")
+	// Регистрируем админские платежные ручки на /api/v1/admin/payments
+	adminApi := api.Group("/admin")
 	{
 		paymentHandler.RegisterAdminRoutes(adminApi)
 	}

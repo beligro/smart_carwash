@@ -11,6 +11,7 @@ type Service interface {
 	GetAvailableRentalTimes(req *models.GetAvailableRentalTimesRequest) (*models.GetAvailableRentalTimesResponse, error)
 	UpdateAvailableRentalTimes(req *models.UpdateAvailableRentalTimesRequest) (*models.UpdateAvailableRentalTimesResponse, error)
 	GetServicePrice(serviceType, settingKey string) (int, error)
+	UpdateServiceSetting(serviceType, settingKey string, value int) error
 }
 
 // ServiceImpl реализация Service
@@ -90,4 +91,9 @@ func (s *ServiceImpl) GetServicePrice(serviceType, settingKey string) (int, erro
 	}
 
 	return price, nil
+}
+
+// UpdateServiceSetting обновляет настройку для определенного типа услуги и ключа
+func (s *ServiceImpl) UpdateServiceSetting(serviceType, settingKey string, value int) error {
+	return s.repo.UpdateServiceSetting(serviceType, settingKey, value)
 }

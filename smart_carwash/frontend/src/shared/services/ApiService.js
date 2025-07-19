@@ -295,6 +295,88 @@ const ApiService = {
       throw error;
     }
   },
+
+  // === МЕТОДЫ ДЛЯ РАБОТЫ С НАСТРОЙКАМИ ===
+  
+  // Получение настройки
+  getSetting: async (serviceType, settingKey) => {
+    try {
+      const response = await api.get(`/settings/service-setting?service_type=${serviceType}&setting_key=${settingKey}`);
+      return response.data.value;
+    } catch (error) {
+      console.error('Ошибка при получении настройки:', error);
+      return null;
+    }
+  },
+
+  // Обновление настройки
+  updateSetting: async (serviceType, settingKey, value) => {
+    try {
+      const response = await api.put('/settings/service-setting', {
+        service_type: serviceType,
+        setting_key: settingKey,
+        setting_value: value
+      });
+      return response.data;
+    } catch (error) {
+      console.error('Ошибка при обновлении настройки:', error);
+      throw error;
+    }
+  },
+
+  // Обновление доступного времени аренды
+  updateAvailableRentalTimes: async (serviceType, availableTimes) => {
+    try {
+      const response = await api.put('/settings/rental-times', {
+        service_type: serviceType,
+        available_times: availableTimes
+      });
+      return response.data;
+    } catch (error) {
+      console.error('Ошибка при обновлении времени аренды:', error);
+      throw error;
+    }
+  },
+
+  // Получение всех настроек
+  getAllSettings: async () => {
+    try {
+      const response = await api.get('/settings/all');
+      return response.data;
+    } catch (error) {
+      console.error('Ошибка при получении всех настроек:', error);
+      throw error;
+    }
+  },
+
+  // === МЕТОДЫ ДЛЯ РАБОТЫ С ПЛАТЕЖАМИ ===
+  
+  // Получение списка платежей
+  getPayments: async (filters = {}) => {
+    try {
+      const queryString = toSnakeCaseQuery(filters);
+      const url = `/admin/payments?${queryString}`;
+      console.log('Отправляем запрос на:', url);
+      const response = await api.get(url);
+      return response.data;
+    } catch (error) {
+      console.error('Ошибка при получении списка платежей:', error);
+      throw error;
+    }
+  },
+
+  // Получение деталей платежа
+  getPaymentDetails: async (paymentId) => {
+    try {
+      const url = `/admin/payments/by-id?id=${paymentId}`;
+      console.log('Отправляем запрос на:', url);
+      const response = await api.get(url);
+      return response.data;
+    } catch (error) {
+      console.error('Ошибка при получении деталей платежа:', error);
+      throw error;
+    }
+  },
 };
 
 // Добавляем перехватчик для обработки ошибок
