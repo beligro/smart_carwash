@@ -1,10 +1,11 @@
 import React, { useEffect, useState, Suspense, lazy } from 'react';
 import WebApp from '@twa-dev/sdk';
-import { Routes, Route, Navigate, useNavigate } from 'react-router-dom';
+import { Routes, Route, Navigate, useNavigate, useLocation } from 'react-router-dom';
 import styled from 'styled-components';
 import Header from './components/Header';
 import WelcomeMessage from './components/WelcomeMessage/WelcomeMessage';
 import WashInfo from './components/WashInfo/WashInfo';
+import PaymentPage from './components/PaymentPage';
 import ApiService from '../../shared/services/ApiService';
 import { getTheme } from '../../shared/styles/theme';
 
@@ -35,6 +36,7 @@ const ContentContainer = styled.div`
  */
 const TelegramApp = () => {
   const navigate = useNavigate();
+  const location = useLocation();
   // Состояния
   const [washInfo, setWashInfo] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -172,7 +174,53 @@ const TelegramApp = () => {
     }
   };
   
-  // Функция для создания сессии
+  // Функция для создания сессии с платежом
+  const handleCreateSessionWithPayment = async (serviceData) => {
+    try {
+      if (!user) {
+        setError('Пользователь не авторизован');
+        return;
+      }
+      
+      setLoading(true);
+      
+      // Проверяем, что все необходимые данные присутствуют
+      if (!serviceData.serviceType || !serviceData.carNumber) {
+        setError('Не все данные заполнены');
+        return;
+      }
+      
+      // Создаем сессию с платежом
+      const response = await ApiService.createSessionWithPayment({ 
+        userId: user.id,
+        serviceType: serviceData.serviceType,
+        withChemistry: serviceData.withChemistry || false,
+        rentalTimeMinutes: serviceData.rentalTimeMinutes || 5,
+        carNumber: serviceData.carNumber
+      });
+
+      if (response && response.session && response.payment) {
+        // Переходим на страницу оплаты
+        navigate('/telegram/payment', { 
+          state: { 
+            session: response.session, 
+            payment: response.payment 
+          } 
+        });
+      } else {
+        alert('Invalid response structure: ' + JSON.stringify(response));
+        setError('Ошибка создания сессии с платежом: неверная структура ответа');
+      }
+    } catch (err) {
+      alert('Ошибка создания сессии с платежом: ' + err.message);
+      alert('Error details: ' + JSON.stringify(err.response?.data || err.message));
+      setError(`Не удалось создать сессию с платежом: ${err.response?.data?.error || err.message}`);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Функция для создания сессии (старый метод для совместимости)
   const handleCreateSession = async (serviceData) => {
     try {
       if (!user) {
@@ -295,7 +343,7 @@ const TelegramApp = () => {
               });
               
               // Если у пользователя есть активная сессия, запускаем поллинг для неё по ID сессии
-              if (['created', 'assigned', 'active'].includes(sessionResponse.session.status)) {
+              if (['created', 'in_queue', 'payment_failed', 'assigned', 'active'].includes(sessionResponse.session.status)) {
                 startSessionPolling(sessionResponse.session.id);
               }
             } else {
@@ -332,6 +380,26 @@ const TelegramApp = () => {
     navigate('/telegram');
   };
 
+  // Обработчики для страницы оплаты
+  const handlePaymentComplete = (updatedSession) => {
+    // Платеж успешен, переходим к деталям сессии
+    navigate('/telegram/session/' + updatedSession.id, { state: { session: updatedSession } });
+  };
+
+  const handlePaymentFailed = (updatedSession) => {
+    // Платеж неудачен, остаемся на странице оплаты
+    // Обновляем данные сессии
+    setWashInfo(prevInfo => ({
+      ...prevInfo,
+      userSession: updatedSession
+    }));
+  };
+
+  const handlePaymentBack = () => {
+    // Возвращаемся на главную страницу
+    navigate('/telegram');
+  };
+
   const themeObject = getTheme(theme);
 
   // Обработка ошибок рендеринга
@@ -358,7 +426,7 @@ const TelegramApp = () => {
                     <WashInfo 
                       washInfo={washInfo} 
                       theme={theme} 
-                      onCreateSession={handleCreateSession}
+                      onCreateSession={handleCreateSessionWithPayment}
                       onViewHistory={handleViewHistory}
                       user={user}
                     />
@@ -391,7 +459,22 @@ const TelegramApp = () => {
                 </Suspense>
               } 
             />
-            <Route path="*" element={<Navigate to="/telegram" />} />
+            <Route 
+              path="/payment" 
+              element={
+                <Suspense fallback={<div>Загрузка страницы оплаты...</div>}>
+                  <PaymentPage 
+                    session={location?.state?.session}
+                    payment={location?.state?.payment}
+                    onPaymentComplete={handlePaymentComplete}
+                    onPaymentFailed={handlePaymentFailed}
+                    onBack={handlePaymentBack}
+                    theme={theme}
+                  />
+                </Suspense>
+              } 
+            />
+            <Route path="*" element={<Navigate to="/" />} />
           </Routes>
         </ContentContainer>
       </AppContainer>

@@ -61,9 +61,10 @@ func (r *PostgresRepository) GetSessionByID(id uuid.UUID) (*models.Session, erro
 // GetActiveSessionByUserID получает активную сессию пользователя
 func (r *PostgresRepository) GetActiveSessionByUserID(userID uuid.UUID) (*models.Session, error) {
 	var session models.Session
-	err := r.db.Where("user_id = ? AND status IN (?, ?, ?)",
+	err := r.db.Where("user_id = ? AND status IN (?, ?, ?, ?)",
 		userID,
 		models.SessionStatusCreated,
+		models.SessionStatusInQueue,
 		models.SessionStatusAssigned,
 		models.SessionStatusActive).
 		Order("created_at DESC").

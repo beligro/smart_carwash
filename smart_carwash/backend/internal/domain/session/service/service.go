@@ -7,18 +7,24 @@ import (
 	"carwash_backend/internal/domain/user/service"
 	washboxModels "carwash_backend/internal/domain/washbox/models"
 	washboxService "carwash_backend/internal/domain/washbox/service"
+	paymentService "carwash_backend/internal/domain/payment/service"
+	paymentModels "carwash_backend/internal/domain/payment/models"
 	"fmt"
 	"time"
+
+	"github.com/google/uuid"
 )
 
 // Service интерфейс для бизнес-логики сессий
 type Service interface {
 	CreateSession(req *models.CreateSessionRequest) (*models.Session, error)
+	CreateSessionWithPayment(req *models.CreateSessionWithPaymentRequest) (*models.CreateSessionWithPaymentResponse, error)
 	GetUserSession(req *models.GetUserSessionRequest) (*models.Session, error)
 	GetSession(req *models.GetSessionRequest) (*models.Session, error)
 	StartSession(req *models.StartSessionRequest) (*models.Session, error)
 	CompleteSession(req *models.CompleteSessionRequest) (*models.Session, error)
 	ExtendSession(req *models.ExtendSessionRequest) (*models.Session, error)
+	UpdateSessionStatus(sessionID uuid.UUID, status string) error
 	ProcessQueue() error
 	CheckAndCompleteExpiredSessions() error
 	CheckAndExpireReservedSessions() error
@@ -39,15 +45,17 @@ type ServiceImpl struct {
 	washboxService washboxService.Service
 	userService    service.Service
 	telegramBot    telegram.NotificationService
+	paymentService paymentService.Service
 }
 
 // NewService создает новый экземпляр Service
-func NewService(repo repository.Repository, washboxService washboxService.Service, userService service.Service, telegramBot telegram.NotificationService) *ServiceImpl {
+func NewService(repo repository.Repository, washboxService washboxService.Service, userService service.Service, telegramBot telegram.NotificationService, paymentService paymentService.Service) *ServiceImpl {
 	return &ServiceImpl{
 		repo:           repo,
 		washboxService: washboxService,
 		userService:    userService,
 		telegramBot:    telegramBot,
+		paymentService: paymentService,
 	}
 }
 
@@ -87,6 +95,68 @@ func (s *ServiceImpl) CreateSession(req *models.CreateSessionRequest) (*models.S
 	}
 
 	return session, nil
+}
+
+// CreateSessionWithPayment создает сессию с платежом
+func (s *ServiceImpl) CreateSessionWithPayment(req *models.CreateSessionWithPaymentRequest) (*models.CreateSessionWithPaymentResponse, error) {
+	// 1. Создаем сессию
+	session, err := s.CreateSession(&models.CreateSessionRequest{
+		UserID:            req.UserID,
+		ServiceType:       req.ServiceType,
+		WithChemistry:     req.WithChemistry,
+		CarNumber:         req.CarNumber,
+		RentalTimeMinutes: req.RentalTimeMinutes,
+		IdempotencyKey:    req.IdempotencyKey,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("ошибка создания сессии: %w", err)
+	}
+
+	// 2. Рассчитываем цену через Payment Service
+	priceResp, err := s.paymentService.CalculatePrice(&paymentModels.CalculatePriceRequest{
+		ServiceType:       req.ServiceType,
+		WithChemistry:     req.WithChemistry,
+		RentalTimeMinutes: req.RentalTimeMinutes,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("ошибка расчета цены: %w", err)
+	}
+
+	// 3. Создаем платеж через Payment Service
+	paymentResp, err := s.paymentService.CreatePayment(&paymentModels.CreatePaymentRequest{
+		SessionID: session.ID,
+		Amount:    priceResp.Price,
+		Currency:  priceResp.Currency,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("ошибка создания платежа: %w", err)
+	}
+
+	// 4. Обновляем сессию с payment_id
+	session.PaymentID = &paymentResp.Payment.ID
+	err = s.repo.UpdateSession(session)
+	if err != nil {
+		return nil, fmt.Errorf("ошибка обновления сессии: %w", err)
+	}
+
+	// 5. Формируем ответ с информацией о платеже
+	payment := &models.Payment{
+		ID:         paymentResp.Payment.ID,
+		SessionID:  paymentResp.Payment.SessionID,
+		Amount:     paymentResp.Payment.Amount,
+		Currency:   paymentResp.Payment.Currency,
+		Status:     paymentResp.Payment.Status,
+		PaymentURL: paymentResp.Payment.PaymentURL,
+		TinkoffID:  paymentResp.Payment.TinkoffID,
+		ExpiresAt:  paymentResp.Payment.ExpiresAt,
+		CreatedAt:  paymentResp.Payment.CreatedAt,
+		UpdatedAt:  paymentResp.Payment.UpdatedAt,
+	}
+
+	return &models.CreateSessionWithPaymentResponse{
+		Session: *session,
+		Payment: payment,
+	}, nil
 }
 
 // GetUserSession получает активную сессию пользователя
@@ -293,8 +363,8 @@ func (s *ServiceImpl) ProcessQueue() error {
 		return nil
 	}
 
-	// Получаем все сессии со статусом "created"
-	sessions, err := s.repo.GetSessionsByStatus(models.SessionStatusCreated)
+	// Получаем все сессии со статусом "in_queue" (оплаченные сессии)
+	sessions, err := s.repo.GetSessionsByStatus(models.SessionStatusInQueue)
 	if err != nil {
 		return err
 	}
@@ -583,4 +653,25 @@ func (s *ServiceImpl) AdminGetSession(req *models.AdminGetSessionRequest) (*mode
 	return &models.AdminGetSessionResponse{
 		Session: *session,
 	}, nil
+}
+
+// UpdateSessionStatus обновляет статус сессии
+func (s *ServiceImpl) UpdateSessionStatus(sessionID uuid.UUID, status string) error {
+	// Получаем сессию по ID
+	session, err := s.repo.GetSessionByID(sessionID)
+	if err != nil {
+		return fmt.Errorf("сессия не найдена: %w", err)
+	}
+
+	// Обновляем статус и время обновления
+	session.Status = status
+	session.StatusUpdatedAt = time.Now()
+
+	// Сохраняем изменения
+	err = s.repo.UpdateSession(session)
+	if err != nil {
+		return fmt.Errorf("ошибка обновления статуса сессии: %w", err)
+	}
+
+	return nil
 }

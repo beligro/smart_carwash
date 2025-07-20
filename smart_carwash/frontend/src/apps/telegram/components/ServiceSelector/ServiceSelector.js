@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import styles from './ServiceSelector.module.css';
 import { Card, Button } from '../../../../shared/components/UI';
 import CarNumberInput from '../CarNumberInput';
+import PriceCalculator from '../PriceCalculator';
 import ApiService from '../../../../shared/services/ApiService';
 
 /**
@@ -176,15 +177,16 @@ const ServiceSelector = ({ onSelect, theme = 'light', user }) => {
           await saveCarNumber();
         }
 
-        onSelect({
+        const serviceData = {
           serviceType: selectedService.id,
           withChemistry: selectedService.hasChemistry ? withChemistry : false,
           rentalTimeMinutes: selectedRentalTime,
           carNumber: carNumber
-        });
+        };
+        onSelect(serviceData);
       }
     } catch (error) {
-      console.error('Ошибка в handleConfirm:', error);
+      alert('Ошибка в handleConfirm: ' + error.message);
     }
   };
 
@@ -274,6 +276,16 @@ const ServiceSelector = ({ onSelect, theme = 'light', user }) => {
               </div>
             )}
           </Card>
+
+          {/* Отображение цены */}
+          {selectedService && selectedRentalTime && (
+            <PriceCalculator
+              serviceType={selectedService.id}
+              withChemistry={withChemistry}
+              rentalTimeMinutes={selectedRentalTime}
+              theme={theme}
+            />
+          )}
         </div>
       )}
       

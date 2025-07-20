@@ -6,7 +6,11 @@
 export const getSessionStatusText = (status) => {
     switch (status) {
       case 'created':
+        return 'Создана';
+      case 'in_queue':
         return 'В очереди';
+      case 'payment_failed':
+        return 'Ошибка оплаты';
       case 'assigned':
         return 'Назначена';
       case 'active':
@@ -43,14 +47,18 @@ export const getSessionStatusText = (status) => {
   };
   
   /**
-   * Получает описание статуса сессии для отображения пользователю
-   * @param {string} status - Статус сессии
-   * @returns {string} - Описание статуса
-   */
-  export const getSessionStatusDescription = (status) => {
+ * Получает описание статуса сессии для отображения пользователю
+ * @param {string} status - Статус сессии
+ * @returns {string} - Описание статуса
+ */
+export const getSessionStatusDescription = (status) => {
     switch (status) {
       case 'created':
-        return 'Ожидание назначения бокса...';
+        return 'Сессия создана, ожидание оплаты...';
+      case 'in_queue':
+        return 'Оплачено, ожидание назначения бокса...';
+      case 'payment_failed':
+        return 'Ошибка оплаты, попробуйте еще раз';
       case 'assigned':
         return 'Бокс назначен, ожидание клиента';
       case 'active':

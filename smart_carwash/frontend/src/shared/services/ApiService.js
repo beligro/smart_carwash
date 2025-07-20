@@ -209,6 +209,60 @@ const ApiService = {
     }
   },
 
+  // === МЕТОДЫ ДЛЯ РАБОТЫ С ПЛАТЕЖАМИ ===
+
+  // Расчет цены услуги
+  calculatePrice: async (data) => {
+    try {
+      const snakeData = toSnakeCase(data);
+      const response = await api.post('/payments/calculate-price', snakeData);
+      return response.data;
+    } catch (error) {
+      console.error('Ошибка при расчете цены:', error);
+      throw error;
+    }
+  },
+
+  // Создание сессии с платежом
+  createSessionWithPayment: async (data) => {
+    try {
+      // Добавляем обязательное поле idempotency_key
+      const sessionData = {
+        ...data,
+        idempotencyKey: uuidv4() // Генерируем уникальный ключ
+      };
+      
+      const snakeData = toSnakeCase(sessionData);
+      const response = await api.post('/sessions/with-payment', snakeData);
+      return response.data;
+    } catch (error) {
+      console.error('Ошибка при создании сессии с платежом:', error);
+      throw error;
+    }
+  },
+
+  // Повторная попытка оплаты
+  retryPayment: async (sessionId) => {
+    try {
+      const response = await api.post('/payments/retry', { session_id: sessionId });
+      return response.data;
+    } catch (error) {
+      console.error('Ошибка при повторной оплате:', error);
+      throw error;
+    }
+  },
+
+  // Получение статуса платежа
+  getPaymentStatus: async (paymentId) => {
+    try {
+      const response = await api.get(`/payments/status?payment_id=${paymentId}`);
+      return response.data;
+    } catch (error) {
+      console.error('Ошибка при получении статуса платежа:', error);
+      throw error;
+    }
+  },
+
   // Создание сессии (для Telegram приложения)
   createSession: async (data) => {
     try {

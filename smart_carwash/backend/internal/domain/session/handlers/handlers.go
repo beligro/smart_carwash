@@ -28,13 +28,14 @@ func NewHandler(service service.Service) *Handler {
 func (h *Handler) RegisterRoutes(router *gin.RouterGroup) {
 	sessionRoutes := router.Group("/sessions")
 	{
-		sessionRoutes.POST("", h.createSession)
-		sessionRoutes.GET("", h.getUserSession)                // user_id в query параметре
-		sessionRoutes.GET("/by-id", h.getSessionByID)          // session_id в query параметре
-		sessionRoutes.POST("/start", h.startSession)           // session_id в теле запроса
-		sessionRoutes.POST("/complete", h.completeSession)     // session_id в теле запроса
-		sessionRoutes.POST("/extend", h.extendSession)         // session_id и extension_time_minutes в теле запроса
-		sessionRoutes.GET("/history", h.getUserSessionHistory) // user_id в query параметре
+			sessionRoutes.POST("", h.createSession)
+	sessionRoutes.POST("/with-payment", h.createSessionWithPayment) // создание сессии с платежом
+	sessionRoutes.GET("", h.getUserSession)                // user_id в query параметре
+	sessionRoutes.GET("/by-id", h.getSessionByID)          // session_id в query параметре
+	sessionRoutes.POST("/start", h.startSession)           // session_id в теле запроса
+	sessionRoutes.POST("/complete", h.completeSession)     // session_id в теле запроса
+	sessionRoutes.POST("/extend", h.extendSession)         // session_id и extension_time_minutes в теле запроса
+	sessionRoutes.GET("/history", h.getUserSessionHistory) // user_id в query параметре
 	}
 
 	// Административные маршруты
@@ -64,6 +65,27 @@ func (h *Handler) createSession(c *gin.Context) {
 
 	// Возвращаем созданную сессию
 	c.JSON(http.StatusOK, models.CreateSessionResponse{Session: *session})
+}
+
+// createSessionWithPayment обработчик для создания сессии с платежом
+func (h *Handler) createSessionWithPayment(c *gin.Context) {
+	var req models.CreateSessionWithPaymentRequest
+
+	// Парсим JSON из тела запроса
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	// Создаем сессию с платежом
+	response, err := h.service.CreateSessionWithPayment(&req)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	// Возвращаем созданную сессию с платежом
+	c.JSON(http.StatusOK, response)
 }
 
 // getUserSession обработчик для получения сессии пользователя

@@ -56,9 +56,10 @@ const WashInfo = ({ washInfo, theme = 'light', onCreateSession, onViewHistory, u
   const handleServiceSelect = (serviceData) => {
     try {
       setShowServiceSelector(false);
+      // Используем новый метод создания сессии с платежом
       onCreateSession(serviceData);
     } catch (error) {
-      console.error('Ошибка при выборе услуги:', error);
+      alert('Ошибка при выборе услуги: ' + error.message);
     }
   };
 
@@ -195,6 +196,63 @@ const WashInfo = ({ washInfo, theme = 'light', onCreateSession, onViewHistory, u
                     Начните мойку до истечения времени, иначе резерв будет снят
                   </p>
                 </>
+              )}
+              
+              {/* Показываем информацию для созданной сессии (ожидание оплаты) */}
+              {userSession.status === 'created' && (
+                <div className={`${styles.sessionInfo} ${themeClass}`} style={{ 
+                  marginTop: '12px',
+                  padding: '12px',
+                  backgroundColor: '#FFF3E0',
+                  borderRadius: '8px',
+                  border: '1px solid #FFB74D'
+                }}>
+                  <p style={{ margin: '0 0 8px 0', fontWeight: 'bold', color: '#E65100' }}>
+                    ⏳ Ожидание оплаты
+                  </p>
+                  <p style={{ margin: '0', fontSize: '14px' }}>
+                    Сессия создана, но оплата еще не произведена. 
+                    После оплаты сессия будет добавлена в очередь.
+                  </p>
+                </div>
+              )}
+              
+              {/* Показываем информацию для сессии в очереди */}
+              {userSession.status === 'in_queue' && (
+                <div className={`${styles.sessionInfo} ${themeClass}`} style={{ 
+                  marginTop: '12px',
+                  padding: '12px',
+                  backgroundColor: '#E8F5E8',
+                  borderRadius: '8px',
+                  border: '1px solid #81C784'
+                }}>
+                  <p style={{ margin: '0 0 8px 0', fontWeight: 'bold', color: '#2E7D32' }}>
+                    ✅ Оплачено, в очереди
+                  </p>
+                  <p style={{ margin: '0', fontSize: '14px' }}>
+                    Сессия оплачена и добавлена в очередь. 
+                    Ожидайте назначения свободного бокса.
+                  </p>
+                </div>
+              )}
+              
+              {/* Показываем информацию для сессии с ошибкой оплаты */}
+              {userSession.status === 'payment_failed' && (
+                <div className={`${styles.sessionInfo} ${themeClass}`} style={{ 
+                  marginTop: '12px',
+                  padding: '12px',
+                  backgroundColor: '#FFEBEE',
+                  borderRadius: '8px',
+                  border: '1px solid #E57373'
+                }}>
+                  <p style={{ margin: '0 0 8px 0', fontWeight: 'bold', color: '#C62828' }}>
+                    ❌ Ошибка оплаты
+                  </p>
+                  <p style={{ margin: '0', fontSize: '14px' }}>
+                    Произошла ошибка при оплате. 
+                    Попробуйте создать новую сессию или обратитесь в поддержку.
+                  </p>
+                </div>
               )}
               
               {/* Показываем информацию, если таймер не отображается */}

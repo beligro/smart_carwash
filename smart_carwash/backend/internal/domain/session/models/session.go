@@ -9,12 +9,14 @@ import (
 
 // Статусы сессии
 const (
-	SessionStatusCreated  = "created"  // Создана
-	SessionStatusAssigned = "assigned" // Назначена на бокс
-	SessionStatusActive   = "active"   // Активна (клиент приступил к мойке)
-	SessionStatusComplete = "complete" // Завершена
-	SessionStatusCanceled = "canceled" // Отменена
-	SessionStatusExpired  = "expired"  // Истек срок резервирования
+	SessionStatusCreated     = "created"      // Создана
+	SessionStatusInQueue     = "in_queue"     // Оплачено, в очереди
+	SessionStatusPaymentFailed = "payment_failed" // Ошибка оплаты
+	SessionStatusAssigned    = "assigned"     // Назначена на бокс
+	SessionStatusActive      = "active"       // Активна (клиент приступил к мойке)
+	SessionStatusComplete    = "complete"     // Завершена
+	SessionStatusCanceled    = "canceled"     // Отменена
+	SessionStatusExpired     = "expired"      // Истек срок резервирования
 )
 
 // Session представляет сессию мойки
@@ -29,6 +31,7 @@ type Session struct {
 	CarNumber                    string         `json:"car_number"`                              // Номер машины в сессии
 	RentalTimeMinutes            int            `json:"rental_time_minutes" gorm:"default:5"`    // Время аренды в минутах
 	ExtensionTimeMinutes         int            `json:"extension_time_minutes" gorm:"default:0"` // Время продления в минутах
+	PaymentID                    *uuid.UUID     `json:"payment_id,omitempty" gorm:"index;type:uuid"` // ID связанного платежа
 	IdempotencyKey               string         `json:"idempotency_key,omitempty" gorm:"index"`
 	IsExpiringNotificationSent   bool           `json:"is_expiring_notification_sent" gorm:"default:false"`
 	IsCompletingNotificationSent bool           `json:"is_completing_notification_sent" gorm:"default:false"`
@@ -51,6 +54,36 @@ type CreateSessionRequest struct {
 // CreateSessionResponse представляет ответ на создание сессии
 type CreateSessionResponse struct {
 	Session Session `json:"session"`
+}
+
+// CreateSessionWithPaymentRequest представляет запрос на создание сессии с платежом
+type CreateSessionWithPaymentRequest struct {
+	UserID            uuid.UUID `json:"user_id" binding:"required"`
+	ServiceType       string    `json:"service_type" binding:"required"`
+	WithChemistry     bool      `json:"with_chemistry"`
+	CarNumber         string    `json:"car_number" binding:"required"`
+	RentalTimeMinutes int       `json:"rental_time_minutes" binding:"required"`
+	IdempotencyKey    string    `json:"idempotency_key" binding:"required"`
+}
+
+// CreateSessionWithPaymentResponse представляет ответ на создание сессии с платежом
+type CreateSessionWithPaymentResponse struct {
+	Session Session  `json:"session"`
+	Payment *Payment `json:"payment,omitempty"`
+}
+
+// Payment представляет информацию о платеже (для интеграции с payment доменом)
+type Payment struct {
+	ID         uuid.UUID `json:"id"`
+	SessionID  uuid.UUID `json:"session_id"`
+	Amount     int       `json:"amount"`
+	Currency   string    `json:"currency"`
+	Status     string    `json:"status"`
+	PaymentURL string    `json:"payment_url"`
+	TinkoffID  string    `json:"tinkoff_id"`
+	ExpiresAt  *time.Time `json:"expires_at"`
+	CreatedAt  time.Time  `json:"created_at"`
+	UpdatedAt  time.Time  `json:"updated_at"`
 }
 
 // GetUserSessionRequest представляет запрос на получение сессии пользователя
@@ -123,7 +156,7 @@ type AdminListSessionsRequest struct {
 	UserID      *uuid.UUID `json:"user_id"`
 	BoxID       *uuid.UUID `json:"box_id"`
 	BoxNumber   *int       `json:"box_number"`
-	Status      *string    `json:"status" binding:"omitempty,oneof=created assigned active complete canceled expired"`
+	Status      *string    `json:"status" binding:"omitempty,oneof=created in_queue payment_failed assigned active complete canceled expired"`
 	ServiceType *string    `json:"service_type" binding:"omitempty,oneof=wash air_dry vacuum"`
 	DateFrom    *time.Time `json:"date_from"`
 	DateTo      *time.Time `json:"date_to"`
