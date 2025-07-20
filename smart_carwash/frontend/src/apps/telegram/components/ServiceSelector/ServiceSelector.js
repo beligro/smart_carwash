@@ -236,7 +236,8 @@ const ServiceSelector = ({ onSelect, theme = 'light', user }) => {
   // Обработчик ошибки платежа
   const handlePaymentError = (error) => {
     console.error('Ошибка платежа:', error);
-    setShowPaymentModal(false);
+    // НЕ закрываем модалку при ошибке - пусть PaymentModal сам обрабатывает ошибки
+    // setShowPaymentModal(false);
   };
 
   // Проверяем, можно ли подтвердить выбор
@@ -357,6 +358,8 @@ const ServiceSelector = ({ onSelect, theme = 'light', user }) => {
         paymentType="queue"
         serviceType={selectedService?.id}
         userID={user?.id}
+        rentalTimeMinutes={selectedRentalTime}
+        withChemistry={selectedService?.hasChemistry ? withChemistry : false}
         priceData={priceData} // Передаем рассчитанную цену
         onPaymentSuccess={handlePaymentSuccess}
         onPaymentError={handlePaymentError}

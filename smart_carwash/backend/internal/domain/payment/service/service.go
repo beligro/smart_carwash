@@ -4,8 +4,11 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
+	"strconv"
 	"fmt"
+	"log"
 	"math"
+	"strings"
 	"time"
 
 	"carwash_backend/internal/config"
@@ -35,7 +38,7 @@ type Service interface {
 	ProcessPendingRefunds() error
 
 	// Методы для интеграции с другими доменами
-	CreateQueuePayment(userID uuid.UUID, serviceType string) (*models.Payment, error)
+	CreateQueuePayment(userID uuid.UUID, serviceType string, rentalTimeMinutes int, withChemistry bool, carNumber string) (*models.Payment, error)
 	CreateSessionExtensionPayment(sessionID uuid.UUID, extensionMinutes int) (*models.Payment, error)
 	CheckPaymentForSession(sessionID uuid.UUID) (*models.Payment, error)
 
@@ -92,31 +95,27 @@ func (s *ServiceImpl) CreatePayment(req *models.CreatePaymentRequest) (*models.C
 		IdempotencyKey: req.IdempotencyKey,
 	}
 
+	log.Println("payment: ", payment)
+
 	if err := s.repo.CreatePayment(payment); err != nil {
 		return nil, err
 	}
+
+	log.Println("payment after create: ", payment)
 
 	// Создаем платеж в Tinkoff
 	tinkoffReq := &models.InitRequest{
 		Amount:          req.AmountKopecks,
 		OrderId:         payment.ID.String(),
 		Description:     req.Description,
-		SuccessURL:      s.config.PaymentSuccessURL,
-		FailURL:         s.config.PaymentFailURL,
+		SuccessURL:      fmt.Sprintf("%s?payment_id=%s", s.config.TelegramReturnSuccess, payment.ID.String()), // URL возврата в Telegram при успехе с ID платежа
+		FailURL:         fmt.Sprintf("%s?payment_id=%s", s.config.TelegramReturnFail, payment.ID.String()),    // URL возврата в Telegram при ошибке с ID платежа
 		NotificationURL: s.config.PaymentWebhookURL,
-		Data: map[string]string{
-			"payment_type": req.Type,
-			"user_id":      req.UserID.String(),
-			"payment_id":   payment.ID.String(),
-		},
-	}
-
-	if req.SessionID != nil {
-		tinkoffReq.Data["session_id"] = req.SessionID.String()
 	}
 
 	tinkoffResp, err := s.tinkoffClient.Init(tinkoffReq)
 	if err != nil {
+		log.Println("error: ", err)
 		// Обновляем статус на "failed"
 		payment.Status = models.PaymentStatusFailed
 		payment.LastError = err.Error()
@@ -129,6 +128,8 @@ func (s *ServiceImpl) CreatePayment(req *models.CreatePaymentRequest) (*models.C
 	payment.PaymentURL = tinkoffResp.PaymentURL
 	payment.Status = models.PaymentStatusPending
 	s.repo.UpdatePayment(payment)
+
+	log.Printf("Tinkoff URL получен: %s", tinkoffResp.PaymentURL)
 
 	// Создаем событие платежа
 	event := &models.PaymentEvent{
@@ -174,7 +175,7 @@ func (s *ServiceImpl) GetPaymentStatus(req *models.GetPaymentStatusRequest) (*mo
 // HandleTinkoffWebhook обрабатывает webhook от Tinkoff
 func (s *ServiceImpl) HandleTinkoffWebhook(webhook *models.TinkoffWebhook) error {
 	// Проверяем, не обрабатывали ли мы уже этот webhook
-	eventKey := fmt.Sprintf("webhook_%s_%s", webhook.PaymentId, webhook.Status)
+	eventKey := fmt.Sprintf("webhook_%s_%s", strconv.FormatInt(webhook.PaymentId, 10), webhook.Status)
 	
 	existingEvent, err := s.repo.GetPaymentEventByIdempotencyKey(eventKey)
 	if err == nil && existingEvent != nil {
@@ -182,7 +183,7 @@ func (s *ServiceImpl) HandleTinkoffWebhook(webhook *models.TinkoffWebhook) error
 	}
 
 	// Находим платеж по Tinkoff PaymentId
-	payment, err := s.repo.GetPaymentByTinkoffID(webhook.PaymentId)
+	payment, err := s.repo.GetPaymentByTinkoffID(strconv.FormatInt(webhook.PaymentId, 10))
 	if err != nil {
 		return err
 	}
@@ -359,23 +360,40 @@ func (s *ServiceImpl) ProcessPendingRefunds() error {
 }
 
 // CreateQueuePayment создает платеж за очередь
-func (s *ServiceImpl) CreateQueuePayment(userID uuid.UUID, serviceType string) (*models.Payment, error) {
-	// Определяем стоимость услуги
-	costKopecks := s.getServicePrice(serviceType)
+func (s *ServiceImpl) CreateQueuePayment(userID uuid.UUID, serviceType string, rentalTimeMinutes int, withChemistry bool, carNumber string) (*models.Payment, error) {
+	log.Printf("Создание платежа за очередь: userID=%s, serviceType=%s, rentalTime=%d, withChemistry=%v, carNumber=%s", 
+		userID, serviceType, rentalTimeMinutes, withChemistry, carNumber)
+
+	// Рассчитываем стоимость услуги с учетом всех параметров
+	priceReq := &models.CalculatePriceRequest{
+		ServiceType:       serviceType,
+		RentalTimeMinutes: rentalTimeMinutes,
+		WithChemistry:     withChemistry,
+	}
+
+	priceResp, err := s.CalculatePrice(priceReq)
+	if err != nil {
+		log.Printf("Ошибка расчета стоимости: %v", err)
+		return nil, fmt.Errorf("ошибка расчета стоимости: %w", err)
+	}
+
+	log.Printf("Рассчитанная стоимость: %d копеек", priceResp.TotalPriceKopecks)
 
 	req := &models.CreatePaymentRequest{
 		UserID:         userID,
-		AmountKopecks:  costKopecks,
+		AmountKopecks:  priceResp.TotalPriceKopecks,
 		Type:           models.PaymentTypeQueueBooking,
-		Description:    fmt.Sprintf("Предоплата за очередь: %s", serviceType),
+		Description:    fmt.Sprintf("Предоплата за очередь: %s (%d мин), номер: %s", serviceType, rentalTimeMinutes, carNumber),
 		IdempotencyKey: generateIdempotencyKey(),
 	}
 
 	resp, err := s.CreatePayment(req)
 	if err != nil {
+		log.Printf("Ошибка создания платежа: %v", err)
 		return nil, err
 	}
 
+	log.Printf("Платеж успешно создан: ID=%s, Amount=%d, URL=%s", resp.Payment.ID, resp.Payment.AmountKopecks, resp.Payment.PaymentURL)
 	return resp.Payment, nil
 }
 
@@ -517,18 +535,182 @@ func (s *ServiceImpl) ReconcilePayments(startDate, endDate time.Time) (*Reconcil
 // Вспомогательные методы
 
 func (s *ServiceImpl) handlePaymentConfirmed(payment *models.Payment) error {
-	// Логика после подтверждения платежа
-	// Например, добавление в очередь или продление сессии
+	// Если это платеж за очередь, создаем сессию
+	if payment.Type == models.PaymentTypeQueueBooking {
+		// Получаем данные пользователя для создания сессии
+		user, err := s.userService.GetUserByID(payment.UserID)
+		if err != nil {
+			return fmt.Errorf("не удалось получить пользователя: %w", err)
+		}
+
+		// Извлекаем параметры из описания платежа
+		// Описание имеет формат: "Предоплата за очередь: {serviceType} ({rentalTime} мин)"
+		description := payment.Description
+		var serviceType string
+		var rentalTimeMinutes int
+		var withChemistry bool
+
+		// Парсим описание для извлечения параметров
+		// Это упрощенная версия - в реальности лучше хранить параметры в отдельных полях
+		if len(description) > 0 {
+			// Извлекаем тип услуги из описания
+			if strings.Contains(description, "wash") {
+				serviceType = "wash"
+			} else if strings.Contains(description, "air_dry") {
+				serviceType = "air_dry"
+			} else if strings.Contains(description, "vacuum") {
+				serviceType = "vacuum"
+			} else {
+				serviceType = "wash" // по умолчанию
+			}
+
+			// Извлекаем время аренды
+			if strings.Contains(description, "5 мин") {
+				rentalTimeMinutes = 5
+			} else if strings.Contains(description, "10 мин") {
+				rentalTimeMinutes = 10
+			} else if strings.Contains(description, "15 мин") {
+				rentalTimeMinutes = 15
+			} else if strings.Contains(description, "20 мин") {
+				rentalTimeMinutes = 20
+			} else {
+				rentalTimeMinutes = 5 // по умолчанию
+			}
+
+			// Определяем наличие химии по сумме платежа
+			// Это упрощенная логика - в реальности лучше хранить параметры отдельно
+			basePrice := s.getServicePrice(serviceType) * int64(rentalTimeMinutes)
+			if payment.AmountKopecks > basePrice {
+				withChemistry = true
+			}
+		}
+
+		// Создаем сессию в статусе in_queue
+		sessionReq := &sessionModels.CreateSessionRequest{
+			UserID:            payment.UserID,
+			ServiceType:       serviceType,
+			WithChemistry:     withChemistry,
+			CarNumber:         "A000AA", // Временный номер - в реальности нужно получать от пользователя
+			RentalTimeMinutes: rentalTimeMinutes,
+			IdempotencyKey:    fmt.Sprintf("payment_session_%s", payment.ID.String()),
+		}
+
+		session, err := s.sessionService.CreateSession(sessionReq)
+		if err != nil {
+			return fmt.Errorf("не удалось создать сессию: %w", err)
+		}
+
+		// Обновляем статус сессии на in_queue
+		session.Status = sessionModels.SessionStatusInQueue
+		session.StatusUpdatedAt = time.Now()
+		if err := s.sessionService.UpdateSession(session); err != nil {
+			return fmt.Errorf("не удалось обновить статус сессии: %w", err)
+		}
+
+		// Обновляем платеж - привязываем к сессии
+		payment.SessionID = &session.ID
+		if err := s.repo.UpdatePayment(payment); err != nil {
+			return fmt.Errorf("не удалось обновить платеж: %w", err)
+		}
+
+		log.Printf("Создана сессия в очереди: ID=%s, UserID=%s, ServiceType=%s", 
+			session.ID, session.UserID, session.ServiceType)
+	}
+
 	return nil
 }
 
 func (s *ServiceImpl) handlePaymentCanceled(payment *models.Payment) error {
-	// Логика после отмены платежа
+	// Если это платеж за очередь, создаем сессию в статусе payment_failed
+	if payment.Type == models.PaymentTypeQueueBooking {
+		// Получаем данные пользователя для создания сессии
+		user, err := s.userService.GetUserByID(payment.UserID)
+		if err != nil {
+			return fmt.Errorf("не удалось получить пользователя: %w", err)
+		}
+
+		// Извлекаем параметры из описания платежа (аналогично handlePaymentConfirmed)
+		description := payment.Description
+		var serviceType string
+		var rentalTimeMinutes int
+		var withChemistry bool
+
+		if len(description) > 0 {
+			if strings.Contains(description, "wash") {
+				serviceType = "wash"
+			} else if strings.Contains(description, "air_dry") {
+				serviceType = "air_dry"
+			} else if strings.Contains(description, "vacuum") {
+				serviceType = "vacuum"
+			} else {
+				serviceType = "wash"
+			}
+
+			if strings.Contains(description, "5 мин") {
+				rentalTimeMinutes = 5
+			} else if strings.Contains(description, "10 мин") {
+				rentalTimeMinutes = 10
+			} else if strings.Contains(description, "15 мин") {
+				rentalTimeMinutes = 15
+			} else if strings.Contains(description, "20 мин") {
+				rentalTimeMinutes = 20
+			} else {
+				rentalTimeMinutes = 5
+			}
+
+			basePrice := s.getServicePrice(serviceType) * int64(rentalTimeMinutes)
+			if payment.AmountKopecks > basePrice {
+				withChemistry = true
+			}
+		}
+
+		// Создаем сессию в статусе payment_failed
+		sessionReq := &sessionModels.CreateSessionRequest{
+			UserID:            payment.UserID,
+			ServiceType:       serviceType,
+			WithChemistry:     withChemistry,
+			CarNumber:         "A000AA", // Временный номер
+			RentalTimeMinutes: rentalTimeMinutes,
+			IdempotencyKey:    fmt.Sprintf("payment_failed_session_%s", payment.ID.String()),
+		}
+
+		session, err := s.sessionService.CreateSession(sessionReq)
+		if err != nil {
+			return fmt.Errorf("не удалось создать сессию: %w", err)
+		}
+
+		// Обновляем статус сессии на payment_failed
+		session.Status = sessionModels.SessionStatusPaymentFailed
+		session.StatusUpdatedAt = time.Now()
+		if err := s.sessionService.UpdateSession(session); err != nil {
+			return fmt.Errorf("не удалось обновить статус сессии: %w", err)
+		}
+
+		// Обновляем платеж - привязываем к сессии
+		payment.SessionID = &session.ID
+		if err := s.repo.UpdatePayment(payment); err != nil {
+			return fmt.Errorf("не удалось обновить платеж: %w", err)
+		}
+
+		log.Printf("Создана сессия с ошибкой оплаты: ID=%s, UserID=%s, ServiceType=%s", 
+			session.ID, session.UserID, session.ServiceType)
+	}
+
 	return nil
 }
 
 func (s *ServiceImpl) handlePaymentRefunded(payment *models.Payment) error {
 	// Логика после возврата платежа
+	// Если есть связанная сессия, можно обновить её статус
+	if payment.SessionID != nil {
+		session, err := s.sessionService.GetSession(&sessionModels.GetSessionRequest{SessionID: *payment.SessionID})
+		if err == nil && session != nil {
+			// Обновляем статус сессии на canceled при возврате
+			session.Status = sessionModels.SessionStatusCanceled
+			session.StatusUpdatedAt = time.Now()
+			s.sessionService.UpdateSession(session)
+		}
+	}
 	return nil
 }
 

@@ -12,11 +12,10 @@ type InitRequest struct {
 	Amount          int64             `json:"Amount"`          // в копейках
 	OrderId         string            `json:"OrderId"`         // наш UUID
 	Description     string            `json:"Description"`
-	Receipt         *Receipt          `json:"Receipt,omitempty"`
 	SuccessURL      string            `json:"SuccessURL"`
 	FailURL         string            `json:"FailURL"`
 	NotificationURL string            `json:"NotificationURL"`
-	Data            map[string]string `json:"Data,omitempty"` // метаданные
+	Token           string            `json:"Token"`
 }
 
 // InitResponse ответ на инициализацию платежа
@@ -159,7 +158,7 @@ type TinkoffWebhook struct {
 	OrderId     string            `json:"OrderId"`
 	Success     bool              `json:"Success"`
 	Status      string            `json:"Status"`
-	PaymentId   string            `json:"PaymentId"`
+	PaymentId   int64             `json:"PaymentId"`
 	ErrorCode   string            `json:"ErrorCode,omitempty"`
 	Message     string            `json:"Message,omitempty"`
 	Amount      int64             `json:"Amount"`
@@ -216,3 +215,32 @@ type TinkoffError struct {
 func (e *TinkoffError) Error() string {
 	return e.Message
 } 
+
+func (r *InitRequest) ToMap() map[string]interface{} {
+    params := map[string]interface{}{
+        "TerminalKey": r.TerminalKey,
+        "Amount":      r.Amount,
+        "OrderId":     r.OrderId,
+    }
+    
+    // Добавляем обязательные строковые поля
+    if r.Description != "" {
+        params["Description"] = r.Description
+    }
+    
+    if r.SuccessURL != "" {
+        params["SuccessURL"] = r.SuccessURL
+    }
+    
+    if r.FailURL != "" {
+        params["FailURL"] = r.FailURL
+    }
+    
+    if r.NotificationURL != "" {
+        params["NotificationURL"] = r.NotificationURL
+    }
+
+    return params
+}
+
+

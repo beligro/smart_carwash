@@ -249,6 +249,17 @@ const ApiService = {
     }
   },
   
+  // Получение платежа по ID
+  getPaymentById: async (paymentId) => {
+    try {
+      const response = await api.get(`/payments/by-id?id=${paymentId}`);
+      return response.data;
+    } catch (error) {
+      console.error('Ошибка при получении платежа по ID:', error);
+      return { payment: null };
+    }
+  },
+  
   // Запуск сессии (перевод в статус active)
   startSession: async (sessionId) => {
     try {

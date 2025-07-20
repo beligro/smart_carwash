@@ -18,12 +18,14 @@ const PaymentService = {
   },
 
   // Создание платежа за очередь
-  createQueuePayment: async (userID, serviceType) => {
+  createQueuePayment: async (userID, serviceType, rentalTimeMinutes, withChemistry = false) => {
     try {
       const response = await api.post('/payments/queue', null, {
         params: {
           user_id: userID,
           service_type: serviceType,
+          rental_time_minutes: rentalTimeMinutes,
+          with_chemistry: withChemistry,
         },
       });
       return response.data;

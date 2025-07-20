@@ -9,12 +9,14 @@ import (
 
 // Статусы сессии
 const (
-	SessionStatusCreated  = "created"  // Создана
-	SessionStatusAssigned = "assigned" // Назначена на бокс
-	SessionStatusActive   = "active"   // Активна (клиент приступил к мойке)
-	SessionStatusComplete = "complete" // Завершена
-	SessionStatusCanceled = "canceled" // Отменена
-	SessionStatusExpired  = "expired"  // Истек срок резервирования
+	SessionStatusCreated     = "created"      // Создана
+	SessionStatusInQueue     = "in_queue"     // В очереди (после успешной оплаты)
+	SessionStatusAssigned    = "assigned"     // Назначена на бокс
+	SessionStatusActive      = "active"       // Активна (клиент приступил к мойке)
+	SessionStatusComplete    = "complete"     // Завершена
+	SessionStatusCanceled    = "canceled"     // Отменена
+	SessionStatusExpired     = "expired"      // Истек срок резервирования
+	SessionStatusPaymentFailed = "payment_failed" // Ошибка оплаты
 )
 
 // Session представляет сессию мойки

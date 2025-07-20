@@ -6,6 +6,8 @@
 export const getSessionStatusText = (status) => {
     switch (status) {
       case 'created':
+        return 'Создана';
+      case 'in_queue':
         return 'В очереди';
       case 'assigned':
         return 'Назначена';
@@ -17,6 +19,8 @@ export const getSessionStatusText = (status) => {
         return 'Отменена';
       case 'expired':
         return 'Истекла';
+      case 'payment_failed':
+        return 'Ошибка оплаты';
       default:
         return 'Неизвестно';
     }

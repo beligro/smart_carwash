@@ -65,6 +65,9 @@ const TelegramApp = () => {
           (WebApp.themeParams && WebApp.themeParams.text_color) || '#000000'
         );
         
+        // Обработка параметров возврата из платежа
+        handlePaymentReturn();
+        
         // Получаем данные пользователя из Telegram
         if (WebApp.initDataUnsafe && WebApp.initDataUnsafe.user) {
           const telegramUser = WebApp.initDataUnsafe.user;
@@ -80,6 +83,80 @@ const TelegramApp = () => {
     initializeApp();
   }, []);
   
+  // Функция для обработки возврата из платежа
+  const handlePaymentReturn = async () => {
+    try {
+      // Получаем параметры из URL
+      const urlParams = new URLSearchParams(window.location.search);
+      const paymentId = urlParams.get('payment_id');
+      const startParam = urlParams.get('start');
+      const startappParam = urlParams.get('startapp');
+      
+      // Обрабатываем параметр startapp (приоритет) или start (fallback)
+      const paymentParam = startappParam || startParam;
+      
+      if (paymentId) {
+        console.log('Обработка возврата из платежа с ID:', paymentId);
+        
+        try {
+          // Получаем информацию о платеже
+          const paymentResponse = await ApiService.getPaymentById(paymentId);
+          const payment = paymentResponse.payment;
+          
+          if (payment) {
+            if (payment.status === 'completed') {
+              alert('🎉 Платеж успешно завершен! Вы добавлены в очередь.');
+              
+              // Если есть связанная сессия, получаем её информацию
+              if (payment.session_id) {
+                try {
+                  const sessionResponse = await ApiService.getSessionById(payment.session_id);
+                  if (sessionResponse.session) {
+                    console.log('Сессия создана:', sessionResponse.session);
+                    // Обновляем данные пользователя с новой сессией
+                    setWashInfo(prevInfo => ({
+                      ...prevInfo,
+                      userSession: sessionResponse.session
+                    }));
+                  }
+                } catch (sessionErr) {
+                  console.error('Ошибка получения сессии:', sessionErr);
+                }
+              }
+            } else if (payment.status === 'failed') {
+              alert('❌ Платеж не был завершен. Попробуйте еще раз.');
+            } else {
+              alert(`Статус платежа: ${payment.status}`);
+            }
+          }
+        } catch (paymentErr) {
+          console.error('Ошибка получения информации о платеже:', paymentErr);
+          alert('Не удалось получить информацию о платеже.');
+        }
+        
+        // Очищаем параметры из URL
+        const newUrl = window.location.pathname;
+        window.history.replaceState({}, document.title, newUrl);
+      } else if (paymentParam) {
+        console.log('Обработка возврата из платежа:', paymentParam);
+        
+        if (paymentParam === 'payment_success') {
+          alert('🎉 Платеж успешно завершен! Вы добавлены в очередь.');
+          // Можно добавить дополнительную логику, например, обновить статус
+          fetchQueueStatus(false);
+        } else if (paymentParam === 'payment_fail') {
+          alert('❌ Платеж не был завершен. Попробуйте еще раз.');
+        }
+        
+        // Очищаем параметры из URL
+        const newUrl = window.location.pathname;
+        window.history.replaceState({}, document.title, newUrl);
+      }
+    } catch (err) {
+      console.error('Ошибка обработки возврата из платежа:', err);
+    }
+  };
+
   // Функция для получения пользователя по telegram_id
   const getUserByTelegramId = async (telegramId) => {
     try {

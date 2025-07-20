@@ -10,6 +10,8 @@ const PaymentModal = ({
   sessionID, 
   extensionMinutes,
   userID,
+  rentalTimeMinutes,
+  withChemistry,
   priceData: initialPriceData, // Принимаем предрассчитанную цену
   onPaymentSuccess,
   onPaymentError 
@@ -24,6 +26,8 @@ const PaymentModal = ({
   useEffect(() => {
     if (!isOpen) {
       setPriceData(null);
+      setPayment(null); // Сбрасываем состояние платежа при закрытии
+      setError(null); // Сбрасываем ошибки при закрытии
       return;
     }
 
@@ -39,11 +43,11 @@ const PaymentModal = ({
           let priceResponse;
           
           if (paymentType === 'queue') {
-            // Для очереди используем базовые параметры
+            // Для очереди используем переданные параметры
             priceResponse = await PaymentService.calculatePrice(
               serviceType,
-              5, // базовое время аренды
-              false // без химии по умолчанию
+              rentalTimeMinutes || 5, // используем переданное время или базовое
+              withChemistry || false // используем переданный флаг химии
             );
           } else if (paymentType === 'extension') {
             // Для продления используем время продления
@@ -65,7 +69,7 @@ const PaymentModal = ({
 
       calculatePrice();
     }
-  }, [isOpen, paymentType, serviceType, extensionMinutes, initialPriceData]);
+  }, [isOpen, paymentType, serviceType, extensionMinutes, rentalTimeMinutes, withChemistry, initialPriceData]);
 
   // Получаем данные для платежа
   const getPaymentData = () => {
@@ -108,25 +112,36 @@ const PaymentModal = ({
       let response;
       
       if (paymentType === 'queue') {
-        response = await PaymentService.createQueuePayment(userID, serviceType);
+        response = await PaymentService.createQueuePayment(userID, serviceType, rentalTimeMinutes, withChemistry);
       } else if (paymentType === 'extension') {
         response = await PaymentService.createSessionExtensionPayment(sessionID, extensionMinutes);
       }
 
       setPayment(response.payment);
       
-      // Открываем платежную форму в Telegram
-      if (window.Telegram?.WebApp) {
-        window.Telegram.WebApp.openTelegramLink(response.payment_url);
-      } else {
-        // Fallback для тестирования
-        window.open(response.payment_url, '_blank');
+      // Показываем алерт об успешном создании платежа
+      alert(`Платеж успешно создан! Сумма: ${formatAmount(response.payment.amount_kopecks)}`);
+      
+      // Проверяем, что URL валидный
+      if (!response.payment_url || !response.payment_url.startsWith('http')) {
+        alert(`Ошибка: некорректный URL платежа: ${response.payment_url}`);
+        return;
       }
 
-      onPaymentSuccess?.(response.payment);
+      // Показываем информацию о платеже и инструкции
+      alert(`Платеж создан! Перейдите по ссылке для оплаты: ${response.payment_url}\n\nПосле оплаты вы автоматически вернетесь в приложение.`);
+      
+      // Открываем платежную форму в браузере
+      window.open(response.payment_url, '_blank');
+
+      // НЕ закрываем модалку и НЕ вызываем onPaymentSuccess здесь
+      // Модалка должна остаться открытой для показа статуса платежа
     } catch (err) {
-      setError(err.response?.data?.error || 'Ошибка создания платежа');
-      onPaymentError?.(err);
+      alert(err);
+      const errorMessage = err.response?.data?.error || 'Ошибка создания платежа';
+      setError(errorMessage);
+      alert(`Ошибка: ${errorMessage}`);
+      // НЕ вызываем onPaymentError - не закрываем модалку при ошибке
     } finally {
       setLoading(false);
     }
@@ -145,18 +160,22 @@ const PaymentModal = ({
 
   // Обработка успешного платежа
   const handlePaymentSuccess = () => {
+    alert('Платеж успешно завершен!');
     onPaymentSuccess?.(payment);
     onClose();
   };
 
   // Обработка неудачного платежа
   const handlePaymentError = () => {
-    setError('Платеж не был завершен');
-    onPaymentError?.();
+    const errorMessage = 'Платеж не был завершен';
+    setError(errorMessage);
+    alert(`Ошибка платежа: ${errorMessage}`);
+    // НЕ вызываем onPaymentError - не закрываем модалку при ошибке
   };
 
   // Обработка закрытия платежа
   const handlePaymentClose = () => {
+    alert('Платеж был закрыт');
     onClose();
   };
 
@@ -167,7 +186,7 @@ const PaymentModal = ({
       window.Telegram.WebApp.onEvent('paymentError', handlePaymentError);
       window.Telegram.WebApp.onEvent('paymentClose', handlePaymentClose);
     }
-  }, [isOpen]);
+  }, [isOpen, payment]); // Добавляем payment в зависимости
 
   if (!isOpen) return null;
 
@@ -198,6 +217,14 @@ const PaymentModal = ({
               <p>Платеж создан. Открывается форма оплаты...</p>
               <div className={styles.paymentStatus}>
                 Статус: {payment.status}
+              </div>
+              <div className={styles.paymentActions}>
+                <button
+                  className={styles.cancelButton}
+                  onClick={onClose}
+                >
+                  Закрыть
+                </button>
               </div>
             </div>
           ) : (

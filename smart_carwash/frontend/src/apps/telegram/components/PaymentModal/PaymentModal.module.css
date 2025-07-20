@@ -98,6 +98,13 @@
   font-size: 12px;
   font-weight: 500;
   display: inline-block;
+  margin-bottom: 15px;
+}
+
+.paymentActions {
+  display: flex;
+  justify-content: center;
+  margin-top: 15px;
 }
 
 .actions {

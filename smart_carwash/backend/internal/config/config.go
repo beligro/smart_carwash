@@ -32,6 +32,11 @@ type Config struct {
 	PaymentSuccessURL     string
 	PaymentFailURL        string
 	PaymentWebhookURL     string
+	
+	// Настройки возврата в Telegram Mini App
+	TelegramBotUsername   string
+	TelegramReturnSuccess string
+	TelegramReturnFail    string
 }
 
 // LoadConfig загружает конфигурацию из переменных окружения
@@ -73,6 +78,11 @@ func LoadConfig() (*Config, error) {
 		PaymentSuccessURL:  getEnv("PAYMENT_SUCCESS_URL", "https://your-domain.com/telegram?payment=success"),
 		PaymentFailURL:     getEnv("PAYMENT_FAIL_URL", "https://your-domain.com/telegram?payment=fail"),
 		PaymentWebhookURL:  getEnv("PAYMENT_WEBHOOK_URL", "https://your-domain.com/api/v1/payments/webhook"),
+		
+		// Настройки возврата в Telegram Mini App
+		TelegramBotUsername:   getEnv("TELEGRAM_BOT_USERNAME", "carwash_grom_test_bot"),
+		TelegramReturnSuccess: getEnv("TELEGRAM_RETURN_SUCCESS", "https://t.me/carwash_grom_test_bot?startapp=payment_success"),
+		TelegramReturnFail:    getEnv("TELEGRAM_RETURN_FAIL", "https://t.me/carwash_grom_test_bot?startapp=payment_fail"),
 	}, nil
 }
 

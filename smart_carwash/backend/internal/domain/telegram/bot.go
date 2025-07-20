@@ -6,7 +6,6 @@ import (
 	"strings"
 
 	"carwash_backend/internal/config"
-	"carwash_backend/internal/domain/user/models"
 	"carwash_backend/internal/domain/user/service"
 
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
@@ -32,6 +31,7 @@ type Bot struct {
 	bot     *tgbotapi.BotAPI
 	service service.Service
 	config  *config.Config
+	handler *BotHandler
 }
 
 // NewBot создает новый экземпляр Bot
@@ -47,10 +47,15 @@ func NewBot(service service.Service, config *config.Config) (*Bot, error) {
 
 	log.Printf("Авторизован как %s", bot.Self.UserName)
 
+	// Создаем обработчик бота
+	webAppURL := fmt.Sprintf("https://%s/telegram", config.ServerIP)
+	handler := NewBotHandler(bot, webAppURL, service)
+
 	return &Bot{
 		bot:     bot,
 		service: service,
 		config:  config,
+		handler: handler,
 	}, nil
 }
 
@@ -76,6 +81,12 @@ func (b *Bot) Start() {
 
 	// Обрабатываем обновления
 	for update := range updates {
+		// Обрабатываем callback queries
+		if update.CallbackQuery != nil {
+			b.handler.HandleCallbackQuery(update)
+			continue
+		}
+
 		// Обрабатываем сообщения
 		if update.Message != nil {
 			b.handleMessage(update.Message)
@@ -85,6 +96,12 @@ func (b *Bot) Start() {
 
 // ProcessUpdate обрабатывает обновления от вебхука
 func (b *Bot) ProcessUpdate(update tgbotapi.Update) {
+	// Обрабатываем callback queries
+	if update.CallbackQuery != nil {
+		b.handler.HandleCallbackQuery(update)
+		return
+	}
+
 	// Обрабатываем сообщения
 	if update.Message != nil {
 		b.handleMessage(update.Message)
@@ -114,9 +131,9 @@ func (b *Bot) SetWebhook() error {
 
 // handleMessage обрабатывает сообщения
 func (b *Bot) handleMessage(message *tgbotapi.Message) {
-	// Обрабатываем команду /start
+	// Обрабатываем команду /start с параметрами
 	if message.IsCommand() && message.Command() == "start" {
-		b.handleStartCommand(message)
+		b.handler.HandleStartCommand(tgbotapi.Update{Message: message})
 		return
 	}
 
@@ -124,36 +141,7 @@ func (b *Bot) handleMessage(message *tgbotapi.Message) {
 	b.sendHelpMessage(message.Chat.ID)
 }
 
-// handleStartCommand обрабатывает команду /start
-func (b *Bot) handleStartCommand(message *tgbotapi.Message) {
-	// Создаем пользователя
-	user, err := b.service.CreateUser(&models.CreateUserRequest{
-		TelegramID: message.From.ID,
-		Username:   message.From.UserName,
-		FirstName:  message.From.FirstName,
-		LastName:   message.From.LastName,
-	})
 
-	if err != nil {
-		log.Printf("Ошибка создания пользователя: %v", err)
-		b.sendErrorMessage(message.Chat.ID)
-		return
-	}
-
-	// Формируем приветственное сообщение
-	var messageText strings.Builder
-	messageText.WriteString(fmt.Sprintf("Привет, %s!\n\n", user.FirstName))
-	messageText.WriteString("Добро пожаловать в бота умной автомойки.")
-
-	// Отправляем сообщение с клавиатурой
-	msg := tgbotapi.NewMessage(message.Chat.ID, messageText.String())
-	msg.ParseMode = "HTML"
-
-	_, err = b.bot.Send(msg)
-	if err != nil {
-		log.Printf("Ошибка отправки сообщения: %v", err)
-	}
-}
 
 // sendHelpMessage отправляет сообщение с помощью
 func (b *Bot) sendHelpMessage(chatID int64) {

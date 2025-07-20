@@ -42,8 +42,8 @@ func (s *ServiceImpl) getServiceQueueInfo(serviceType string) (*models.ServiceQu
 		return nil, err
 	}
 
-	// Получаем сессии со статусом "created"
-	createdSessions, err := s.sessionService.GetSessionsByStatus(sessionModels.SessionStatusCreated)
+	// Получаем сессии со статусом "in_queue" (после успешной оплаты)
+	inQueueSessions, err := s.sessionService.GetSessionsByStatus(sessionModels.SessionStatusInQueue)
 	if err != nil {
 		return nil, err
 	}
@@ -52,7 +52,7 @@ func (s *ServiceImpl) getServiceQueueInfo(serviceType string) (*models.ServiceQu
 	queueSize := 0
 	var usersInQueue []models.QueueUser
 
-	for _, session := range createdSessions {
+	for _, session := range inQueueSessions {
 		if session.ServiceType == serviceType {
 			queueSize++
 
@@ -169,15 +169,15 @@ func (s *ServiceImpl) AdminGetQueueStatus(req *models.AdminQueueStatusRequest) (
 
 // getQueueDetails получает детальную информацию об очереди
 func (s *ServiceImpl) getQueueDetails() (*models.QueueDetails, error) {
-	// Получаем все сессии со статусом "created" (в очереди)
-	createdSessions, err := s.sessionService.GetSessionsByStatus(sessionModels.SessionStatusCreated)
+	// Получаем все сессии со статусом "in_queue" (после успешной оплаты)
+	inQueueSessions, err := s.sessionService.GetSessionsByStatus(sessionModels.SessionStatusInQueue)
 	if err != nil {
 		return nil, err
 	}
 
 	// Группируем сессии по типу услуги
 	sessionsByType := make(map[string][]sessionModels.Session)
-	for _, session := range createdSessions {
+	for _, session := range inQueueSessions {
 		sessionsByType[session.ServiceType] = append(sessionsByType[session.ServiceType], session)
 	}
 

@@ -16,6 +16,7 @@ type Service interface {
 	CreateSession(req *models.CreateSessionRequest) (*models.Session, error)
 	GetUserSession(req *models.GetUserSessionRequest) (*models.Session, error)
 	GetSession(req *models.GetSessionRequest) (*models.Session, error)
+	UpdateSession(session *models.Session) error
 	StartSession(req *models.StartSessionRequest) (*models.Session, error)
 	CompleteSession(req *models.CompleteSessionRequest) (*models.Session, error)
 	ExtendSession(req *models.ExtendSessionRequest) (*models.Session, error)
@@ -97,6 +98,11 @@ func (s *ServiceImpl) GetUserSession(req *models.GetUserSessionRequest) (*models
 // GetSession получает сессию по ID
 func (s *ServiceImpl) GetSession(req *models.GetSessionRequest) (*models.Session, error) {
 	return s.repo.GetSessionByID(req.SessionID)
+}
+
+// UpdateSession обновляет существующую сессию
+func (s *ServiceImpl) UpdateSession(session *models.Session) error {
+	return s.repo.UpdateSession(session)
 }
 
 // StartSession запускает сессию (переводит в статус active)
@@ -293,8 +299,8 @@ func (s *ServiceImpl) ProcessQueue() error {
 		return nil
 	}
 
-	// Получаем все сессии со статусом "created"
-	sessions, err := s.repo.GetSessionsByStatus(models.SessionStatusCreated)
+	// Получаем все сессии со статусом "in_queue" (после успешной оплаты)
+	sessions, err := s.repo.GetSessionsByStatus(models.SessionStatusInQueue)
 	if err != nil {
 		return err
 	}

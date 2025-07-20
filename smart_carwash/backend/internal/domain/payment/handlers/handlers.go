@@ -4,6 +4,7 @@ import (
 	"net/http"
 	"strconv"
 	"time"
+	"log"
 
 	"carwash_backend/internal/domain/payment/models"
 	"carwash_backend/internal/domain/payment/service"
@@ -130,6 +131,7 @@ func (h *Handler) handleWebhook(c *gin.Context) {
 	var webhook models.TinkoffWebhook
 
 	if err := c.ShouldBindJSON(&webhook); err != nil {
+		log.Println("Error binding JSON:", err)
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
@@ -227,6 +229,8 @@ func (h *Handler) processFullRefund(c *gin.Context) {
 func (h *Handler) createQueuePayment(c *gin.Context) {
 	userIDStr := c.Query("user_id")
 	serviceType := c.Query("service_type")
+	rentalTimeMinutesStr := c.Query("rental_time_minutes")
+	withChemistryStr := c.Query("with_chemistry")
 
 	if userIDStr == "" || serviceType == "" {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "user_id и service_type обязательны"})
@@ -239,20 +243,46 @@ func (h *Handler) createQueuePayment(c *gin.Context) {
 		return
 	}
 
+	// Парсим rental_time_minutes (обязательный параметр)
+	rentalTimeMinutes := 5 // значение по умолчанию
+	if rentalTimeMinutesStr != "" {
+		rentalTimeMinutes, err = strconv.Atoi(rentalTimeMinutesStr)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "неверный формат rental_time_minutes"})
+			return
+		}
+	}
+
+	// Парсим with_chemistry (опциональный параметр)
+	withChemistry := false
+	if withChemistryStr != "" {
+		withChemistry, err = strconv.ParseBool(withChemistryStr)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "неверный формат with_chemistry"})
+			return
+		}
+	}
+
 	// Логируем операцию
 	c.Set("meta", map[string]interface{}{
-		"user_id":      userID,
-		"service_type": serviceType,
-		"operation":    "queue_payment",
+		"user_id":             userID,
+		"service_type":        serviceType,
+		"rental_time_minutes": rentalTimeMinutes,
+		"with_chemistry":      withChemistry,
+		"operation":           "queue_payment",
 	})
 
-	payment, err := h.service.CreateQueuePayment(userID, serviceType)
+	payment, err := h.service.CreateQueuePayment(userID, serviceType, rentalTimeMinutes, withChemistry)
 	if err != nil {
+		log.Printf("Ошибка создания платежа за очередь: %v", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
 
-	c.JSON(http.StatusCreated, gin.H{
+	log.Printf("Платеж за очередь успешно создан: ID=%s, Amount=%d, URL=%s", 
+		payment.ID, payment.AmountKopecks, payment.PaymentURL)
+
+	c.JSON(http.StatusOK, gin.H{
 		"payment":     payment,
 		"payment_url": payment.PaymentURL,
 	})

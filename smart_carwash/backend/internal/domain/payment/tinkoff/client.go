@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"sort"
 	"strings"
@@ -38,15 +39,15 @@ func NewClient(terminalKey, secretKey, baseURL string) *Client {
 
 // Init инициализирует платеж в Tinkoff
 func (c *Client) Init(req *models.InitRequest) (*models.InitResponse, error) {
+	log.Println("Init request: ", req)
 	req.TerminalKey = c.terminalKey
 
-	// Добавляем подпись
-	req.Data["TerminalKey"] = c.terminalKey
-	signature := c.generateSignature(req.Data)
-	req.Data["Token"] = signature
+	signature := c.generateToken(req.ToMap())
+	req.Token = signature
 
 	resp, err := c.makeRequest("POST", "/v2/Init", req)
 	if err != nil {
+		log.Println("error: ", err)
 		return nil, err
 	}
 
@@ -56,6 +57,7 @@ func (c *Client) Init(req *models.InitRequest) (*models.InitResponse, error) {
 	}
 
 	if !initResp.Success {
+		log.Println("initResp: ", initResp)
 		return nil, &models.TinkoffError{
 			ErrorCode: initResp.ErrorCode,
 			Message:   initResp.Message,
@@ -290,6 +292,53 @@ func (c *Client) generateSignature(data map[string]string) string {
 	h.Write([]byte(signatureString))
 	return hex.EncodeToString(h.Sum(nil))
 }
+
+func (c *Client) generateToken(params map[string]interface{}) string {
+    // Создаем копию параметров
+    tokenParams := make(map[string]interface{})
+    for k, v := range params {
+        tokenParams[k] = v
+    }
+
+	log.Println("tokenParams: ", tokenParams)
+	log.Println("c.secretKey: ", c.secretKey)
+    
+    // Добавляем пароль
+    tokenParams["Password"] = c.secretKey
+    
+    // Удаляем Token если есть
+    delete(tokenParams, "Token")
+    
+    // Получаем отсортированные ключи
+    keys := make([]string, 0, len(tokenParams))
+    for k := range tokenParams {
+        keys = append(keys, k)
+    }
+    sort.Strings(keys)
+    
+    // ОТЛАДКА: выводим что участвует в токене
+    log.Printf("Token generation params (sorted):\n")
+    for _, key := range keys {
+        log.Printf("%s: %v\n", key, tokenParams[key])
+    }
+    
+    // Конкатенируем значения
+    var values []string
+    for _, key := range keys {
+        valueStr := fmt.Sprintf("%v", tokenParams[key])
+        values = append(values, valueStr)
+    }
+    
+    concatenated := strings.Join(values, "")
+    log.Printf("Concatenated string: %s\n", concatenated)
+    
+    hash := sha256.Sum256([]byte(concatenated))
+    token := fmt.Sprintf("%x", hash)
+    
+    log.Printf("Generated token: %s\n", token)
+    return token
+}
+
 
 // VerifyWebhookSignature проверяет подпись webhook'а
 func (c *Client) VerifyWebhookSignature(data map[string]string, signature string) bool {
