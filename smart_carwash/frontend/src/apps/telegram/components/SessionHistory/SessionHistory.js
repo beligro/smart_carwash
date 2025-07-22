@@ -41,6 +41,11 @@ const SessionHistory = ({ user, theme = 'light', onBack }) => {
             setSessions(prevSessions => [...prevSessions, ...response.sessions]);
           }
           
+          // Отладочная информация для первой страницы
+          if (page === 0 && response.sessions.length > 0) {
+            alert('SessionHistory: first session=' + JSON.stringify(response.sessions[0]));
+          }
+          
           // Проверяем, есть ли еще сессии для загрузки
           setHasMore(response.sessions.length === limit);
         } else {
@@ -50,7 +55,7 @@ const SessionHistory = ({ user, theme = 'light', onBack }) => {
         
         setError(null);
       } catch (err) {
-        console.error('Ошибка при загрузке истории сессий:', err);
+        alert('Ошибка при загрузке истории сессий: ' + err.message);
         setError('Не удалось загрузить историю сессий');
       } finally {
         setLoading(false);
@@ -111,6 +116,28 @@ const SessionHistory = ({ user, theme = 'light', onBack }) => {
                       <span className={`${styles.carNumberText} ${themeClass}`}>
                         Номер машины: {session.car_number}
                       </span>
+                    </div>
+                  )}
+                  
+                  {/* Информация о платеже */}
+                  {session.payment && (
+                    <div className={styles.paymentInfo}>
+                      <div className={styles.paymentAmount}>
+                        <span className={`${styles.paymentText} ${themeClass}`}>
+                          💰 Стоимость: {(session.payment.amount / 100).toFixed(2)} {session.payment.currency}
+                        </span>
+                      </div>
+                      <div className={styles.paymentStatus}>
+                        <span className={`${styles.paymentText} ${themeClass}`} style={{
+                          color: session.payment.status === 'succeeded' ? '#4CAF50' : 
+                                 session.payment.status === 'pending' ? '#FF9800' : '#F44336',
+                          fontWeight: 'bold'
+                        }}>
+                          {session.payment.status === 'succeeded' ? '✅ Оплачено' :
+                           session.payment.status === 'pending' ? '⏳ Ожидает оплаты' :
+                           session.payment.status === 'failed' ? '❌ Ошибка оплаты' : session.payment.status}
+                        </span>
+                      </div>
                     </div>
                   )}
                 </div>

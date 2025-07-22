@@ -19,8 +19,8 @@ import (
 type Service interface {
 	CreateSession(req *models.CreateSessionRequest) (*models.Session, error)
 	CreateSessionWithPayment(req *models.CreateSessionWithPaymentRequest) (*models.CreateSessionWithPaymentResponse, error)
-	GetUserSession(req *models.GetUserSessionRequest) (*models.Session, error)
-	GetSession(req *models.GetSessionRequest) (*models.Session, error)
+	GetUserSession(req *models.GetUserSessionRequest) (*models.GetUserSessionResponse, error)
+	GetSession(req *models.GetSessionRequest) (*models.GetSessionResponse, error)
 	StartSession(req *models.StartSessionRequest) (*models.Session, error)
 	CompleteSession(req *models.CompleteSessionRequest) (*models.Session, error)
 	ExtendSession(req *models.ExtendSessionRequest) (*models.Session, error)
@@ -160,13 +160,69 @@ func (s *ServiceImpl) CreateSessionWithPayment(req *models.CreateSessionWithPaym
 }
 
 // GetUserSession получает активную сессию пользователя
-func (s *ServiceImpl) GetUserSession(req *models.GetUserSessionRequest) (*models.Session, error) {
-	return s.repo.GetActiveSessionByUserID(req.UserID)
+func (s *ServiceImpl) GetUserSession(req *models.GetUserSessionRequest) (*models.GetUserSessionResponse, error) {
+	session, err := s.repo.GetActiveSessionByUserID(req.UserID)
+	if err != nil {
+		return nil, err
+	}
+
+	// Получаем информацию о платеже, если она существует
+	var payment *models.Payment
+	if session != nil && session.PaymentID != nil {
+		paymentResp, err := s.paymentService.GetPaymentByID(*session.PaymentID)
+		if err == nil && paymentResp != nil {
+			payment = &models.Payment{
+				ID:         paymentResp.ID,
+				SessionID:  paymentResp.SessionID,
+				Amount:     paymentResp.Amount,
+				Currency:   paymentResp.Currency,
+				Status:     paymentResp.Status,
+				PaymentURL: paymentResp.PaymentURL,
+				TinkoffID:  paymentResp.TinkoffID,
+				ExpiresAt:  paymentResp.ExpiresAt,
+				CreatedAt:  paymentResp.CreatedAt,
+				UpdatedAt:  paymentResp.UpdatedAt,
+			}
+		}
+	}
+
+	return &models.GetUserSessionResponse{
+		Session: session,
+		Payment: payment,
+	}, nil
 }
 
 // GetSession получает сессию по ID
-func (s *ServiceImpl) GetSession(req *models.GetSessionRequest) (*models.Session, error) {
-	return s.repo.GetSessionByID(req.SessionID)
+func (s *ServiceImpl) GetSession(req *models.GetSessionRequest) (*models.GetSessionResponse, error) {
+	session, err := s.repo.GetSessionByID(req.SessionID)
+	if err != nil {
+		return nil, err
+	}
+
+	// Получаем информацию о платеже, если она существует
+	var payment *models.Payment
+	if session != nil && session.PaymentID != nil {
+		paymentResp, err := s.paymentService.GetPaymentByID(*session.PaymentID)
+		if err == nil && paymentResp != nil {
+			payment = &models.Payment{
+				ID:         paymentResp.ID,
+				SessionID:  paymentResp.SessionID,
+				Amount:     paymentResp.Amount,
+				Currency:   paymentResp.Currency,
+				Status:     paymentResp.Status,
+				PaymentURL: paymentResp.PaymentURL,
+				TinkoffID:  paymentResp.TinkoffID,
+				ExpiresAt:  paymentResp.ExpiresAt,
+				CreatedAt:  paymentResp.CreatedAt,
+				UpdatedAt:  paymentResp.UpdatedAt,
+			}
+		}
+	}
+
+	return &models.GetSessionResponse{
+		Session: session,
+		Payment: payment,
+	}, nil
 }
 
 // StartSession запускает сессию (переводит в статус active)
@@ -221,6 +277,25 @@ func (s *ServiceImpl) StartSession(req *models.StartSessionRequest) (*models.Ses
 		return nil, err
 	}
 
+	// Получаем информацию о платеже, если она существует
+	if session.PaymentID != nil {
+		paymentResp, err := s.paymentService.GetPaymentByID(*session.PaymentID)
+		if err == nil && paymentResp != nil {
+			session.Payment = &models.Payment{
+				ID:         paymentResp.ID,
+				SessionID:  paymentResp.SessionID,
+				Amount:     paymentResp.Amount,
+				Currency:   paymentResp.Currency,
+				Status:     paymentResp.Status,
+				PaymentURL: paymentResp.PaymentURL,
+				TinkoffID:  paymentResp.TinkoffID,
+				ExpiresAt:  paymentResp.ExpiresAt,
+				CreatedAt:  paymentResp.CreatedAt,
+				UpdatedAt:  paymentResp.UpdatedAt,
+			}
+		}
+	}
+
 	return session, nil
 }
 
@@ -268,6 +343,25 @@ func (s *ServiceImpl) CompleteSession(req *models.CompleteSessionRequest) (*mode
 		return nil, err
 	}
 
+	// Получаем информацию о платеже, если она существует
+	if session.PaymentID != nil {
+		paymentResp, err := s.paymentService.GetPaymentByID(*session.PaymentID)
+		if err == nil && paymentResp != nil {
+			session.Payment = &models.Payment{
+				ID:         paymentResp.ID,
+				SessionID:  paymentResp.SessionID,
+				Amount:     paymentResp.Amount,
+				Currency:   paymentResp.Currency,
+				Status:     paymentResp.Status,
+				PaymentURL: paymentResp.PaymentURL,
+				TinkoffID:  paymentResp.TinkoffID,
+				ExpiresAt:  paymentResp.ExpiresAt,
+				CreatedAt:  paymentResp.CreatedAt,
+				UpdatedAt:  paymentResp.UpdatedAt,
+			}
+		}
+	}
+
 	return session, nil
 }
 
@@ -296,6 +390,25 @@ func (s *ServiceImpl) ExtendSession(req *models.ExtendSessionRequest) (*models.S
 	err = s.repo.UpdateSession(session)
 	if err != nil {
 		return nil, err
+	}
+
+	// Получаем информацию о платеже, если она существует
+	if session.PaymentID != nil {
+		paymentResp, err := s.paymentService.GetPaymentByID(*session.PaymentID)
+		if err == nil && paymentResp != nil {
+			session.Payment = &models.Payment{
+				ID:         paymentResp.ID,
+				SessionID:  paymentResp.SessionID,
+				Amount:     paymentResp.Amount,
+				Currency:   paymentResp.Currency,
+				Status:     paymentResp.Status,
+				PaymentURL: paymentResp.PaymentURL,
+				TinkoffID:  paymentResp.TinkoffID,
+				ExpiresAt:  paymentResp.ExpiresAt,
+				CreatedAt:  paymentResp.CreatedAt,
+				UpdatedAt:  paymentResp.UpdatedAt,
+			}
+		}
 	}
 
 	return session, nil
@@ -603,7 +716,33 @@ func (s *ServiceImpl) GetUserSessionHistory(req *models.GetUserSessionHistoryReq
 		offset = 0
 	}
 
-	return s.repo.GetUserSessionHistory(req.UserID, limit, offset)
+	sessions, err := s.repo.GetUserSessionHistory(req.UserID, limit, offset)
+	if err != nil {
+		return nil, err
+	}
+
+	// Заполняем информацию о платежах для каждой сессии
+	for i := range sessions {
+		if sessions[i].PaymentID != nil {
+			paymentResp, err := s.paymentService.GetPaymentByID(*sessions[i].PaymentID)
+			if err == nil && paymentResp != nil {
+				sessions[i].Payment = &models.Payment{
+					ID:         paymentResp.ID,
+					SessionID:  paymentResp.SessionID,
+					Amount:     paymentResp.Amount,
+					Currency:   paymentResp.Currency,
+					Status:     paymentResp.Status,
+					PaymentURL: paymentResp.PaymentURL,
+					TinkoffID:  paymentResp.TinkoffID,
+					ExpiresAt:  paymentResp.ExpiresAt,
+					CreatedAt:  paymentResp.CreatedAt,
+					UpdatedAt:  paymentResp.UpdatedAt,
+				}
+			}
+		}
+	}
+
+	return sessions, nil
 }
 
 // AdminListSessions список сессий для администратора

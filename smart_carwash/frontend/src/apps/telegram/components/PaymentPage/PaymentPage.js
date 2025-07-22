@@ -68,7 +68,7 @@ const PaymentPage = ({ session, payment, onPaymentComplete, onPaymentFailed, onB
           onPaymentFailed(updatedSession.session);
         }
       } catch (err) {
-        console.error('Ошибка проверки статуса платежа:', err);
+        alert('Ошибка проверки статуса платежа: ' + err.message);
         alert(err);
         setError('Ошибка проверки статуса платежа');
         clearInterval(checkInterval);
@@ -96,7 +96,7 @@ const PaymentPage = ({ session, payment, onPaymentComplete, onPaymentFailed, onB
         startPaymentStatusCheck();
       }
     } catch (err) {
-      console.error('Ошибка повторной оплаты:', err);
+      alert('Ошибка повторной оплаты: ' + err.message);
       setError('Не удалось создать новый платеж');
       setLoading(false);
     }

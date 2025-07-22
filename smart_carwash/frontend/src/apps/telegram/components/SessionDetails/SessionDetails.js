@@ -43,7 +43,7 @@ const SessionDetails = ({ theme = 'light', user }) => {
         }
       }
     } catch (err) {
-      console.error('Ошибка при загрузке доступного времени аренды:', err);
+      alert('Ошибка при загрузке доступного времени аренды: ' + err.message);
       setError('Не удалось загрузить доступное время аренды');
     } finally {
       setLoadingRentalTimes(false);
@@ -69,7 +69,7 @@ const SessionDetails = ({ theme = 'light', user }) => {
         setShowExtendModal(false); // Закрываем модальное окно
       }
     } catch (err) {
-      console.error('Ошибка при продлении сессии:', err);
+      alert('Ошибка при продлении сессии: ' + err.message);
       setError('Не удалось продлить сессию. Пожалуйста, попробуйте еще раз.');
     } finally {
       setActionLoading(false);
@@ -120,7 +120,7 @@ const SessionDetails = ({ theme = 'light', user }) => {
         }
       }
     } catch (err) {
-      console.error('Ошибка при завершении сессии:', err);
+      alert('Ошибка при завершении сессии: ' + err.message);
       setError('Не удалось завершить сессию. Пожалуйста, попробуйте еще раз.');
     } finally {
       setActionLoading(false);
@@ -135,6 +135,9 @@ const SessionDetails = ({ theme = 'light', user }) => {
       
       if (response && response.session) {
         setSession(response.session);
+        
+        // Отладочная информация
+        alert('SessionDetails: session=' + JSON.stringify(response.session) + ', payment=' + JSON.stringify(response.payment));
         
         // Если у сессии есть номер бокса, используем его
         if (response.session.box_number) {
@@ -155,7 +158,7 @@ const SessionDetails = ({ theme = 'light', user }) => {
         return null;
       }
     } catch (err) {
-      console.error('Ошибка при загрузке данных о сессии:', err);
+      alert('Ошибка при загрузке данных о сессии: ' + err.message);
       setError('Не удалось загрузить данные о сессии');
       return null;
     } finally {
@@ -206,7 +209,7 @@ const SessionDetails = ({ theme = 'light', user }) => {
         }
       }
     } catch (err) {
-      console.error('Ошибка при запуске сессии:', err);
+      alert('Ошибка при запуске сессии: ' + err.message);
       setError('Не удалось запустить сессию. Пожалуйста, попробуйте еще раз.');
     } finally {
       setActionLoading(false);
@@ -308,6 +311,68 @@ const SessionDetails = ({ theme = 'light', user }) => {
                'Информация о боксе недоступна'}
             </div>
           </div>
+        )}
+        
+        {/* Информация о платеже */}
+        {session.payment && (
+          <>
+            <h3 className={`${styles.title} ${themeClass}`} style={{ marginTop: '20px', fontSize: '16px' }}>
+              Информация об оплате
+            </h3>
+            
+            <div className={`${styles.infoRow} ${themeClass}`}>
+              <div className={`${styles.infoLabel} ${themeClass}`}>Статус платежа:</div>
+              <div className={`${styles.infoValue} ${themeClass}`}>
+                <span style={{ 
+                  color: session.payment.status === 'succeeded' ? '#4CAF50' : 
+                         session.payment.status === 'pending' ? '#FF9800' : '#F44336',
+                  fontWeight: 'bold'
+                }}>
+                  {session.payment.status === 'succeeded' ? '✅ Оплачено' :
+                   session.payment.status === 'pending' ? '⏳ Ожидает оплаты' :
+                   session.payment.status === 'failed' ? '❌ Ошибка оплаты' : session.payment.status}
+                </span>
+              </div>
+            </div>
+            
+            <div className={`${styles.infoRow} ${themeClass}`}>
+              <div className={`${styles.infoLabel} ${themeClass}`}>Сумма:</div>
+              <div className={`${styles.infoValue} ${themeClass}`}>
+                {(session.payment.amount / 100).toFixed(2)} {session.payment.currency}
+              </div>
+            </div>
+            
+            {session.payment.expires_at && (
+              <div className={`${styles.infoRow} ${themeClass}`}>
+                <div className={`${styles.infoLabel} ${themeClass}`}>Действителен до:</div>
+                <div className={`${styles.infoValue} ${themeClass}`}>
+                  {new Date(session.payment.expires_at).toLocaleString()}
+                </div>
+              </div>
+            )}
+            
+            {/* Кнопка повторной оплаты для неудачных платежей */}
+            {session.payment.status === 'failed' && (
+              <Button 
+                theme={theme} 
+                onClick={() => {
+                  navigate('/telegram/payment', {
+                    state: {
+                      session: session,
+                      payment: session.payment
+                    }
+                  });
+                }}
+                style={{ 
+                  marginTop: '12px',
+                  backgroundColor: '#F44336',
+                  color: 'white'
+                }}
+              >
+                🔄 Повторить оплату
+              </Button>
+            )}
+          </>
         )}
         
         {/* Таймер отображается для активной сессии */}

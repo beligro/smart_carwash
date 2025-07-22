@@ -32,6 +32,7 @@ type Session struct {
 	RentalTimeMinutes            int            `json:"rental_time_minutes" gorm:"default:5"`    // Время аренды в минутах
 	ExtensionTimeMinutes         int            `json:"extension_time_minutes" gorm:"default:0"` // Время продления в минутах
 	PaymentID                    *uuid.UUID     `json:"payment_id,omitempty" gorm:"index;type:uuid"` // ID связанного платежа
+	Payment                      *Payment       `json:"payment,omitempty" gorm:"-"` // Информация о платеже (не хранится в БД)
 	IdempotencyKey               string         `json:"idempotency_key,omitempty" gorm:"index"`
 	IsExpiringNotificationSent   bool           `json:"is_expiring_notification_sent" gorm:"default:false"`
 	IsCompletingNotificationSent bool           `json:"is_completing_notification_sent" gorm:"default:false"`
@@ -93,7 +94,8 @@ type GetUserSessionRequest struct {
 
 // GetUserSessionResponse представляет ответ на получение сессии пользователя
 type GetUserSessionResponse struct {
-	Session *Session `json:"session"`
+	Session *Session  `json:"session"`
+	Payment *Payment  `json:"payment,omitempty"`
 }
 
 // GetSessionRequest представляет запрос на получение сессии по ID
@@ -103,7 +105,8 @@ type GetSessionRequest struct {
 
 // GetSessionResponse представляет ответ на получение сессии
 type GetSessionResponse struct {
-	Session *Session `json:"session"`
+	Session *Session  `json:"session"`
+	Payment *Payment  `json:"payment,omitempty"`
 }
 
 // StartSessionRequest представляет запрос на запуск сессии

@@ -48,6 +48,7 @@ type TinkoffPaymentStatusResponse struct {
 type Service interface {
 	CalculatePrice(req *models.CalculatePriceRequest) (*models.CalculatePriceResponse, error)
 	CreatePayment(req *models.CreatePaymentRequest) (*models.CreatePaymentResponse, error)
+	GetPaymentByID(paymentID uuid.UUID) (*models.Payment, error)
 	GetPaymentStatus(req *models.GetPaymentStatusRequest) (*models.GetPaymentStatusResponse, error)
 	RetryPayment(req *models.RetryPaymentRequest) (*models.RetryPaymentResponse, error)
 	HandleWebhook(req *models.WebhookRequest) error
@@ -183,6 +184,16 @@ func (s *service) GetPaymentStatus(req *models.GetPaymentStatusRequest) (*models
 	return &models.GetPaymentStatusResponse{
 		Payment: *payment,
 	}, nil
+}
+
+// GetPaymentByID получает платеж по ID
+func (s *service) GetPaymentByID(paymentID uuid.UUID) (*models.Payment, error) {
+	payment, err := s.repository.GetPaymentByID(paymentID)
+	if err != nil {
+		return nil, fmt.Errorf("платеж не найден: %w", err)
+	}
+
+	return payment, nil
 }
 
 // RetryPayment создает новый платеж для существующей сессии

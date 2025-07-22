@@ -28,6 +28,7 @@ const WashInfo = ({ washInfo, theme = 'light', onCreateSession, onViewHistory, u
   
   // Используем userSession из washInfo
   const userSession = washInfo?.userSession || washInfo?.user_session;
+  const payment = washInfo?.payment;
   
   // Используем хук для таймера
   const { timeLeft } = useTimer(userSession);
@@ -39,7 +40,7 @@ const WashInfo = ({ washInfo, theme = 'light', onCreateSession, onViewHistory, u
         navigate(`/telegram/session/${userSession.id}`);
       }
     } catch (error) {
-      console.error('Ошибка при переходе к деталям сессии:', error);
+      alert('Ошибка при переходе к деталям сессии: ' + error.message);
     }
   };
 
@@ -48,7 +49,7 @@ const WashInfo = ({ washInfo, theme = 'light', onCreateSession, onViewHistory, u
     try {
       setShowServiceSelector(true);
     } catch (error) {
-      console.error('Ошибка при открытии выбора услуг:', error);
+      alert('Ошибка при открытии выбора услуг: ' + error.message);
     }
   };
 
@@ -172,6 +173,26 @@ const WashInfo = ({ washInfo, theme = 'light', onCreateSession, onViewHistory, u
                 </span>
               </div>
               
+              {/* Информация о платеже для активной сессии */}
+              {payment && (
+                <div style={{ 
+                  marginTop: '12px',
+                  padding: '8px',
+                  backgroundColor: '#E8F5E8',
+                  borderRadius: '4px',
+                  fontSize: '12px'
+                }}>
+                  <p style={{ margin: '0 0 4px 0', color: '#2E7D32', fontWeight: 'bold' }}>
+                    💰 Стоимость: {(payment.amount / 100).toFixed(2)} {payment.currency}
+                  </p>
+                  <p style={{ margin: '0', color: '#2E7D32' }}>
+                    {payment.status === 'succeeded' ? '✅ Оплачено' :
+                     payment.status === 'pending' ? '⏳ Ожидает оплаты' :
+                     payment.status === 'failed' ? '❌ Ошибка оплаты' : '❓ Неизвестный статус'}
+                  </p>
+                </div>
+              )}
+              
               {/* Отображаем таймер для активной сессии */}
               {userSession.status === 'active' && timeLeft !== null && (
                 <>
@@ -210,10 +231,43 @@ const WashInfo = ({ washInfo, theme = 'light', onCreateSession, onViewHistory, u
                   <p style={{ margin: '0 0 8px 0', fontWeight: 'bold', color: '#E65100' }}>
                     ⏳ Ожидание оплаты
                   </p>
-                  <p style={{ margin: '0', fontSize: '14px' }}>
+                  <p style={{ margin: '0 0 12px 0', fontSize: '14px' }}>
                     Сессия создана, но оплата еще не произведена. 
                     После оплаты сессия будет добавлена в очередь.
                   </p>
+                  
+                  {/* Показываем время истечения платежа, если есть информация о платеже */}
+                  {payment && payment.expires_at && (
+                    <p style={{ 
+                      margin: '0 0 12px 0', 
+                      fontSize: '12px', 
+                      color: '#E65100',
+                      fontStyle: 'italic'
+                    }}>
+                      ⏰ Время на оплату: {new Date(payment.expires_at).toLocaleString()}
+                    </p>
+                  )}
+                  
+                  {/* Кнопка оплаты */}
+                  <Button 
+                    theme={theme} 
+                    onClick={() => {
+                      // Переходим на страницу оплаты с данными сессии
+                      navigate('/telegram/payment', {
+                        state: {
+                          session: userSession,
+                          payment: payment || null
+                        }
+                      });
+                    }}
+                    style={{ 
+                      marginTop: '8px',
+                      backgroundColor: '#FF9800',
+                      color: 'white'
+                    }}
+                  >
+                    💳 Оплатить
+                  </Button>
                 </div>
               )}
               
@@ -229,10 +283,28 @@ const WashInfo = ({ washInfo, theme = 'light', onCreateSession, onViewHistory, u
                   <p style={{ margin: '0 0 8px 0', fontWeight: 'bold', color: '#2E7D32' }}>
                     ✅ Оплачено, в очереди
                   </p>
-                  <p style={{ margin: '0', fontSize: '14px' }}>
+                  <p style={{ margin: '0 0 12px 0', fontSize: '14px' }}>
                     Сессия оплачена и добавлена в очередь. 
                     Ожидайте назначения свободного бокса.
                   </p>
+                  
+                  {/* Показываем информацию о платеже, если есть */}
+                  {payment && (
+                    <div style={{ 
+                      marginTop: '8px',
+                      padding: '8px',
+                      backgroundColor: '#F1F8E9',
+                      borderRadius: '4px',
+                      fontSize: '12px'
+                    }}>
+                      <p style={{ margin: '0 0 4px 0', color: '#2E7D32', fontWeight: 'bold' }}>
+                        💰 Стоимость: {(payment.amount / 100).toFixed(2)} {payment.currency}
+                      </p>
+                      <p style={{ margin: '0', color: '#2E7D32' }}>
+                        ✅ Статус: Оплачено
+                      </p>
+                    </div>
+                  )}
                 </div>
               )}
               
@@ -248,10 +320,48 @@ const WashInfo = ({ washInfo, theme = 'light', onCreateSession, onViewHistory, u
                   <p style={{ margin: '0 0 8px 0', fontWeight: 'bold', color: '#C62828' }}>
                     ❌ Ошибка оплаты
                   </p>
-                  <p style={{ margin: '0', fontSize: '14px' }}>
+                  <p style={{ margin: '0 0 12px 0', fontSize: '14px' }}>
                     Произошла ошибка при оплате. 
-                    Попробуйте создать новую сессию или обратитесь в поддержку.
+                    Попробуйте создать новую сессию или повторить оплату.
                   </p>
+                  
+                  {/* Показываем информацию о платеже, если есть */}
+                  {payment && (
+                    <div style={{ 
+                      marginBottom: '12px',
+                      padding: '8px',
+                      backgroundColor: '#FFCDD2',
+                      borderRadius: '4px',
+                      fontSize: '12px'
+                    }}>
+                      <p style={{ margin: '0 0 4px 0', color: '#C62828', fontWeight: 'bold' }}>
+                        💰 Стоимость: {(payment.amount / 100).toFixed(2)} {payment.currency}
+                      </p>
+                      <p style={{ margin: '0', color: '#C62828' }}>
+                        ❌ Статус: Ошибка оплаты
+                      </p>
+                    </div>
+                  )}
+                  
+                  {/* Кнопка повторной оплаты */}
+                  <Button 
+                    theme={theme} 
+                    onClick={() => {
+                      navigate('/telegram/payment', {
+                        state: {
+                          session: userSession,
+                          payment: payment || null
+                        }
+                      });
+                    }}
+                    style={{ 
+                      marginTop: '8px',
+                      backgroundColor: '#F44336',
+                      color: 'white'
+                    }}
+                  >
+                    🔄 Повторить оплату
+                  </Button>
                 </div>
               )}
               

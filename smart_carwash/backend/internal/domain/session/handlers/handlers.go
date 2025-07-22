@@ -104,7 +104,7 @@ func (h *Handler) getUserSession(c *gin.Context) {
 	}
 
 	// Получаем сессию пользователя
-	session, err := h.service.GetUserSession(&models.GetUserSessionRequest{
+	response, err := h.service.GetUserSession(&models.GetUserSessionRequest{
 		UserID: userID,
 	})
 	if err != nil {
@@ -113,7 +113,7 @@ func (h *Handler) getUserSession(c *gin.Context) {
 	}
 
 	// Возвращаем сессию пользователя
-	c.JSON(http.StatusOK, models.GetUserSessionResponse{Session: session})
+	c.JSON(http.StatusOK, response)
 }
 
 // getSessionByID обработчик для получения сессии по ID
@@ -132,7 +132,7 @@ func (h *Handler) getSessionByID(c *gin.Context) {
 	}
 
 	// Получаем сессию по ID
-	session, err := h.service.GetSession(&models.GetSessionRequest{
+	response, err := h.service.GetSession(&models.GetSessionRequest{
 		SessionID: sessionID,
 	})
 	if err != nil {
@@ -141,7 +141,7 @@ func (h *Handler) getSessionByID(c *gin.Context) {
 	}
 
 	// Возвращаем сессию
-	c.JSON(http.StatusOK, models.GetSessionResponse{Session: session})
+	c.JSON(http.StatusOK, response)
 }
 
 // startSession обработчик для запуска сессии (перевод в статус active)
