@@ -75,16 +75,18 @@ type CreateSessionWithPaymentResponse struct {
 
 // Payment представляет информацию о платеже (для интеграции с payment доменом)
 type Payment struct {
-	ID         uuid.UUID `json:"id"`
-	SessionID  uuid.UUID `json:"session_id"`
-	Amount     int       `json:"amount"`
-	Currency   string    `json:"currency"`
-	Status     string    `json:"status"`
-	PaymentURL string    `json:"payment_url"`
-	TinkoffID  string    `json:"tinkoff_id"`
-	ExpiresAt  *time.Time `json:"expires_at"`
-	CreatedAt  time.Time  `json:"created_at"`
-	UpdatedAt  time.Time  `json:"updated_at"`
+	ID             uuid.UUID      `json:"id"`
+	SessionID      uuid.UUID      `json:"session_id"`
+	Amount         int            `json:"amount"` // сумма в копейках
+	RefundedAmount int            `json:"refunded_amount"` // сумма возврата в копейках
+	Currency       string         `json:"currency"`
+	Status         string         `json:"status"`
+	PaymentURL     string         `json:"payment_url"`
+	TinkoffID      string         `json:"tinkoff_id" gorm:"index"`
+	ExpiresAt      *time.Time     `json:"expires_at"`
+	RefundedAt     *time.Time     `json:"refunded_at,omitempty"` // время возврата
+	CreatedAt      time.Time      `json:"created_at"`
+	UpdatedAt      time.Time      `json:"updated_at"`
 }
 
 // GetUserSessionRequest представляет запрос на получение сессии пользователя
@@ -150,6 +152,28 @@ type ExtendSessionRequest struct {
 // ExtendSessionResponse представляет ответ на продление сессии
 type ExtendSessionResponse struct {
 	Session *Session `json:"session"`
+}
+
+// CancelSessionRequest представляет запрос на отмену сессии
+type CancelSessionRequest struct {
+	SessionID uuid.UUID `json:"session_id" binding:"required"`
+	UserID    uuid.UUID `json:"user_id" binding:"required"`
+}
+
+// CancelSessionResponse представляет ответ на отмену сессии
+type CancelSessionResponse struct {
+	Session Session  `json:"session"`
+	Payment *Payment `json:"payment,omitempty"`
+	Refund  *Refund  `json:"refund,omitempty"`
+}
+
+// Refund представляет информацию о возврате (импорт из payment domain)
+type Refund struct {
+	ID        uuid.UUID `json:"id"`
+	PaymentID uuid.UUID `json:"payment_id"`
+	Amount    int       `json:"amount"` // сумма возврата в копейках
+	Status    string    `json:"status"`
+	CreatedAt time.Time `json:"created_at"`
 }
 
 // Административные модели

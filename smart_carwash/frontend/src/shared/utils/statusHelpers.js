@@ -24,7 +24,95 @@ export const getSessionStatusText = (status) => {
       default:
         return 'Неизвестно';
     }
-  };
+};
+
+/**
+ * Получает текстовое представление статуса платежа
+ * @param {string} status - Статус платежа
+ * @returns {string} - Текстовое представление статуса
+ */
+export const getPaymentStatusText = (status) => {
+    switch (status) {
+        case 'pending':
+            return 'Ожидает оплаты';
+        case 'succeeded':
+            return 'Оплачен';
+        case 'failed':
+            return 'Ошибка оплаты';
+        case 'refunded':
+            return 'Возвращен';
+        default:
+            return 'Неизвестно';
+    }
+};
+
+/**
+ * Получает цвет для статуса платежа
+ * @param {string} status - Статус платежа
+ * @returns {string} - CSS класс цвета
+ */
+export const getPaymentStatusColor = (status) => {
+    switch (status) {
+        case 'pending':
+            return 'warning';
+        case 'succeeded':
+            return 'success';
+        case 'failed':
+            return 'danger';
+        case 'refunded':
+            return 'info';
+        default:
+            return 'secondary';
+    }
+};
+
+/**
+ * Рассчитывает итоговую сумму с учетом возвратов
+ * @param {number} paidAmount - Оплаченная сумма в копейках
+ * @param {number} refundedAmount - Возвращенная сумма в копейках
+ * @returns {number} - Итоговая сумма в копейках
+ */
+export const calculateFinalAmount = (paidAmount, refundedAmount = 0) => {
+    return Math.max(0, paidAmount - refundedAmount);
+};
+
+/**
+ * Форматирует информацию о возврате
+ * @param {Object} payment - Объект платежа
+ * @returns {Object} - Информация о возврате
+ */
+export const formatRefundInfo = (payment) => {
+    if (!payment) return { hasRefund: false };
+    
+    const refundedAmount = payment.refunded_amount || 0;
+    
+    if (refundedAmount > 0) {
+        const isFullyRefunded = refundedAmount >= payment.amount;
+        const refundType = isFullyRefunded ? 'full' : 'partial';
+        
+        return {
+            hasRefund: true,
+            refundedAmount: refundedAmount,
+            finalAmount: calculateFinalAmount(payment.amount, refundedAmount),
+            refundedAt: payment.refunded_at,
+            isFullyRefunded: isFullyRefunded,
+            refundType: refundType,
+            remainingAmount: payment.amount - refundedAmount
+        };
+    }
+    
+    return { hasRefund: false };
+};
+
+/**
+ * Форматирует сумму в рублях
+ * @param {number} amount - Сумма в копейках
+ * @returns {string} - Отформатированная сумма в рублях
+ */
+export const formatAmount = (amount) => {
+    if (!amount && amount !== 0) return '0 ₽';
+    return `${(amount / 100).toFixed(2)} ₽`;
+};
   
   /**
    * Получает текстовое представление статуса бокса

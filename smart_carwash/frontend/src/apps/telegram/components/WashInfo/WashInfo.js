@@ -4,7 +4,7 @@ import styles from './WashInfo.module.css';
 import { Card, Button, StatusBadge, Timer } from '../../../../shared/components/UI';
 import ServiceSelector from '../ServiceSelector';
 import { formatDate } from '../../../../shared/utils/formatters';
-import { getSessionStatusDescription, getServiceTypeDescription } from '../../../../shared/utils/statusHelpers';
+import { getSessionStatusDescription, getServiceTypeDescription, formatRefundInfo, formatAmount, getPaymentStatusText, getPaymentStatusColor } from '../../../../shared/utils/statusHelpers';
 import useTimer from '../../../../shared/hooks/useTimer';
 
 /**
@@ -14,11 +14,13 @@ import useTimer from '../../../../shared/hooks/useTimer';
  * @param {string} props.theme - Тема оформления ('light' или 'dark')
  * @param {Function} props.onCreateSession - Функция для создания сессии
  * @param {Function} props.onViewHistory - Функция для просмотра истории сессий
+ * @param {Function} props.onCancelSession - Функция для отмены сессии
  * @param {Object} props.user - Данные пользователя
  */
-const WashInfo = ({ washInfo, theme = 'light', onCreateSession, onViewHistory, user }) => {
+const WashInfo = ({ washInfo, theme = 'light', onCreateSession, onViewHistory, onCancelSession, user }) => {
   const navigate = useNavigate();
   const [showServiceSelector, setShowServiceSelector] = useState(false);
+  const [isCanceling, setIsCanceling] = useState(false);
   
   // Получаем данные из washInfo (поддерживаем оба формата)
   const allBoxes = washInfo?.allBoxes || washInfo?.all_boxes || [];
@@ -32,6 +34,12 @@ const WashInfo = ({ washInfo, theme = 'light', onCreateSession, onViewHistory, u
   
   // Используем хук для таймера
   const { timeLeft } = useTimer(userSession);
+  
+  // Проверяем, можно ли отменить сессию
+  const canCancelSession = userSession && ['created', 'in_queue', 'assigned'].includes(userSession.status);
+  
+  // Получаем информацию о возврате
+  const refundInfo = formatRefundInfo(payment);
   
   // Функция для перехода на страницу сессии
   const handleViewSessionDetails = () => {
@@ -61,6 +69,27 @@ const WashInfo = ({ washInfo, theme = 'light', onCreateSession, onViewHistory, u
       onCreateSession(serviceData);
     } catch (error) {
       alert('Ошибка при выборе услуги: ' + error.message);
+    }
+  };
+
+  // Обработчик отмены сессии
+  const handleCancelSession = async () => {
+    if (!userSession || !user) return;
+    
+    const confirmMessage = refundInfo.hasRefund 
+      ? `Вы уверены, что хотите отменить сессию? Деньги в размере ${formatAmount(payment.amount)} будут возвращены на карту.`
+      : 'Вы уверены, что хотите отменить сессию?';
+    
+    if (!window.confirm(confirmMessage)) return;
+    
+    try {
+      setIsCanceling(true);
+      await onCancelSession(userSession.id, user.id);
+      alert('Сессия успешно отменена' + (refundInfo.hasRefund ? '. Деньги будут возвращены на карту.' : ''));
+    } catch (error) {
+      alert('Ошибка при отмене сессии: ' + error.message);
+    } finally {
+      setIsCanceling(false);
     }
   };
 
@@ -183,13 +212,33 @@ const WashInfo = ({ washInfo, theme = 'light', onCreateSession, onViewHistory, u
                   fontSize: '12px'
                 }}>
                   <p style={{ margin: '0 0 4px 0', color: '#2E7D32', fontWeight: 'bold' }}>
-                    💰 Стоимость: {(payment.amount / 100).toFixed(2)} {payment.currency}
+                    💰 Стоимость: {formatAmount(payment.amount)}
                   </p>
+                  {refundInfo.hasRefund && (
+                    <>
+                      <p style={{ margin: '0 0 4px 0', color: '#1976D2', fontWeight: 'bold' }}>
+                        💸 Возвращено: {formatAmount(refundInfo.refundedAmount)}
+                        {refundInfo.refundType === 'partial' && ` (частично)`}
+                        {refundInfo.refundType === 'full' && ` (полностью)`}
+                      </p>
+                      {refundInfo.refundType === 'partial' && (
+                        <p style={{ margin: '0 0 4px 0', color: '#FF9800', fontWeight: 'bold' }}>
+                          💰 Осталось к возврату: {formatAmount(refundInfo.remainingAmount)}
+                        </p>
+                      )}
+                    </>
+                  )}
                   <p style={{ margin: '0', color: '#2E7D32' }}>
                     {payment.status === 'succeeded' ? '✅ Оплачено' :
                      payment.status === 'pending' ? '⏳ Ожидает оплаты' :
-                     payment.status === 'failed' ? '❌ Ошибка оплаты' : '❓ Неизвестный статус'}
+                     payment.status === 'failed' ? '❌ Ошибка оплаты' :
+                     payment.status === 'refunded' ? '💸 Полностью возвращено' : '❓ Неизвестный статус'}
                   </p>
+                  {refundInfo.hasRefund && (
+                    <p style={{ margin: '4px 0 0 0', color: '#1976D2', fontWeight: 'bold' }}>
+                      💰 Итого: {formatAmount(refundInfo.finalAmount)}
+                    </p>
+                  )}
                 </div>
               )}
               
@@ -228,25 +277,10 @@ const WashInfo = ({ washInfo, theme = 'light', onCreateSession, onViewHistory, u
                   borderRadius: '8px',
                   border: '1px solid #FFB74D'
                 }}>
-                  <p style={{ margin: '0 0 8px 0', fontWeight: 'bold', color: '#E65100' }}>
-                    ⏳ Ожидание оплаты
-                  </p>
                   <p style={{ margin: '0 0 12px 0', fontSize: '14px' }}>
                     Сессия создана, но оплата еще не произведена. 
                     После оплаты сессия будет добавлена в очередь.
                   </p>
-                  
-                  {/* Показываем время истечения платежа, если есть информация о платеже */}
-                  {payment && payment.expires_at && (
-                    <p style={{ 
-                      margin: '0 0 12px 0', 
-                      fontSize: '12px', 
-                      color: '#E65100',
-                      fontStyle: 'italic'
-                    }}>
-                      ⏰ Время на оплату: {new Date(payment.expires_at).toLocaleString()}
-                    </p>
-                  )}
                   
                   {/* Кнопка оплаты */}
                   <Button 
@@ -280,6 +314,9 @@ const WashInfo = ({ washInfo, theme = 'light', onCreateSession, onViewHistory, u
                   borderRadius: '8px',
                   border: '1px solid #81C784'
                 }}>
+                  <p style={{ margin: '0 0 4px 0', color: '#2E7D32', fontWeight: 'bold' }}>
+                    💰 Стоимость: {formatAmount(payment.amount)}
+                  </p>
                   <p style={{ margin: '0 0 8px 0', fontWeight: 'bold', color: '#2E7D32' }}>
                     ✅ Оплачено, в очереди
                   </p>
@@ -298,11 +335,21 @@ const WashInfo = ({ washInfo, theme = 'light', onCreateSession, onViewHistory, u
                       fontSize: '12px'
                     }}>
                       <p style={{ margin: '0 0 4px 0', color: '#2E7D32', fontWeight: 'bold' }}>
-                        💰 Стоимость: {(payment.amount / 100).toFixed(2)} {payment.currency}
+                        💰 Стоимость: {formatAmount(payment.amount)}
                       </p>
+                      {refundInfo.hasRefund && (
+                        <p style={{ margin: '0 0 4px 0', color: '#1976D2', fontWeight: 'bold' }}>
+                          💸 Возвращено: {formatAmount(refundInfo.refundedAmount)}
+                        </p>
+                      )}
                       <p style={{ margin: '0', color: '#2E7D32' }}>
-                        ✅ Статус: Оплачено
+                        ✅ Статус: {getPaymentStatusText(payment.status)}
                       </p>
+                      {refundInfo.hasRefund && (
+                        <p style={{ margin: '4px 0 0 0', color: '#1976D2', fontWeight: 'bold' }}>
+                          💰 Итого: {formatAmount(refundInfo.finalAmount)}
+                        </p>
+                      )}
                     </div>
                   )}
                 </div>
@@ -335,11 +382,21 @@ const WashInfo = ({ washInfo, theme = 'light', onCreateSession, onViewHistory, u
                       fontSize: '12px'
                     }}>
                       <p style={{ margin: '0 0 4px 0', color: '#C62828', fontWeight: 'bold' }}>
-                        💰 Стоимость: {(payment.amount / 100).toFixed(2)} {payment.currency}
+                        💰 Стоимость: {formatAmount(payment.amount)}
                       </p>
+                      {refundInfo.hasRefund && (
+                        <p style={{ margin: '0 0 4px 0', color: '#1976D2', fontWeight: 'bold' }}>
+                          💸 Возвращено: {formatAmount(refundInfo.refundedAmount)}
+                        </p>
+                      )}
                       <p style={{ margin: '0', color: '#C62828' }}>
-                        ❌ Статус: Ошибка оплаты
+                        ❌ Статус: {getPaymentStatusText(payment.status)}
                       </p>
+                      {refundInfo.hasRefund && (
+                        <p style={{ margin: '4px 0 0 0', color: '#1976D2', fontWeight: 'bold' }}>
+                          💰 Итого: {formatAmount(refundInfo.finalAmount)}
+                        </p>
+                      )}
                     </div>
                   )}
                   
@@ -381,6 +438,20 @@ const WashInfo = ({ washInfo, theme = 'light', onCreateSession, onViewHistory, u
               >
                 Подробнее о сессии
               </Button>
+              {canCancelSession && (
+                <Button 
+                  theme={theme} 
+                  onClick={handleCancelSession}
+                  disabled={isCanceling}
+                  style={{ 
+                    marginTop: '8px',
+                    backgroundColor: '#F44336',
+                    color: 'white'
+                  }}
+                >
+                  {isCanceling ? 'Отмена...' : 'Отменить сессию'}
+                </Button>
+              )}
             </>
           ) : (
             <>

@@ -3,7 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import styles from './SessionDetails.module.css';
 import { Card, Button, StatusBadge, Timer } from '../../../../shared/components/UI';
 import { formatDate } from '../../../../shared/utils/formatters';
-import { getServiceTypeDescription } from '../../../../shared/utils/statusHelpers';
+import { getServiceTypeDescription, formatRefundInfo, formatAmount, getPaymentStatusText, getPaymentStatusColor } from '../../../../shared/utils/statusHelpers';
 import ApiService from '../../../../shared/services/ApiService';
 import useTimer from '../../../../shared/hooks/useTimer';
 
@@ -18,6 +18,7 @@ const SessionDetails = ({ theme = 'light', user }) => {
   const navigate = useNavigate();
   
   const [session, setSession] = useState(null);
+  const [payment, setPayment] = useState(null);
   const [box, setBox] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -26,9 +27,16 @@ const SessionDetails = ({ theme = 'light', user }) => {
   const [availableRentalTimes, setAvailableRentalTimes] = useState([]);
   const [selectedExtensionTime, setSelectedExtensionTime] = useState(null);
   const [loadingRentalTimes, setLoadingRentalTimes] = useState(false);
+  const [isCanceling, setIsCanceling] = useState(false);
   
   // Используем хук для таймера
   const { timeLeft } = useTimer(session);
+  
+  // Проверяем, можно ли отменить сессию
+  const canCancelSession = session && ['created', 'in_queue', 'assigned'].includes(session.status);
+  
+  // Получаем информацию о возврате
+  const refundInfo = formatRefundInfo(payment);
   
   // Функция для загрузки доступного времени аренды
   const fetchAvailableRentalTimes = async (serviceType) => {
@@ -135,9 +143,9 @@ const SessionDetails = ({ theme = 'light', user }) => {
       
       if (response && response.session) {
         setSession(response.session);
-        
-        // Отладочная информация
-        alert('SessionDetails: session=' + JSON.stringify(response.session) + ', payment=' + JSON.stringify(response.payment));
+        if (response.payment) {
+          setPayment(response.payment);
+        }
         
         // Если у сессии есть номер бокса, используем его
         if (response.session.box_number) {
@@ -219,6 +227,32 @@ const SessionDetails = ({ theme = 'light', user }) => {
   // Функция для возврата на главную страницу
   const handleBack = () => {
     navigate('/telegram');
+  };
+
+  // Обработчик отмены сессии
+  const handleCancelSession = async () => {
+    if (!session || !user) return;
+    
+    const confirmMessage = refundInfo.hasRefund 
+      ? `Вы уверены, что хотите отменить сессию? Деньги в размере ${formatAmount(payment.amount)} будут возвращены на карту.`
+      : 'Вы уверены, что хотите отменить сессию?';
+    
+    if (!window.confirm(confirmMessage)) return;
+    
+    try {
+      setIsCanceling(true);
+      const response = await ApiService.cancelSession(session.id, user.id);
+      
+      // Обновляем информацию о сессии
+      setSession(response.session);
+      setPayment(response.payment);
+      
+      alert('Сессия успешно отменена' + (refundInfo.hasRefund ? '. Деньги будут возвращены на карту.' : ''));
+    } catch (error) {
+      alert('Ошибка при отмене сессии: ' + error.message);
+    } finally {
+      setIsCanceling(false);
+    }
   };
 
   const themeClass = theme === 'dark' ? styles.dark : styles.light;
@@ -314,7 +348,7 @@ const SessionDetails = ({ theme = 'light', user }) => {
         )}
         
         {/* Информация о платеже */}
-        {session.payment && (
+        {payment && (
           <>
             <h3 className={`${styles.title} ${themeClass}`} style={{ marginTop: '20px', fontSize: '16px' }}>
               Информация об оплате
@@ -324,13 +358,12 @@ const SessionDetails = ({ theme = 'light', user }) => {
               <div className={`${styles.infoLabel} ${themeClass}`}>Статус платежа:</div>
               <div className={`${styles.infoValue} ${themeClass}`}>
                 <span style={{ 
-                  color: session.payment.status === 'succeeded' ? '#4CAF50' : 
-                         session.payment.status === 'pending' ? '#FF9800' : '#F44336',
+                  color: payment.status === 'succeeded' ? '#4CAF50' : 
+                         payment.status === 'pending' ? '#FF9800' : 
+                         payment.status === 'refunded' ? '#2196F3' : '#F44336',
                   fontWeight: 'bold'
                 }}>
-                  {session.payment.status === 'succeeded' ? '✅ Оплачено' :
-                   session.payment.status === 'pending' ? '⏳ Ожидает оплаты' :
-                   session.payment.status === 'failed' ? '❌ Ошибка оплаты' : session.payment.status}
+                  {getPaymentStatusText(payment.status)}
                 </span>
               </div>
             </div>
@@ -338,28 +371,57 @@ const SessionDetails = ({ theme = 'light', user }) => {
             <div className={`${styles.infoRow} ${themeClass}`}>
               <div className={`${styles.infoLabel} ${themeClass}`}>Сумма:</div>
               <div className={`${styles.infoValue} ${themeClass}`}>
-                {(session.payment.amount / 100).toFixed(2)} {session.payment.currency}
+                {formatAmount(payment.amount)}
               </div>
             </div>
             
-            {session.payment.expires_at && (
-              <div className={`${styles.infoRow} ${themeClass}`}>
-                <div className={`${styles.infoLabel} ${themeClass}`}>Действителен до:</div>
-                <div className={`${styles.infoValue} ${themeClass}`}>
-                  {new Date(session.payment.expires_at).toLocaleString()}
+            {refundInfo.hasRefund && (
+              <>
+                <div className={`${styles.infoRow} ${themeClass}`}>
+                  <div className={`${styles.infoLabel} ${themeClass}`}>Возвращено:</div>
+                  <div className={`${styles.infoValue} ${themeClass}`} style={{ color: '#2196F3', fontWeight: 'bold' }}>
+                    {formatAmount(refundInfo.refundedAmount)}
+                    {refundInfo.refundType === 'partial' && ` (частично)`}
+                    {refundInfo.refundType === 'full' && ` (полностью)`}
+                  </div>
                 </div>
-              </div>
+                
+                {refundInfo.refundType === 'partial' && (
+                  <div className={`${styles.infoRow} ${themeClass}`}>
+                    <div className={`${styles.infoLabel} ${themeClass}`}>Осталось к возврату:</div>
+                    <div className={`${styles.infoValue} ${themeClass}`} style={{ color: '#FF9800', fontWeight: 'bold' }}>
+                      {formatAmount(refundInfo.remainingAmount)}
+                    </div>
+                  </div>
+                )}
+                
+                <div className={`${styles.infoRow} ${themeClass}`}>
+                  <div className={`${styles.infoLabel} ${themeClass}`}>Итого:</div>
+                  <div className={`${styles.infoValue} ${themeClass}`} style={{ color: '#2196F3', fontWeight: 'bold' }}>
+                    {formatAmount(refundInfo.finalAmount)}
+                  </div>
+                </div>
+                
+                {payment.refunded_at && (
+                  <div className={`${styles.infoRow} ${themeClass}`}>
+                    <div className={`${styles.infoLabel} ${themeClass}`}>Время возврата:</div>
+                    <div className={`${styles.infoValue} ${themeClass}`}>
+                      {formatDate(payment.refunded_at)}
+                    </div>
+                  </div>
+                )}
+              </>
             )}
             
             {/* Кнопка повторной оплаты для неудачных платежей */}
-            {session.payment.status === 'failed' && (
+            {payment.status === 'failed' && (
               <Button 
                 theme={theme} 
                 onClick={() => {
                   navigate('/telegram/payment', {
                     state: {
                       session: session,
-                      payment: session.payment
+                      payment: payment
                     }
                   });
                 }}
@@ -431,6 +493,23 @@ const SessionDetails = ({ theme = 'light', user }) => {
           </div>
         )}
 
+        {/* Кнопка отмены сессии */}
+        {canCancelSession && (
+          <Button 
+            theme={theme} 
+            onClick={handleCancelSession}
+            disabled={isCanceling}
+            loading={isCanceling}
+            style={{ 
+              marginTop: '12px',
+              backgroundColor: '#F44336',
+              color: 'white'
+            }}
+          >
+            {isCanceling ? 'Отмена...' : 'Отменить сессию'}
+          </Button>
+        )}
+        
         {/* Модальное окно для продления сессии */}
         {showExtendModal && (
           <div className={styles.modalOverlay}>

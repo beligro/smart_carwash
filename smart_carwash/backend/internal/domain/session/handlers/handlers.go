@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"log"
 	"net/http"
 	"strconv"
 	"time"
@@ -28,14 +29,15 @@ func NewHandler(service service.Service) *Handler {
 func (h *Handler) RegisterRoutes(router *gin.RouterGroup) {
 	sessionRoutes := router.Group("/sessions")
 	{
-			sessionRoutes.POST("", h.createSession)
-	sessionRoutes.POST("/with-payment", h.createSessionWithPayment) // создание сессии с платежом
-	sessionRoutes.GET("", h.getUserSession)                // user_id в query параметре
-	sessionRoutes.GET("/by-id", h.getSessionByID)          // session_id в query параметре
-	sessionRoutes.POST("/start", h.startSession)           // session_id в теле запроса
-	sessionRoutes.POST("/complete", h.completeSession)     // session_id в теле запроса
-	sessionRoutes.POST("/extend", h.extendSession)         // session_id и extension_time_minutes в теле запроса
-	sessionRoutes.GET("/history", h.getUserSessionHistory) // user_id в query параметре
+		sessionRoutes.POST("", h.createSession)
+		sessionRoutes.POST("/with-payment", h.createSessionWithPayment) // создание сессии с платежом
+		sessionRoutes.GET("", h.getUserSession)                // user_id в query параметре
+		sessionRoutes.GET("/by-id", h.getSessionByID)          // session_id в query параметре
+		sessionRoutes.POST("/start", h.startSession)           // session_id в теле запроса
+		sessionRoutes.POST("/complete", h.completeSession)     // session_id в теле запроса
+		sessionRoutes.POST("/extend", h.extendSession)         // session_id и extension_time_minutes в теле запроса
+		sessionRoutes.GET("/history", h.getUserSessionHistory) // user_id в query параметре
+		sessionRoutes.POST("/cancel", h.cancelSession)         // session_id и user_id в теле запроса
 	}
 
 	// Административные маршруты
@@ -205,6 +207,31 @@ func (h *Handler) extendSession(c *gin.Context) {
 
 	// Возвращаем обновленную сессию
 	c.JSON(http.StatusOK, models.ExtendSessionResponse{Session: session})
+}
+
+// cancelSession обработчик для отмены сессии
+func (h *Handler) cancelSession(c *gin.Context) {
+	var req models.CancelSessionRequest
+
+	// Парсим JSON из тела запроса
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	// Логируем мета-параметр для поиска
+	log.Printf("Запрос на отмену сессии: SessionID=%s, UserID=%s", req.SessionID, req.UserID)
+
+	// Отменяем сессию
+	response, err := h.service.CancelSession(&req)
+	if err != nil {
+		log.Printf("Ошибка отмены сессии: %v", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	log.Printf("Успешно отменена сессия: SessionID=%s, UserID=%s", req.SessionID, req.UserID)
+	c.JSON(http.StatusOK, response)
 }
 
 // getUserSessionHistory обработчик для получения истории сессий пользователя

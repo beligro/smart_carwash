@@ -3,14 +3,15 @@ package service
 import (
 	"carwash_backend/internal/domain/session/models"
 	"carwash_backend/internal/domain/session/repository"
-	"carwash_backend/internal/domain/telegram"
-	"carwash_backend/internal/domain/user/service"
-	washboxModels "carwash_backend/internal/domain/washbox/models"
 	washboxService "carwash_backend/internal/domain/washbox/service"
+	washboxModels "carwash_backend/internal/domain/washbox/models"
+	userService "carwash_backend/internal/domain/user/service"
+	"carwash_backend/internal/domain/telegram"
 	paymentService "carwash_backend/internal/domain/payment/service"
 	paymentModels "carwash_backend/internal/domain/payment/models"
 	"fmt"
 	"time"
+	"log"
 
 	"github.com/google/uuid"
 )
@@ -24,6 +25,7 @@ type Service interface {
 	StartSession(req *models.StartSessionRequest) (*models.Session, error)
 	CompleteSession(req *models.CompleteSessionRequest) (*models.Session, error)
 	ExtendSession(req *models.ExtendSessionRequest) (*models.Session, error)
+	CancelSession(req *models.CancelSessionRequest) (*models.CancelSessionResponse, error)
 	UpdateSessionStatus(sessionID uuid.UUID, status string) error
 	ProcessQueue() error
 	CheckAndCompleteExpiredSessions() error
@@ -43,13 +45,13 @@ type Service interface {
 type ServiceImpl struct {
 	repo           repository.Repository
 	washboxService washboxService.Service
-	userService    service.Service
+	userService    userService.Service
 	telegramBot    telegram.NotificationService
 	paymentService paymentService.Service
 }
 
 // NewService создает новый экземпляр Service
-func NewService(repo repository.Repository, washboxService washboxService.Service, userService service.Service, telegramBot telegram.NotificationService, paymentService paymentService.Service) *ServiceImpl {
+func NewService(repo repository.Repository, washboxService washboxService.Service, userService userService.Service, telegramBot telegram.NotificationService, paymentService paymentService.Service) *ServiceImpl {
 	return &ServiceImpl{
 		repo:           repo,
 		washboxService: washboxService,
@@ -385,33 +387,110 @@ func (s *ServiceImpl) ExtendSession(req *models.ExtendSessionRequest) (*models.S
 
 	// Обновляем время продления сессии
 	session.ExtensionTimeMinutes += req.ExtensionTimeMinutes
-
-	// Обновляем сессию в базе данных
+	session.StatusUpdatedAt = time.Now()
 	err = s.repo.UpdateSession(session)
 	if err != nil {
 		return nil, err
 	}
 
-	// Получаем информацию о платеже, если она существует
-	if session.PaymentID != nil {
-		paymentResp, err := s.paymentService.GetPaymentByID(*session.PaymentID)
-		if err == nil && paymentResp != nil {
-			session.Payment = &models.Payment{
-				ID:         paymentResp.ID,
-				SessionID:  paymentResp.SessionID,
-				Amount:     paymentResp.Amount,
-				Currency:   paymentResp.Currency,
-				Status:     paymentResp.Status,
-				PaymentURL: paymentResp.PaymentURL,
-				TinkoffID:  paymentResp.TinkoffID,
-				ExpiresAt:  paymentResp.ExpiresAt,
-				CreatedAt:  paymentResp.CreatedAt,
-				UpdatedAt:  paymentResp.UpdatedAt,
+	return session, nil
+}
+
+// CancelSession отменяет сессию с возможным возвратом денег
+func (s *ServiceImpl) CancelSession(req *models.CancelSessionRequest) (*models.CancelSessionResponse, error) {
+	// Получаем сессию по ID
+	session, err := s.repo.GetSessionByID(req.SessionID)
+	if err != nil {
+		return nil, fmt.Errorf("сессия не найдена: %w", err)
+	}
+
+	// Проверяем, что пользователь является владельцем сессии
+	if session.UserID != req.UserID {
+		return nil, fmt.Errorf("недостаточно прав для отмены сессии")
+	}
+
+	// Проверяем, что сессия может быть отменена
+	allowedStatuses := []string{
+		models.SessionStatusCreated,
+		models.SessionStatusInQueue,
+		models.SessionStatusAssigned,
+	}
+
+	isAllowedStatus := false
+	for _, status := range allowedStatuses {
+		if session.Status == status {
+			isAllowedStatus = true
+			break
+		}
+	}
+
+	if !isAllowedStatus {
+		return nil, fmt.Errorf("сессия в статусе '%s' не может быть отменена", session.Status)
+	}
+
+	// Подготавливаем ответ
+	response := &models.CancelSessionResponse{
+		Session: *session,
+	}
+
+	// Если сессия оплачена (in_queue или assigned), возвращаем деньги
+	if session.Status == models.SessionStatusInQueue || session.Status == models.SessionStatusAssigned {
+		if session.PaymentID != nil {
+			// Получаем информацию о платеже
+			paymentResp, err := s.paymentService.GetPaymentByID(*session.PaymentID)
+			if err != nil {
+				return nil, fmt.Errorf("ошибка получения информации о платеже: %w", err)
+			}
+
+			// Выполняем возврат денег через payment service
+			refundReq := &paymentModels.RefundPaymentRequest{
+				PaymentID: *session.PaymentID,
+				Amount:    paymentResp.Amount, // Возвращаем полную сумму
+			}
+
+			refundResp, err := s.paymentService.RefundPayment(refundReq)
+			if err != nil {
+				return nil, fmt.Errorf("ошибка возврата денег: %w", err)
+			}
+
+			// Добавляем информацию о платеже и возврате в ответ
+			response.Payment = &models.Payment{
+				ID:             refundResp.Payment.ID,
+				SessionID:      refundResp.Payment.SessionID,
+				Amount:         refundResp.Payment.Amount,
+				RefundedAmount: refundResp.Payment.RefundedAmount,
+				Currency:       refundResp.Payment.Currency,
+				Status:         refundResp.Payment.Status,
+				PaymentURL:     refundResp.Payment.PaymentURL,
+				TinkoffID:      refundResp.Payment.TinkoffID,
+				ExpiresAt:      refundResp.Payment.ExpiresAt,
+				RefundedAt:     refundResp.Payment.RefundedAt,
+				CreatedAt:      refundResp.Payment.CreatedAt,
+				UpdatedAt:      refundResp.Payment.UpdatedAt,
+			}
+
+			response.Refund = &models.Refund{
+				ID:        refundResp.Refund.ID,
+				PaymentID: refundResp.Refund.PaymentID,
+				Amount:    refundResp.Refund.Amount,
+				Status:    refundResp.Refund.Status,
+				CreatedAt: refundResp.Refund.CreatedAt,
 			}
 		}
 	}
 
-	return session, nil
+	// Обновляем статус сессии на canceled
+	session.Status = models.SessionStatusCanceled
+	session.StatusUpdatedAt = time.Now()
+	err = s.repo.UpdateSession(session)
+	if err != nil {
+		return nil, fmt.Errorf("ошибка обновления статуса сессии: %w", err)
+	}
+
+	// Обновляем сессию в ответе
+	response.Session = *session
+
+	return response, nil
 }
 
 // CheckAndCompleteExpiredSessions проверяет и завершает истекшие сессии
@@ -800,6 +879,11 @@ func (s *ServiceImpl) UpdateSessionStatus(sessionID uuid.UUID, status string) er
 	session, err := s.repo.GetSessionByID(sessionID)
 	if err != nil {
 		return fmt.Errorf("сессия не найдена: %w", err)
+	}
+
+	if status == models.SessionStatusInQueue && session.Status != models.SessionStatusCreated {
+		log.Println("сессия не может быть переведена в очередь, так как находится не в статусе created")
+		return nil
 	}
 
 	// Обновляем статус и время обновления

@@ -1,4 +1,4 @@
-import React, { useEffect, useState, Suspense, lazy } from 'react';
+import React, { useEffect, useState, Suspense, lazy, useRef } from 'react';
 import WebApp from '@twa-dev/sdk';
 import { Routes, Route, Navigate, useNavigate, useLocation } from 'react-router-dom';
 import styled from 'styled-components';
@@ -43,6 +43,10 @@ const TelegramApp = () => {
   const [error, setError] = useState(null);
   const [theme, setTheme] = useState('light');
   const [user, setUser] = useState(null);
+  
+  // Refs для управления интервалами поллинга
+  const queuePollingInterval = useRef(null);
+  const sessionPollingInterval = useRef(null);
 
   // Инициализация приложения
   useEffect(() => {
@@ -83,6 +87,18 @@ const TelegramApp = () => {
     initializeApp();
   }, []);
   
+  // Функция для очистки интервалов поллинга
+  const clearPollingIntervals = () => {
+    if (queuePollingInterval.current) {
+      clearInterval(queuePollingInterval.current);
+      queuePollingInterval.current = null;
+    }
+    if (sessionPollingInterval.current) {
+      clearInterval(sessionPollingInterval.current);
+      sessionPollingInterval.current = null;
+    }
+  };
+
   // Функция для получения пользователя по telegram_id
   const getUserByTelegramId = async (telegramId) => {
     try {
@@ -214,12 +230,21 @@ const TelegramApp = () => {
       });
 
       if (response && response.session && response.payment) {
+        // Очищаем старый поллинг сессии перед созданием нового
+        if (sessionPollingInterval.current) {
+          clearInterval(sessionPollingInterval.current);
+          sessionPollingInterval.current = null;
+        }
+        
         // Обновляем информацию о сессии пользователя
         setWashInfo(prevInfo => ({
           ...prevInfo,
           userSession: response.session,
           payment: response.payment
         }));
+        
+        // Запускаем поллинг для новой сессии
+        startSessionPolling(response.session.id);
         
         // Переходим на страницу оплаты
         navigate('/telegram/payment', {
@@ -238,65 +263,31 @@ const TelegramApp = () => {
       setLoading(false);
     }
   };
-
-  // Функция для создания сессии (старый метод для совместимости)
-  const handleCreateSession = async (serviceData) => {
-    try {
-      if (!user) {
-        setError('Пользователь не авторизован');
-        return;
-      }
-      
-      setLoading(true);
-      
-      // Проверяем, что все необходимые данные присутствуют
-      if (!serviceData.serviceType || !serviceData.carNumber) {
-        setError('Не все данные заполнены');
-        return;
-      }
-      
-      // Добавляем данные о типе услуги, химии и номере машины в запрос
-      const response = await ApiService.createSession({ 
-        user_id: user.id,
-        service_type: serviceData.serviceType,
-        with_chemistry: serviceData.withChemistry || false,
-        rental_time_minutes: serviceData.rentalTimeMinutes || 5,
-        car_number: serviceData.carNumber
-      });
-      
-      if (response.session) {
-        // Переходим на страницу сессии
-        navigate(`/telegram/session/${response.session.id}`);
-        
-        // Запускаем поллинг для обновления статуса сессии
-        startSessionPolling(response.session.id);
-      } else {
-        setError('Не удалось создать сессию');
-      }
-    } catch (err) {
-      alert('Ошибка создания сессии: ' + err.message);
-      setError('Не удалось создать сессию. Попробуйте еще раз.');
-    } finally {
-      setLoading(false);
-    }
-  };
   
   // Функция для запуска поллинга статуса очереди и боксов
   const startQueuePolling = () => {
+    // Очищаем старый интервал, если он существует
+    if (queuePollingInterval.current) {
+      clearInterval(queuePollingInterval.current);
+    }
+    
     // Устанавливаем интервал для поллинга (каждые 10 секунд)
-    const queuePollingInterval = setInterval(() => {
+    queuePollingInterval.current = setInterval(() => {
       fetchQueueStatus(false);
     }, 10000);
     
-    // Сохраняем интервал в ref, чтобы можно было его очистить при размонтировании компонента
-    // Для простоты в этом примере мы не очищаем интервал
-    return queuePollingInterval;
+    return queuePollingInterval.current;
   };
   
   // Функция для поллинга статуса сессии
   const startSessionPolling = (sessionId) => {
+    // Очищаем старый интервал, если он существует
+    if (sessionPollingInterval.current) {
+      clearInterval(sessionPollingInterval.current);
+    }
+    
     // Устанавливаем интервал для поллинга (каждые 5 секунд)
-    const sessionPollingInterval = setInterval(async () => {
+    sessionPollingInterval.current = setInterval(async () => {
       try {
         const sessionData = await ApiService.getSessionById(sessionId);
         
@@ -316,7 +307,8 @@ const TelegramApp = () => {
             sessionData.session.status === 'canceled' ||
             sessionData.session.status === 'expired'
           ) {
-            clearInterval(sessionPollingInterval);
+            clearInterval(sessionPollingInterval.current);
+            sessionPollingInterval.current = null;
             
             // Через 5 секунд обновляем блок с сессией и предлагаем начать новую
             setTimeout(() => {
@@ -333,9 +325,7 @@ const TelegramApp = () => {
       }
     }, 5000);
     
-    // Сохраняем интервал в ref, чтобы можно было его очистить при размонтировании компонента
-    // Для простоты в этом примере мы не очищаем интервал
-    return sessionPollingInterval;
+    return sessionPollingInterval.current;
   };
   
   // Запускаем поллинг при монтировании компонента
@@ -347,7 +337,7 @@ const TelegramApp = () => {
           await fetchQueueStatus(true);
           
           // Запускаем поллинг статуса очереди (должен работать всегда)
-          const queueInterval = startQueuePolling();
+          startQueuePolling();
 
           // Загружаем информацию о сессии пользователя по user_id и запускаем поллинг по session_id
           const loadUserSessionAndStartPolling = async () => {
@@ -365,12 +355,7 @@ const TelegramApp = () => {
                   };
                 });
                 
-                // Если у пользователя есть активная сессия, запускаем поллинг для неё по ID сессии
-                if (['created', 'in_queue', 'payment_failed', 'assigned', 'active'].includes(sessionResponse.session.status)) {
-                  startSessionPolling(sessionResponse.session.id);
-                }
-              } else {
-                alert('No user session found');
+                startSessionPolling(sessionResponse.session.id);
               }
             } catch (err) {
               alert('Ошибка загрузки информации о пользовательской сессии: ' + err.message);
@@ -378,11 +363,6 @@ const TelegramApp = () => {
           };
           
           loadUserSessionAndStartPolling();
-          
-          // Очищаем интервал при размонтировании
-          return () => {
-            clearInterval(queueInterval);
-          };
         } catch (err) {
           alert('Error in useEffect for polling: ' + err.message);
           setError('Ошибка при загрузке данных');
@@ -393,6 +373,13 @@ const TelegramApp = () => {
       loadData();
     }
   }, [user]);
+
+  // Очистка интервалов при размонтировании компонента
+  useEffect(() => {
+    return () => {
+      clearPollingIntervals();
+    };
+  }, []);
 
   // Функция для перехода на страницу истории сессий
   const handleViewHistory = () => {
@@ -406,12 +393,21 @@ const TelegramApp = () => {
 
   // Обработчики для страницы оплаты
   const handlePaymentComplete = (updatedSession) => {
+    // Очищаем старый поллинг сессии перед обновлением
+    if (sessionPollingInterval.current) {
+      clearInterval(sessionPollingInterval.current);
+      sessionPollingInterval.current = null;
+    }
+    
     // Платеж успешен, обновляем информацию о сессии
     setWashInfo(prevInfo => ({
       ...prevInfo,
       userSession: updatedSession,
       payment: updatedSession.payment
     }));
+    
+    // Запускаем поллинг для обновленной сессии
+    startSessionPolling(updatedSession.id);
     
     // Переходим к деталям сессии
     navigate('/telegram/session/' + updatedSession.id, { 
@@ -423,12 +419,21 @@ const TelegramApp = () => {
   };
 
   const handlePaymentFailed = (updatedSession) => {
+    // Очищаем старый поллинг сессии перед обновлением
+    if (sessionPollingInterval.current) {
+      clearInterval(sessionPollingInterval.current);
+      sessionPollingInterval.current = null;
+    }
+    
     // Платеж неудачен, обновляем информацию о сессии
     setWashInfo(prevInfo => ({
       ...prevInfo,
       userSession: updatedSession,
       payment: updatedSession.payment
     }));
+    
+    // Запускаем поллинг для обновленной сессии
+    startSessionPolling(updatedSession.id);
     
     // Возвращаемся на главную страницу
     navigate('/telegram');
@@ -437,6 +442,35 @@ const TelegramApp = () => {
   const handlePaymentBack = () => {
     // Возвращаемся на главную страницу
     navigate('/telegram');
+  };
+
+  // Обработчик отмены сессии
+  const handleCancelSession = async (sessionId, userId) => {
+    try {
+      // Отменяем сессию через API
+      const response = await ApiService.cancelSession(sessionId, userId);
+      
+      // Обновляем информацию о сессии
+      setWashInfo(prevInfo => ({
+        ...prevInfo,
+        userSession: response.session,
+        payment: response.payment
+      }));
+      
+      // Очищаем поллинг сессии, так как она отменена
+      if (sessionPollingInterval.current) {
+        clearInterval(sessionPollingInterval.current);
+        sessionPollingInterval.current = null;
+      }
+      
+      // Запускаем поллинг очереди для обновления статуса
+      startQueuePolling();
+      
+      console.log('Сессия успешно отменена:', response);
+    } catch (error) {
+      console.error('Ошибка при отмене сессии:', error);
+      throw error;
+    }
   };
 
   const themeObject = getTheme(theme);
@@ -467,6 +501,7 @@ const TelegramApp = () => {
                       theme={theme} 
                       onCreateSession={handleCreateSessionWithPayment}
                       onViewHistory={handleViewHistory}
+                      onCancelSession={handleCancelSession}
                       user={user}
                     />
                   ) : (

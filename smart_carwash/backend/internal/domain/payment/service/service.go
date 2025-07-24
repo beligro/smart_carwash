@@ -21,6 +21,7 @@ type SessionStatusUpdater interface {
 type TinkoffClient interface {
 	CreatePayment(orderID string, amount int, description string) (*TinkoffPaymentResponse, error)
 	GetPaymentStatus(paymentID string) (*TinkoffPaymentStatusResponse, error)
+	RefundPayment(paymentID string, amount int) (*TinkoffRefundResponse, error)
 	VerifyWebhookSignature(data []byte, signature string) bool
 }
 
@@ -44,6 +45,15 @@ type TinkoffPaymentStatusResponse struct {
 	Amount    int    `json:"Amount"`
 }
 
+// TinkoffRefundResponse ответ от Tinkoff API при возврате платежа
+type TinkoffRefundResponse struct {
+	Success   bool   `json:"Success"`
+	ErrorCode string `json:"ErrorCode"`
+	Status    string `json:"Status"`
+	PaymentId string `json:"PaymentId"`
+	Amount    int    `json:"Amount"`
+}
+
 // Service интерфейс для бизнес-логики платежей
 type Service interface {
 	CalculatePrice(req *models.CalculatePriceRequest) (*models.CalculatePriceResponse, error)
@@ -53,6 +63,7 @@ type Service interface {
 	RetryPayment(req *models.RetryPaymentRequest) (*models.RetryPaymentResponse, error)
 	HandleWebhook(req *models.WebhookRequest) error
 	ListPayments(req *models.AdminListPaymentsRequest) (*models.AdminListPaymentsResponse, error)
+	RefundPayment(req *models.RefundPaymentRequest) (*models.RefundPaymentResponse, error)
 }
 
 // service реализация Service
@@ -232,22 +243,68 @@ func (s *service) HandleWebhook(req *models.WebhookRequest) error {
 		return fmt.Errorf("платеж не найден: %w", err)
 	}
 
-	// Обновляем статус платежа
-	if req.Success {
+	// Обрабатываем разные статусы
+	switch req.Status {
+	// Успешные платежи
+	case "CONFIRMED", "AUTHORIZED":
 		payment.Status = models.PaymentStatusSucceeded
-	} else {
+		log.Printf("Платеж подтвержден: ID=%s, Status=%s", payment.ID, payment.Status)
+		
+	// Неудачные платежи
+	case "CANCELED", "REJECTED", "AUTH_FAIL", "DEADLINE_EXPIRED", "ATTEMPTS_EXPIRED":
 		payment.Status = models.PaymentStatusFailed
+		log.Printf("Платеж неудачен (%s): ID=%s, Status=%s", req.Status, payment.ID, payment.Status)
+		
+	// Возвраты
+	case "REFUNDING", "ASYNC_REFUNDING":
+		// Возврат в процессе - не меняем статус платежа, но логируем
+		log.Printf("Возврат в процессе (%s): ID=%s, PaymentID=%d", req.Status, payment.ID, req.PaymentId)
+		
+	case "PARTIAL_REFUNDED":
+		// Частичный возврат завершен
+		payment.RefundedAmount = req.Amount // сумма возврата в копейках
+		now := time.Now()
+		payment.RefundedAt = &now
+		// Не меняем статус платежа на refunded, так как это частичный возврат
+		log.Printf("Частичный возврат завершен: ID=%s, RefundedAmount=%d", 
+			payment.ID, payment.RefundedAmount)
+		
+	case "REFUNDED":
+		// Полный возврат завершен
+		payment.Status = models.PaymentStatusRefunded
+		payment.RefundedAmount = req.Amount // сумма возврата в копейках
+		now := time.Now()
+		payment.RefundedAt = &now
+		log.Printf("Полный возврат завершен: ID=%s, Status=%s, RefundedAmount=%d", 
+			payment.ID, payment.Status, payment.RefundedAmount)
+		
+	// Промежуточные статусы - не меняем статус платежа
+	case "NEW", "FORM_SHOWED", "AUTHORIZING", "CONFIRMING":
+		log.Printf("Промежуточный статус (%s): ID=%s, PaymentID=%d", req.Status, payment.ID, req.PaymentId)
+		return nil // Не обновляем платеж для промежуточных статусов
+		
+	default:
+		// Для неизвестных статусов обновляем на основе Success
+		if req.Success {
+			payment.Status = models.PaymentStatusSucceeded
+		} else {
+			payment.Status = models.PaymentStatusFailed
+		}
+		log.Printf("Неизвестный статус (%s): ID=%s, Status=%s", req.Status, payment.ID, payment.Status)
 	}
 
+	// Обновляем платеж только если статус изменился
 	if err := s.repository.UpdatePayment(payment); err != nil {
 		return fmt.Errorf("ошибка обновления статуса платежа: %w", err)
 	}
 
 	log.Printf("Обновлен статус платежа: ID=%s, Status=%s", payment.ID, payment.Status)
 
-	// Обновляем статус связанной сессии
-	if err := s.updateSessionStatus(payment); err != nil {
-		log.Printf("Ошибка обновления статуса сессии: %v", err)
+	// Обновляем статус связанной сессии (только для успешных/неудачных платежей, не для возвратов)
+	if payment.Status != models.PaymentStatusRefunded {
+		if err := s.updateSessionStatus(payment); err != nil {
+			log.Printf("Ошибка обновления статуса сессии: %v", err)
+		}
 	}
 
 	return nil
@@ -301,5 +358,72 @@ func (s *service) ListPayments(req *models.AdminListPaymentsRequest) (*models.Ad
 		Total:    total,
 		Limit:    limit,
 		Offset:   offset,
+	}, nil
+}
+
+// RefundPayment возвращает деньги за платеж
+func (s *service) RefundPayment(req *models.RefundPaymentRequest) (*models.RefundPaymentResponse, error) {
+	// Получаем платеж по ID
+	payment, err := s.repository.GetPaymentByID(req.PaymentID)
+	if err != nil {
+		return nil, fmt.Errorf("платеж не найден: %w", err)
+	}
+
+	// Проверяем, что платеж успешен
+	if payment.Status != models.PaymentStatusSucceeded {
+		return nil, fmt.Errorf("невозможно вернуть деньги за платеж со статусом '%s'", payment.Status)
+	}
+
+	// Проверяем, что сумма возврата не превышает оплаченную сумму
+	if req.Amount > payment.Amount {
+		return nil, fmt.Errorf("сумма возврата (%d) не может превышать оплаченную сумму (%d)", req.Amount, payment.Amount)
+	}
+
+	// Проверяем, что сумма возврата не превышает уже возвращенную сумму
+	if req.Amount > (payment.Amount - payment.RefundedAmount) {
+		return nil, fmt.Errorf("сумма возврата (%d) не может превышать оставшуюся сумму (%d)", req.Amount, payment.Amount-payment.RefundedAmount)
+	}
+
+	// Выполняем возврат через Tinkoff API
+	refundResp, err := s.tinkoffClient.RefundPayment(payment.TinkoffID, req.Amount)
+	if err != nil {
+		return nil, fmt.Errorf("ошибка возврата через Tinkoff API: %w", err)
+	}
+
+	// Проверяем успешность возврата
+	if !refundResp.Success {
+		return nil, fmt.Errorf("ошибка возврата в Tinkoff: %s", refundResp.ErrorCode)
+	}
+
+	// Обновляем информацию о платеже
+	now := time.Now()
+	payment.RefundedAmount += req.Amount
+	payment.RefundedAt = &now
+
+	// Если возвращена вся сумма, меняем статус на refunded
+	if payment.RefundedAmount >= payment.Amount {
+		payment.Status = models.PaymentStatusRefunded
+	}
+
+	// Сохраняем обновленный платеж
+	if err := s.repository.UpdatePayment(payment); err != nil {
+		return nil, fmt.Errorf("ошибка обновления платежа: %w", err)
+	}
+
+	// Создаем информацию о возврате
+	refund := models.Refund{
+		ID:        uuid.New(),
+		PaymentID: payment.ID,
+		Amount:    req.Amount,
+		Status:    "succeeded",
+		CreatedAt: now,
+	}
+
+	log.Printf("Успешно выполнен возврат: PaymentID=%s, Amount=%d, TotalRefunded=%d", 
+		payment.ID, req.Amount, payment.RefundedAmount)
+
+	return &models.RefundPaymentResponse{
+		Payment: *payment,
+		Refund:  refund,
 	}, nil
 } 

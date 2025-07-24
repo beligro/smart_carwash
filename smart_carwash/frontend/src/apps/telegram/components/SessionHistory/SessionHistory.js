@@ -41,11 +41,6 @@ const SessionHistory = ({ user, theme = 'light', onBack }) => {
             setSessions(prevSessions => [...prevSessions, ...response.sessions]);
           }
           
-          // Отладочная информация для первой страницы
-          if (page === 0 && response.sessions.length > 0) {
-            alert('SessionHistory: first session=' + JSON.stringify(response.sessions[0]));
-          }
-          
           // Проверяем, есть ли еще сессии для загрузки
           setHasMore(response.sessions.length === limit);
         } else {
@@ -127,15 +122,28 @@ const SessionHistory = ({ user, theme = 'light', onBack }) => {
                           💰 Стоимость: {(session.payment.amount / 100).toFixed(2)} {session.payment.currency}
                         </span>
                       </div>
+                      
+                      {/* Информация о возврате */}
+                      {session.payment.refunded_amount > 0 && (
+                        <div className={styles.refundInfo}>
+                          <span className={`${styles.paymentText} ${themeClass}`} style={{ color: '#2196F3' }}>
+                            💸 Возвращено: {((session.payment.refunded_amount || 0) / 100).toFixed(2)} {session.payment.currency}
+                            {session.payment.refunded_amount >= session.payment.amount ? ' (полностью)' : ' (частично)'}
+                          </span>
+                        </div>
+                      )}
+                      
                       <div className={styles.paymentStatus}>
                         <span className={`${styles.paymentText} ${themeClass}`} style={{
                           color: session.payment.status === 'succeeded' ? '#4CAF50' : 
-                                 session.payment.status === 'pending' ? '#FF9800' : '#F44336',
+                                 session.payment.status === 'pending' ? '#FF9800' : 
+                                 session.payment.status === 'refunded' ? '#2196F3' : '#F44336',
                           fontWeight: 'bold'
                         }}>
                           {session.payment.status === 'succeeded' ? '✅ Оплачено' :
                            session.payment.status === 'pending' ? '⏳ Ожидает оплаты' :
-                           session.payment.status === 'failed' ? '❌ Ошибка оплаты' : session.payment.status}
+                           session.payment.status === 'failed' ? '❌ Ошибка оплаты' :
+                           session.payment.status === 'refunded' ? '💸 Возвращено' : session.payment.status}
                         </span>
                       </div>
                     </div>

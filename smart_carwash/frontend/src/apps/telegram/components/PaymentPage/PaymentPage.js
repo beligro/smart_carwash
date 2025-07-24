@@ -68,8 +68,6 @@ const PaymentPage = ({ session, payment, onPaymentComplete, onPaymentFailed, onB
           onPaymentFailed(updatedSession.session);
         }
       } catch (err) {
-        alert('Ошибка проверки статуса платежа: ' + err.message);
-        alert(err);
         setError('Ошибка проверки статуса платежа');
         clearInterval(checkInterval);
         setLoading(false);
@@ -149,12 +147,6 @@ const PaymentPage = ({ session, payment, onPaymentComplete, onPaymentFailed, onB
             </div>
           </div>
         </div>
-
-        {payment.expires_at && (
-          <div className={styles.expiresAt}>
-            <p>Время на оплату: {new Date(payment.expires_at).toLocaleTimeString()}</p>
-          </div>
-        )}
 
         {error && (
           <div className={styles.error}>

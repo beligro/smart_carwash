@@ -349,6 +349,31 @@ const ApiService = {
       throw error;
     }
   },
+
+  // Получить сессию по ID
+  async getSession(sessionId) {
+    try {
+      const response = await api.get(`/sessions?session_id=${sessionId}`);
+      return response.data;
+    } catch (error) {
+      console.error('Ошибка получения сессии:', error);
+      throw error;
+    }
+  },
+
+  // Отменить сессию
+  async cancelSession(sessionId, userId) {
+    try {
+      const response = await api.post('/sessions/cancel', {
+        session_id: sessionId,
+        user_id: userId
+      });
+      return response.data;
+    } catch (error) {
+      console.error('Ошибка отмены сессии:', error);
+      throw error;
+    }
+  }
 };
 
 // Добавляем перехватчик для обработки ошибок

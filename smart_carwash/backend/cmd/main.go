@@ -199,11 +199,8 @@ func main() {
 		for {
 			select {
 			case <-ticker.C:
-				log.Println("Запуск обработки очереди...")
 				if err := sessionSvc.ProcessQueue(); err != nil {
 					log.Printf("Ошибка обработки очереди: %v", err)
-				} else {
-					log.Println("Обработка очереди завершена успешно")
 				}
 			case <-quit:
 				return
@@ -219,11 +216,8 @@ func main() {
 		for {
 			select {
 			case <-ticker.C:
-				log.Println("Запуск проверки истекших сессий...")
 				if err := sessionSvc.CheckAndCompleteExpiredSessions(); err != nil {
 					log.Printf("Ошибка проверки истекших сессий: %v", err)
-				} else {
-					log.Println("Проверка истекших сессий завершена успешно")
 				}
 			case <-quit:
 				return
@@ -239,11 +233,8 @@ func main() {
 		for {
 			select {
 			case <-ticker.C:
-				log.Println("Запуск проверки зарезервированных сессий...")
 				if err := sessionSvc.CheckAndExpireReservedSessions(); err != nil {
 					log.Printf("Ошибка проверки зарезервированных сессий: %v", err)
-				} else {
-					log.Println("Проверка зарезервированных сессий завершена успешно")
 				}
 			case <-quit:
 				return
@@ -259,11 +250,8 @@ func main() {
 		for {
 			select {
 			case <-ticker.C:
-				log.Println("Запуск проверки сессий для отправки уведомлений о скором истечении...")
 				if err := sessionSvc.CheckAndNotifyExpiringReservedSessions(); err != nil {
 					log.Printf("Ошибка отправки уведомлений о скором истечении сессий: %v", err)
-				} else {
-					log.Println("Проверка сессий для отправки уведомлений о скором истечении завершена успешно")
 				}
 			case <-quit:
 				return
@@ -279,11 +267,8 @@ func main() {
 		for {
 			select {
 			case <-ticker.C:
-				log.Println("Запуск проверки сессий для отправки уведомлений о скором завершении...")
 				if err := sessionSvc.CheckAndNotifyCompletingSessions(); err != nil {
 					log.Printf("Ошибка отправки уведомлений о скором завершении сессий: %v", err)
-				} else {
-					log.Println("Проверка сессий для отправки уведомлений о скором завершении завершена успешно")
 				}
 			case <-quit:
 				return
