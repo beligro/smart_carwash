@@ -113,6 +113,32 @@ export const formatAmount = (amount) => {
     if (!amount && amount !== 0) return '0 ₽';
     return `${(amount / 100).toFixed(2)} ₽`;
 };
+
+/**
+ * Форматирует сумму с учетом возврата для отображения
+ * @param {Object} payment - Объект платежа
+ * @returns {string} - Отформатированная сумма с учетом возврата
+ */
+export const formatAmountWithRefund = (payment) => {
+    if (!payment) return '0 ₽';
+    
+    const refundedAmount = payment.refunded_amount || 0;
+    const originalAmount = payment.amount || 0;
+    
+    if (refundedAmount === 0) {
+        return formatAmount(originalAmount);
+    }
+    
+    const finalAmount = originalAmount - refundedAmount;
+    
+    if (refundedAmount >= originalAmount) {
+        // Полный возврат
+        return `${formatAmount(originalAmount)} (возвращено полностью)`;
+    } else {
+        // Частичный возврат
+        return `${formatAmount(finalAmount)} (из ${formatAmount(originalAmount)}, возвращено ${formatAmount(refundedAmount)})`;
+    }
+};
   
   /**
    * Получает текстовое представление статуса бокса

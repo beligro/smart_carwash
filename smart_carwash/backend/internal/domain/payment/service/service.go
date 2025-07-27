@@ -64,6 +64,7 @@ type Service interface {
 	HandleWebhook(req *models.WebhookRequest) error
 	ListPayments(req *models.AdminListPaymentsRequest) (*models.AdminListPaymentsResponse, error)
 	RefundPayment(req *models.RefundPaymentRequest) (*models.RefundPaymentResponse, error)
+	CalculatePartialRefund(req *models.CalculatePartialRefundRequest) (*models.CalculatePartialRefundResponse, error)
 }
 
 // service реализация Service
@@ -425,5 +426,90 @@ func (s *service) RefundPayment(req *models.RefundPaymentRequest) (*models.Refun
 	return &models.RefundPaymentResponse{
 		Payment: *payment,
 		Refund:  refund,
+	}, nil
+}
+
+// CalculatePartialRefund рассчитывает сумму частичного возврата при досрочном завершении сессии
+func (s *service) CalculatePartialRefund(req *models.CalculatePartialRefundRequest) (*models.CalculatePartialRefundResponse, error) {
+	// Получаем платеж по ID
+	payment, err := s.repository.GetPaymentByID(req.PaymentID)
+	if err != nil {
+		return nil, fmt.Errorf("платеж не найден: %w", err)
+	}
+
+	// Проверяем, что платеж успешен
+	if payment.Status != models.PaymentStatusSucceeded {
+		return nil, fmt.Errorf("невозможно рассчитать возврат для платежа со статусом '%s'", payment.Status)
+	}
+
+	// Получаем базовую цену за минуту для типа услуги
+	basePriceSetting, err := s.settingsRepo.GetServiceSetting(req.ServiceType, "price_per_minute")
+	if err != nil {
+		return nil, fmt.Errorf("не удалось получить базовую цену: %w", err)
+	}
+
+	// Проверяем, что настройка найдена
+	if basePriceSetting == nil {
+		return nil, fmt.Errorf("настройка базовой цены для услуги '%s' не найдена", req.ServiceType)
+	}
+
+	var basePricePerMinute int
+	if err := json.Unmarshal(basePriceSetting.SettingValue, &basePricePerMinute); err != nil {
+		return nil, fmt.Errorf("неверный формат базовой цены в настройках: %w", err)
+	}
+
+	// Рассчитываем цену за секунду (цена за минуту / 60)
+	basePricePerSecond := basePricePerMinute / 60
+
+	// Рассчитываем общую продолжительность сессии в секундах
+	totalSessionSeconds := (req.RentalTimeMinutes + req.ExtensionTimeMinutes) * 60
+
+	// Используем переданное использованное время в секундах
+	usedTimeSeconds := req.UsedTimeSeconds
+
+	// Рассчитываем неиспользованное время в секундах
+	unusedTimeSeconds := totalSessionSeconds - usedTimeSeconds
+
+	// Если неиспользованное время отрицательное или нулевое, возврат не нужен
+	if unusedTimeSeconds <= 0 {
+		return &models.CalculatePartialRefundResponse{
+			RefundAmount: 0,
+			UsedTimeSeconds: usedTimeSeconds,
+			UnusedTimeSeconds: 0,
+			PricePerSecond: basePricePerSecond,
+			TotalSessionSeconds: totalSessionSeconds,
+		}, nil
+	}
+
+	// Рассчитываем сумму возврата в копейках (неиспользованные секунды * цена за секунду)
+	refundAmountKopecks := unusedTimeSeconds * basePricePerSecond
+
+	// Округляем в пользу системы (до рублей)
+	// 1 рубль = 100 копеек
+	refundAmountRubles := refundAmountKopecks / 100
+
+	// Конвертируем обратно в копейки для точности
+	refundAmount := refundAmountRubles * 100
+
+	// Проверяем, что сумма возврата не превышает оплаченную сумму
+	if refundAmount > payment.Amount {
+		refundAmount = payment.Amount
+	}
+
+	// Проверяем, что сумма возврата не превышает уже возвращенную сумму
+	remainingAmount := payment.Amount - payment.RefundedAmount
+	if refundAmount > remainingAmount {
+		refundAmount = remainingAmount
+	}
+
+	log.Printf("Рассчитан частичный возврат: PaymentID=%s, UsedTime=%ds, UnusedTime=%ds, RefundAmount=%d", 
+		payment.ID, usedTimeSeconds, unusedTimeSeconds, refundAmount)
+
+	return &models.CalculatePartialRefundResponse{
+		RefundAmount: refundAmount,
+		UsedTimeSeconds: usedTimeSeconds,
+		UnusedTimeSeconds: unusedTimeSeconds,
+		PricePerSecond: basePricePerSecond,
+		TotalSessionSeconds: totalSessionSeconds,
 	}, nil
 } 

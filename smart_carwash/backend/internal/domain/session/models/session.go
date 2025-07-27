@@ -128,7 +128,8 @@ type CompleteSessionRequest struct {
 
 // CompleteSessionResponse представляет ответ на завершение сессии
 type CompleteSessionResponse struct {
-	Session *Session `json:"session"`
+	Session *Session  `json:"session"`
+	Payment *Payment  `json:"payment,omitempty"`
 }
 
 // GetUserSessionHistoryRequest представляет запрос на получение истории сессий пользователя

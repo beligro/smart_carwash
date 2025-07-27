@@ -94,7 +94,7 @@ const PaymentPage = ({ session, payment, onPaymentComplete, onPaymentFailed, onB
         startPaymentStatusCheck();
       }
     } catch (err) {
-      alert('Ошибка повторной оплаты: ' + err.message);
+      console.error('Ошибка повторной оплаты:', err);
       setError('Не удалось создать новый платеж');
       setLoading(false);
     }

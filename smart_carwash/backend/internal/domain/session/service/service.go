@@ -23,7 +23,7 @@ type Service interface {
 	GetUserSession(req *models.GetUserSessionRequest) (*models.GetUserSessionResponse, error)
 	GetSession(req *models.GetSessionRequest) (*models.GetSessionResponse, error)
 	StartSession(req *models.StartSessionRequest) (*models.Session, error)
-	CompleteSession(req *models.CompleteSessionRequest) (*models.Session, error)
+	CompleteSession(req *models.CompleteSessionRequest) (*models.CompleteSessionResponse, error)
 	ExtendSession(req *models.ExtendSessionRequest) (*models.Session, error)
 	CancelSession(req *models.CancelSessionRequest) (*models.CancelSessionResponse, error)
 	UpdateSessionStatus(sessionID uuid.UUID, status string) error
@@ -174,16 +174,18 @@ func (s *ServiceImpl) GetUserSession(req *models.GetUserSessionRequest) (*models
 		paymentResp, err := s.paymentService.GetPaymentByID(*session.PaymentID)
 		if err == nil && paymentResp != nil {
 			payment = &models.Payment{
-				ID:         paymentResp.ID,
-				SessionID:  paymentResp.SessionID,
-				Amount:     paymentResp.Amount,
-				Currency:   paymentResp.Currency,
-				Status:     paymentResp.Status,
-				PaymentURL: paymentResp.PaymentURL,
-				TinkoffID:  paymentResp.TinkoffID,
-				ExpiresAt:  paymentResp.ExpiresAt,
-				CreatedAt:  paymentResp.CreatedAt,
-				UpdatedAt:  paymentResp.UpdatedAt,
+				ID:             paymentResp.ID,
+				SessionID:      paymentResp.SessionID,
+				Amount:         paymentResp.Amount,
+				RefundedAmount: paymentResp.RefundedAmount,
+				Currency:       paymentResp.Currency,
+				Status:         paymentResp.Status,
+				PaymentURL:     paymentResp.PaymentURL,
+				TinkoffID:      paymentResp.TinkoffID,
+				ExpiresAt:      paymentResp.ExpiresAt,
+				RefundedAt:     paymentResp.RefundedAt,
+				CreatedAt:      paymentResp.CreatedAt,
+				UpdatedAt:      paymentResp.UpdatedAt,
 			}
 		}
 	}
@@ -207,16 +209,18 @@ func (s *ServiceImpl) GetSession(req *models.GetSessionRequest) (*models.GetSess
 		paymentResp, err := s.paymentService.GetPaymentByID(*session.PaymentID)
 		if err == nil && paymentResp != nil {
 			payment = &models.Payment{
-				ID:         paymentResp.ID,
-				SessionID:  paymentResp.SessionID,
-				Amount:     paymentResp.Amount,
-				Currency:   paymentResp.Currency,
-				Status:     paymentResp.Status,
-				PaymentURL: paymentResp.PaymentURL,
-				TinkoffID:  paymentResp.TinkoffID,
-				ExpiresAt:  paymentResp.ExpiresAt,
-				CreatedAt:  paymentResp.CreatedAt,
-				UpdatedAt:  paymentResp.UpdatedAt,
+				ID:             paymentResp.ID,
+				SessionID:      paymentResp.SessionID,
+				Amount:         paymentResp.Amount,
+				RefundedAmount: paymentResp.RefundedAmount,
+				Currency:       paymentResp.Currency,
+				Status:         paymentResp.Status,
+				PaymentURL:     paymentResp.PaymentURL,
+				TinkoffID:      paymentResp.TinkoffID,
+				ExpiresAt:      paymentResp.ExpiresAt,
+				RefundedAt:     paymentResp.RefundedAt,
+				CreatedAt:      paymentResp.CreatedAt,
+				UpdatedAt:      paymentResp.UpdatedAt,
 			}
 		}
 	}
@@ -284,16 +288,18 @@ func (s *ServiceImpl) StartSession(req *models.StartSessionRequest) (*models.Ses
 		paymentResp, err := s.paymentService.GetPaymentByID(*session.PaymentID)
 		if err == nil && paymentResp != nil {
 			session.Payment = &models.Payment{
-				ID:         paymentResp.ID,
-				SessionID:  paymentResp.SessionID,
-				Amount:     paymentResp.Amount,
-				Currency:   paymentResp.Currency,
-				Status:     paymentResp.Status,
-				PaymentURL: paymentResp.PaymentURL,
-				TinkoffID:  paymentResp.TinkoffID,
-				ExpiresAt:  paymentResp.ExpiresAt,
-				CreatedAt:  paymentResp.CreatedAt,
-				UpdatedAt:  paymentResp.UpdatedAt,
+				ID:             paymentResp.ID,
+				SessionID:      paymentResp.SessionID,
+				Amount:         paymentResp.Amount,
+				RefundedAmount: paymentResp.RefundedAmount,
+				Currency:       paymentResp.Currency,
+				Status:         paymentResp.Status,
+				PaymentURL:     paymentResp.PaymentURL,
+				TinkoffID:      paymentResp.TinkoffID,
+				ExpiresAt:      paymentResp.ExpiresAt,
+				RefundedAt:     paymentResp.RefundedAt,
+				CreatedAt:      paymentResp.CreatedAt,
+				UpdatedAt:      paymentResp.UpdatedAt,
 			}
 		}
 	}
@@ -301,8 +307,8 @@ func (s *ServiceImpl) StartSession(req *models.StartSessionRequest) (*models.Ses
 	return session, nil
 }
 
-// CompleteSession завершает сессию (переводит в статус complete)
-func (s *ServiceImpl) CompleteSession(req *models.CompleteSessionRequest) (*models.Session, error) {
+// CompleteSession завершает сессию (переводит в статус complete) с возможным частичным возвратом
+func (s *ServiceImpl) CompleteSession(req *models.CompleteSessionRequest) (*models.CompleteSessionResponse, error) {
 	// Получаем сессию по ID
 	session, err := s.repo.GetSessionByID(req.SessionID)
 	if err != nil {
@@ -311,12 +317,12 @@ func (s *ServiceImpl) CompleteSession(req *models.CompleteSessionRequest) (*mode
 
 	// Проверяем, что сессия в статусе active
 	if session.Status != models.SessionStatusActive {
-		return session, nil // Возвращаем сессию без изменений
+		return &models.CompleteSessionResponse{Session: session}, nil // Возвращаем сессию без изменений
 	}
 
 	// Проверяем, что у сессии есть назначенный бокс
 	if session.BoxID == nil {
-		return session, nil // Возвращаем сессию без изменений
+		return &models.CompleteSessionResponse{Session: session}, nil // Возвращаем сессию без изменений
 	}
 
 	// Если сервис боксов не инициализирован, просто обновляем статус сессии
@@ -327,7 +333,7 @@ func (s *ServiceImpl) CompleteSession(req *models.CompleteSessionRequest) (*mode
 		if err != nil {
 			return nil, err
 		}
-		return session, nil
+		return &models.CompleteSessionResponse{Session: session}, nil
 	}
 
 	// Обновляем статус бокса на free
@@ -335,6 +341,11 @@ func (s *ServiceImpl) CompleteSession(req *models.CompleteSessionRequest) (*mode
 	if err != nil {
 		return nil, err
 	}
+
+	// Рассчитываем использованное время сессии в секундах
+	startTime := session.StatusUpdatedAt
+	now := time.Now()
+	usedTimeSeconds := int(now.Sub(startTime).Seconds())
 
 	// Обновляем статус сессии на complete, время обновления статуса и сбрасываем флаг уведомления
 	session.Status = models.SessionStatusComplete
@@ -345,26 +356,63 @@ func (s *ServiceImpl) CompleteSession(req *models.CompleteSessionRequest) (*mode
 		return nil, err
 	}
 
-	// Получаем информацию о платеже, если она существует
+	// Проверяем, есть ли платеж и нужно ли рассчитать возврат
 	if session.PaymentID != nil {
 		paymentResp, err := s.paymentService.GetPaymentByID(*session.PaymentID)
 		if err == nil && paymentResp != nil {
-			session.Payment = &models.Payment{
-				ID:         paymentResp.ID,
-				SessionID:  paymentResp.SessionID,
-				Amount:     paymentResp.Amount,
-				Currency:   paymentResp.Currency,
-				Status:     paymentResp.Status,
-				PaymentURL: paymentResp.PaymentURL,
-				TinkoffID:  paymentResp.TinkoffID,
-				ExpiresAt:  paymentResp.ExpiresAt,
-				CreatedAt:  paymentResp.CreatedAt,
-				UpdatedAt:  paymentResp.UpdatedAt,
+			// Рассчитываем частичный возврат
+			refundReq := &paymentModels.CalculatePartialRefundRequest{
+				PaymentID:         *session.PaymentID,
+				ServiceType:       session.ServiceType,
+				RentalTimeMinutes: session.RentalTimeMinutes,
+				ExtensionTimeMinutes: session.ExtensionTimeMinutes,
+				UsedTimeSeconds:   usedTimeSeconds,
+			}
+
+			refundCalcResp, err := s.paymentService.CalculatePartialRefund(refundReq)
+			if err != nil {
+				log.Printf("Ошибка расчета частичного возврата: %v", err)
+			} else if refundCalcResp.RefundAmount > 0 {
+				// Выполняем возврат через payment service
+				refundPaymentReq := &paymentModels.RefundPaymentRequest{
+					PaymentID: *session.PaymentID,
+					Amount:    refundCalcResp.RefundAmount,
+				}
+
+				_, err := s.paymentService.RefundPayment(refundPaymentReq)
+				if err != nil {
+					log.Printf("Ошибка выполнения частичного возврата: %v", err)
+				} else {
+					log.Printf("Успешно выполнен частичный возврат: SessionID=%s, RefundAmount=%d", 
+						session.ID, refundCalcResp.RefundAmount)
+				}
+			}
+
+			// Получаем обновленную информацию о платеже
+			updatedPaymentResp, err := s.paymentService.GetPaymentByID(*session.PaymentID)
+			if err == nil && updatedPaymentResp != nil {
+				session.Payment = &models.Payment{
+					ID:             updatedPaymentResp.ID,
+					SessionID:      updatedPaymentResp.SessionID,
+					Amount:         updatedPaymentResp.Amount,
+					RefundedAmount: updatedPaymentResp.RefundedAmount,
+					Currency:       updatedPaymentResp.Currency,
+					Status:         updatedPaymentResp.Status,
+					PaymentURL:     updatedPaymentResp.PaymentURL,
+					TinkoffID:      updatedPaymentResp.TinkoffID,
+					ExpiresAt:      updatedPaymentResp.ExpiresAt,
+					RefundedAt:     updatedPaymentResp.RefundedAt,
+					CreatedAt:      updatedPaymentResp.CreatedAt,
+					UpdatedAt:      updatedPaymentResp.UpdatedAt,
+				}
 			}
 		}
 	}
 
-	return session, nil
+	return &models.CompleteSessionResponse{
+		Session: session,
+		Payment: session.Payment,
+	}, nil
 }
 
 // ExtendSession продлевает сессию (добавляет время к активной сессии)
@@ -486,6 +534,9 @@ func (s *ServiceImpl) CancelSession(req *models.CancelSessionRequest) (*models.C
 	if err != nil {
 		return nil, fmt.Errorf("ошибка обновления статуса сессии: %w", err)
 	}
+
+	// Обновляем статус бокса на free
+	s.washboxService.UpdateWashBoxStatus(*session.BoxID, washboxModels.StatusFree)
 
 	// Обновляем сессию в ответе
 	response.Session = *session
@@ -806,16 +857,18 @@ func (s *ServiceImpl) GetUserSessionHistory(req *models.GetUserSessionHistoryReq
 			paymentResp, err := s.paymentService.GetPaymentByID(*sessions[i].PaymentID)
 			if err == nil && paymentResp != nil {
 				sessions[i].Payment = &models.Payment{
-					ID:         paymentResp.ID,
-					SessionID:  paymentResp.SessionID,
-					Amount:     paymentResp.Amount,
-					Currency:   paymentResp.Currency,
-					Status:     paymentResp.Status,
-					PaymentURL: paymentResp.PaymentURL,
-					TinkoffID:  paymentResp.TinkoffID,
-					ExpiresAt:  paymentResp.ExpiresAt,
-					CreatedAt:  paymentResp.CreatedAt,
-					UpdatedAt:  paymentResp.UpdatedAt,
+					ID:             paymentResp.ID,
+					SessionID:      paymentResp.SessionID,
+					Amount:         paymentResp.Amount,
+					RefundedAmount: paymentResp.RefundedAmount,
+					Currency:       paymentResp.Currency,
+					Status:         paymentResp.Status,
+					PaymentURL:     paymentResp.PaymentURL,
+					TinkoffID:      paymentResp.TinkoffID,
+					ExpiresAt:      paymentResp.ExpiresAt,
+					RefundedAt:     paymentResp.RefundedAt,
+					CreatedAt:      paymentResp.CreatedAt,
+					UpdatedAt:      paymentResp.UpdatedAt,
 				}
 			}
 		}

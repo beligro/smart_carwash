@@ -133,4 +133,22 @@ type Refund struct {
 	Amount    int        `json:"amount"` // сумма возврата в копейках
 	Status    string     `json:"status"`
 	CreatedAt time.Time  `json:"created_at"`
+}
+
+// CalculatePartialRefundRequest представляет запрос на расчет частичного возврата
+type CalculatePartialRefundRequest struct {
+	PaymentID         uuid.UUID `json:"payment_id" binding:"required"`
+	ServiceType       string    `json:"service_type" binding:"required"`
+	RentalTimeMinutes int       `json:"rental_time_minutes" binding:"required"`
+	ExtensionTimeMinutes int    `json:"extension_time_minutes"`
+	UsedTimeSeconds   int       `json:"used_time_seconds" binding:"required"` // использованное время в секундах
+}
+
+// CalculatePartialRefundResponse представляет ответ на расчет частичного возврата
+type CalculatePartialRefundResponse struct {
+	RefundAmount         int `json:"refund_amount"` // сумма возврата в копейках
+	UsedTimeSeconds      int `json:"used_time_seconds"` // использованное время в секундах
+	UnusedTimeSeconds    int `json:"unused_time_seconds"` // неиспользованное время в секундах
+	PricePerSecond       int `json:"price_per_second"` // цена за секунду в копейках
+	TotalSessionSeconds   int `json:"total_session_seconds"` // общее время сессии в секундах
 } 

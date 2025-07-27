@@ -4,7 +4,7 @@ import styles from './WashInfo.module.css';
 import { Card, Button, StatusBadge, Timer } from '../../../../shared/components/UI';
 import ServiceSelector from '../ServiceSelector';
 import { formatDate } from '../../../../shared/utils/formatters';
-import { getSessionStatusDescription, getServiceTypeDescription, formatRefundInfo, formatAmount, getPaymentStatusText, getPaymentStatusColor } from '../../../../shared/utils/statusHelpers';
+import { getSessionStatusDescription, getServiceTypeDescription, formatRefundInfo, formatAmount, formatAmountWithRefund, getPaymentStatusText, getPaymentStatusColor } from '../../../../shared/utils/statusHelpers';
 import useTimer from '../../../../shared/hooks/useTimer';
 
 /**
@@ -77,7 +77,7 @@ const WashInfo = ({ washInfo, theme = 'light', onCreateSession, onViewHistory, o
     if (!userSession || !user) return;
     
     const confirmMessage = refundInfo.hasRefund 
-      ? `Вы уверены, что хотите отменить сессию? Деньги в размере ${formatAmount(payment.amount)} будут возвращены на карту.`
+      ? `Вы уверены, что хотите отменить сессию? Деньги в размере ${formatAmountWithRefund(payment)} будут возвращены на карту.`
       : 'Вы уверены, что хотите отменить сессию?';
     
     if (!window.confirm(confirmMessage)) return;
@@ -212,7 +212,7 @@ const WashInfo = ({ washInfo, theme = 'light', onCreateSession, onViewHistory, o
                   fontSize: '12px'
                 }}>
                   <p style={{ margin: '0 0 4px 0', color: '#2E7D32', fontWeight: 'bold' }}>
-                    💰 Стоимость: {formatAmount(payment.amount)}
+                    💰 Стоимость: {formatAmountWithRefund(payment)}
                   </p>
                   {refundInfo.hasRefund && (
                     <>
@@ -221,11 +221,6 @@ const WashInfo = ({ washInfo, theme = 'light', onCreateSession, onViewHistory, o
                         {refundInfo.refundType === 'partial' && ` (частично)`}
                         {refundInfo.refundType === 'full' && ` (полностью)`}
                       </p>
-                      {refundInfo.refundType === 'partial' && (
-                        <p style={{ margin: '0 0 4px 0', color: '#FF9800', fontWeight: 'bold' }}>
-                          💰 Осталось к возврату: {formatAmount(refundInfo.remainingAmount)}
-                        </p>
-                      )}
                     </>
                   )}
                   <p style={{ margin: '0', color: '#2E7D32' }}>
@@ -315,7 +310,7 @@ const WashInfo = ({ washInfo, theme = 'light', onCreateSession, onViewHistory, o
                   border: '1px solid #81C784'
                 }}>
                   <p style={{ margin: '0 0 4px 0', color: '#2E7D32', fontWeight: 'bold' }}>
-                    💰 Стоимость: {formatAmount(payment.amount)}
+                    💰 Стоимость: {formatAmountWithRefund(payment)}
                   </p>
                   <p style={{ margin: '0 0 8px 0', fontWeight: 'bold', color: '#2E7D32' }}>
                     ✅ Оплачено, в очереди
@@ -335,7 +330,7 @@ const WashInfo = ({ washInfo, theme = 'light', onCreateSession, onViewHistory, o
                       fontSize: '12px'
                     }}>
                       <p style={{ margin: '0 0 4px 0', color: '#2E7D32', fontWeight: 'bold' }}>
-                        💰 Стоимость: {formatAmount(payment.amount)}
+                        💰 Стоимость: {formatAmountWithRefund(payment)}
                       </p>
                       {refundInfo.hasRefund && (
                         <p style={{ margin: '0 0 4px 0', color: '#1976D2', fontWeight: 'bold' }}>
@@ -382,7 +377,7 @@ const WashInfo = ({ washInfo, theme = 'light', onCreateSession, onViewHistory, o
                       fontSize: '12px'
                     }}>
                       <p style={{ margin: '0 0 4px 0', color: '#C62828', fontWeight: 'bold' }}>
-                        💰 Стоимость: {formatAmount(payment.amount)}
+                        💰 Стоимость: {formatAmountWithRefund(payment)}
                       </p>
                       {refundInfo.hasRefund && (
                         <p style={{ margin: '0 0 4px 0', color: '#1976D2', fontWeight: 'bold' }}>

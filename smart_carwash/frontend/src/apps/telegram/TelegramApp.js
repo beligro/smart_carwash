@@ -47,6 +47,7 @@ const TelegramApp = () => {
   // Refs для управления интервалами поллинга
   const queuePollingInterval = useRef(null);
   const sessionPollingInterval = useRef(null);
+  const sessionResetTimer = useRef(null); // Таймер для сброса сессии
 
   // Инициализация приложения
   useEffect(() => {
@@ -96,6 +97,40 @@ const TelegramApp = () => {
     if (sessionPollingInterval.current) {
       clearInterval(sessionPollingInterval.current);
       sessionPollingInterval.current = null;
+    }
+    if (sessionResetTimer.current) {
+      clearTimeout(sessionResetTimer.current);
+      sessionResetTimer.current = null;
+    }
+  };
+
+  // Функция для проверки и сброса сессии в терминальном статусе
+  const checkAndResetTerminalSession = (session) => {
+    // Проверяем, находится ли сессия в терминальном статусе
+    if (
+      session.status === 'complete' || 
+      session.status === 'canceled' ||
+      session.status === 'expired' ||
+      session.status === 'payment_failed'
+    ) {
+      // Если мы на главной странице, запускаем таймер сброса
+      if (location.pathname === '/telegram' || location.pathname === '/telegram/') {
+        // Очищаем старый таймер сброса, если он существует
+        if (sessionResetTimer.current) {
+          clearTimeout(sessionResetTimer.current);
+          sessionResetTimer.current = null;
+        }
+        
+        // Запускаем новый таймер сброса
+        sessionResetTimer.current = setTimeout(() => {
+          setWashInfo(prevInfo => ({
+            ...prevInfo,
+            userSession: null,
+            payment: null
+          }));
+          sessionResetTimer.current = null;
+        }, 5000);
+      }
     }
   };
 
@@ -169,9 +204,19 @@ const TelegramApp = () => {
                 return updatedInfo;
               });
               
-              // Если у пользователя есть активная сессия, запускаем поллинг для неё по ID сессии
-              if (['created', 'in_queue', 'payment_failed', 'assigned', 'active'].includes(sessionResponse.session.status)) {
-                startSessionPolling(sessionResponse.session.id);
+              // Проверяем, нужно ли запускать поллинг или сброс
+              const session = sessionResponse.session;
+              if (
+                session.status === 'complete' || 
+                session.status === 'canceled' ||
+                session.status === 'expired' ||
+                session.status === 'payment_failed'
+              ) {
+                // Сессия в терминальном статусе, проверяем нужно ли сбросить
+                checkAndResetTerminalSession(session);
+              } else {
+                // Сессия активна, запускаем поллинг
+                startSessionPolling(session.id);
               }
             }
           } catch (err) {
@@ -194,7 +239,7 @@ const TelegramApp = () => {
         }
       }
     } catch (err) {
-      alert('Ошибка при получении статуса очереди: ' + err.message);
+      console.error('Ошибка при получении статуса очереди:', err);
       if (isInitialLoad) {
         setError('Ошибка при загрузке данных');
         // Инициализируем washInfo с пустыми данными при ошибке
@@ -286,6 +331,12 @@ const TelegramApp = () => {
       clearInterval(sessionPollingInterval.current);
     }
     
+    // Очищаем старый таймер сброса, если он существует
+    if (sessionResetTimer.current) {
+      clearTimeout(sessionResetTimer.current);
+      sessionResetTimer.current = null;
+    }
+    
     // Устанавливаем интервал для поллинга (каждые 5 секунд)
     sessionPollingInterval.current = setInterval(async () => {
       try {
@@ -305,23 +356,28 @@ const TelegramApp = () => {
           if (
             sessionData.session.status === 'complete' || 
             sessionData.session.status === 'canceled' ||
-            sessionData.session.status === 'expired'
+            sessionData.session.status === 'expired' ||
+            sessionData.session.status === 'payment_failed'
           ) {
             clearInterval(sessionPollingInterval.current);
             sessionPollingInterval.current = null;
             
-            // Через 5 секунд обновляем блок с сессией и предлагаем начать новую
-            setTimeout(() => {
-              setWashInfo(prevInfo => ({
-                ...prevInfo,
-                userSession: null,
-                payment: null
-              }));
-            }, 5000);
+            // Сброс сессии через 5 секунд только если мы на главной странице
+            if (location.pathname === '/telegram' || location.pathname === '/telegram/') {
+              sessionResetTimer.current = setTimeout(() => {
+                setWashInfo(prevInfo => ({
+                  ...prevInfo,
+                  userSession: null,
+                  payment: null
+                }));
+                sessionResetTimer.current = null;
+              }, 5000);
+            }
           }
         }
       } catch (err) {
-        alert('Ошибка при получении статуса сессии: ' + err.message);
+        console.error('Ошибка при получении статуса сессии:', err);
+        // Не показываем alert, просто логируем ошибку
       }
     }, 5000);
     
@@ -355,16 +411,29 @@ const TelegramApp = () => {
                   };
                 });
                 
-                startSessionPolling(sessionResponse.session.id);
+                // Проверяем, нужно ли запускать поллинг или сброс
+                const session = sessionResponse.session;
+                if (
+                  session.status === 'complete' || 
+                  session.status === 'canceled' ||
+                  session.status === 'expired' ||
+                  session.status === 'payment_failed'
+                ) {
+                  // Сессия в терминальном статусе, проверяем нужно ли сбросить
+                  checkAndResetTerminalSession(session);
+                } else {
+                  // Сессия активна, запускаем поллинг
+                  startSessionPolling(session.id);
+                }
               }
             } catch (err) {
-              alert('Ошибка загрузки информации о пользовательской сессии: ' + err.message);
+              console.error('Ошибка загрузки информации о пользовательской сессии:', err);
             }
           };
           
           loadUserSessionAndStartPolling();
         } catch (err) {
-          alert('Error in useEffect for polling: ' + err.message);
+          console.error('Error in useEffect for polling:', err);
           setError('Ошибка при загрузке данных');
           setLoading(false);
         }
@@ -380,6 +449,16 @@ const TelegramApp = () => {
       clearPollingIntervals();
     };
   }, []);
+
+  // Проверяем сессию при изменении маршрута на главную страницу
+  useEffect(() => {
+    if (location.pathname === '/telegram' || location.pathname === '/telegram/') {
+      // Если у нас есть сессия в терминальном статусе, запускаем таймер сброса
+      if (washInfo && washInfo.userSession) {
+        checkAndResetTerminalSession(washInfo.userSession);
+      }
+    }
+  }, [location.pathname, washInfo?.userSession]);
 
   // Функция для перехода на страницу истории сессий
   const handleViewHistory = () => {
@@ -444,7 +523,7 @@ const TelegramApp = () => {
     navigate('/telegram');
   };
 
-  // Обработчик отмены сессии
+    // Обработчик отмены сессии
   const handleCancelSession = async (sessionId, userId) => {
     try {
       // Отменяем сессию через API
@@ -461,6 +540,24 @@ const TelegramApp = () => {
       if (sessionPollingInterval.current) {
         clearInterval(sessionPollingInterval.current);
         sessionPollingInterval.current = null;
+      }
+      
+      // Очищаем старый таймер сброса, если он существует
+      if (sessionResetTimer.current) {
+        clearTimeout(sessionResetTimer.current);
+        sessionResetTimer.current = null;
+      }
+      
+      // Сбрасываем сессию через 5 секунд на главной странице
+      if (location.pathname === '/telegram' || location.pathname === '/telegram/') {
+        sessionResetTimer.current = setTimeout(() => {
+          setWashInfo(prevInfo => ({
+            ...prevInfo,
+            userSession: null,
+            payment: null
+          }));
+          sessionResetTimer.current = null;
+        }, 5000);
       }
       
       // Запускаем поллинг очереди для обновления статуса

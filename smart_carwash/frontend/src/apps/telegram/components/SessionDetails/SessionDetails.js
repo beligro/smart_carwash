@@ -1,9 +1,9 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import styles from './SessionDetails.module.css';
 import { Card, Button, StatusBadge, Timer } from '../../../../shared/components/UI';
 import { formatDate } from '../../../../shared/utils/formatters';
-import { getServiceTypeDescription, formatRefundInfo, formatAmount, getPaymentStatusText, getPaymentStatusColor } from '../../../../shared/utils/statusHelpers';
+import { getServiceTypeDescription, formatRefundInfo, formatAmount, formatAmountWithRefund, getPaymentStatusText, getPaymentStatusColor } from '../../../../shared/utils/statusHelpers';
 import ApiService from '../../../../shared/services/ApiService';
 import useTimer from '../../../../shared/hooks/useTimer';
 
@@ -29,6 +29,9 @@ const SessionDetails = ({ theme = 'light', user }) => {
   const [loadingRentalTimes, setLoadingRentalTimes] = useState(false);
   const [isCanceling, setIsCanceling] = useState(false);
   
+  // Ref для управления интервалом поллинга
+  const pollingInterval = useRef(null);
+  
   // Используем хук для таймера
   const { timeLeft } = useTimer(session);
   
@@ -37,6 +40,44 @@ const SessionDetails = ({ theme = 'light', user }) => {
   
   // Получаем информацию о возврате
   const refundInfo = formatRefundInfo(payment);
+
+  // Функция для очистки интервала поллинга
+  const clearPollingInterval = () => {
+    if (pollingInterval.current) {
+      clearInterval(pollingInterval.current);
+      pollingInterval.current = null;
+    }
+  };
+
+  // Функция для запуска поллинга сессии
+  const startSessionPolling = () => {
+    // Очищаем старый интервал, если он существует
+    clearPollingInterval();
+    
+    // Устанавливаем интервал для поллинга (каждые 5 секунд)
+    pollingInterval.current = setInterval(async () => {
+      try {
+        const sessionData = await ApiService.getSessionById(sessionId);
+        
+        if (sessionData && sessionData.session) {
+          setSession(sessionData.session);
+          setPayment(sessionData.payment);
+          
+          // Если сессия завершена, отменена или истекла, останавливаем поллинг
+          if (
+            sessionData.session.status === 'complete' || 
+            sessionData.session.status === 'canceled' ||
+            sessionData.session.status === 'expired'
+          ) {
+            clearPollingInterval();
+          }
+        }
+      } catch (err) {
+        console.error('Ошибка при поллинге сессии:', err);
+        // Не показываем ошибку пользователю, просто логируем
+      }
+    }, 5000);
+  };
   
   // Функция для загрузки доступного времени аренды
   const fetchAvailableRentalTimes = async (serviceType) => {
@@ -114,6 +155,11 @@ const SessionDetails = ({ theme = 'light', user }) => {
       if (response && response.session) {
         setSession(response.session);
         
+        // Обновляем информацию о платеже, если она есть
+        if (response.payment) {
+          setPayment(response.payment);
+        }
+        
         // Если у сессии есть номер бокса, используем его
         if (response.session.box_number) {
           setBox({ number: response.session.box_number });
@@ -174,21 +220,17 @@ const SessionDetails = ({ theme = 'light', user }) => {
     }
   };
   
-  // Начальная загрузка данных о сессии
+  // Начальная загрузка данных о сессии и запуск поллинга
   useEffect(() => {
     if (sessionId) {
       fetchSessionDetails();
+      startSessionPolling(); // Запускаем поллинг при первой загрузке
     }
-  }, [sessionId]);
-  
-  // Настройка поллинга для обновления данных о сессии
-  // Примечание: Мы не запускаем поллинг здесь, так как он уже запущен в App.js
-  // Вместо этого просто обновляем данные при первой загрузке и при изменении статуса сессии
-  useEffect(() => {
-    // Обновляем данные каждый раз, когда меняется sessionId
-    if (sessionId) {
-      fetchSessionDetails();
-    }
+    
+    // Очистка интервала при размонтировании компонента
+    return () => {
+      clearPollingInterval();
+    };
   }, [sessionId]);
   
   // Функция для запуска сессии
@@ -226,6 +268,7 @@ const SessionDetails = ({ theme = 'light', user }) => {
   
   // Функция для возврата на главную страницу
   const handleBack = () => {
+    // Всегда возвращаемся на главную страницу
     navigate('/telegram');
   };
 
@@ -234,7 +277,7 @@ const SessionDetails = ({ theme = 'light', user }) => {
     if (!session || !user) return;
     
     const confirmMessage = refundInfo.hasRefund 
-      ? `Вы уверены, что хотите отменить сессию? Деньги в размере ${formatAmount(payment.amount)} будут возвращены на карту.`
+      ? `Вы уверены, что хотите отменить сессию? Деньги в размере ${formatAmountWithRefund(payment)} будут возвращены на карту.`
       : 'Вы уверены, что хотите отменить сессию?';
     
     if (!window.confirm(confirmMessage)) return;
@@ -371,7 +414,7 @@ const SessionDetails = ({ theme = 'light', user }) => {
             <div className={`${styles.infoRow} ${themeClass}`}>
               <div className={`${styles.infoLabel} ${themeClass}`}>Сумма:</div>
               <div className={`${styles.infoValue} ${themeClass}`}>
-                {formatAmount(payment.amount)}
+                {formatAmountWithRefund(payment)}
               </div>
             </div>
             
@@ -385,15 +428,6 @@ const SessionDetails = ({ theme = 'light', user }) => {
                     {refundInfo.refundType === 'full' && ` (полностью)`}
                   </div>
                 </div>
-                
-                {refundInfo.refundType === 'partial' && (
-                  <div className={`${styles.infoRow} ${themeClass}`}>
-                    <div className={`${styles.infoLabel} ${themeClass}`}>Осталось к возврату:</div>
-                    <div className={`${styles.infoValue} ${themeClass}`} style={{ color: '#FF9800', fontWeight: 'bold' }}>
-                      {formatAmount(refundInfo.remainingAmount)}
-                    </div>
-                  </div>
-                )}
                 
                 <div className={`${styles.infoRow} ${themeClass}`}>
                   <div className={`${styles.infoLabel} ${themeClass}`}>Итого:</div>

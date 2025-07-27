@@ -178,14 +178,14 @@ func (h *Handler) completeSession(c *gin.Context) {
 	}
 
 	// Завершаем сессию
-	session, err := h.service.CompleteSession(&req)
+	response, err := h.service.CompleteSession(&req)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
 
-	// Возвращаем обновленную сессию
-	c.JSON(http.StatusOK, models.CompleteSessionResponse{Session: session})
+	// Возвращаем обновленную сессию с информацией о платеже
+	c.JSON(http.StatusOK, response)
 }
 
 // extendSession обработчик для продления сессии
