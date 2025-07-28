@@ -31,7 +31,6 @@ type Session struct {
 	CarNumber                    string         `json:"car_number"`                              // Номер машины в сессии
 	RentalTimeMinutes            int            `json:"rental_time_minutes" gorm:"default:5"`    // Время аренды в минутах
 	ExtensionTimeMinutes         int            `json:"extension_time_minutes" gorm:"default:0"` // Время продления в минутах
-	PaymentID                    *uuid.UUID     `json:"payment_id,omitempty" gorm:"index;type:uuid"` // ID связанного платежа
 	Payment                      *Payment       `json:"payment,omitempty" gorm:"-"` // Информация о платеже (не хранится в БД)
 	IdempotencyKey               string         `json:"idempotency_key,omitempty" gorm:"index"`
 	IsExpiringNotificationSent   bool           `json:"is_expiring_notification_sent" gorm:"default:false"`
@@ -81,6 +80,7 @@ type Payment struct {
 	RefundedAmount int            `json:"refunded_amount"` // сумма возврата в копейках
 	Currency       string         `json:"currency"`
 	Status         string         `json:"status"`
+	PaymentType    string         `json:"payment_type"` // тип платежа: main или extension
 	PaymentURL     string         `json:"payment_url"`
 	TinkoffID      string         `json:"tinkoff_id" gorm:"index"`
 	ExpiresAt      *time.Time     `json:"expires_at"`
@@ -153,6 +153,29 @@ type ExtendSessionRequest struct {
 // ExtendSessionResponse представляет ответ на продление сессии
 type ExtendSessionResponse struct {
 	Session *Session `json:"session"`
+}
+
+// ExtendSessionWithPaymentRequest представляет запрос на продление сессии с оплатой
+type ExtendSessionWithPaymentRequest struct {
+	SessionID            uuid.UUID `json:"session_id" binding:"required"`
+	ExtensionTimeMinutes int       `json:"extension_time_minutes" binding:"required"`
+}
+
+// ExtendSessionWithPaymentResponse представляет ответ на продление сессии с оплатой
+type ExtendSessionWithPaymentResponse struct {
+	Session *Session  `json:"session"`
+	Payment *Payment  `json:"payment,omitempty"`
+}
+
+// GetSessionPaymentsRequest представляет запрос на получение платежей сессии
+type GetSessionPaymentsRequest struct {
+	SessionID uuid.UUID `json:"session_id" binding:"required"`
+}
+
+// GetSessionPaymentsResponse представляет ответ на получение платежей сессии
+type GetSessionPaymentsResponse struct {
+	MainPayment       *Payment   `json:"main_payment,omitempty"`
+	ExtensionPayments []Payment  `json:"extension_payments,omitempty"`
 }
 
 // CancelSessionRequest представляет запрос на отмену сессии

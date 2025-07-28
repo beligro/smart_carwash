@@ -15,6 +15,12 @@ const (
 	PaymentStatusRefunded  = "refunded"  // Возвращен
 )
 
+// Типы платежей
+const (
+	PaymentTypeMain      = "main"      // Основной платеж за сессию
+	PaymentTypeExtension = "extension" // Платеж за продление
+)
+
 // Payment представляет платеж
 type Payment struct {
 	ID             uuid.UUID      `json:"id" gorm:"primaryKey;type:uuid;default:gen_random_uuid()"`
@@ -23,6 +29,7 @@ type Payment struct {
 	RefundedAmount int            `json:"refunded_amount" gorm:"default:0"` // сумма возврата в копейках
 	Currency       string         `json:"currency" gorm:"default:RUB"`
 	Status         string         `json:"status" gorm:"default:pending;index"`
+	PaymentType    string         `json:"payment_type" gorm:"default:main;index"` // тип платежа: main или extension
 	PaymentURL     string         `json:"payment_url"`
 	TinkoffID      string         `json:"tinkoff_id" gorm:"index"`
 	ExpiresAt      *time.Time     `json:"expires_at"`
@@ -46,6 +53,19 @@ type CalculatePriceResponse struct {
 	Breakdown PriceBreakdown `json:"breakdown"`
 }
 
+// CalculateExtensionPriceRequest представляет запрос на расчет цены продления
+type CalculateExtensionPriceRequest struct {
+	ServiceType           string `json:"service_type" binding:"required"`
+	ExtensionTimeMinutes  int    `json:"extension_time_minutes" binding:"required"`
+}
+
+// CalculateExtensionPriceResponse представляет ответ на расчет цены продления
+type CalculateExtensionPriceResponse struct {
+	Price     int           `json:"price"` // в копейках
+	Currency  string        `json:"currency"`
+	Breakdown PriceBreakdown `json:"breakdown"`
+}
+
 // PriceBreakdown представляет разбивку цены
 type PriceBreakdown struct {
 	BasePrice     int `json:"base_price"`     // базовая цена
@@ -61,6 +81,18 @@ type CreatePaymentRequest struct {
 
 // CreatePaymentResponse представляет ответ на создание платежа
 type CreatePaymentResponse struct {
+	Payment Payment `json:"payment"`
+}
+
+// CreateExtensionPaymentRequest представляет запрос на создание платежа продления
+type CreateExtensionPaymentRequest struct {
+	SessionID uuid.UUID `json:"session_id" binding:"required"`
+	Amount    int       `json:"amount" binding:"required"`
+	Currency  string    `json:"currency" binding:"required"`
+}
+
+// CreateExtensionPaymentResponse представляет ответ на создание платежа продления
+type CreateExtensionPaymentResponse struct {
 	Payment Payment `json:"payment"`
 }
 
@@ -151,4 +183,15 @@ type CalculatePartialRefundResponse struct {
 	UnusedTimeSeconds    int `json:"unused_time_seconds"` // неиспользованное время в секундах
 	PricePerSecond       int `json:"price_per_second"` // цена за секунду в копейках
 	TotalSessionSeconds   int `json:"total_session_seconds"` // общее время сессии в секундах
+}
+
+// GetPaymentsBySessionRequest представляет запрос на получение платежей сессии
+type GetPaymentsBySessionRequest struct {
+	SessionID uuid.UUID `json:"session_id" binding:"required"`
+}
+
+// GetPaymentsBySessionResponse представляет ответ на получение платежей сессии
+type GetPaymentsBySessionResponse struct {
+	MainPayment       *Payment   `json:"main_payment,omitempty"`
+	ExtensionPayments []Payment  `json:"extension_payments,omitempty"`
 } 

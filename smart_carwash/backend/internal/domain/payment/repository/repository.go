@@ -12,6 +12,7 @@ type Repository interface {
 	CreatePayment(payment *models.Payment) error
 	GetPaymentByID(id uuid.UUID) (*models.Payment, error)
 	GetPaymentBySessionID(sessionID uuid.UUID) (*models.Payment, error)
+	GetPaymentsBySessionID(sessionID uuid.UUID) ([]models.Payment, error)
 	GetPaymentByTinkoffID(tinkoffID string) (*models.Payment, error)
 	UpdatePayment(payment *models.Payment) error
 	ListPayments(req *models.AdminListPaymentsRequest) ([]models.Payment, int, error)
@@ -42,14 +43,24 @@ func (r *repository) GetPaymentByID(id uuid.UUID) (*models.Payment, error) {
 	return &payment, nil
 }
 
-// GetPaymentBySessionID получает платеж по ID сессии
+// GetPaymentBySessionID получает основной платеж по ID сессии
 func (r *repository) GetPaymentBySessionID(sessionID uuid.UUID) (*models.Payment, error) {
 	var payment models.Payment
-	err := r.db.Where("session_id = ?", sessionID).First(&payment).Error
+	err := r.db.Where("session_id = ? AND payment_type = ?", sessionID, models.PaymentTypeMain).First(&payment).Error
 	if err != nil {
 		return nil, err
 	}
 	return &payment, nil
+}
+
+// GetPaymentsBySessionID получает все платежи по ID сессии
+func (r *repository) GetPaymentsBySessionID(sessionID uuid.UUID) ([]models.Payment, error) {
+	var payments []models.Payment
+	err := r.db.Where("session_id = ?", sessionID).Order("created_at ASC").Find(&payments).Error
+	if err != nil {
+		return nil, err
+	}
+	return payments, nil
 }
 
 // GetPaymentByTinkoffID получает платеж по ID в Tinkoff

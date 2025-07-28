@@ -12,8 +12,9 @@ import ApiService from '../../../../shared/services/ApiService';
  * @param {Function} props.onPaymentFailed - Функция вызываемая при неудачной оплате
  * @param {Function} props.onBack - Функция возврата назад
  * @param {string} props.theme - Тема оформления ('light' или 'dark')
+ * @param {string} props.paymentType - Тип платежа ('main' или 'extension')
  */
-const PaymentPage = ({ session, payment, onPaymentComplete, onPaymentFailed, onBack, theme = 'light' }) => {
+const PaymentPage = ({ session, payment, onPaymentComplete, onPaymentFailed, onBack, theme = 'light', paymentType = 'main' }) => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   
@@ -33,6 +34,14 @@ const PaymentPage = ({ session, payment, onPaymentComplete, onPaymentFailed, onB
       'vacuum': 'Пылесос'
     };
     return services[type] || type;
+  };
+
+  // Получение заголовка платежа
+  const getPaymentTitle = () => {
+    if (paymentType === 'extension') {
+      return 'Продление сессии';
+    }
+    return 'Оплата услуги';
   };
 
   // Обработка перехода к оплате
@@ -118,8 +127,13 @@ const PaymentPage = ({ session, payment, onPaymentComplete, onPaymentFailed, onB
     <div className={`${styles.paymentPage} ${themeClass}`}>
       <Card>
         <div className={styles.header}>
-          <h2>Оплата услуги</h2>
-          <p className={styles.subtitle}>Подтвердите оплату для записи в очередь</p>
+          <h2>{getPaymentTitle()}</h2>
+          <p className={styles.subtitle}>
+            {paymentType === 'extension' 
+              ? 'Подтвердите оплату для продления сессии' 
+              : 'Подтвердите оплату для записи в очередь'
+            }
+          </p>
         </div>
 
         <div className={styles.paymentInfo}>
@@ -131,7 +145,10 @@ const PaymentPage = ({ session, payment, onPaymentComplete, onPaymentFailed, onB
               )}
             </div>
             <div className={styles.duration}>
-              {session.rental_time_minutes} минут
+              {paymentType === 'extension' 
+                ? `${session.extension_time_minutes || 0} минут продления`
+                : `${session.rental_time_minutes} минут`
+              }
             </div>
             <div className={styles.carNumber}>
               Номер: {session.car_number}

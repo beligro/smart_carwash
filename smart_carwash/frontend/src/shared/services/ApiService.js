@@ -223,6 +223,18 @@ const ApiService = {
     }
   },
 
+  // Расчет цены продления
+  calculateExtensionPrice: async (data) => {
+    try {
+      const snakeData = toSnakeCase(data);
+      const response = await api.post('/payments/calculate-extension-price', snakeData);
+      return response.data;
+    } catch (error) {
+      console.error('Ошибка при расчете цены продления:', error);
+      throw error;
+    }
+  },
+
   // Создание сессии с платежом
   createSessionWithPayment: async (data) => {
     try {
@@ -335,6 +347,31 @@ const ApiService = {
       return response.data;
     } catch (error) {
       console.error('Ошибка при продлении сессии:', error);
+      throw error;
+    }
+  },
+
+  // Продление сессии с оплатой
+  extendSessionWithPayment: async (sessionId, extensionTimeMinutes) => {
+    try {
+      const response = await api.post('/sessions/extend-with-payment', { 
+        session_id: sessionId,
+        extension_time_minutes: extensionTimeMinutes
+      });
+      return response.data;
+    } catch (error) {
+      console.error('Ошибка при продлении сессии с оплатой:', error);
+      throw error;
+    }
+  },
+
+  // Получение платежей сессии
+  getSessionPayments: async (sessionId) => {
+    try {
+      const response = await api.get(`/sessions/payments?session_id=${sessionId}`);
+      return response.data;
+    } catch (error) {
+      console.error('Ошибка при получении платежей сессии:', error);
       throw error;
     }
   },

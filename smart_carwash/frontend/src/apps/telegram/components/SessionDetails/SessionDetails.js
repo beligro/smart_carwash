@@ -99,7 +99,7 @@ const SessionDetails = ({ theme = 'light', user }) => {
     }
   };
 
-  // Функция для продления сессии
+  // Функция для продления сессии с оплатой
   const handleExtendSession = async () => {
     if (!selectedExtensionTime) {
       setError('Выберите время продления');
@@ -110,16 +110,22 @@ const SessionDetails = ({ theme = 'light', user }) => {
       setActionLoading(true);
       setError(null);
       
-      // Вызываем API для продления сессии
-      const response = await ApiService.extendSession(sessionId, selectedExtensionTime);
+      // Вызываем API для продления сессии с оплатой
+      const response = await ApiService.extendSessionWithPayment(sessionId, selectedExtensionTime);
       
-      if (response && response.session) {
-        setSession(response.session);
-        setShowExtendModal(false); // Закрываем модальное окно
+      if (response && response.payment) {
+        // Перенаправляем на страницу оплаты
+        navigate('/telegram/payment', { 
+          state: { 
+            session: response.session,
+            payment: response.payment,
+            paymentType: 'extension'
+          } 
+        });
       }
     } catch (err) {
-      alert('Ошибка при продлении сессии: ' + err.message);
-      setError('Не удалось продлить сессию. Пожалуйста, попробуйте еще раз.');
+      alert('Ошибка при создании платежа продления: ' + err.message);
+      setError('Не удалось создать платеж продления. Пожалуйста, попробуйте еще раз.');
     } finally {
       setActionLoading(false);
     }

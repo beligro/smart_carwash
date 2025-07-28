@@ -488,13 +488,26 @@ const TelegramApp = () => {
     // Запускаем поллинг для обновленной сессии
     startSessionPolling(updatedSession.id);
     
-    // Переходим к деталям сессии
-    navigate('/telegram/session/' + updatedSession.id, { 
-      state: { 
-        session: updatedSession,
-        payment: updatedSession.payment
-      } 
-    });
+    // Проверяем тип платежа
+    const paymentType = location?.state?.paymentType;
+    
+    if (paymentType === 'extension') {
+      // Для платежа продления возвращаемся к деталям сессии
+      navigate('/telegram/session/' + updatedSession.id, { 
+        state: { 
+          session: updatedSession,
+          payment: updatedSession.payment
+        } 
+      });
+    } else {
+      // Для основного платежа переходим к деталям сессии
+      navigate('/telegram/session/' + updatedSession.id, { 
+        state: { 
+          session: updatedSession,
+          payment: updatedSession.payment
+        } 
+      });
+    }
   };
 
   const handlePaymentFailed = (updatedSession) => {
@@ -641,6 +654,7 @@ const TelegramApp = () => {
                     onPaymentFailed={handlePaymentFailed}
                     onBack={handlePaymentBack}
                     theme={theme}
+                    paymentType={location?.state?.paymentType || 'main'}
                   />
                 </Suspense>
               } 

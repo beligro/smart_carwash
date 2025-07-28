@@ -28,6 +28,7 @@ func (h *Handler) RegisterRoutes(router *gin.RouterGroup) {
 	paymentRoutes := router.Group("/payments")
 	{
 		paymentRoutes.POST("/calculate-price", h.calculatePrice)
+	paymentRoutes.POST("/calculate-extension-price", h.calculateExtensionPrice)
 		paymentRoutes.POST("/create", h.createPayment)
 		paymentRoutes.GET("/status", h.getPaymentStatus)
 		paymentRoutes.POST("/retry", h.retryPayment)
@@ -51,6 +52,24 @@ func (h *Handler) calculatePrice(c *gin.Context) {
 	}
 
 	response, err := h.service.CalculatePrice(&req)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, response)
+}
+
+// calculateExtensionPrice обработчик для расчета цены продления
+func (h *Handler) calculateExtensionPrice(c *gin.Context) {
+	var req models.CalculateExtensionPriceRequest
+
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	response, err := h.service.CalculateExtensionPrice(&req)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return

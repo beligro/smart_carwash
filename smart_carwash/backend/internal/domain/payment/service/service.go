@@ -4,6 +4,8 @@ import (
 	"carwash_backend/internal/domain/payment/models"
 	"carwash_backend/internal/domain/payment/repository"
 	settingsRepo "carwash_backend/internal/domain/settings/repository"
+	"crypto/rand"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -57,8 +59,12 @@ type TinkoffRefundResponse struct {
 // Service интерфейс для бизнес-логики платежей
 type Service interface {
 	CalculatePrice(req *models.CalculatePriceRequest) (*models.CalculatePriceResponse, error)
+	CalculateExtensionPrice(req *models.CalculateExtensionPriceRequest) (*models.CalculateExtensionPriceResponse, error)
 	CreatePayment(req *models.CreatePaymentRequest) (*models.CreatePaymentResponse, error)
+	CreateExtensionPayment(req *models.CreateExtensionPaymentRequest) (*models.CreateExtensionPaymentResponse, error)
 	GetPaymentByID(paymentID uuid.UUID) (*models.Payment, error)
+	GetMainPaymentBySessionID(sessionID uuid.UUID) (*models.Payment, error)
+	GetPaymentsBySessionID(sessionID uuid.UUID) (*models.GetPaymentsBySessionResponse, error)
 	GetPaymentStatus(req *models.GetPaymentStatusRequest) (*models.GetPaymentStatusResponse, error)
 	RetryPayment(req *models.RetryPaymentRequest) (*models.RetryPaymentResponse, error)
 	HandleWebhook(req *models.WebhookRequest) error
@@ -75,6 +81,13 @@ type service struct {
 	tinkoffClient   TinkoffClient
 	terminalKey     string
 	secretKey       string
+}
+
+// generateRandomString генерирует короткую случайную строку
+func generateRandomString(length int) string {
+	bytes := make([]byte, length)
+	rand.Read(bytes)
+	return hex.EncodeToString(bytes)[:length]
 }
 
 // NewService создает новый экземпляр Service
@@ -146,11 +159,45 @@ func (s *service) CalculatePrice(req *models.CalculatePriceRequest) (*models.Cal
 	}, nil
 }
 
+// CalculateExtensionPrice рассчитывает цену для продления сессии
+func (s *service) CalculateExtensionPrice(req *models.CalculateExtensionPriceRequest) (*models.CalculateExtensionPriceResponse, error) {
+	// Получаем базовую цену за минуту
+	basePriceSetting, err := s.settingsRepo.GetServiceSetting(req.ServiceType, "price_per_minute")
+	if err != nil {
+		return nil, fmt.Errorf("не удалось получить базовую цену: %w", err)
+	}
+
+	// Проверяем, что настройка найдена
+	if basePriceSetting == nil {
+		return nil, fmt.Errorf("настройка базовой цены для услуги '%s' не найдена", req.ServiceType)
+	}
+
+	var basePricePerMinute int
+	if err := json.Unmarshal(basePriceSetting.SettingValue, &basePricePerMinute); err != nil {
+		return nil, fmt.Errorf("неверный формат базовой цены в настройках: %w", err)
+	}
+
+	// Рассчитываем цену продления
+	extensionPrice := basePricePerMinute * req.ExtensionTimeMinutes
+
+	// Разбивка цены (в копейках для Tinkoff)
+	breakdown := models.PriceBreakdown{
+		BasePrice:     extensionPrice,
+		ChemistryPrice: 0,
+	}
+
+	return &models.CalculateExtensionPriceResponse{
+		Price:     extensionPrice,
+		Currency:  "RUB",
+		Breakdown: breakdown,
+	}, nil
+}
+
 // CreatePayment создает платеж в Tinkoff и сохраняет в БД
 func (s *service) CreatePayment(req *models.CreatePaymentRequest) (*models.CreatePaymentResponse, error) {
-	// Создаем платеж в Tinkoff
-	orderID := req.SessionID.String()
-	description := fmt.Sprintf("Оплата услуги автомойки (сессия: %s)", orderID)
+	// Создаем уникальный orderID для основного платежа
+	orderID := fmt.Sprintf("%s_main", req.SessionID.String())
+	description := fmt.Sprintf("Оплата услуги автомойки (сессия: %s)", req.SessionID.String())
 
 	tinkoffResp, err := s.tinkoffClient.CreatePayment(orderID, req.Amount, description)
 	if err != nil {
@@ -165,13 +212,14 @@ func (s *service) CreatePayment(req *models.CreatePaymentRequest) (*models.Creat
 	expiresAt := time.Now().Add(15 * time.Minute) // Платеж действителен 15 минут
 
 	payment := &models.Payment{
-		SessionID:  req.SessionID,
-		Amount:     req.Amount,
-		Currency:   req.Currency,
-		Status:     models.PaymentStatusPending,
-		PaymentURL: tinkoffResp.PaymentURL,
+		SessionID:   req.SessionID,
+		Amount:      req.Amount,
+		Currency:    req.Currency,
+		Status:      models.PaymentStatusPending,
+		PaymentType: models.PaymentTypeMain,
+		PaymentURL:  tinkoffResp.PaymentURL,
 		TinkoffID:  tinkoffResp.PaymentId,
-		ExpiresAt:  &expiresAt,
+		ExpiresAt:   &expiresAt,
 	}
 
 	if err := s.repository.CreatePayment(payment); err != nil {
@@ -182,6 +230,47 @@ func (s *service) CreatePayment(req *models.CreatePaymentRequest) (*models.Creat
 		payment.ID, payment.SessionID, payment.Amount, payment.TinkoffID)
 
 	return &models.CreatePaymentResponse{
+		Payment: *payment,
+	}, nil
+}
+
+// CreateExtensionPayment создает платеж продления в Tinkoff и сохраняет в БД
+func (s *service) CreateExtensionPayment(req *models.CreateExtensionPaymentRequest) (*models.CreateExtensionPaymentResponse, error) {
+	// Создаем уникальный orderID для платежа продления
+	orderID := fmt.Sprintf("ext_%s", generateRandomString(12))
+	description := fmt.Sprintf("Продление сессии автомойки (сессия: %s)", req.SessionID.String())
+
+	tinkoffResp, err := s.tinkoffClient.CreatePayment(orderID, req.Amount, description)
+	if err != nil {
+		return nil, fmt.Errorf("ошибка создания платежа продления в Tinkoff: %w", err)
+	}
+
+	if !tinkoffResp.Success {
+		return nil, fmt.Errorf("ошибка Tinkoff: %s", tinkoffResp.ErrorCode)
+	}
+
+	// Создаем платеж продления в БД
+	expiresAt := time.Now().Add(15 * time.Minute) // Платеж действителен 15 минут
+
+	payment := &models.Payment{
+		SessionID:   req.SessionID,
+		Amount:      req.Amount,
+		Currency:    req.Currency,
+		Status:      models.PaymentStatusPending,
+		PaymentType: models.PaymentTypeExtension,
+		PaymentURL:  tinkoffResp.PaymentURL,
+		TinkoffID:   tinkoffResp.PaymentId,
+		ExpiresAt:   &expiresAt,
+	}
+
+	if err := s.repository.CreatePayment(payment); err != nil {
+		return nil, fmt.Errorf("ошибка сохранения платежа продления: %w", err)
+	}
+
+	log.Printf("Создан платеж продления: ID=%s, SessionID=%s, Amount=%d, TinkoffID=%s", 
+		payment.ID, payment.SessionID, payment.Amount, payment.TinkoffID)
+
+	return &models.CreateExtensionPaymentResponse{
 		Payment: *payment,
 	}, nil
 }
@@ -206,6 +295,39 @@ func (s *service) GetPaymentByID(paymentID uuid.UUID) (*models.Payment, error) {
 	}
 
 	return payment, nil
+}
+
+// GetMainPaymentBySessionID получает основной платеж сессии
+func (s *service) GetMainPaymentBySessionID(sessionID uuid.UUID) (*models.Payment, error) {
+	payment, err := s.repository.GetPaymentBySessionID(sessionID)
+	if err != nil {
+		return nil, fmt.Errorf("ошибка получения основного платежа сессии: %w", err)
+	}
+	return payment, nil
+}
+
+// GetPaymentsBySessionID получает все платежи сессии
+func (s *service) GetPaymentsBySessionID(sessionID uuid.UUID) (*models.GetPaymentsBySessionResponse, error) {
+	payments, err := s.repository.GetPaymentsBySessionID(sessionID)
+	if err != nil {
+		return nil, fmt.Errorf("ошибка получения платежей сессии: %w", err)
+	}
+
+	var mainPayment *models.Payment
+	var extensionPayments []models.Payment
+
+	for _, payment := range payments {
+		if payment.PaymentType == models.PaymentTypeMain {
+			mainPayment = &payment
+		} else if payment.PaymentType == models.PaymentTypeExtension {
+			extensionPayments = append(extensionPayments, payment)
+		}
+	}
+
+	return &models.GetPaymentsBySessionResponse{
+		MainPayment:       mainPayment,
+		ExtensionPayments: extensionPayments,
+	}, nil
 }
 
 // RetryPayment создает новый платеж для существующей сессии
