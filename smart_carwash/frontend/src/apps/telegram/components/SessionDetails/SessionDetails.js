@@ -3,7 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import styles from './SessionDetails.module.css';
 import { Card, Button, StatusBadge, Timer } from '../../../../shared/components/UI';
 import { formatDate } from '../../../../shared/utils/formatters';
-import { getServiceTypeDescription, formatRefundInfo, formatAmount, formatAmountWithRefund, getPaymentStatusText, getPaymentStatusColor } from '../../../../shared/utils/statusHelpers';
+import { getServiceTypeDescription, formatRefundInfo, formatSessionRefundInfo, formatAmount, formatAmountWithRefund, getPaymentStatusText, getPaymentStatusColor, formatSessionDetailedCost } from '../../../../shared/utils/statusHelpers';
 import ApiService from '../../../../shared/services/ApiService';
 import useTimer from '../../../../shared/hooks/useTimer';
 
@@ -28,6 +28,8 @@ const SessionDetails = ({ theme = 'light', user }) => {
   const [selectedExtensionTime, setSelectedExtensionTime] = useState(null);
   const [loadingRentalTimes, setLoadingRentalTimes] = useState(false);
   const [isCanceling, setIsCanceling] = useState(false);
+  const [sessionPayments, setSessionPayments] = useState(null);
+  const [loadingPayments, setLoadingPayments] = useState(false);
   
   // Ref для управления интервалом поллинга
   const pollingInterval = useRef(null);
@@ -38,8 +40,38 @@ const SessionDetails = ({ theme = 'light', user }) => {
   // Проверяем, можно ли отменить сессию
   const canCancelSession = session && ['created', 'in_queue', 'assigned'].includes(session.status);
   
+  // Проверяем, можно ли продлить сессию (только за 3 минуты до конца и если не запрошено продление)
+  const canExtendSession = session && 
+    session.status === 'active' && 
+    timeLeft !== null && 
+    timeLeft <= 1000 && // 5 минут для тестирования
+    timeLeft > 0 && // Время еще не истекло
+    session.requested_extension_time_minutes === 0; // Не запрошено продление
+  
   // Получаем информацию о возврате
-  const refundInfo = formatRefundInfo(payment);
+  const refundInfo = sessionPayments ? formatSessionRefundInfo(sessionPayments) : formatRefundInfo(payment);
+  
+  // Функция для загрузки платежей сессии
+  const loadSessionPayments = async () => {
+    if (!sessionId) return;
+    
+    try {
+      setLoadingPayments(true);
+      const payments = await ApiService.getSessionPayments(sessionId);
+      setSessionPayments(payments);
+    } catch (error) {
+      console.error('Ошибка при загрузке платежей сессии:', error);
+    } finally {
+      setLoadingPayments(false);
+    }
+  };
+  
+  // Загружаем платежи при изменении сессии
+  useEffect(() => {
+    if (sessionId) {
+      loadSessionPayments();
+    }
+  }, [sessionId]);
 
   // Функция для очистки интервала поллинга
   const clearPollingInterval = () => {
@@ -382,6 +414,7 @@ const SessionDetails = ({ theme = 'light', user }) => {
           <div className={`${styles.infoValue} ${themeClass}`}>
             {session.rental_time_minutes || 5} минут
             {session.extension_time_minutes > 0 && ` (продлено на ${session.extension_time_minutes} минут)`}
+            {session.requested_extension_time_minutes > 0 && ` (запрошено продление на ${session.requested_extension_time_minutes} минут)`}
           </div>
         </div>
         
@@ -417,41 +450,48 @@ const SessionDetails = ({ theme = 'light', user }) => {
               </div>
             </div>
             
-            <div className={`${styles.infoRow} ${themeClass}`}>
-              <div className={`${styles.infoLabel} ${themeClass}`}>Сумма:</div>
-              <div className={`${styles.infoValue} ${themeClass}`}>
-                {formatAmountWithRefund(payment)}
+            {loadingPayments ? (
+              <div className={`${styles.infoRow} ${themeClass}`}>
+                <div className={`${styles.infoLabel} ${themeClass}`}>Сумма:</div>
+                <div className={`${styles.infoValue} ${themeClass}`}>Загрузка...</div>
               </div>
-            </div>
-            
-            {refundInfo.hasRefund && (
+            ) : sessionPayments ? (
               <>
                 <div className={`${styles.infoRow} ${themeClass}`}>
-                  <div className={`${styles.infoLabel} ${themeClass}`}>Возвращено:</div>
-                  <div className={`${styles.infoValue} ${themeClass}`} style={{ color: '#2196F3', fontWeight: 'bold' }}>
-                    {formatAmount(refundInfo.refundedAmount)}
-                    {refundInfo.refundType === 'partial' && ` (частично)`}
-                    {refundInfo.refundType === 'full' && ` (полностью)`}
+                  <div className={`${styles.infoLabel} ${themeClass}`}>Общая стоимость:</div>
+                  <div className={`${styles.infoValue} ${themeClass}`}>
+                    {formatSessionDetailedCost(sessionPayments).totalCost}
                   </div>
                 </div>
-                
-                <div className={`${styles.infoRow} ${themeClass}`}>
-                  <div className={`${styles.infoLabel} ${themeClass}`}>Итого:</div>
-                  <div className={`${styles.infoValue} ${themeClass}`} style={{ color: '#2196F3', fontWeight: 'bold' }}>
-                    {formatAmount(refundInfo.finalAmount)}
-                  </div>
-                </div>
-                
-                {payment.refunded_at && (
-                  <div className={`${styles.infoRow} ${themeClass}`}>
-                    <div className={`${styles.infoLabel} ${themeClass}`}>Время возврата:</div>
-                    <div className={`${styles.infoValue} ${themeClass}`}>
-                      {formatDate(payment.refunded_at)}
+                {formatSessionDetailedCost(sessionPayments).details.map((detail, index) => (
+                  <div key={index}>
+                    <div className={`${styles.infoRow} ${themeClass}`}>
+                      <div className={`${styles.infoLabel} ${themeClass}`}>{detail.label}:</div>
+                      <div className={`${styles.infoValue} ${themeClass}`}>
+                        {detail.value}
+                      </div>
                     </div>
+                    {detail.refunded && (
+                      <div className={`${styles.infoRow} ${themeClass}`}>
+                        <div className={`${styles.infoLabel} ${themeClass}`}>Возвращено:</div>
+                        <div className={`${styles.infoValue} ${themeClass}`} style={{ color: '#2196F3', fontWeight: 'bold' }}>
+                          {detail.refunded}
+                        </div>
+                      </div>
+                    )}
                   </div>
-                )}
+                ))}
               </>
+            ) : (
+              <div className={`${styles.infoRow} ${themeClass}`}>
+                <div className={`${styles.infoLabel} ${themeClass}`}>Сумма:</div>
+                <div className={`${styles.infoValue} ${themeClass}`}>
+                  {formatAmountWithRefund(payment)}
+                </div>
+              </div>
             )}
+            
+
             
             {/* Кнопка повторной оплаты для неудачных платежей */}
             {payment.status === 'failed' && (
@@ -511,15 +551,17 @@ const SessionDetails = ({ theme = 'light', user }) => {
         {/* Кнопки для активной сессии */}
         {session.status === 'active' && (
           <div className={styles.buttonGroup}>
-            <Button 
-              theme={theme} 
-              onClick={openExtendModal}
-              disabled={actionLoading}
-              loading={actionLoading}
-              style={{ marginTop: '10px', marginRight: '10px' }}
-            >
-              Продлить мойку
-            </Button>
+            {canExtendSession && (
+              <Button 
+                theme={theme} 
+                onClick={openExtendModal}
+                disabled={actionLoading}
+                loading={actionLoading}
+                style={{ marginTop: '10px', marginRight: '10px' }}
+              >
+                Продлить мойку
+              </Button>
+            )}
             <Button 
               theme={theme} 
               variant="danger"

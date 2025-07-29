@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"sort"
 	"time"
 
 	"github.com/google/uuid"
@@ -17,6 +18,11 @@ import (
 // SessionStatusUpdater интерфейс для обновления статуса сессии
 type SessionStatusUpdater interface {
 	UpdateSessionStatus(sessionID uuid.UUID, status string) error
+}
+
+// SessionExtensionUpdater интерфейс для обновления времени продления сессии
+type SessionExtensionUpdater interface {
+	UpdateSessionExtension(sessionID uuid.UUID, extensionTimeMinutes int) error
 }
 
 // TinkoffClient интерфейс для работы с Tinkoff API
@@ -71,16 +77,18 @@ type Service interface {
 	ListPayments(req *models.AdminListPaymentsRequest) (*models.AdminListPaymentsResponse, error)
 	RefundPayment(req *models.RefundPaymentRequest) (*models.RefundPaymentResponse, error)
 	CalculatePartialRefund(req *models.CalculatePartialRefundRequest) (*models.CalculatePartialRefundResponse, error)
+	CalculateSessionRefund(req *models.CalculateSessionRefundRequest) (*models.CalculateSessionRefundResponse, error)
 }
 
 // service реализация Service
 type service struct {
-	repository      repository.Repository
-	settingsRepo    settingsRepo.Repository
-	sessionUpdater  SessionStatusUpdater
-	tinkoffClient   TinkoffClient
-	terminalKey     string
-	secretKey       string
+	repository           repository.Repository
+	settingsRepo         settingsRepo.Repository
+	sessionUpdater       SessionStatusUpdater
+	sessionExtensionUpdater SessionExtensionUpdater
+	tinkoffClient        TinkoffClient
+	terminalKey          string
+	secretKey            string
 }
 
 // generateRandomString генерирует короткую случайную строку
@@ -91,14 +99,15 @@ func generateRandomString(length int) string {
 }
 
 // NewService создает новый экземпляр Service
-func NewService(repository repository.Repository, settingsRepo settingsRepo.Repository, sessionUpdater SessionStatusUpdater, tinkoffClient TinkoffClient, terminalKey, secretKey string) Service {
+func NewService(repository repository.Repository, settingsRepo settingsRepo.Repository, sessionUpdater SessionStatusUpdater, sessionExtensionUpdater SessionExtensionUpdater, tinkoffClient TinkoffClient, terminalKey, secretKey string) Service {
 	return &service{
-		repository:    repository,
-		settingsRepo:  settingsRepo,
-		sessionUpdater: sessionUpdater,
-		tinkoffClient: tinkoffClient,
-		terminalKey:   terminalKey,
-		secretKey:     secretKey,
+		repository:              repository,
+		settingsRepo:            settingsRepo,
+		sessionUpdater:          sessionUpdater,
+		sessionExtensionUpdater: sessionExtensionUpdater,
+		tinkoffClient:           tinkoffClient,
+		terminalKey:             terminalKey,
+		secretKey:               secretKey,
 	}
 }
 
@@ -177,17 +186,40 @@ func (s *service) CalculateExtensionPrice(req *models.CalculateExtensionPriceReq
 		return nil, fmt.Errorf("неверный формат базовой цены в настройках: %w", err)
 	}
 
-	// Рассчитываем цену продления
-	extensionPrice := basePricePerMinute * req.ExtensionTimeMinutes
+	// Рассчитываем базовую цену продления
+	basePrice := basePricePerMinute * req.ExtensionTimeMinutes
+	totalPrice := basePrice
 
-	// Разбивка цены (в копейках для Tinkoff)
+	// Разбивка цены
 	breakdown := models.PriceBreakdown{
-		BasePrice:     extensionPrice,
+		BasePrice:     basePrice,
 		ChemistryPrice: 0,
 	}
 
+	// Если используется химия, добавляем стоимость химии
+	if req.WithChemistry {
+		chemistryPriceSetting, err := s.settingsRepo.GetServiceSetting(req.ServiceType, "chemistry_price_per_minute")
+		if err != nil {
+			return nil, fmt.Errorf("не удалось получить цену химии: %w", err)
+		}
+
+		// Проверяем, что настройка найдена
+		if chemistryPriceSetting == nil {
+			return nil, fmt.Errorf("настройка цены химии для услуги '%s' не найдена", req.ServiceType)
+		}
+
+		var chemistryPricePerMinute int
+		if err := json.Unmarshal(chemistryPriceSetting.SettingValue, &chemistryPricePerMinute); err != nil {
+			return nil, fmt.Errorf("неверный формат цены химии в настройках: %w", err)
+		}
+
+		chemistryPrice := chemistryPricePerMinute * req.ExtensionTimeMinutes
+		breakdown.ChemistryPrice = chemistryPrice
+		totalPrice += chemistryPrice
+	}
+
 	return &models.CalculateExtensionPriceResponse{
-		Price:     extensionPrice,
+		Price:     totalPrice,
 		Currency:  "RUB",
 		Breakdown: breakdown,
 	}, nil
@@ -428,6 +460,13 @@ func (s *service) HandleWebhook(req *models.WebhookRequest) error {
 		if err := s.updateSessionStatus(payment); err != nil {
 			log.Printf("Ошибка обновления статуса сессии: %v", err)
 		}
+		
+		// Если платеж успешен и это платеж продления, обновляем время продления сессии
+		if payment.Status == models.PaymentStatusSucceeded && payment.PaymentType == models.PaymentTypeExtension {
+			if err := s.updateSessionExtension(payment); err != nil {
+				log.Printf("Ошибка обновления времени продления сессии: %v", err)
+			}
+		}
 	}
 
 	return nil
@@ -457,6 +496,18 @@ func (s *service) updateSessionStatus(payment *models.Payment) error {
 	}
 	
 	log.Printf("Статус сессии %s успешно обновлен на '%s'", payment.SessionID, newSessionStatus)
+	return nil
+}
+
+// updateSessionExtension обновляет время продления сессии при успешном платеже продления
+func (s *service) updateSessionExtension(payment *models.Payment) error {
+	// Обновляем время продления сессии через Session Extension Updater
+	err := s.sessionExtensionUpdater.UpdateSessionExtension(payment.SessionID, 0) // 0 означает использовать requested_extension_time_minutes
+	if err != nil {
+		return fmt.Errorf("ошибка обновления времени продления сессии: %w", err)
+	}
+	
+	log.Printf("Время продления сессии %s успешно обновлено", payment.SessionID)
 	return nil
 }
 
@@ -633,5 +684,186 @@ func (s *service) CalculatePartialRefund(req *models.CalculatePartialRefundReque
 		UnusedTimeSeconds: unusedTimeSeconds,
 		PricePerSecond: basePricePerSecond,
 		TotalSessionSeconds: totalSessionSeconds,
+	}, nil
+}
+
+// CalculateSessionRefund рассчитывает возврат по всем платежам сессии
+func (s *service) CalculateSessionRefund(req *models.CalculateSessionRefundRequest) (*models.CalculateSessionRefundResponse, error) {
+	// Получаем все платежи сессии
+	paymentsResp, err := s.GetPaymentsBySessionID(req.SessionID)
+	if err != nil {
+		return nil, fmt.Errorf("ошибка получения платежей сессии: %w", err)
+	}
+
+	// Собираем все платежи в один слайс для удобства обработки
+	var allPayments []models.Payment
+	
+	if paymentsResp.MainPayment != nil {
+		allPayments = append(allPayments, *paymentsResp.MainPayment)
+	}
+	
+	for _, payment := range paymentsResp.ExtensionPayments {
+		allPayments = append(allPayments, payment)
+	}
+
+	if len(allPayments) == 0 {
+		return &models.CalculateSessionRefundResponse{
+			TotalRefundAmount: 0,
+			Refunds:           []models.SessionRefundBreakdown{},
+		}, nil
+	}
+
+	// Сортируем платежи по времени создания (хронологический порядок)
+	// Основной платеж всегда первый, затем платежи продления по времени создания
+	sort.Slice(allPayments, func(i, j int) bool {
+		return allPayments[i].CreatedAt.Before(allPayments[j].CreatedAt)
+	})
+
+	// Получаем базовую цену за минуту для типа услуги
+	basePriceSetting, err := s.settingsRepo.GetServiceSetting(req.ServiceType, "price_per_minute")
+	if err != nil {
+		return nil, fmt.Errorf("не удалось получить базовую цену: %w", err)
+	}
+
+	if basePriceSetting == nil {
+		return nil, fmt.Errorf("настройка базовой цены для услуги '%s' не найдена", req.ServiceType)
+	}
+
+	var basePricePerMinute int
+	if err := json.Unmarshal(basePriceSetting.SettingValue, &basePricePerMinute); err != nil {
+		return nil, fmt.Errorf("неверный формат базовой цены в настройках: %w", err)
+	}
+
+	// Рассчитываем цену за секунду
+	basePricePerSecond := basePricePerMinute / 60
+
+	// Рассчитываем общее время сессии в секундах для каждого платежа
+	var totalSessionSeconds []int
+	var totalTimeSeconds int
+
+	// Распределяем время между платежами
+	// Основной платеж покрывает RentalTimeMinutes
+	// Платежи продления покрывают ExtensionTimeMinutes
+	mainPaymentTimeSeconds := req.RentalTimeMinutes * 60
+
+	log.Printf("Расчет времени платежей: RentalTime=%dmin, ExtensionTime=%dmin, ExtensionPayments=%d", 
+		req.RentalTimeMinutes, req.ExtensionTimeMinutes, len(paymentsResp.ExtensionPayments))
+
+	for _, payment := range allPayments {
+		var paymentTimeSeconds int
+		if payment.PaymentType == models.PaymentTypeMain {
+			paymentTimeSeconds = mainPaymentTimeSeconds
+		} else {
+			// Для платежей продления используем время из ExtensionTimeMinutes
+			// Распределяем общее время продления между всеми платежами продления
+			if len(paymentsResp.ExtensionPayments) > 0 {
+				// Простое распределение: каждому платежу продления одинаковое время
+				extensionTimeSeconds := req.ExtensionTimeMinutes * 60
+				paymentTimeSeconds = extensionTimeSeconds / len(paymentsResp.ExtensionPayments)
+			} else {
+				paymentTimeSeconds = 0
+			}
+		}
+		
+		totalSessionSeconds = append(totalSessionSeconds, paymentTimeSeconds)
+		totalTimeSeconds += paymentTimeSeconds
+		
+		log.Printf("  Платеж %s: Type=%s, Amount=%d, Time=%ds", 
+			payment.ID, payment.PaymentType, payment.Amount, paymentTimeSeconds)
+	}
+
+	// Рассчитываем возврат последовательно по времени
+	var refunds []models.SessionRefundBreakdown
+	totalRefundAmount := 0
+	remainingUsedTime := req.UsedTimeSeconds
+	
+	log.Printf("Расчет возврата: UsedTime=%ds, RemainingUsedTime=%ds", req.UsedTimeSeconds, remainingUsedTime)
+
+	for i, payment := range allPayments {
+		paymentTimeSeconds := totalSessionSeconds[i]
+		
+		// Определяем, сколько времени использовано из этого платежа
+		var usedTimeForPayment int
+		if remainingUsedTime >= paymentTimeSeconds {
+			// Использовано все время этого платежа
+			usedTimeForPayment = paymentTimeSeconds
+			remainingUsedTime -= paymentTimeSeconds
+		} else if remainingUsedTime > 0 {
+			// Использована часть времени этого платежа
+			usedTimeForPayment = remainingUsedTime
+			remainingUsedTime = 0
+		} else {
+			// Время этого платежа не использовано
+			usedTimeForPayment = 0
+		}
+		
+		log.Printf("  Платеж %d: PaymentTime=%ds, Used=%ds, RemainingUsedTime=%ds", 
+			i+1, paymentTimeSeconds, usedTimeForPayment, remainingUsedTime)
+		
+		// Рассчитываем неиспользованное время для этого платежа
+		unusedTimeForPayment := paymentTimeSeconds - usedTimeForPayment
+		
+		// Если неиспользованное время нулевое, возврат не нужен
+		if unusedTimeForPayment <= 0 {
+			refunds = append(refunds, models.SessionRefundBreakdown{
+				PaymentID:         payment.ID,
+				PaymentType:       payment.PaymentType,
+				OriginalAmount:    payment.Amount,
+				RefundAmount:      0,
+				UsedTimeSeconds:   usedTimeForPayment,
+				UnusedTimeSeconds: 0,
+				PricePerSecond:    basePricePerSecond,
+			})
+			continue
+		}
+
+		// Рассчитываем сумму возврата для этого платежа
+		refundAmountForPayment := unusedTimeForPayment * basePricePerSecond
+		
+		// Округляем в пользу системы (до рублей)
+		refundAmountRubles := refundAmountForPayment / 100
+		refundAmountForPayment = refundAmountRubles * 100
+
+		// Проверяем, что сумма возврата не превышает оплаченную сумму
+		if refundAmountForPayment > payment.Amount {
+			refundAmountForPayment = payment.Amount
+		}
+
+		// Проверяем, что сумма возврата не превышает уже возвращенную сумму
+		remainingAmount := payment.Amount - payment.RefundedAmount
+		if refundAmountForPayment > remainingAmount {
+			refundAmountForPayment = remainingAmount
+		}
+
+		refunds = append(refunds, models.SessionRefundBreakdown{
+			PaymentID:         payment.ID,
+			PaymentType:       payment.PaymentType,
+			OriginalAmount:    payment.Amount,
+			RefundAmount:      refundAmountForPayment,
+			UsedTimeSeconds:   usedTimeForPayment,
+			UnusedTimeSeconds: unusedTimeForPayment,
+			PricePerSecond:    basePricePerSecond,
+		})
+
+		totalRefundAmount += refundAmountForPayment
+	}
+
+	log.Printf("Рассчитан возврат по сессии: SessionID=%s, TotalRefundAmount=%d, UsedTime=%ds, Payments=%d", 
+		req.SessionID, totalRefundAmount, req.UsedTimeSeconds, len(allPayments))
+	
+	// Детальное логирование для отладки
+	log.Printf("Детали расчета:")
+	for i, refund := range refunds {
+		log.Printf("  Платеж %d: ID=%s, Type=%s, Original=%d, Refund=%d, Used=%ds, Unused=%ds", 
+			i+1, refund.PaymentID, refund.PaymentType, refund.OriginalAmount, refund.RefundAmount, 
+			refund.UsedTimeSeconds, refund.UnusedTimeSeconds)
+	}
+	
+	// Логируем общее время сессии
+	log.Printf("Общее время сессии: %d секунд (%d минут)", totalTimeSeconds, totalTimeSeconds/60)
+
+	return &models.CalculateSessionRefundResponse{
+		TotalRefundAmount: totalRefundAmount,
+		Refunds:           refunds,
 	}, nil
 } 

@@ -28,11 +28,12 @@ func (h *Handler) RegisterRoutes(router *gin.RouterGroup) {
 	paymentRoutes := router.Group("/payments")
 	{
 		paymentRoutes.POST("/calculate-price", h.calculatePrice)
-	paymentRoutes.POST("/calculate-extension-price", h.calculateExtensionPrice)
+		paymentRoutes.POST("/calculate-extension-price", h.calculateExtensionPrice)
 		paymentRoutes.POST("/create", h.createPayment)
 		paymentRoutes.GET("/status", h.getPaymentStatus)
 		paymentRoutes.POST("/retry", h.retryPayment)
 		paymentRoutes.POST("/webhook", h.handleWebhook)
+		paymentRoutes.POST("/calculate-session-refund", h.calculateSessionRefund)
 	}
 
 	// Административные маршруты
@@ -191,6 +192,32 @@ func (h *Handler) adminListPayments(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
+
+	c.JSON(http.StatusOK, response)
+}
+
+// calculateSessionRefund обработчик для расчета возврата по всем платежам сессии
+func (h *Handler) calculateSessionRefund(c *gin.Context) {
+	var req models.CalculateSessionRefundRequest
+
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	// Логируем запрос с мета-параметрами
+	log.Printf("Запрос на расчет возврата по сессии: SessionID=%s, ServiceType=%s, UsedTime=%ds", 
+		req.SessionID, req.ServiceType, req.UsedTimeSeconds)
+
+	response, err := h.service.CalculateSessionRefund(&req)
+	if err != nil {
+		log.Printf("Ошибка расчета возврата по сессии: %v", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	log.Printf("Рассчитан возврат по сессии: SessionID=%s, TotalRefundAmount=%d", 
+		req.SessionID, response.TotalRefundAmount)
 
 	c.JSON(http.StatusOK, response)
 } 

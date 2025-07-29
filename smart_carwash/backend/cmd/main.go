@@ -101,8 +101,8 @@ func main() {
 	// Создаем сервис сессий с зависимостями
 	sessionSvc := sessionService.NewService(sessionRepository, washboxSvc, userSvc, bot, nil) // paymentSvc будет nil пока
 
-	// Создаем сервис платежей с зависимостью от sessionSvc как SessionStatusUpdater
-	paymentSvc := paymentService.NewService(paymentRepository, settingsRepository, sessionSvc, tinkoffClient, cfg.TinkoffTerminalKey, cfg.TinkoffSecretKey)
+	// Создаем сервис платежей с зависимостью от sessionSvc как SessionStatusUpdater и SessionExtensionUpdater
+	paymentSvc := paymentService.NewService(paymentRepository, settingsRepository, sessionSvc, sessionSvc, tinkoffClient, cfg.TinkoffTerminalKey, cfg.TinkoffSecretKey)
 
 	// Обновляем sessionSvc с правильным paymentSvc
 	sessionSvc = sessionService.NewService(sessionRepository, washboxSvc, userSvc, bot, paymentSvc)

@@ -36,8 +36,8 @@ func (h *Handler) RegisterRoutes(router *gin.RouterGroup) {
 		sessionRoutes.POST("/start", h.startSession)           // session_id в теле запроса
 		sessionRoutes.POST("/complete", h.completeSession)     // session_id в теле запроса
 		sessionRoutes.POST("/extend", h.extendSession)         // session_id и extension_time_minutes в теле запроса
-	sessionRoutes.POST("/extend-with-payment", h.extendSessionWithPayment) // session_id и extension_time_minutes в теле запроса
-	sessionRoutes.GET("/payments", h.getSessionPayments)   // session_id в query параметре
+		sessionRoutes.POST("/extend-with-payment", h.extendSessionWithPayment) // session_id и extension_time_minutes в теле запроса
+		sessionRoutes.GET("/payments", h.getSessionPayments)   // session_id в query параметре
 		sessionRoutes.GET("/history", h.getUserSessionHistory) // user_id в query параметре
 		sessionRoutes.POST("/cancel", h.cancelSession)         // session_id и user_id в теле запроса
 	}

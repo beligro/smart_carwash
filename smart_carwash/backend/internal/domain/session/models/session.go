@@ -31,7 +31,10 @@ type Session struct {
 	CarNumber                    string         `json:"car_number"`                              // Номер машины в сессии
 	RentalTimeMinutes            int            `json:"rental_time_minutes" gorm:"default:5"`    // Время аренды в минутах
 	ExtensionTimeMinutes         int            `json:"extension_time_minutes" gorm:"default:0"` // Время продления в минутах
+	RequestedExtensionTimeMinutes int           `json:"requested_extension_time_minutes" gorm:"default:0"` // Запрошенное время продления в минутах
 	Payment                      *Payment       `json:"payment,omitempty" gorm:"-"` // Информация о платеже (не хранится в БД)
+	MainPayment                  *Payment       `json:"main_payment,omitempty" gorm:"-"` // Основной платеж (не хранится в БД)
+	ExtensionPayments            []Payment      `json:"extension_payments,omitempty" gorm:"-"` // Платежи продления (не хранится в БД)
 	IdempotencyKey               string         `json:"idempotency_key,omitempty" gorm:"index"`
 	IsExpiringNotificationSent   bool           `json:"is_expiring_notification_sent" gorm:"default:false"`
 	IsCompletingNotificationSent bool           `json:"is_completing_notification_sent" gorm:"default:false"`

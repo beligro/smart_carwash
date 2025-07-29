@@ -358,54 +358,63 @@ func (s *ServiceImpl) CompleteSession(req *models.CompleteSessionRequest) (*mode
 		return nil, err
 	}
 
-	// Получаем основной платеж сессии для расчета возврата
-	paymentResp, err := s.paymentService.GetMainPaymentBySessionID(session.ID)
-	if err == nil && paymentResp != nil {
-		// Рассчитываем частичный возврат
-		refundReq := &paymentModels.CalculatePartialRefundRequest{
-			PaymentID:         paymentResp.ID,
-			ServiceType:       session.ServiceType,
-			RentalTimeMinutes: session.RentalTimeMinutes,
-			ExtensionTimeMinutes: session.ExtensionTimeMinutes,
-			UsedTimeSeconds:   usedTimeSeconds,
+	// Рассчитываем возврат по всем платежам сессии
+	refundReq := &paymentModels.CalculateSessionRefundRequest{
+		SessionID:         session.ID,
+		ServiceType:       session.ServiceType,
+		RentalTimeMinutes: session.RentalTimeMinutes,
+		ExtensionTimeMinutes: session.ExtensionTimeMinutes,
+		UsedTimeSeconds:   usedTimeSeconds,
+	}
+
+	log.Printf("Завершение сессии: SessionID=%s, RentalTime=%dmin, ExtensionTime=%dmin, UsedTime=%ds", 
+		session.ID, session.RentalTimeMinutes, session.ExtensionTimeMinutes, usedTimeSeconds)
+
+	refundCalcResp, err := s.paymentService.CalculateSessionRefund(refundReq)
+	if err != nil {
+		log.Printf("Ошибка расчета возврата по сессии: %v", err)
+	} else if refundCalcResp.TotalRefundAmount > 0 {
+		// Выполняем возврат по каждому платежу
+		for _, refund := range refundCalcResp.Refunds {
+			if refund.RefundAmount > 0 {
+				refundPaymentReq := &paymentModels.RefundPaymentRequest{
+					PaymentID: refund.PaymentID,
+					Amount:    refund.RefundAmount,
+				}
+
+				_, err := s.paymentService.RefundPayment(refundPaymentReq)
+				if err != nil {
+					log.Printf("Ошибка выполнения возврата для платежа %s: %v", refund.PaymentID, err)
+				} else {
+					log.Printf("Успешно выполнен возврат для платежа %s: Amount=%d", 
+						refund.PaymentID, refund.RefundAmount)
+				}
+			}
 		}
 
-		refundCalcResp, err := s.paymentService.CalculatePartialRefund(refundReq)
-		if err != nil {
-			log.Printf("Ошибка расчета частичного возврата: %v", err)
-		} else if refundCalcResp.RefundAmount > 0 {
-			// Выполняем возврат через payment service
-			refundPaymentReq := &paymentModels.RefundPaymentRequest{
-				PaymentID: paymentResp.ID,
-				Amount:    refundCalcResp.RefundAmount,
-			}
+		log.Printf("Успешно выполнен возврат по сессии: SessionID=%s, TotalRefundAmount=%d", 
+			session.ID, refundCalcResp.TotalRefundAmount)
+	}
 
-			_, err := s.paymentService.RefundPayment(refundPaymentReq)
-			if err != nil {
-				log.Printf("Ошибка выполнения частичного возврата: %v", err)
-			} else {
-				log.Printf("Успешно выполнен частичный возврат: SessionID=%s, RefundAmount=%d", 
-					session.ID, refundCalcResp.RefundAmount)
-			}
-		}
-
-		// Получаем обновленную информацию о платеже
-		updatedPaymentResp, err := s.paymentService.GetPaymentByID(paymentResp.ID)
-		if err == nil && updatedPaymentResp != nil {
+	// Получаем обновленную информацию о платежах для отображения
+	paymentsResp, err := s.paymentService.GetPaymentsBySessionID(session.ID)
+	if err == nil && paymentsResp != nil {
+		// Используем основной платеж для отображения в сессии
+		if paymentsResp.MainPayment != nil {
 			session.Payment = &models.Payment{
-				ID:             updatedPaymentResp.ID,
-				SessionID:      updatedPaymentResp.SessionID,
-				Amount:         updatedPaymentResp.Amount,
-				RefundedAmount: updatedPaymentResp.RefundedAmount,
-				Currency:       updatedPaymentResp.Currency,
-				Status:         updatedPaymentResp.Status,
-				PaymentType:    updatedPaymentResp.PaymentType,
-				PaymentURL:     updatedPaymentResp.PaymentURL,
-				TinkoffID:      updatedPaymentResp.TinkoffID,
-				ExpiresAt:      updatedPaymentResp.ExpiresAt,
-				RefundedAt:     updatedPaymentResp.RefundedAt,
-				CreatedAt:      updatedPaymentResp.CreatedAt,
-				UpdatedAt:      updatedPaymentResp.UpdatedAt,
+				ID:             paymentsResp.MainPayment.ID,
+				SessionID:      paymentsResp.MainPayment.SessionID,
+				Amount:         paymentsResp.MainPayment.Amount,
+				RefundedAmount: paymentsResp.MainPayment.RefundedAmount,
+				Currency:       paymentsResp.MainPayment.Currency,
+				Status:         paymentsResp.MainPayment.Status,
+				PaymentType:    paymentsResp.MainPayment.PaymentType,
+				PaymentURL:     paymentsResp.MainPayment.PaymentURL,
+				TinkoffID:      paymentsResp.MainPayment.TinkoffID,
+				ExpiresAt:      paymentsResp.MainPayment.ExpiresAt,
+				RefundedAt:     paymentsResp.MainPayment.RefundedAt,
+				CreatedAt:      paymentsResp.MainPayment.CreatedAt,
+				UpdatedAt:      paymentsResp.MainPayment.UpdatedAt,
 			}
 		}
 	}
@@ -463,10 +472,17 @@ func (s *ServiceImpl) ExtendSessionWithPayment(req *models.ExtendSessionWithPaym
 		return nil, fmt.Errorf("время продления должно быть положительным числом")
 	}
 
+	// Сохраняем запрошенное время продления в сессии
+	session.RequestedExtensionTimeMinutes = req.ExtensionTimeMinutes
+	if err := s.repo.UpdateSession(session); err != nil {
+		return nil, fmt.Errorf("ошибка обновления сессии: %w", err)
+	}
+
 	// Рассчитываем цену продления через Payment Service
 	priceResp, err := s.paymentService.CalculateExtensionPrice(&paymentModels.CalculateExtensionPriceRequest{
 		ServiceType:          session.ServiceType,
 		ExtensionTimeMinutes: req.ExtensionTimeMinutes,
+		WithChemistry:        session.WithChemistry,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("ошибка расчета цены продления: %w", err)
@@ -972,23 +988,50 @@ func (s *ServiceImpl) GetUserSessionHistory(req *models.GetUserSessionHistoryReq
 
 	// Заполняем информацию о платежах для каждой сессии
 	for i := range sessions {
-		// Получаем основной платеж для каждой сессии
-		paymentResp, err := s.paymentService.GetMainPaymentBySessionID(sessions[i].ID)
-		if err == nil && paymentResp != nil {
-			sessions[i].Payment = &models.Payment{
-				ID:             paymentResp.ID,
-				SessionID:      paymentResp.SessionID,
-				Amount:         paymentResp.Amount,
-				RefundedAmount: paymentResp.RefundedAmount,
-				Currency:       paymentResp.Currency,
-				Status:         paymentResp.Status,
-				PaymentType:    paymentResp.PaymentType,
-				PaymentURL:     paymentResp.PaymentURL,
-				TinkoffID:      paymentResp.TinkoffID,
-				ExpiresAt:      paymentResp.ExpiresAt,
-				RefundedAt:     paymentResp.RefundedAt,
-				CreatedAt:      paymentResp.CreatedAt,
-				UpdatedAt:      paymentResp.UpdatedAt,
+		// Получаем полную информацию о платежах сессии
+		paymentsResp, err := s.paymentService.GetPaymentsBySessionID(sessions[i].ID)
+		if err == nil && paymentsResp != nil {
+			// Основной платеж
+			if paymentsResp.MainPayment != nil {
+				sessions[i].MainPayment = &models.Payment{
+					ID:             paymentsResp.MainPayment.ID,
+					SessionID:      paymentsResp.MainPayment.SessionID,
+					Amount:         paymentsResp.MainPayment.Amount,
+					RefundedAmount: paymentsResp.MainPayment.RefundedAmount,
+					Currency:       paymentsResp.MainPayment.Currency,
+					Status:         paymentsResp.MainPayment.Status,
+					PaymentType:    paymentsResp.MainPayment.PaymentType,
+					PaymentURL:     paymentsResp.MainPayment.PaymentURL,
+					TinkoffID:      paymentsResp.MainPayment.TinkoffID,
+					ExpiresAt:      paymentsResp.MainPayment.ExpiresAt,
+					RefundedAt:     paymentsResp.MainPayment.RefundedAt,
+					CreatedAt:      paymentsResp.MainPayment.CreatedAt,
+					UpdatedAt:      paymentsResp.MainPayment.UpdatedAt,
+				}
+				// Для обратной совместимости оставляем Payment
+				sessions[i].Payment = sessions[i].MainPayment
+			}
+			
+			// Платежи продления
+			if len(paymentsResp.ExtensionPayments) > 0 {
+				sessions[i].ExtensionPayments = make([]models.Payment, len(paymentsResp.ExtensionPayments))
+				for j, extPayment := range paymentsResp.ExtensionPayments {
+					sessions[i].ExtensionPayments[j] = models.Payment{
+						ID:             extPayment.ID,
+						SessionID:      extPayment.SessionID,
+						Amount:         extPayment.Amount,
+						RefundedAmount: extPayment.RefundedAmount,
+						Currency:       extPayment.Currency,
+						Status:         extPayment.Status,
+						PaymentType:    extPayment.PaymentType,
+						PaymentURL:     extPayment.PaymentURL,
+						TinkoffID:      extPayment.TinkoffID,
+						ExpiresAt:      extPayment.ExpiresAt,
+						RefundedAt:     extPayment.RefundedAt,
+						CreatedAt:      extPayment.CreatedAt,
+						UpdatedAt:      extPayment.UpdatedAt,
+					}
+				}
 			}
 		}
 	}
@@ -1066,6 +1109,32 @@ func (s *ServiceImpl) UpdateSessionStatus(sessionID uuid.UUID, status string) er
 	err = s.repo.UpdateSession(session)
 	if err != nil {
 		return fmt.Errorf("ошибка обновления статуса сессии: %w", err)
+	}
+
+	return nil
+}
+
+// UpdateSessionExtension обновляет время продления сессии
+func (s *ServiceImpl) UpdateSessionExtension(sessionID uuid.UUID, extensionTimeMinutes int) error {
+	// Получаем сессию по ID
+	session, err := s.repo.GetSessionByID(sessionID)
+	if err != nil {
+		return fmt.Errorf("сессия не найдена: %w", err)
+	}
+
+	// Если extensionTimeMinutes = 0, используем запрошенное время продления
+	if extensionTimeMinutes == 0 {
+		extensionTimeMinutes = session.RequestedExtensionTimeMinutes
+	}
+
+	// Обновляем время продления сессии
+	session.ExtensionTimeMinutes += extensionTimeMinutes
+	session.RequestedExtensionTimeMinutes = 0 // Очищаем запрошенное время
+
+	// Сохраняем изменения
+	err = s.repo.UpdateSession(session)
+	if err != nil {
+		return fmt.Errorf("ошибка обновления времени продления сессии: %w", err)
 	}
 
 	return nil

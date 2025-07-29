@@ -105,6 +105,34 @@ export const formatRefundInfo = (payment) => {
 };
 
 /**
+ * Форматирует информацию о возврате для всех платежей сессии
+ * @param {Object} sessionPayments - Объект с платежами сессии
+ * @returns {Object} - Объект с информацией о возврате
+ */
+export const formatSessionRefundInfo = (sessionPayments) => {
+    if (!sessionPayments) return { hasRefund: false };
+    
+    const cost = calculateSessionTotalCost(sessionPayments);
+    
+    if (cost.totalRefunded > 0) {
+        const isFullyRefunded = cost.totalRefunded >= cost.totalAmount;
+        const refundType = isFullyRefunded ? 'full' : 'partial';
+        
+        return {
+            hasRefund: true,
+            refundedAmount: cost.totalRefunded,
+            finalAmount: cost.finalAmount,
+            refundedAt: null, // Для сессии с несколькими платежами время возврата может быть разным
+            isFullyRefunded: isFullyRefunded,
+            refundType: refundType,
+            remainingAmount: cost.totalAmount - cost.totalRefunded
+        };
+    }
+    
+    return { hasRefund: false };
+};
+
+/**
  * Форматирует сумму в рублях
  * @param {number} amount - Сумма в копейках
  * @returns {string} - Отформатированная сумма в рублях
@@ -138,6 +166,134 @@ export const formatAmountWithRefund = (payment) => {
         // Частичный возврат
         return `${formatAmount(finalAmount)} (из ${formatAmount(originalAmount)}, возвращено ${formatAmount(refundedAmount)})`;
     }
+};
+
+/**
+ * Рассчитывает общую стоимость сессии (основной платеж + все продления)
+ * @param {Object} sessionPayments - Объект с платежами сессии
+ * @returns {Object} - Объект с общей стоимостью и детализацией
+ */
+export const calculateSessionTotalCost = (sessionPayments) => {
+    if (!sessionPayments) return { totalAmount: 0, totalRefunded: 0, finalAmount: 0, breakdown: [] };
+    
+    const mainPayment = sessionPayments.main_payment;
+    const extensionPayments = sessionPayments.extension_payments || [];
+    
+    let totalAmount = 0;
+    let totalRefunded = 0;
+    const breakdown = [];
+    
+    // Добавляем основной платеж
+    if (mainPayment) {
+        totalAmount += mainPayment.amount || 0;
+        totalRefunded += mainPayment.refunded_amount || 0;
+        breakdown.push({
+            type: 'main',
+            description: 'Основная оплата',
+            amount: mainPayment.amount || 0,
+            refunded: mainPayment.refunded_amount || 0
+        });
+    }
+    
+    // Добавляем платежи продления
+    extensionPayments.forEach((payment, index) => {
+        totalAmount += payment.amount || 0;
+        totalRefunded += payment.refunded_amount || 0;
+        breakdown.push({
+            type: 'extension',
+            description: `Продление ${index + 1}`,
+            amount: payment.amount || 0,
+            refunded: payment.refunded_amount || 0
+        });
+    });
+    
+    const finalAmount = totalAmount - totalRefunded;
+    
+    return {
+        totalAmount,
+        totalRefunded,
+        finalAmount,
+        breakdown
+    };
+};
+
+/**
+ * Форматирует общую стоимость сессии для краткого отображения
+ * @param {Object} sessionPayments - Объект с платежами сессии
+ * @returns {string} - Отформатированная общая стоимость
+ */
+export const formatSessionTotalCost = (sessionPayments) => {
+    const cost = calculateSessionTotalCost(sessionPayments);
+    return formatAmount(cost.finalAmount);
+};
+
+/**
+ * Форматирует детализированную стоимость сессии для подробного отображения
+ * @param {Object} sessionPayments - Объект с платежами сессии
+ * @returns {Object} - Объект с детализированной стоимостью для отображения в таблице
+ */
+export const formatSessionDetailedCost = (sessionPayments) => {
+    const cost = calculateSessionTotalCost(sessionPayments);
+    
+    if (cost.breakdown.length === 0) {
+        return {
+            totalCost: '0 ₽',
+            details: []
+        };
+    }
+    
+    if (cost.breakdown.length === 1) {
+        // Только основной платеж
+        const payment = cost.breakdown[0];
+        if (payment.refunded === 0) {
+            return {
+                totalCost: formatAmount(payment.amount),
+                details: []
+            };
+        } else {
+            return {
+                totalCost: `${formatAmount(payment.amount - payment.refunded)} (из ${formatAmount(payment.amount)}, возвращено ${formatAmount(payment.refunded)})`,
+                details: []
+            };
+        }
+    }
+    
+    // Несколько платежей - создаем структуру для отображения в таблице
+    const details = [];
+    
+    // Основной платеж
+    const mainPayment = cost.breakdown.find(p => p.type === 'main');
+    if (mainPayment) {
+        details.push({
+            label: 'Основная оплата',
+            value: formatAmount(mainPayment.amount),
+            refunded: mainPayment.refunded > 0 ? formatAmount(mainPayment.refunded) : null
+        });
+    }
+    
+    // Продления (суммируем все)
+    const extensionPayments = cost.breakdown.filter(p => p.type === 'extension');
+    if (extensionPayments.length > 0) {
+        const totalExtensionAmount = extensionPayments.reduce((sum, p) => sum + p.amount, 0);
+        const totalExtensionRefunded = extensionPayments.reduce((sum, p) => sum + p.refunded, 0);
+        
+        details.push({
+            label: 'Продление',
+            value: formatAmount(totalExtensionAmount),
+            refunded: totalExtensionRefunded > 0 ? formatAmount(totalExtensionRefunded) : null
+        });
+    }
+    
+    // Общая стоимость
+    let totalCost = formatAmount(cost.totalAmount);
+    if (cost.totalRefunded > 0) {
+        totalCost = `${formatAmount(cost.finalAmount)} (из ${formatAmount(cost.totalAmount)}, возвращено ${formatAmount(cost.totalRefunded)})`;
+    }
+    
+    return {
+        totalCost,
+        details
+    };
 };
   
   /**

@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import styles from './SessionHistory.module.css';
 import { Card, Button, StatusBadge } from '../../../../shared/components/UI';
 import { formatDate } from '../../../../shared/utils/formatters';
-import { getSessionStatusDescription } from '../../../../shared/utils/statusHelpers';
+import { getSessionStatusDescription, formatSessionTotalCost } from '../../../../shared/utils/statusHelpers';
 import ApiService from '../../../../shared/services/ApiService';
 
 /**
@@ -119,19 +119,15 @@ const SessionHistory = ({ user, theme = 'light', onBack }) => {
                     <div className={styles.paymentInfo}>
                       <div className={styles.paymentAmount}>
                         <span className={`${styles.paymentText} ${themeClass}`}>
-                          💰 Стоимость: {(session.payment.amount / 100).toFixed(2)} {session.payment.currency}
+                          💰 Стоимость: {session.main_payment || session.extension_payments ? 
+                            formatSessionTotalCost({
+                              main_payment: session.main_payment,
+                              extension_payments: session.extension_payments || []
+                            }) : 
+                            session.payment ? `${(session.payment.amount / 100).toFixed(2)} ${session.payment.currency}` : 
+                            'Нет данных'}
                         </span>
                       </div>
-                      
-                      {/* Информация о возврате */}
-                      {session.payment.refunded_amount > 0 && (
-                        <div className={styles.refundInfo}>
-                          <span className={`${styles.paymentText} ${themeClass}`} style={{ color: '#2196F3' }}>
-                            💸 Возвращено: {((session.payment.refunded_amount || 0) / 100).toFixed(2)} {session.payment.currency}
-                            {session.payment.refunded_amount >= session.payment.amount ? ' (полностью)' : ' (частично)'}
-                          </span>
-                        </div>
-                      )}
                       
                       <div className={styles.paymentStatus}>
                         <span className={`${styles.paymentText} ${themeClass}`} style={{

@@ -1,11 +1,12 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import styles from './WashInfo.module.css';
 import { Card, Button, StatusBadge, Timer } from '../../../../shared/components/UI';
 import ServiceSelector from '../ServiceSelector';
 import { formatDate } from '../../../../shared/utils/formatters';
-import { getSessionStatusDescription, getServiceTypeDescription, formatRefundInfo, formatAmount, formatAmountWithRefund, getPaymentStatusText, getPaymentStatusColor } from '../../../../shared/utils/statusHelpers';
+import { getSessionStatusDescription, getServiceTypeDescription, formatRefundInfo, formatAmount, formatAmountWithRefund, getPaymentStatusText, getPaymentStatusColor, formatSessionTotalCost, formatSessionDetailedCost } from '../../../../shared/utils/statusHelpers';
 import useTimer from '../../../../shared/hooks/useTimer';
+import ApiService from '../../../../shared/services/ApiService';
 
 /**
  * Компонент WashInfo - отображает информацию о мойке
@@ -21,6 +22,8 @@ const WashInfo = ({ washInfo, theme = 'light', onCreateSession, onViewHistory, o
   const navigate = useNavigate();
   const [showServiceSelector, setShowServiceSelector] = useState(false);
   const [isCanceling, setIsCanceling] = useState(false);
+  const [sessionPayments, setSessionPayments] = useState(null);
+  const [loadingPayments, setLoadingPayments] = useState(false);
   
   // Получаем данные из washInfo (поддерживаем оба формата)
   const allBoxes = washInfo?.allBoxes || washInfo?.all_boxes || [];
@@ -40,6 +43,28 @@ const WashInfo = ({ washInfo, theme = 'light', onCreateSession, onViewHistory, o
   
   // Получаем информацию о возврате
   const refundInfo = formatRefundInfo(payment);
+  
+  // Функция для загрузки платежей сессии
+  const loadSessionPayments = async () => {
+    if (!userSession || !userSession.id) return;
+    
+    try {
+      setLoadingPayments(true);
+      const payments = await ApiService.getSessionPayments(userSession.id);
+      setSessionPayments(payments);
+    } catch (error) {
+      console.error('Ошибка при загрузке платежей сессии:', error);
+    } finally {
+      setLoadingPayments(false);
+    }
+  };
+  
+  // Загружаем платежи при изменении сессии
+  useEffect(() => {
+    if (userSession && userSession.id) {
+      loadSessionPayments();
+    }
+  }, [userSession?.id]);
   
   // Функция для перехода на страницу сессии
   const handleViewSessionDetails = () => {
@@ -212,7 +237,7 @@ const WashInfo = ({ washInfo, theme = 'light', onCreateSession, onViewHistory, o
                   fontSize: '12px'
                 }}>
                   <p style={{ margin: '0 0 4px 0', color: '#2E7D32', fontWeight: 'bold' }}>
-                    💰 Стоимость: {formatAmountWithRefund(payment)}
+                    💰 Стоимость: {loadingPayments ? 'Загрузка...' : sessionPayments ? formatSessionTotalCost(sessionPayments) : formatAmountWithRefund(payment)}
                   </p>
                   {refundInfo.hasRefund && (
                     <>
@@ -310,7 +335,7 @@ const WashInfo = ({ washInfo, theme = 'light', onCreateSession, onViewHistory, o
                   border: '1px solid #81C784'
                 }}>
                   <p style={{ margin: '0 0 4px 0', color: '#2E7D32', fontWeight: 'bold' }}>
-                    💰 Стоимость: {formatAmountWithRefund(payment)}
+                    💰 Стоимость: {loadingPayments ? 'Загрузка...' : sessionPayments ? formatSessionTotalCost(sessionPayments) : formatAmountWithRefund(payment)}
                   </p>
                   <p style={{ margin: '0 0 8px 0', fontWeight: 'bold', color: '#2E7D32' }}>
                     ✅ Оплачено, в очереди
@@ -330,7 +355,7 @@ const WashInfo = ({ washInfo, theme = 'light', onCreateSession, onViewHistory, o
                       fontSize: '12px'
                     }}>
                       <p style={{ margin: '0 0 4px 0', color: '#2E7D32', fontWeight: 'bold' }}>
-                        💰 Стоимость: {formatAmountWithRefund(payment)}
+                        💰 Стоимость: {loadingPayments ? 'Загрузка...' : sessionPayments ? formatSessionTotalCost(sessionPayments) : formatAmountWithRefund(payment)}
                       </p>
                       {refundInfo.hasRefund && (
                         <p style={{ margin: '0 0 4px 0', color: '#1976D2', fontWeight: 'bold' }}>
@@ -377,7 +402,7 @@ const WashInfo = ({ washInfo, theme = 'light', onCreateSession, onViewHistory, o
                       fontSize: '12px'
                     }}>
                       <p style={{ margin: '0 0 4px 0', color: '#C62828', fontWeight: 'bold' }}>
-                        💰 Стоимость: {formatAmountWithRefund(payment)}
+                        💰 Стоимость: {loadingPayments ? 'Загрузка...' : sessionPayments ? formatSessionTotalCost(sessionPayments) : formatAmountWithRefund(payment)}
                       </p>
                       {refundInfo.hasRefund && (
                         <p style={{ margin: '0 0 4px 0', color: '#1976D2', fontWeight: 'bold' }}>

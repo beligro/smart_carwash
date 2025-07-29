@@ -60,21 +60,37 @@ const PaymentPage = ({ session, payment, onPaymentComplete, onPaymentFailed, onB
     setLoading(true);
     setError(null);
     
-    // Проверяем статус каждые 5 секунд
+    // Проверяем статус каждые 2 секунды
     const checkInterval = setInterval(async () => {
       try {
         const updatedSession = await ApiService.getUserSession(session.user_id);
         
-        if (updatedSession.session.status === 'in_queue' || updatedSession.session.status === 'assigned') {
-          // Платеж успешен
-          clearInterval(checkInterval);
-          setLoading(false);
-          onPaymentComplete(updatedSession.session);
-        } else if (updatedSession.session.status === 'payment_failed') {
-          // Платеж неудачен
-          clearInterval(checkInterval);
-          setLoading(false);
-          onPaymentFailed(updatedSession.session);
+        if (paymentType === 'extension') {
+          // Для продления проверяем, что requested_extension_time_minutes стал 0
+          if (updatedSession.session.requested_extension_time_minutes === 0) {
+            // Продление успешно применено
+            clearInterval(checkInterval);
+            setLoading(false);
+            onPaymentComplete(updatedSession.session);
+          } else if (updatedSession.session.status === 'payment_failed') {
+            // Платеж неудачен
+            clearInterval(checkInterval);
+            setLoading(false);
+            onPaymentFailed(updatedSession.session);
+          }
+        } else {
+          // Для основного платежа проверяем статус сессии
+          if (updatedSession.session.status === 'in_queue' || updatedSession.session.status === 'assigned') {
+            // Платеж успешен
+            clearInterval(checkInterval);
+            setLoading(false);
+            onPaymentComplete(updatedSession.session);
+          } else if (updatedSession.session.status === 'payment_failed') {
+            // Платеж неудачен
+            clearInterval(checkInterval);
+            setLoading(false);
+            onPaymentFailed(updatedSession.session);
+          }
         }
       } catch (err) {
         setError('Ошибка проверки статуса платежа');
@@ -146,7 +162,7 @@ const PaymentPage = ({ session, payment, onPaymentComplete, onPaymentFailed, onB
             </div>
             <div className={styles.duration}>
               {paymentType === 'extension' 
-                ? `${session.extension_time_minutes || 0} минут продления`
+                ? `${session.requested_extension_time_minutes || 0} минут продления`
                 : `${session.rental_time_minutes} минут`
               }
             </div>

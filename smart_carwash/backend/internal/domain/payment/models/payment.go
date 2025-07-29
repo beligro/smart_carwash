@@ -57,6 +57,7 @@ type CalculatePriceResponse struct {
 type CalculateExtensionPriceRequest struct {
 	ServiceType           string `json:"service_type" binding:"required"`
 	ExtensionTimeMinutes  int    `json:"extension_time_minutes" binding:"required"`
+	WithChemistry         bool   `json:"with_chemistry"`
 }
 
 // CalculateExtensionPriceResponse представляет ответ на расчет цены продления
@@ -194,4 +195,30 @@ type GetPaymentsBySessionRequest struct {
 type GetPaymentsBySessionResponse struct {
 	MainPayment       *Payment   `json:"main_payment,omitempty"`
 	ExtensionPayments []Payment  `json:"extension_payments,omitempty"`
+}
+
+// CalculateSessionRefundRequest представляет запрос на расчет возврата по всем платежам сессии
+type CalculateSessionRefundRequest struct {
+	SessionID         uuid.UUID `json:"session_id" binding:"required"`
+	ServiceType       string    `json:"service_type" binding:"required"`
+	RentalTimeMinutes int       `json:"rental_time_minutes" binding:"required"` // время аренды в минутах
+	ExtensionTimeMinutes int    `json:"extension_time_minutes"` // время продления в минутах
+	UsedTimeSeconds   int       `json:"used_time_seconds" binding:"required"` // использованное время в секундах
+}
+
+// SessionRefundBreakdown представляет детали возврата для одного платежа
+type SessionRefundBreakdown struct {
+	PaymentID         uuid.UUID `json:"payment_id"`
+	PaymentType       string    `json:"payment_type"`
+	OriginalAmount    int       `json:"original_amount"` // оригинальная сумма платежа в копейках
+	RefundAmount      int       `json:"refund_amount"`   // сумма возврата в копейках
+	UsedTimeSeconds   int       `json:"used_time_seconds"` // использованное время для этого платежа в секундах
+	UnusedTimeSeconds int       `json:"unused_time_seconds"` // неиспользованное время для этого платежа в секундах
+	PricePerSecond    int       `json:"price_per_second"` // цена за секунду для этого платежа в копейках
+}
+
+// CalculateSessionRefundResponse представляет ответ на расчет возврата по всем платежам сессии
+type CalculateSessionRefundResponse struct {
+	TotalRefundAmount int                    `json:"total_refund_amount"` // общая сумма возврата в копейках
+	Refunds           []SessionRefundBreakdown `json:"refunds"`           // детали возвратов по каждому платежу
 } 
