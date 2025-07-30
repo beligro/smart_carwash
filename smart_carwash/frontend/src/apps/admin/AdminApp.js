@@ -9,6 +9,8 @@ import WashBoxManagement from './components/WashBoxManagement';
 import SessionManagement from './components/SessionManagement';
 import QueueStatus from './components/QueueStatus';
 import UserManagement from './components/UserManagement';
+import PaymentManagement from './components/PaymentManagement';
+import SettingsManagement from './components/SettingsManagement';
 
 const AdminContainer = styled.div`
   display: flex;
@@ -195,6 +197,16 @@ const AdminApp = () => {
               Управление кассирами
             </NavLink>
           </NavItem>
+          <NavItem>
+            <NavLink to="/admin/payments" theme={theme}>
+              Платежи
+            </NavLink>
+          </NavItem>
+          <NavItem>
+            <NavLink to="/admin/settings" theme={theme}>
+              Настройки
+            </NavLink>
+          </NavItem>
         </NavList>
       </Navigation>
       
@@ -206,6 +218,8 @@ const AdminApp = () => {
           <Route path="/queue" element={<QueueStatus />} />
           <Route path="/users" element={<UserManagement />} />
           <Route path="/cashiers" element={<CashierManagement />} />
+          <Route path="/payments" element={<PaymentManagement />} />
+          <Route path="/settings" element={<SettingsManagement />} />
         </Routes>
       </Content>
     </AdminContainer>

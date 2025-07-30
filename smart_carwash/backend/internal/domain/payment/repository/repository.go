@@ -86,11 +86,22 @@ func (r *repository) ListPayments(req *models.AdminListPaymentsRequest) ([]model
 	query := r.db.Model(&models.Payment{})
 
 	// Применяем фильтры
+	if req.PaymentID != nil {
+		query = query.Where("id = ?", *req.PaymentID)
+	}
 	if req.SessionID != nil {
 		query = query.Where("session_id = ?", *req.SessionID)
 	}
+	if req.UserID != nil {
+		// Для фильтрации по пользователю нужно присоединить таблицу sessions
+		query = query.Joins("JOIN sessions ON payments.session_id = sessions.id").
+			Where("sessions.user_id = ?", *req.UserID)
+	}
 	if req.Status != nil {
 		query = query.Where("status = ?", *req.Status)
+	}
+	if req.PaymentType != nil {
+		query = query.Where("payment_type = ?", *req.PaymentType)
 	}
 	if req.DateFrom != nil {
 		query = query.Where("created_at >= ?", *req.DateFrom)

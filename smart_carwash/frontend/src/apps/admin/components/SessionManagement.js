@@ -532,6 +532,13 @@ const SessionManagement = () => {
                 <ActionButton theme={theme} onClick={() => openSessionModal(session)}>
                   Подробнее
                 </ActionButton>
+                <ActionButton 
+                  theme={theme} 
+                  onClick={() => navigate(`/admin/payments?session_id=${session.id}`)}
+                  style={{ marginLeft: '8px', backgroundColor: '#10b981' }}
+                >
+                  Платежи
+                </ActionButton>
               </Td>
             </tr>
           ))}

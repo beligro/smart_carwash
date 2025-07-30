@@ -131,12 +131,15 @@ type WebhookRequest struct {
 
 // AdminListPaymentsRequest запрос на получение списка платежей с фильтрацией
 type AdminListPaymentsRequest struct {
-	SessionID *uuid.UUID `json:"session_id"`
-	Status    *string    `json:"status" binding:"omitempty,oneof=pending succeeded failed refunded"`
-	DateFrom  *time.Time `json:"date_from"`
-	DateTo    *time.Time `json:"date_to"`
-	Limit     *int       `json:"limit"`
-	Offset    *int       `json:"offset"`
+	PaymentID   *uuid.UUID `json:"payment_id"`
+	SessionID   *uuid.UUID `json:"session_id"`
+	UserID      *uuid.UUID `json:"user_id"`
+	Status      *string    `json:"status" binding:"omitempty,oneof=pending succeeded failed refunded"`
+	PaymentType *string    `json:"payment_type" binding:"omitempty,oneof=main extension"`
+	DateFrom    *time.Time `json:"date_from"`
+	DateTo      *time.Time `json:"date_to"`
+	Limit       *int       `json:"limit"`
+	Offset      *int       `json:"offset"`
 }
 
 // AdminListPaymentsResponse ответ на получение списка платежей
@@ -145,6 +148,20 @@ type AdminListPaymentsResponse struct {
 	Total    int       `json:"total"`
 	Limit    int       `json:"limit"`
 	Offset   int       `json:"offset"`
+}
+
+// AdminRefundPaymentRequest представляет запрос на возврат платежа (админка)
+type AdminRefundPaymentRequest struct {
+	PaymentID uuid.UUID `json:"payment_id" binding:"required"`
+	Amount    int       `json:"amount" binding:"required"` // сумма возврата в копейках
+}
+
+// AdminRefundPaymentResponse представляет ответ на возврат платежа (админка)
+type AdminRefundPaymentResponse struct {
+	Payment Payment `json:"payment"`
+	Refund  Refund  `json:"refund"`
+	Success bool     `json:"success"`
+	Message string   `json:"message"`
 }
 
 // RefundPaymentRequest представляет запрос на возврат платежа

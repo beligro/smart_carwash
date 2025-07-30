@@ -210,7 +210,7 @@ const ApiService = {
   },
 
   // === МЕТОДЫ ДЛЯ РАБОТЫ С ПЛАТЕЖАМИ ===
-
+  
   // Расчет цены услуги
   calculatePrice: async (data) => {
     try {
@@ -410,6 +410,44 @@ const ApiService = {
       console.error('Ошибка отмены сессии:', error);
       throw error;
     }
+  },
+
+  // === МЕТОДЫ ДЛЯ РАБОТЫ С ПЛАТЕЖАМИ ===
+  
+  // Получение списка платежей (админка)
+  getPayments: async (filters = {}) => {
+    const queryString = toSnakeCaseQuery(filters);
+    const response = await api.get(`/admin/payments?${queryString}`);
+    return response.data;
+  },
+
+  // Возврат платежа (админка)
+  refundPayment: async (data) => {
+    const snakeData = toSnakeCase(data);
+    const response = await api.post('/admin/payments/refund', snakeData);
+    return response.data;
+  },
+
+  // === МЕТОДЫ ДЛЯ РАБОТЫ С НАСТРОЙКАМИ ===
+  
+  // Получение настроек сервиса (админка)
+  getSettings: async (serviceType) => {
+    const response = await api.get(`/admin/settings?service_type=${serviceType}`);
+    return response.data;
+  },
+
+  // Обновление цен (админка)
+  updatePrices: async (data) => {
+    const snakeData = toSnakeCase(data);
+    const response = await api.put('/admin/settings/prices', snakeData);
+    return response.data;
+  },
+
+  // Обновление времени аренды (админка)
+  updateRentalTimes: async (data) => {
+    const snakeData = toSnakeCase(data);
+    const response = await api.put('/admin/settings/rental-times', snakeData);
+    return response.data;
   }
 };
 

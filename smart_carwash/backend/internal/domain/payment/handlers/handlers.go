@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"strconv"
 	"log"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -40,6 +41,7 @@ func (h *Handler) RegisterRoutes(router *gin.RouterGroup) {
 	adminRoutes := router.Group("/admin/payments")
 	{
 		adminRoutes.GET("", h.adminListPayments)
+		adminRoutes.POST("/refund", h.adminRefundPayment)
 	}
 }
 
@@ -165,14 +167,42 @@ func (h *Handler) adminListPayments(c *gin.Context) {
 	var req models.AdminListPaymentsRequest
 
 	// Парсим query параметры
+	if paymentIDStr := c.Query("payment_id"); paymentIDStr != "" {
+		if paymentID, err := uuid.Parse(paymentIDStr); err == nil {
+			req.PaymentID = &paymentID
+		}
+	}
+
 	if sessionIDStr := c.Query("session_id"); sessionIDStr != "" {
 		if sessionID, err := uuid.Parse(sessionIDStr); err == nil {
 			req.SessionID = &sessionID
 		}
 	}
 
+	if userIDStr := c.Query("user_id"); userIDStr != "" {
+		if userID, err := uuid.Parse(userIDStr); err == nil {
+			req.UserID = &userID
+		}
+	}
+
 	if status := c.Query("status"); status != "" {
 		req.Status = &status
+	}
+
+	if paymentType := c.Query("payment_type"); paymentType != "" {
+		req.PaymentType = &paymentType
+	}
+
+	if dateFromStr := c.Query("date_from"); dateFromStr != "" {
+		if dateFrom, err := time.Parse("2006-01-02", dateFromStr); err == nil {
+			req.DateFrom = &dateFrom
+		}
+	}
+
+	if dateToStr := c.Query("date_to"); dateToStr != "" {
+		if dateTo, err := time.Parse("2006-01-02", dateToStr); err == nil {
+			req.DateTo = &dateTo
+		}
 	}
 
 	if limitStr := c.Query("limit"); limitStr != "" {
@@ -187,13 +217,57 @@ func (h *Handler) adminListPayments(c *gin.Context) {
 		}
 	}
 
+	// Логируем запрос с мета-параметрами
+	log.Printf("Запрос списка платежей (админка): PaymentID=%v, SessionID=%v, UserID=%v, Status=%v, PaymentType=%v, Limit=%v, Offset=%v", 
+		req.PaymentID, req.SessionID, req.UserID, req.Status, req.PaymentType, req.Limit, req.Offset)
+
 	response, err := h.service.ListPayments(&req)
 	if err != nil {
+		log.Printf("Ошибка получения списка платежей: %v", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
 
+	log.Printf("Получен список платежей: Total=%d, Limit=%d, Offset=%d", 
+		response.Total, response.Limit, response.Offset)
+
 	c.JSON(http.StatusOK, response)
+}
+
+// adminRefundPayment обработчик для возврата платежа (админка)
+func (h *Handler) adminRefundPayment(c *gin.Context) {
+	var req models.AdminRefundPaymentRequest
+
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	// Логируем запрос с мета-параметрами
+	log.Printf("Запрос на возврат платежа (админка): PaymentID=%s, Amount=%d", 
+		req.PaymentID, req.Amount)
+
+	response, err := h.service.RefundPayment(&models.RefundPaymentRequest{
+		PaymentID: req.PaymentID,
+		Amount:    req.Amount,
+	})
+	if err != nil {
+		log.Printf("Ошибка возврата платежа: %v", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	adminResponse := &models.AdminRefundPaymentResponse{
+		Payment: response.Payment,
+		Refund:  response.Refund,
+		Success: true,
+		Message: "Возврат выполнен успешно",
+	}
+
+	log.Printf("Успешно выполнен возврат платежа: PaymentID=%s, Amount=%d", 
+		req.PaymentID, req.Amount)
+
+	c.JSON(http.StatusOK, adminResponse)
 }
 
 // calculateSessionRefund обработчик для расчета возврата по всем платежам сессии
