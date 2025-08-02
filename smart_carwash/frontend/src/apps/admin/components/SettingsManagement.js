@@ -368,19 +368,21 @@ const SettingsManagement = () => {
                 </small>
               </FormGroup>
 
-              <FormGroup>
-                <FormLabel theme={theme}>Цена химии за минуту (в копейках)</FormLabel>
-                <FormInput
-                  theme={theme}
-                  type="number"
-                  value={settings.chemistry_price_per_minute}
-                  onChange={(e) => handlePriceChange('chemistry_price_per_minute', e.target.value)}
-                  placeholder="Например: 50"
-                />
-                <small style={{ color: theme.textColor, opacity: 0.7 }}>
-                  Текущая цена: {formatPrice(settings.chemistry_price_per_minute)}
-                </small>
+              {selectedService === 'wash' && (
+                <FormGroup>
+                  <FormLabel theme={theme}>Цена химии за минуту (в копейках)</FormLabel>
+                  <FormInput
+                    theme={theme}
+                    type="number"
+                    value={settings.chemistry_price_per_minute}
+                    onChange={(e) => handlePriceChange('chemistry_price_per_minute', e.target.value)}
+                    placeholder="Например: 50"
+                  />
+                  <small style={{ color: theme.textColor, opacity: 0.7 }}>
+                    Текущая цена: {formatPrice(settings.chemistry_price_per_minute)}
+                  </small>
               </FormGroup>
+              )}
             </FormGrid>
 
             <ButtonGroup>

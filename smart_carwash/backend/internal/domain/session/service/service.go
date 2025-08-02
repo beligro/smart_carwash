@@ -65,6 +65,18 @@ func NewService(repo repository.Repository, washboxService washboxService.Servic
 
 // CreateSession создает новую сессию
 func (s *ServiceImpl) CreateSession(req *models.CreateSessionRequest) (*models.Session, error) {
+	// Валидация химии
+	if req.WithChemistry {
+		switch req.ServiceType {
+		case "wash":
+			// Химия разрешена для мойки
+		case "air_dry", "vacuum":
+			return nil, fmt.Errorf("chemistry is not available for service type: %s", req.ServiceType)
+		default:
+			return nil, fmt.Errorf("invalid service type: %s", req.ServiceType)
+		}
+	}
+
 	// Проверяем идемпотентность запроса
 	existingSessionByKey, err := s.repo.GetSessionByIdempotencyKey(req.IdempotencyKey)
 	if err == nil && existingSessionByKey != nil {
@@ -759,13 +771,35 @@ func (s *ServiceImpl) ProcessQueue() error {
 			continue
 		}
 
-		// Получаем свободные боксы для данного типа услуги
-		freeBoxes, err := s.washboxService.GetFreeWashBoxesByServiceType(session.ServiceType)
+		// Получаем подходящие боксы с учетом химии
+		var freeBoxes []washboxModels.WashBox
+		var err error
+
+		switch session.ServiceType {
+		case "wash":
+			if session.WithChemistry {
+				// Ищем боксы с химией для мойки
+				freeBoxes, err = s.washboxService.GetFreeWashBoxesWithChemistry("wash")
+			} else {
+				// Ищем любые боксы для мойки
+				freeBoxes, err = s.washboxService.GetFreeWashBoxesByServiceType("wash")
+			}
+		case "air_dry":
+			// Химия недоступна для air_dry
+			freeBoxes, err = s.washboxService.GetFreeWashBoxesByServiceType("air_dry")
+		case "vacuum":
+			// Химия недоступна для vacuum
+			freeBoxes, err = s.washboxService.GetFreeWashBoxesByServiceType("vacuum")
+		default:
+			// Для неизвестных типов услуг
+			freeBoxes, err = s.washboxService.GetFreeWashBoxesByServiceType(session.ServiceType)
+		}
+
 		if err != nil {
 			return err
 		}
 
-		// Если нет свободных боксов для данного типа услуги, пропускаем сессию
+		// Если нет подходящих боксов, пропускаем сессию
 		if len(freeBoxes) == 0 {
 			continue
 		}

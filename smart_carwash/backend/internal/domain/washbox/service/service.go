@@ -14,6 +14,7 @@ type Service interface {
 	UpdateWashBoxStatus(id uuid.UUID, status string) error
 	GetFreeWashBoxes() ([]models.WashBox, error)
 	GetFreeWashBoxesByServiceType(serviceType string) ([]models.WashBox, error)
+	GetFreeWashBoxesWithChemistry(serviceType string) ([]models.WashBox, error)
 	GetWashBoxesByServiceType(serviceType string) ([]models.WashBox, error)
 	GetAllWashBoxes() ([]models.WashBox, error)
 
@@ -58,6 +59,11 @@ func (s *ServiceImpl) GetFreeWashBoxesByServiceType(serviceType string) ([]model
 	return s.repo.GetFreeWashBoxesByServiceType(serviceType)
 }
 
+// GetFreeWashBoxesWithChemistry получает все свободные боксы мойки с химией определенного типа
+func (s *ServiceImpl) GetFreeWashBoxesWithChemistry(serviceType string) ([]models.WashBox, error) {
+	return s.repo.GetFreeWashBoxesWithChemistry(serviceType)
+}
+
 // GetWashBoxesByServiceType получает все боксы мойки определенного типа
 func (s *ServiceImpl) GetWashBoxesByServiceType(serviceType string) ([]models.WashBox, error) {
 	return s.repo.GetWashBoxesByServiceType(serviceType)
@@ -96,6 +102,14 @@ func (s *ServiceImpl) AdminCreateWashBox(req *models.AdminCreateWashBoxRequest) 
 		ServiceType: req.ServiceType,
 	}
 
+	// Устанавливаем химию по умолчанию в зависимости от типа услуги
+	if req.ChemistryEnabled != nil {
+		washBox.ChemistryEnabled = *req.ChemistryEnabled
+	} else {
+		// По умолчанию химия включена только для wash
+		washBox.ChemistryEnabled = req.ServiceType == "wash"
+	}
+
 	createdBox, err := s.repo.CreateWashBox(washBox)
 	if err != nil {
 		return nil, err
@@ -132,6 +146,10 @@ func (s *ServiceImpl) AdminUpdateWashBox(req *models.AdminUpdateWashBoxRequest) 
 
 	if req.ServiceType != nil {
 		existingBox.ServiceType = *req.ServiceType
+	}
+
+	if req.ChemistryEnabled != nil {
+		existingBox.ChemistryEnabled = *req.ChemistryEnabled
 	}
 
 	// Сохраняем изменения

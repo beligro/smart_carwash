@@ -1,7 +1,7 @@
 .PHONY: build run stop clean
 
 # Переменные
-DOCKER_COMPOSE = docker-compose
+DOCKER_COMPOSE = docker compose
 
 # Сборка проекта
 build:

@@ -15,6 +15,7 @@ type Repository interface {
 	CreateWashBox(box *models.WashBox) (*models.WashBox, error)
 	GetFreeWashBoxes() ([]models.WashBox, error)
 	GetFreeWashBoxesByServiceType(serviceType string) ([]models.WashBox, error)
+	GetFreeWashBoxesWithChemistry(serviceType string) ([]models.WashBox, error)
 	GetWashBoxesByServiceType(serviceType string) ([]models.WashBox, error)
 
 	// Административные методы
@@ -78,6 +79,13 @@ func (r *PostgresRepository) GetFreeWashBoxes() ([]models.WashBox, error) {
 func (r *PostgresRepository) GetFreeWashBoxesByServiceType(serviceType string) ([]models.WashBox, error) {
 	var boxes []models.WashBox
 	err := r.db.Where("status = ? AND service_type = ?", models.StatusFree, serviceType).Find(&boxes).Error
+	return boxes, err
+}
+
+// GetFreeWashBoxesWithChemistry получает все свободные боксы мойки с химией определенного типа
+func (r *PostgresRepository) GetFreeWashBoxesWithChemistry(serviceType string) ([]models.WashBox, error) {
+	var boxes []models.WashBox
+	err := r.db.Where("status = ? AND service_type = ? AND chemistry_enabled = ?", models.StatusFree, serviceType, true).Find(&boxes).Error
 	return boxes, err
 }
 
