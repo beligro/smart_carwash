@@ -1,10 +1,11 @@
-import React, { useEffect, useState, Suspense, lazy } from 'react';
+import React, { useEffect, useState, Suspense, lazy, useRef } from 'react';
 import WebApp from '@twa-dev/sdk';
-import { Routes, Route, Navigate, useNavigate } from 'react-router-dom';
+import { Routes, Route, Navigate, useNavigate, useLocation } from 'react-router-dom';
 import styled from 'styled-components';
 import Header from './components/Header';
 import WelcomeMessage from './components/WelcomeMessage/WelcomeMessage';
 import WashInfo from './components/WashInfo/WashInfo';
+import PaymentPage from './components/PaymentPage';
 import ApiService from '../../shared/services/ApiService';
 import { getTheme } from '../../shared/styles/theme';
 
@@ -35,12 +36,18 @@ const ContentContainer = styled.div`
  */
 const TelegramApp = () => {
   const navigate = useNavigate();
+  const location = useLocation();
   // Состояния
   const [washInfo, setWashInfo] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [theme, setTheme] = useState('light');
   const [user, setUser] = useState(null);
+  
+  // Refs для управления интервалами поллинга
+  const queuePollingInterval = useRef(null);
+  const sessionPollingInterval = useRef(null);
+  const sessionResetTimer = useRef(null); // Таймер для сброса сессии
 
   // Инициализация приложения
   useEffect(() => {
@@ -70,23 +77,71 @@ const TelegramApp = () => {
           const telegramUser = WebApp.initDataUnsafe.user;
           
           // Получаем пользователя по telegram_id
-          getUserByTelegramId(telegramUser.id);
+          await getUserByTelegramId(telegramUser.id);
         }
       } catch (err) {
-        console.error('Ошибка инициализации Telegram WebApp:', err);
+        alert('Ошибка инициализации Telegram WebApp: ' + err.message);
+        setError('Ошибка инициализации приложения');
       }
     };
     
     initializeApp();
   }, []);
   
+  // Функция для очистки интервалов поллинга
+  const clearPollingIntervals = () => {
+    if (queuePollingInterval.current) {
+      clearInterval(queuePollingInterval.current);
+      queuePollingInterval.current = null;
+    }
+    if (sessionPollingInterval.current) {
+      clearInterval(sessionPollingInterval.current);
+      sessionPollingInterval.current = null;
+    }
+    if (sessionResetTimer.current) {
+      clearTimeout(sessionResetTimer.current);
+      sessionResetTimer.current = null;
+    }
+  };
+
+  // Функция для проверки и сброса сессии в терминальном статусе
+  const checkAndResetTerminalSession = (session) => {
+    // Проверяем, находится ли сессия в терминальном статусе
+    if (
+      session.status === 'complete' || 
+      session.status === 'canceled' ||
+      session.status === 'expired' ||
+      session.status === 'payment_failed'
+    ) {
+      // Если мы на главной странице, запускаем таймер сброса
+      if (location.pathname === '/telegram' || location.pathname === '/telegram/') {
+        // Очищаем старый таймер сброса, если он существует
+        if (sessionResetTimer.current) {
+          clearTimeout(sessionResetTimer.current);
+          sessionResetTimer.current = null;
+        }
+        
+        // Запускаем новый таймер сброса
+        sessionResetTimer.current = setTimeout(() => {
+          setWashInfo(prevInfo => ({
+            ...prevInfo,
+            userSession: null,
+            payment: null
+          }));
+          sessionResetTimer.current = null;
+        }, 5000);
+      }
+    }
+  };
+
   // Функция для получения пользователя по telegram_id
   const getUserByTelegramId = async (telegramId) => {
     try {
       const response = await ApiService.getUserByTelegramId(telegramId);
       setUser(response.user);
+      return response.user;
     } catch (err) {
-      console.error('Ошибка получения пользователя:', err);
+      alert('Ошибка получения пользователя: ' + err.message);
       
       // Если это тестовый пользователь, попробуем создать его
       if (telegramId === 12345678) {
@@ -98,12 +153,15 @@ const TelegramApp = () => {
             lastName: 'User'
           });
           setUser(createResponse.user);
+          return createResponse.user;
         } catch (createErr) {
-          console.error('Ошибка создания тестового пользователя:', createErr);
+          alert('Ошибка создания тестового пользователя: ' + createErr.message);
           setError('Не удалось создать тестового пользователя. Проверьте, что бэкенд запущен и доступен.');
+          return null;
         }
       } else {
         setError('Не удалось получить пользователя. Возможно, вы не зарегистрированы в боте. Пожалуйста, нажмите /start в боте.');
+        return null;
       }
     }
   };
@@ -116,53 +174,82 @@ const TelegramApp = () => {
         setLoading(true);
       }
       
-      const data = await ApiService.getQueueStatus();
+      const response = await ApiService.getQueueStatus();
       
-      // Обновляем данные, сохраняя структуру объекта
-      setWashInfo(prevInfo => {
-        // Если это первая загрузка или предыдущих данных нет
-        if (!prevInfo) {
+      if (response) {
+        // Обновляем информацию о мойке
+        setWashInfo(prevInfo => {
           const newInfo = {
-            allBoxes: data.all_boxes || [],
-            washQueue: data.wash_queue || { queue_size: 0, has_queue: false },
-            airDryQueue: data.air_dry_queue || { queue_size: 0, has_queue: false },
-            vacuumQueue: data.vacuum_queue || { queue_size: 0, has_queue: false },
-            totalQueueSize: data.total_queue_size || 0,
-            hasAnyQueue: data.has_any_queue || false,
-            userSession: data.user_session || null
+            ...prevInfo,
+            allBoxes: response.boxes || [],
+            washQueue: response.wash_queue || { queue_size: 0, has_queue: false },
+            airDryQueue: response.air_dry_queue || { queue_size: 0, has_queue: false },
+            vacuumQueue: response.vacuum_queue || { queue_size: 0, has_queue: false }
           };
           return newInfo;
+        });
+        
+        // Если это первая загрузка, загружаем информацию о сессии пользователя
+        if (isInitialLoad && user) {
+          try {
+            const sessionResponse = await ApiService.getUserSession(user.id);
+            
+            if (sessionResponse && sessionResponse.session) {
+              setWashInfo(prevInfo => {
+                const updatedInfo = {
+                  ...prevInfo,
+                  userSession: sessionResponse.session,
+                  payment: sessionResponse.payment // Добавляем информацию о платеже
+                };
+                return updatedInfo;
+              });
+              
+              // Проверяем, нужно ли запускать поллинг или сброс
+              const session = sessionResponse.session;
+              if (
+                session.status === 'complete' || 
+                session.status === 'canceled' ||
+                session.status === 'expired' ||
+                session.status === 'payment_failed'
+              ) {
+                // Сессия в терминальном статусе, проверяем нужно ли сбросить
+                checkAndResetTerminalSession(session);
+              } else {
+                // Сессия активна, запускаем поллинг
+                startSessionPolling(session.id);
+              }
+            }
+          } catch (err) {
+            alert('Ошибка загрузки информации о пользовательской сессии: ' + err.message);
+          }
         }
         
-        // Обновляем только изменившиеся данные
-        const updatedInfo = {
-          ...prevInfo,
-          allBoxes: data.all_boxes || prevInfo.allBoxes,
-          washQueue: data.wash_queue || prevInfo.washQueue,
-          airDryQueue: data.air_dry_queue || prevInfo.airDryQueue,
-          vacuumQueue: data.vacuum_queue || prevInfo.vacuumQueue,
-          totalQueueSize: data.total_queue_size || prevInfo.totalQueueSize,
-          hasAnyQueue: data.has_any_queue || prevInfo.hasAnyQueue,
-          userSession: data.user_session || prevInfo.userSession
-        };
-        return updatedInfo;
-      });
-      
-      setError(null);
+        setError(null);
+      } else {
+        // Если ответ пустой, инициализируем с пустыми данными
+        if (isInitialLoad) {
+          setWashInfo({
+            allBoxes: [],
+            washQueue: { queue_size: 0, has_queue: false },
+            airDryQueue: { queue_size: 0, has_queue: false },
+            vacuumQueue: { queue_size: 0, has_queue: false },
+            userSession: null,
+            payment: null
+          });
+        }
+      }
     } catch (err) {
-      console.error('Ошибка загрузки информации о мойке:', err);
-      setError('Не удалось загрузить информацию о мойке');
-      
-      // Создаем пустой объект с необходимой структурой только если нет предыдущих данных
-      if (!washInfo) {
+      console.error('Ошибка при получении статуса очереди:', err);
+      if (isInitialLoad) {
+        setError('Ошибка при загрузке данных');
+        // Инициализируем washInfo с пустыми данными при ошибке
         setWashInfo({
           allBoxes: [],
-          washQueue: { serviceType: 'wash', boxes: [], queueSize: 0, hasQueue: false },
-          airDryQueue: { serviceType: 'air_dry', boxes: [], queueSize: 0, hasQueue: false },
-          vacuumQueue: { serviceType: 'vacuum', boxes: [], queueSize: 0, hasQueue: false },
-          totalQueueSize: 0,
-          hasAnyQueue: false,
-          userSession: null
+          washQueue: { queue_size: 0, has_queue: false },
+          airDryQueue: { queue_size: 0, has_queue: false },
+          vacuumQueue: { queue_size: 0, has_queue: false },
+          userSession: null,
+          payment: null
         });
       }
     } finally {
@@ -172,43 +259,51 @@ const TelegramApp = () => {
     }
   };
   
-  // Функция для создания сессии
-  const handleCreateSession = async (serviceData) => {
+  // Функция для создания сессии с платежом
+  const handleCreateSessionWithPayment = async (serviceData) => {
     try {
-      if (!user) {
-        setError('Пользователь не авторизован');
-        return;
-      }
-      
       setLoading(true);
+      setError(null);
       
-      // Проверяем, что все необходимые данные присутствуют
-      if (!serviceData.serviceType || !serviceData.carNumber) {
-        setError('Не все данные заполнены');
-        return;
-      }
-      
-      // Добавляем данные о типе услуги, химии и номере машины в запрос
-      const response = await ApiService.createSession({ 
-        user_id: user.id,
-        service_type: serviceData.serviceType,
-        with_chemistry: serviceData.withChemistry || false,
-        rental_time_minutes: serviceData.rentalTimeMinutes || 5,
-        car_number: serviceData.carNumber
+      // Создаем сессию с платежом
+      const response = await ApiService.createSessionWithPayment({
+        userId: user.id,
+        serviceType: serviceData.serviceType,
+        withChemistry: serviceData.withChemistry,
+        carNumber: serviceData.carNumber,
+        rentalTimeMinutes: serviceData.rentalTimeMinutes
       });
-      
-      if (response.session) {
-        // Переходим на страницу сессии
-        navigate(`/telegram/session/${response.session.id}`);
+
+      if (response && response.session && response.payment) {
+        // Очищаем старый поллинг сессии перед созданием нового
+        if (sessionPollingInterval.current) {
+          clearInterval(sessionPollingInterval.current);
+          sessionPollingInterval.current = null;
+        }
         
-        // Запускаем поллинг для обновления статуса сессии
+        // Обновляем информацию о сессии пользователя
+        setWashInfo(prevInfo => ({
+          ...prevInfo,
+          userSession: response.session,
+          payment: response.payment
+        }));
+        
+        // Запускаем поллинг для новой сессии
         startSessionPolling(response.session.id);
+        
+        // Переходим на страницу оплаты
+        navigate('/telegram/payment', {
+          state: {
+            session: response.session,
+            payment: response.payment
+          }
+        });
       } else {
-        setError('Не удалось создать сессию');
+        setError('Ошибка при создании сессии с платежом');
       }
     } catch (err) {
-      console.error('Ошибка создания сессии:', err);
-      setError('Не удалось создать сессию. Попробуйте еще раз.');
+      alert('Ошибка при создании сессии с платежом: ' + err.message);
+      setError('Не удалось создать сессию с платежом. Пожалуйста, попробуйте еще раз.');
     } finally {
       setLoading(false);
     }
@@ -216,20 +311,34 @@ const TelegramApp = () => {
   
   // Функция для запуска поллинга статуса очереди и боксов
   const startQueuePolling = () => {
+    // Очищаем старый интервал, если он существует
+    if (queuePollingInterval.current) {
+      clearInterval(queuePollingInterval.current);
+    }
+    
     // Устанавливаем интервал для поллинга (каждые 10 секунд)
-    const queuePollingInterval = setInterval(() => {
+    queuePollingInterval.current = setInterval(() => {
       fetchQueueStatus(false);
     }, 10000);
     
-    // Сохраняем интервал в ref, чтобы можно было его очистить при размонтировании компонента
-    // Для простоты в этом примере мы не очищаем интервал
-    return queuePollingInterval;
+    return queuePollingInterval.current;
   };
   
-  // Функция для запуска поллинга статуса сессии
+  // Функция для поллинга статуса сессии
   const startSessionPolling = (sessionId) => {
+    // Очищаем старый интервал, если он существует
+    if (sessionPollingInterval.current) {
+      clearInterval(sessionPollingInterval.current);
+    }
+    
+    // Очищаем старый таймер сброса, если он существует
+    if (sessionResetTimer.current) {
+      clearTimeout(sessionResetTimer.current);
+      sessionResetTimer.current = null;
+    }
+    
     // Устанавливаем интервал для поллинга (каждые 5 секунд)
-    const sessionPollingInterval = setInterval(async () => {
+    sessionPollingInterval.current = setInterval(async () => {
       try {
         const sessionData = await ApiService.getSessionById(sessionId);
         
@@ -238,7 +347,8 @@ const TelegramApp = () => {
           setWashInfo(prevInfo => {
             return {
               ...prevInfo,
-              userSession: sessionData.session
+              userSession: sessionData.session,
+              payment: sessionData.payment // Добавляем информацию о платеже
             };
           });
           
@@ -246,81 +356,109 @@ const TelegramApp = () => {
           if (
             sessionData.session.status === 'complete' || 
             sessionData.session.status === 'canceled' ||
-            sessionData.session.status === 'expired'
+            sessionData.session.status === 'expired' ||
+            sessionData.session.status === 'payment_failed'
           ) {
-            clearInterval(sessionPollingInterval);
+            clearInterval(sessionPollingInterval.current);
+            sessionPollingInterval.current = null;
             
-            // Через 5 секунд обновляем блок с сессией и предлагаем начать новую
-            setTimeout(() => {
-              setWashInfo(prevInfo => ({
-                ...prevInfo,
-                userSession: null
-              }));
-            }, 5000);
+            // Сброс сессии через 5 секунд только если мы на главной странице
+            if (location.pathname === '/telegram' || location.pathname === '/telegram/') {
+              sessionResetTimer.current = setTimeout(() => {
+                setWashInfo(prevInfo => ({
+                  ...prevInfo,
+                  userSession: null,
+                  payment: null
+                }));
+                sessionResetTimer.current = null;
+              }, 5000);
+            }
           }
         }
       } catch (err) {
         console.error('Ошибка при получении статуса сессии:', err);
+        // Не показываем alert, просто логируем ошибку
       }
     }, 5000);
     
-    // Сохраняем интервал в ref, чтобы можно было его очистить при размонтировании компонента
-    // Для простоты в этом примере мы не очищаем интервал
-    return sessionPollingInterval;
+    return sessionPollingInterval.current;
   };
   
   // Запускаем поллинг при монтировании компонента
   useEffect(() => {
     if (user) {
-      try {
-        // Загружаем статус очереди и боксов при первой загрузке
-        fetchQueueStatus(true);
-        
-        // Запускаем поллинг статуса очереди (должен работать всегда)
-        const queueInterval = startQueuePolling();
+      const loadData = async () => {
+        try {
+          // Загружаем статус очереди и боксов при первой загрузке
+          await fetchQueueStatus(true);
+          
+          // Запускаем поллинг статуса очереди (должен работать всегда)
+          startQueuePolling();
 
-        // Загружаем информацию о сессии пользователя по user_id и запускаем поллинг по session_id
-        const loadUserSessionAndStartPolling = async () => {
-          try {
-            // Сначала пробуем получить сессию напрямую через getUserSession
-            const sessionResponse = await ApiService.getUserSession(user.id);
-            
-            if (sessionResponse && sessionResponse.session) {
-              // Обновляем данные сессии пользователя
-              setWashInfo(prevInfo => {
-                return {
-                  ...prevInfo,
-                  userSession: sessionResponse.session
-                };
-              });
+          // Загружаем информацию о сессии пользователя по user_id и запускаем поллинг по session_id
+          const loadUserSessionAndStartPolling = async () => {
+            try {
+              // Сначала пробуем получить сессию напрямую через getUserSession
+              const sessionResponse = await ApiService.getUserSession(user.id);
               
-              // Если у пользователя есть активная сессия, запускаем поллинг для неё по ID сессии
-              if (['created', 'assigned', 'active'].includes(sessionResponse.session.status)) {
-                startSessionPolling(sessionResponse.session.id);
+              if (sessionResponse && sessionResponse.session) {
+                // Обновляем данные сессии пользователя
+                setWashInfo(prevInfo => {
+                  return {
+                    ...prevInfo,
+                    userSession: sessionResponse.session,
+                    payment: sessionResponse.payment // Добавляем информацию о платеже
+                  };
+                });
+                
+                // Проверяем, нужно ли запускать поллинг или сброс
+                const session = sessionResponse.session;
+                if (
+                  session.status === 'complete' || 
+                  session.status === 'canceled' ||
+                  session.status === 'expired' ||
+                  session.status === 'payment_failed'
+                ) {
+                  // Сессия в терминальном статусе, проверяем нужно ли сбросить
+                  checkAndResetTerminalSession(session);
+                } else {
+                  // Сессия активна, запускаем поллинг
+                  startSessionPolling(session.id);
+                }
               }
-            } else {
-              console.log('No user session found');
+            } catch (err) {
+              console.error('Ошибка загрузки информации о пользовательской сессии:', err);
             }
-          } catch (err) {
-            console.error('Ошибка загрузки информации о пользовательской сессии:', err);
-          }
-        };
-        
-        loadUserSessionAndStartPolling();
-        
-        // Очищаем интервал при размонтировании
-        return () => {
-          clearInterval(queueInterval);
-        };
-      } catch (err) {
-        console.error('Error in useEffect for polling:', err);
-        setError('Ошибка при загрузке данных');
-        setLoading(false);
-      }
-    } else {
-      console.log('No user yet, skipping data loading');
+          };
+          
+          loadUserSessionAndStartPolling();
+        } catch (err) {
+          console.error('Error in useEffect for polling:', err);
+          setError('Ошибка при загрузке данных');
+          setLoading(false);
+        }
+      };
+      
+      loadData();
     }
   }, [user]);
+
+  // Очистка интервалов при размонтировании компонента
+  useEffect(() => {
+    return () => {
+      clearPollingIntervals();
+    };
+  }, []);
+
+  // Проверяем сессию при изменении маршрута на главную страницу
+  useEffect(() => {
+    if (location.pathname === '/telegram' || location.pathname === '/telegram/') {
+      // Если у нас есть сессия в терминальном статусе, запускаем таймер сброса
+      if (washInfo && washInfo.userSession) {
+        checkAndResetTerminalSession(washInfo.userSession);
+      }
+    }
+  }, [location.pathname, washInfo?.userSession]);
 
   // Функция для перехода на страницу истории сессий
   const handleViewHistory = () => {
@@ -332,11 +470,124 @@ const TelegramApp = () => {
     navigate('/telegram');
   };
 
+  // Обработчики для страницы оплаты
+  const handlePaymentComplete = (updatedSession) => {
+    // Очищаем старый поллинг сессии перед обновлением
+    if (sessionPollingInterval.current) {
+      clearInterval(sessionPollingInterval.current);
+      sessionPollingInterval.current = null;
+    }
+    
+    // Платеж успешен, обновляем информацию о сессии
+    setWashInfo(prevInfo => ({
+      ...prevInfo,
+      userSession: updatedSession,
+      payment: updatedSession.payment
+    }));
+    
+    // Запускаем поллинг для обновленной сессии
+    startSessionPolling(updatedSession.id);
+    
+    // Проверяем тип платежа
+    const paymentType = location?.state?.paymentType;
+    
+    if (paymentType === 'extension') {
+      // Для платежа продления возвращаемся к деталям сессии
+      navigate('/telegram/session/' + updatedSession.id, { 
+        state: { 
+          session: updatedSession,
+          payment: updatedSession.payment
+        } 
+      });
+    } else {
+      // Для основного платежа переходим к деталям сессии
+      navigate('/telegram/session/' + updatedSession.id, { 
+        state: { 
+          session: updatedSession,
+          payment: updatedSession.payment
+        } 
+      });
+    }
+  };
+
+  const handlePaymentFailed = (updatedSession) => {
+    // Очищаем старый поллинг сессии перед обновлением
+    if (sessionPollingInterval.current) {
+      clearInterval(sessionPollingInterval.current);
+      sessionPollingInterval.current = null;
+    }
+    
+    // Платеж неудачен, обновляем информацию о сессии
+    setWashInfo(prevInfo => ({
+      ...prevInfo,
+      userSession: updatedSession,
+      payment: updatedSession.payment
+    }));
+    
+    // Запускаем поллинг для обновленной сессии
+    startSessionPolling(updatedSession.id);
+    
+    // Возвращаемся на главную страницу
+    navigate('/telegram');
+  };
+
+  const handlePaymentBack = () => {
+    // Возвращаемся на главную страницу
+    navigate('/telegram');
+  };
+
+    // Обработчик отмены сессии
+  const handleCancelSession = async (sessionId, userId) => {
+    try {
+      // Отменяем сессию через API
+      const response = await ApiService.cancelSession(sessionId, userId);
+      
+      // Обновляем информацию о сессии
+      setWashInfo(prevInfo => ({
+        ...prevInfo,
+        userSession: response.session,
+        payment: response.payment
+      }));
+      
+      // Очищаем поллинг сессии, так как она отменена
+      if (sessionPollingInterval.current) {
+        clearInterval(sessionPollingInterval.current);
+        sessionPollingInterval.current = null;
+      }
+      
+      // Очищаем старый таймер сброса, если он существует
+      if (sessionResetTimer.current) {
+        clearTimeout(sessionResetTimer.current);
+        sessionResetTimer.current = null;
+      }
+      
+      // Сбрасываем сессию через 5 секунд на главной странице
+      if (location.pathname === '/telegram' || location.pathname === '/telegram/') {
+        sessionResetTimer.current = setTimeout(() => {
+          setWashInfo(prevInfo => ({
+            ...prevInfo,
+            userSession: null,
+            payment: null
+          }));
+          sessionResetTimer.current = null;
+        }, 5000);
+      }
+      
+      // Запускаем поллинг очереди для обновления статуса
+      startQueuePolling();
+      
+      console.log('Сессия успешно отменена:', response);
+    } catch (error) {
+      console.error('Ошибка при отмене сессии:', error);
+      throw error;
+    }
+  };
+
   const themeObject = getTheme(theme);
 
   // Обработка ошибок рендеринга
   if (!themeObject) {
-    console.error('Ошибка: не удалось получить тему');
+    alert('Ошибка: не удалось получить тему');
     return <div>Ошибка загрузки приложения</div>;
   }
 
@@ -358,8 +609,9 @@ const TelegramApp = () => {
                     <WashInfo 
                       washInfo={washInfo} 
                       theme={theme} 
-                      onCreateSession={handleCreateSession}
+                      onCreateSession={handleCreateSessionWithPayment}
                       onViewHistory={handleViewHistory}
+                      onCancelSession={handleCancelSession}
                       user={user}
                     />
                   ) : (
@@ -391,7 +643,23 @@ const TelegramApp = () => {
                 </Suspense>
               } 
             />
-            <Route path="*" element={<Navigate to="/telegram" />} />
+            <Route 
+              path="/payment" 
+              element={
+                <Suspense fallback={<div>Загрузка страницы оплаты...</div>}>
+                  <PaymentPage 
+                    session={location?.state?.session}
+                    payment={location?.state?.payment}
+                    onPaymentComplete={handlePaymentComplete}
+                    onPaymentFailed={handlePaymentFailed}
+                    onBack={handlePaymentBack}
+                    theme={theme}
+                    paymentType={location?.state?.paymentType || 'main'}
+                  />
+                </Suspense>
+              } 
+            />
+            <Route path="*" element={<Navigate to="/" />} />
           </Routes>
         </ContentContainer>
       </AppContainer>

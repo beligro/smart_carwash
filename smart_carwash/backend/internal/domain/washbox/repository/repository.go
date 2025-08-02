@@ -15,13 +15,16 @@ type Repository interface {
 	CreateWashBox(box *models.WashBox) (*models.WashBox, error)
 	GetFreeWashBoxes() ([]models.WashBox, error)
 	GetFreeWashBoxesByServiceType(serviceType string) ([]models.WashBox, error)
+	GetFreeWashBoxesWithChemistry(serviceType string) ([]models.WashBox, error)
 	GetWashBoxesByServiceType(serviceType string) ([]models.WashBox, error)
 
 	// Административные методы
 	GetWashBoxByNumber(number int) (*models.WashBox, error)
+	GetWashBoxByNumberIncludingDeleted(number int) (*models.WashBox, error)
 	UpdateWashBox(box *models.WashBox) (*models.WashBox, error)
 	DeleteWashBox(id uuid.UUID) error
 	GetWashBoxesWithFilters(status *string, serviceType *string, limit int, offset int) ([]models.WashBox, int, error)
+	RestoreWashBox(id uuid.UUID, status string, serviceType string) (*models.WashBox, error)
 }
 
 // PostgresRepository реализация Repository для PostgreSQL
@@ -79,6 +82,13 @@ func (r *PostgresRepository) GetFreeWashBoxesByServiceType(serviceType string) (
 	return boxes, err
 }
 
+// GetFreeWashBoxesWithChemistry получает все свободные боксы мойки с химией определенного типа
+func (r *PostgresRepository) GetFreeWashBoxesWithChemistry(serviceType string) ([]models.WashBox, error) {
+	var boxes []models.WashBox
+	err := r.db.Where("status = ? AND service_type = ? AND chemistry_enabled = ?", models.StatusFree, serviceType, true).Find(&boxes).Error
+	return boxes, err
+}
+
 // GetWashBoxesByServiceType получает все боксы мойки определенного типа
 func (r *PostgresRepository) GetWashBoxesByServiceType(serviceType string) ([]models.WashBox, error) {
 	var boxes []models.WashBox
@@ -90,6 +100,16 @@ func (r *PostgresRepository) GetWashBoxesByServiceType(serviceType string) ([]mo
 func (r *PostgresRepository) GetWashBoxByNumber(number int) (*models.WashBox, error) {
 	var box models.WashBox
 	err := r.db.Where("number = ?", number).First(&box).Error
+	if err != nil {
+		return nil, err
+	}
+	return &box, nil
+}
+
+// GetWashBoxByNumberIncludingDeleted получает бокс мойки по номеру, включая удаленные
+func (r *PostgresRepository) GetWashBoxByNumberIncludingDeleted(number int) (*models.WashBox, error) {
+	var box models.WashBox
+	err := r.db.Unscoped().Where("number = ?", number).First(&box).Error
 	if err != nil {
 		return nil, err
 	}
@@ -138,4 +158,27 @@ func (r *PostgresRepository) GetWashBoxesWithFilters(status *string, serviceType
 	}
 
 	return boxes, int(total), nil
+}
+
+// RestoreWashBox восстанавливает удаленный бокс мойки
+func (r *PostgresRepository) RestoreWashBox(id uuid.UUID, status string, serviceType string) (*models.WashBox, error) {
+	// Получаем удаленный бокс
+	var box models.WashBox
+	err := r.db.Unscoped().First(&box, id).Error
+	if err != nil {
+		return nil, err
+	}
+
+	// Обновляем бокс: убираем deleted_at и обновляем статус и тип услуги
+	box.Status = status
+	box.ServiceType = serviceType
+	box.DeletedAt = gorm.DeletedAt{}
+
+	// Сохраняем обновленный бокс
+	updatedBox, err := r.UpdateWashBox(&box)
+	if err != nil {
+		return nil, err
+	}
+
+	return updatedBox, nil
 }

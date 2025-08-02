@@ -370,6 +370,13 @@ const UserManagement = () => {
                   <ActionButton theme={theme} onClick={() => openUserModal(user)}>
                     Подробнее
                   </ActionButton>
+                  <ActionButton 
+                    theme={theme} 
+                    onClick={() => navigate(`/admin/payments?user_id=${user.id}`)}
+                    style={{ marginLeft: '8px', backgroundColor: '#10b981' }}
+                  >
+                    Платежи
+                  </ActionButton>
                 </Td>
               </RowComponent>
             );

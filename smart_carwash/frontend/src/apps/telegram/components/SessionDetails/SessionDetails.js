@@ -1,9 +1,9 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import styles from './SessionDetails.module.css';
 import { Card, Button, StatusBadge, Timer } from '../../../../shared/components/UI';
 import { formatDate } from '../../../../shared/utils/formatters';
-import { getServiceTypeDescription } from '../../../../shared/utils/statusHelpers';
+import { getServiceTypeDescription, formatRefundInfo, formatSessionRefundInfo, formatAmount, formatAmountWithRefund, getPaymentStatusText, getPaymentStatusColor, formatSessionDetailedCost } from '../../../../shared/utils/statusHelpers';
 import ApiService from '../../../../shared/services/ApiService';
 import useTimer from '../../../../shared/hooks/useTimer';
 
@@ -18,6 +18,7 @@ const SessionDetails = ({ theme = 'light', user }) => {
   const navigate = useNavigate();
   
   const [session, setSession] = useState(null);
+  const [payment, setPayment] = useState(null);
   const [box, setBox] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -26,9 +27,89 @@ const SessionDetails = ({ theme = 'light', user }) => {
   const [availableRentalTimes, setAvailableRentalTimes] = useState([]);
   const [selectedExtensionTime, setSelectedExtensionTime] = useState(null);
   const [loadingRentalTimes, setLoadingRentalTimes] = useState(false);
+  const [isCanceling, setIsCanceling] = useState(false);
+  const [sessionPayments, setSessionPayments] = useState(null);
+  const [loadingPayments, setLoadingPayments] = useState(false);
+  
+  // Ref для управления интервалом поллинга
+  const pollingInterval = useRef(null);
   
   // Используем хук для таймера
   const { timeLeft } = useTimer(session);
+  
+  // Проверяем, можно ли отменить сессию
+  const canCancelSession = session && ['created', 'in_queue', 'assigned'].includes(session.status);
+  
+  // Проверяем, можно ли продлить сессию (только за 3 минуты до конца и если не запрошено продление)
+  const canExtendSession = session && 
+    session.status === 'active' && 
+    timeLeft !== null && 
+    timeLeft <= 1000 && // 5 минут для тестирования
+    timeLeft > 0 && // Время еще не истекло
+    session.requested_extension_time_minutes === 0; // Не запрошено продление
+  
+  // Получаем информацию о возврате
+  const refundInfo = sessionPayments ? formatSessionRefundInfo(sessionPayments) : formatRefundInfo(payment);
+  
+  // Функция для загрузки платежей сессии
+  const loadSessionPayments = async () => {
+    if (!sessionId) return;
+    
+    try {
+      setLoadingPayments(true);
+      const payments = await ApiService.getSessionPayments(sessionId);
+      setSessionPayments(payments);
+    } catch (error) {
+      console.error('Ошибка при загрузке платежей сессии:', error);
+    } finally {
+      setLoadingPayments(false);
+    }
+  };
+  
+  // Загружаем платежи при изменении сессии
+  useEffect(() => {
+    if (sessionId) {
+      loadSessionPayments();
+    }
+  }, [sessionId]);
+
+  // Функция для очистки интервала поллинга
+  const clearPollingInterval = () => {
+    if (pollingInterval.current) {
+      clearInterval(pollingInterval.current);
+      pollingInterval.current = null;
+    }
+  };
+
+  // Функция для запуска поллинга сессии
+  const startSessionPolling = () => {
+    // Очищаем старый интервал, если он существует
+    clearPollingInterval();
+    
+    // Устанавливаем интервал для поллинга (каждые 5 секунд)
+    pollingInterval.current = setInterval(async () => {
+      try {
+        const sessionData = await ApiService.getSessionById(sessionId);
+        
+        if (sessionData && sessionData.session) {
+          setSession(sessionData.session);
+          setPayment(sessionData.payment);
+          
+          // Если сессия завершена, отменена или истекла, останавливаем поллинг
+          if (
+            sessionData.session.status === 'complete' || 
+            sessionData.session.status === 'canceled' ||
+            sessionData.session.status === 'expired'
+          ) {
+            clearPollingInterval();
+          }
+        }
+      } catch (err) {
+        console.error('Ошибка при поллинге сессии:', err);
+        // Не показываем ошибку пользователю, просто логируем
+      }
+    }, 5000);
+  };
   
   // Функция для загрузки доступного времени аренды
   const fetchAvailableRentalTimes = async (serviceType) => {
@@ -43,14 +124,14 @@ const SessionDetails = ({ theme = 'light', user }) => {
         }
       }
     } catch (err) {
-      console.error('Ошибка при загрузке доступного времени аренды:', err);
+      alert('Ошибка при загрузке доступного времени аренды: ' + err.message);
       setError('Не удалось загрузить доступное время аренды');
     } finally {
       setLoadingRentalTimes(false);
     }
   };
 
-  // Функция для продления сессии
+  // Функция для продления сессии с оплатой
   const handleExtendSession = async () => {
     if (!selectedExtensionTime) {
       setError('Выберите время продления');
@@ -61,16 +142,22 @@ const SessionDetails = ({ theme = 'light', user }) => {
       setActionLoading(true);
       setError(null);
       
-      // Вызываем API для продления сессии
-      const response = await ApiService.extendSession(sessionId, selectedExtensionTime);
+      // Вызываем API для продления сессии с оплатой
+      const response = await ApiService.extendSessionWithPayment(sessionId, selectedExtensionTime);
       
-      if (response && response.session) {
-        setSession(response.session);
-        setShowExtendModal(false); // Закрываем модальное окно
+      if (response && response.payment) {
+        // Перенаправляем на страницу оплаты
+        navigate('/telegram/payment', { 
+          state: { 
+            session: response.session,
+            payment: response.payment,
+            paymentType: 'extension'
+          } 
+        });
       }
     } catch (err) {
-      console.error('Ошибка при продлении сессии:', err);
-      setError('Не удалось продлить сессию. Пожалуйста, попробуйте еще раз.');
+      alert('Ошибка при создании платежа продления: ' + err.message);
+      setError('Не удалось создать платеж продления. Пожалуйста, попробуйте еще раз.');
     } finally {
       setActionLoading(false);
     }
@@ -106,6 +193,11 @@ const SessionDetails = ({ theme = 'light', user }) => {
       if (response && response.session) {
         setSession(response.session);
         
+        // Обновляем информацию о платеже, если она есть
+        if (response.payment) {
+          setPayment(response.payment);
+        }
+        
         // Если у сессии есть номер бокса, используем его
         if (response.session.box_number) {
           setBox({ number: response.session.box_number });
@@ -120,7 +212,7 @@ const SessionDetails = ({ theme = 'light', user }) => {
         }
       }
     } catch (err) {
-      console.error('Ошибка при завершении сессии:', err);
+      alert('Ошибка при завершении сессии: ' + err.message);
       setError('Не удалось завершить сессию. Пожалуйста, попробуйте еще раз.');
     } finally {
       setActionLoading(false);
@@ -135,6 +227,9 @@ const SessionDetails = ({ theme = 'light', user }) => {
       
       if (response && response.session) {
         setSession(response.session);
+        if (response.payment) {
+          setPayment(response.payment);
+        }
         
         // Если у сессии есть номер бокса, используем его
         if (response.session.box_number) {
@@ -155,7 +250,7 @@ const SessionDetails = ({ theme = 'light', user }) => {
         return null;
       }
     } catch (err) {
-      console.error('Ошибка при загрузке данных о сессии:', err);
+      alert('Ошибка при загрузке данных о сессии: ' + err.message);
       setError('Не удалось загрузить данные о сессии');
       return null;
     } finally {
@@ -163,21 +258,17 @@ const SessionDetails = ({ theme = 'light', user }) => {
     }
   };
   
-  // Начальная загрузка данных о сессии
+  // Начальная загрузка данных о сессии и запуск поллинга
   useEffect(() => {
     if (sessionId) {
       fetchSessionDetails();
+      startSessionPolling(); // Запускаем поллинг при первой загрузке
     }
-  }, [sessionId]);
-  
-  // Настройка поллинга для обновления данных о сессии
-  // Примечание: Мы не запускаем поллинг здесь, так как он уже запущен в App.js
-  // Вместо этого просто обновляем данные при первой загрузке и при изменении статуса сессии
-  useEffect(() => {
-    // Обновляем данные каждый раз, когда меняется sessionId
-    if (sessionId) {
-      fetchSessionDetails();
-    }
+    
+    // Очистка интервала при размонтировании компонента
+    return () => {
+      clearPollingInterval();
+    };
   }, [sessionId]);
   
   // Функция для запуска сессии
@@ -206,7 +297,7 @@ const SessionDetails = ({ theme = 'light', user }) => {
         }
       }
     } catch (err) {
-      console.error('Ошибка при запуске сессии:', err);
+      alert('Ошибка при запуске сессии: ' + err.message);
       setError('Не удалось запустить сессию. Пожалуйста, попробуйте еще раз.');
     } finally {
       setActionLoading(false);
@@ -215,7 +306,34 @@ const SessionDetails = ({ theme = 'light', user }) => {
   
   // Функция для возврата на главную страницу
   const handleBack = () => {
+    // Всегда возвращаемся на главную страницу
     navigate('/telegram');
+  };
+
+  // Обработчик отмены сессии
+  const handleCancelSession = async () => {
+    if (!session || !user) return;
+    
+    const confirmMessage = refundInfo.hasRefund 
+      ? `Вы уверены, что хотите отменить сессию? Деньги в размере ${formatAmountWithRefund(payment)} будут возвращены на карту.`
+      : 'Вы уверены, что хотите отменить сессию?';
+    
+    if (!window.confirm(confirmMessage)) return;
+    
+    try {
+      setIsCanceling(true);
+      const response = await ApiService.cancelSession(session.id, user.id);
+      
+      // Обновляем информацию о сессии
+      setSession(response.session);
+      setPayment(response.payment);
+      
+      alert('Сессия успешно отменена' + (refundInfo.hasRefund ? '. Деньги будут возвращены на карту.' : ''));
+    } catch (error) {
+      alert('Ошибка при отмене сессии: ' + error.message);
+    } finally {
+      setIsCanceling(false);
+    }
   };
 
   const themeClass = theme === 'dark' ? styles.dark : styles.light;
@@ -296,6 +414,7 @@ const SessionDetails = ({ theme = 'light', user }) => {
           <div className={`${styles.infoValue} ${themeClass}`}>
             {session.rental_time_minutes || 5} минут
             {session.extension_time_minutes > 0 && ` (продлено на ${session.extension_time_minutes} минут)`}
+            {session.requested_extension_time_minutes > 0 && ` (запрошено продление на ${session.requested_extension_time_minutes} минут)`}
           </div>
         </div>
         
@@ -308,6 +427,94 @@ const SessionDetails = ({ theme = 'light', user }) => {
                'Информация о боксе недоступна'}
             </div>
           </div>
+        )}
+        
+        {/* Информация о платеже */}
+        {payment && (
+          <>
+            <h3 className={`${styles.title} ${themeClass}`} style={{ marginTop: '20px', fontSize: '16px' }}>
+              Информация об оплате
+            </h3>
+            
+            <div className={`${styles.infoRow} ${themeClass}`}>
+              <div className={`${styles.infoLabel} ${themeClass}`}>Статус платежа:</div>
+              <div className={`${styles.infoValue} ${themeClass}`}>
+                <span style={{ 
+                  color: payment.status === 'succeeded' ? '#4CAF50' : 
+                         payment.status === 'pending' ? '#FF9800' : 
+                         payment.status === 'refunded' ? '#2196F3' : '#F44336',
+                  fontWeight: 'bold'
+                }}>
+                  {getPaymentStatusText(payment.status)}
+                </span>
+              </div>
+            </div>
+            
+            {loadingPayments ? (
+              <div className={`${styles.infoRow} ${themeClass}`}>
+                <div className={`${styles.infoLabel} ${themeClass}`}>Сумма:</div>
+                <div className={`${styles.infoValue} ${themeClass}`}>Загрузка...</div>
+              </div>
+            ) : sessionPayments ? (
+              <>
+                <div className={`${styles.infoRow} ${themeClass}`}>
+                  <div className={`${styles.infoLabel} ${themeClass}`}>Общая стоимость:</div>
+                  <div className={`${styles.infoValue} ${themeClass}`}>
+                    {formatSessionDetailedCost(sessionPayments).totalCost}
+                  </div>
+                </div>
+                {formatSessionDetailedCost(sessionPayments).details.map((detail, index) => (
+                  <div key={index}>
+                    <div className={`${styles.infoRow} ${themeClass}`}>
+                      <div className={`${styles.infoLabel} ${themeClass}`}>{detail.label}:</div>
+                      <div className={`${styles.infoValue} ${themeClass}`}>
+                        {detail.value}
+                      </div>
+                    </div>
+                    {detail.refunded && (
+                      <div className={`${styles.infoRow} ${themeClass}`}>
+                        <div className={`${styles.infoLabel} ${themeClass}`}>Возвращено:</div>
+                        <div className={`${styles.infoValue} ${themeClass}`} style={{ color: '#2196F3', fontWeight: 'bold' }}>
+                          {detail.refunded}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </>
+            ) : (
+              <div className={`${styles.infoRow} ${themeClass}`}>
+                <div className={`${styles.infoLabel} ${themeClass}`}>Сумма:</div>
+                <div className={`${styles.infoValue} ${themeClass}`}>
+                  {formatAmountWithRefund(payment)}
+                </div>
+              </div>
+            )}
+            
+
+            
+            {/* Кнопка повторной оплаты для неудачных платежей */}
+            {payment.status === 'failed' && (
+              <Button 
+                theme={theme} 
+                onClick={() => {
+                  navigate('/telegram/payment', {
+                    state: {
+                      session: session,
+                      payment: payment
+                    }
+                  });
+                }}
+                style={{ 
+                  marginTop: '12px',
+                  backgroundColor: '#F44336',
+                  color: 'white'
+                }}
+              >
+                🔄 Повторить оплату
+              </Button>
+            )}
+          </>
         )}
         
         {/* Таймер отображается для активной сессии */}
@@ -344,15 +551,17 @@ const SessionDetails = ({ theme = 'light', user }) => {
         {/* Кнопки для активной сессии */}
         {session.status === 'active' && (
           <div className={styles.buttonGroup}>
-            <Button 
-              theme={theme} 
-              onClick={openExtendModal}
-              disabled={actionLoading}
-              loading={actionLoading}
-              style={{ marginTop: '10px', marginRight: '10px' }}
-            >
-              Продлить мойку
-            </Button>
+            {canExtendSession && (
+              <Button 
+                theme={theme} 
+                onClick={openExtendModal}
+                disabled={actionLoading}
+                loading={actionLoading}
+                style={{ marginTop: '10px', marginRight: '10px' }}
+              >
+                Продлить мойку
+              </Button>
+            )}
             <Button 
               theme={theme} 
               variant="danger"
@@ -366,6 +575,23 @@ const SessionDetails = ({ theme = 'light', user }) => {
           </div>
         )}
 
+        {/* Кнопка отмены сессии */}
+        {canCancelSession && (
+          <Button 
+            theme={theme} 
+            onClick={handleCancelSession}
+            disabled={isCanceling}
+            loading={isCanceling}
+            style={{ 
+              marginTop: '12px',
+              backgroundColor: '#F44336',
+              color: 'white'
+            }}
+          >
+            {isCanceling ? 'Отмена...' : 'Отменить сессию'}
+          </Button>
+        )}
+        
         {/* Модальное окно для продления сессии */}
         {showExtendModal && (
           <div className={styles.modalOverlay}>

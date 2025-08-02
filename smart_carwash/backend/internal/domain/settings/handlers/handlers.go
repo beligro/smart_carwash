@@ -27,6 +27,14 @@ func (h *Handler) RegisterRoutes(router gin.IRouter) {
 		settingsGroup.GET("/rental-times", h.GetAvailableRentalTimes)
 		settingsGroup.PUT("/rental-times", h.UpdateAvailableRentalTimes)
 	}
+
+	// Административные маршруты
+	adminSettingsGroup := router.Group("/admin/settings")
+	{
+		adminSettingsGroup.GET("", h.AdminGetSettings)
+		adminSettingsGroup.PUT("/prices", h.AdminUpdatePrices)
+		adminSettingsGroup.PUT("/rental-times", h.AdminUpdateRentalTimes)
+	}
 }
 
 // GetAvailableRentalTimes получает доступное время аренды для определенного типа услуги
@@ -79,6 +87,63 @@ func (h *Handler) UpdateAvailableRentalTimes(c *gin.Context) {
 	}
 
 	resp, err := h.service.UpdateAvailableRentalTimes(&req)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, resp)
+}
+
+// AdminGetSettings получает все настройки сервиса (админка)
+func (h *Handler) AdminGetSettings(c *gin.Context) {
+	serviceType := c.Query("service_type")
+	if serviceType == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "service_type is required"})
+		return
+	}
+
+	req := &models.AdminGetSettingsRequest{
+		ServiceType: serviceType,
+	}
+
+	resp, err := h.service.GetSettings(req)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, resp)
+}
+
+// AdminUpdatePrices обновляет цены сервиса (админка)
+func (h *Handler) AdminUpdatePrices(c *gin.Context) {
+	var req models.AdminUpdatePricesRequest
+
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	resp, err := h.service.UpdatePrices(&req)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, resp)
+}
+
+// AdminUpdateRentalTimes обновляет доступное время аренды (админка)
+func (h *Handler) AdminUpdateRentalTimes(c *gin.Context) {
+	var req models.AdminUpdateRentalTimesRequest
+
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	resp, err := h.service.UpdateRentalTimes(&req)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return

@@ -16,6 +16,10 @@ import (
 	authHandlers "carwash_backend/internal/domain/auth/handlers"
 	authRepo "carwash_backend/internal/domain/auth/repository"
 	authService "carwash_backend/internal/domain/auth/service"
+	paymentHandlers "carwash_backend/internal/domain/payment/handlers"
+	paymentRepo "carwash_backend/internal/domain/payment/repository"
+	paymentService "carwash_backend/internal/domain/payment/service"
+	paymentTinkoff "carwash_backend/internal/domain/payment/tinkoff"
 	queueHandlers "carwash_backend/internal/domain/queue/handlers"
 	queueService "carwash_backend/internal/domain/queue/service"
 	sessionHandlers "carwash_backend/internal/domain/session/handlers"
@@ -77,6 +81,10 @@ func main() {
 	sessionRepository := sessionRepo.NewPostgresRepository(db)
 	settingsRepository := settingsRepo.NewRepository(db)
 	authRepository := authRepo.NewPostgresRepository(db)
+	paymentRepository := paymentRepo.NewRepository(db)
+
+	// Создаем Tinkoff клиент
+	tinkoffClient := paymentTinkoff.NewClient(cfg.TinkoffTerminalKey, cfg.TinkoffSecretKey, cfg.TinkoffSuccessURL, cfg.TinkoffFailURL)
 
 	// Создаем сервисы
 	userSvc := userService.NewService(userRepository)
@@ -91,7 +99,13 @@ func main() {
 	}
 
 	// Создаем сервис сессий с зависимостями
-	sessionSvc := sessionService.NewService(sessionRepository, washboxSvc, userSvc, bot)
+	sessionSvc := sessionService.NewService(sessionRepository, washboxSvc, userSvc, bot, nil) // paymentSvc будет nil пока
+
+	// Создаем сервис платежей с зависимостью от sessionSvc как SessionStatusUpdater и SessionExtensionUpdater
+	paymentSvc := paymentService.NewService(paymentRepository, settingsRepository, sessionSvc, sessionSvc, tinkoffClient, cfg.TinkoffTerminalKey, cfg.TinkoffSecretKey)
+
+	// Обновляем sessionSvc с правильным paymentSvc
+	sessionSvc = sessionService.NewService(sessionRepository, washboxSvc, userSvc, bot, paymentSvc)
 
 	// Создаем сервис очереди, который зависит от сервисов сессий, боксов и пользователей
 	queueSvc := queueService.NewService(sessionSvc, washboxSvc, userSvc)
@@ -108,6 +122,7 @@ func main() {
 	queueHandler := queueHandlers.NewHandler(queueSvc)
 	settingsHandler := settingsHandlers.NewHandler(settingsSvc)
 	authHandler := authHandlers.NewHandler(authSvc)
+	paymentHandler := paymentHandlers.NewHandler(paymentSvc)
 
 	// Создаем роутер
 	router := gin.Default()
@@ -132,6 +147,7 @@ func main() {
 		queueHandler.RegisterRoutes(api)
 		settingsHandler.RegisterRoutes(api)
 		authHandler.RegisterRoutes(api)
+		paymentHandler.RegisterRoutes(api)
 
 		// Вебхук для Telegram бота
 		api.POST("/webhook", func(c *gin.Context) {
@@ -183,11 +199,8 @@ func main() {
 		for {
 			select {
 			case <-ticker.C:
-				log.Println("Запуск обработки очереди...")
 				if err := sessionSvc.ProcessQueue(); err != nil {
 					log.Printf("Ошибка обработки очереди: %v", err)
-				} else {
-					log.Println("Обработка очереди завершена успешно")
 				}
 			case <-quit:
 				return
@@ -203,11 +216,8 @@ func main() {
 		for {
 			select {
 			case <-ticker.C:
-				log.Println("Запуск проверки истекших сессий...")
 				if err := sessionSvc.CheckAndCompleteExpiredSessions(); err != nil {
 					log.Printf("Ошибка проверки истекших сессий: %v", err)
-				} else {
-					log.Println("Проверка истекших сессий завершена успешно")
 				}
 			case <-quit:
 				return
@@ -223,11 +233,8 @@ func main() {
 		for {
 			select {
 			case <-ticker.C:
-				log.Println("Запуск проверки зарезервированных сессий...")
 				if err := sessionSvc.CheckAndExpireReservedSessions(); err != nil {
 					log.Printf("Ошибка проверки зарезервированных сессий: %v", err)
-				} else {
-					log.Println("Проверка зарезервированных сессий завершена успешно")
 				}
 			case <-quit:
 				return
@@ -243,11 +250,8 @@ func main() {
 		for {
 			select {
 			case <-ticker.C:
-				log.Println("Запуск проверки сессий для отправки уведомлений о скором истечении...")
 				if err := sessionSvc.CheckAndNotifyExpiringReservedSessions(); err != nil {
 					log.Printf("Ошибка отправки уведомлений о скором истечении сессий: %v", err)
-				} else {
-					log.Println("Проверка сессий для отправки уведомлений о скором истечении завершена успешно")
 				}
 			case <-quit:
 				return
@@ -263,11 +267,8 @@ func main() {
 		for {
 			select {
 			case <-ticker.C:
-				log.Println("Запуск проверки сессий для отправки уведомлений о скором завершении...")
 				if err := sessionSvc.CheckAndNotifyCompletingSessions(); err != nil {
 					log.Printf("Ошибка отправки уведомлений о скором завершении сессий: %v", err)
-				} else {
-					log.Println("Проверка сессий для отправки уведомлений о скором завершении завершена успешно")
 				}
 			case <-quit:
 				return

@@ -1,11 +1,12 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import styles from './WashInfo.module.css';
 import { Card, Button, StatusBadge, Timer } from '../../../../shared/components/UI';
 import ServiceSelector from '../ServiceSelector';
 import { formatDate } from '../../../../shared/utils/formatters';
-import { getSessionStatusDescription, getServiceTypeDescription } from '../../../../shared/utils/statusHelpers';
+import { getSessionStatusDescription, getServiceTypeDescription, formatRefundInfo, formatAmount, formatAmountWithRefund, getPaymentStatusText, getPaymentStatusColor, formatSessionTotalCost, formatSessionDetailedCost } from '../../../../shared/utils/statusHelpers';
 import useTimer from '../../../../shared/hooks/useTimer';
+import ApiService from '../../../../shared/services/ApiService';
 
 /**
  * Компонент WashInfo - отображает информацию о мойке
@@ -14,11 +15,15 @@ import useTimer from '../../../../shared/hooks/useTimer';
  * @param {string} props.theme - Тема оформления ('light' или 'dark')
  * @param {Function} props.onCreateSession - Функция для создания сессии
  * @param {Function} props.onViewHistory - Функция для просмотра истории сессий
+ * @param {Function} props.onCancelSession - Функция для отмены сессии
  * @param {Object} props.user - Данные пользователя
  */
-const WashInfo = ({ washInfo, theme = 'light', onCreateSession, onViewHistory, user }) => {
+const WashInfo = ({ washInfo, theme = 'light', onCreateSession, onViewHistory, onCancelSession, user }) => {
   const navigate = useNavigate();
   const [showServiceSelector, setShowServiceSelector] = useState(false);
+  const [isCanceling, setIsCanceling] = useState(false);
+  const [sessionPayments, setSessionPayments] = useState(null);
+  const [loadingPayments, setLoadingPayments] = useState(false);
   
   // Получаем данные из washInfo (поддерживаем оба формата)
   const allBoxes = washInfo?.allBoxes || washInfo?.all_boxes || [];
@@ -28,9 +33,38 @@ const WashInfo = ({ washInfo, theme = 'light', onCreateSession, onViewHistory, u
   
   // Используем userSession из washInfo
   const userSession = washInfo?.userSession || washInfo?.user_session;
+  const payment = washInfo?.payment;
   
   // Используем хук для таймера
   const { timeLeft } = useTimer(userSession);
+  
+  // Проверяем, можно ли отменить сессию
+  const canCancelSession = userSession && ['created', 'in_queue', 'assigned'].includes(userSession.status);
+  
+  // Получаем информацию о возврате
+  const refundInfo = formatRefundInfo(payment);
+  
+  // Функция для загрузки платежей сессии
+  const loadSessionPayments = async () => {
+    if (!userSession || !userSession.id) return;
+    
+    try {
+      setLoadingPayments(true);
+      const payments = await ApiService.getSessionPayments(userSession.id);
+      setSessionPayments(payments);
+    } catch (error) {
+      console.error('Ошибка при загрузке платежей сессии:', error);
+    } finally {
+      setLoadingPayments(false);
+    }
+  };
+  
+  // Загружаем платежи при изменении сессии
+  useEffect(() => {
+    if (userSession && userSession.id) {
+      loadSessionPayments();
+    }
+  }, [userSession?.id]);
   
   // Функция для перехода на страницу сессии
   const handleViewSessionDetails = () => {
@@ -39,7 +73,7 @@ const WashInfo = ({ washInfo, theme = 'light', onCreateSession, onViewHistory, u
         navigate(`/telegram/session/${userSession.id}`);
       }
     } catch (error) {
-      console.error('Ошибка при переходе к деталям сессии:', error);
+      alert('Ошибка при переходе к деталям сессии: ' + error.message);
     }
   };
 
@@ -48,7 +82,7 @@ const WashInfo = ({ washInfo, theme = 'light', onCreateSession, onViewHistory, u
     try {
       setShowServiceSelector(true);
     } catch (error) {
-      console.error('Ошибка при открытии выбора услуг:', error);
+      alert('Ошибка при открытии выбора услуг: ' + error.message);
     }
   };
 
@@ -56,9 +90,31 @@ const WashInfo = ({ washInfo, theme = 'light', onCreateSession, onViewHistory, u
   const handleServiceSelect = (serviceData) => {
     try {
       setShowServiceSelector(false);
+      // Используем новый метод создания сессии с платежом
       onCreateSession(serviceData);
     } catch (error) {
-      console.error('Ошибка при выборе услуги:', error);
+      alert('Ошибка при выборе услуги: ' + error.message);
+    }
+  };
+
+  // Обработчик отмены сессии
+  const handleCancelSession = async () => {
+    if (!userSession || !user) return;
+    
+    const confirmMessage = refundInfo.hasRefund 
+      ? `Вы уверены, что хотите отменить сессию? Деньги в размере ${formatAmountWithRefund(payment)} будут возвращены на карту.`
+      : 'Вы уверены, что хотите отменить сессию?';
+    
+    if (!window.confirm(confirmMessage)) return;
+    
+    try {
+      setIsCanceling(true);
+      await onCancelSession(userSession.id, user.id);
+      alert('Сессия успешно отменена' + (refundInfo.hasRefund ? '. Деньги будут возвращены на карту.' : ''));
+    } catch (error) {
+      alert('Ошибка при отмене сессии: ' + error.message);
+    } finally {
+      setIsCanceling(false);
     }
   };
 
@@ -171,6 +227,41 @@ const WashInfo = ({ washInfo, theme = 'light', onCreateSession, onViewHistory, u
                 </span>
               </div>
               
+              {/* Информация о платеже для активной сессии */}
+              {payment && (
+                <div style={{ 
+                  marginTop: '12px',
+                  padding: '8px',
+                  backgroundColor: '#E8F5E8',
+                  borderRadius: '4px',
+                  fontSize: '12px'
+                }}>
+                  <p style={{ margin: '0 0 4px 0', color: '#2E7D32', fontWeight: 'bold' }}>
+                    💰 Стоимость: {loadingPayments ? 'Загрузка...' : sessionPayments ? formatSessionTotalCost(sessionPayments) : formatAmountWithRefund(payment)}
+                  </p>
+                  {refundInfo.hasRefund && (
+                    <>
+                      <p style={{ margin: '0 0 4px 0', color: '#1976D2', fontWeight: 'bold' }}>
+                        💸 Возвращено: {formatAmount(refundInfo.refundedAmount)}
+                        {refundInfo.refundType === 'partial' && ` (частично)`}
+                        {refundInfo.refundType === 'full' && ` (полностью)`}
+                      </p>
+                    </>
+                  )}
+                  <p style={{ margin: '0', color: '#2E7D32' }}>
+                    {payment.status === 'succeeded' ? '✅ Оплачено' :
+                     payment.status === 'pending' ? '⏳ Ожидает оплаты' :
+                     payment.status === 'failed' ? '❌ Ошибка оплаты' :
+                     payment.status === 'refunded' ? '💸 Полностью возвращено' : '❓ Неизвестный статус'}
+                  </p>
+                  {refundInfo.hasRefund && (
+                    <p style={{ margin: '4px 0 0 0', color: '#1976D2', fontWeight: 'bold' }}>
+                      💰 Итого: {formatAmount(refundInfo.finalAmount)}
+                    </p>
+                  )}
+                </div>
+              )}
+              
               {/* Отображаем таймер для активной сессии */}
               {userSession.status === 'active' && timeLeft !== null && (
                 <>
@@ -197,6 +288,160 @@ const WashInfo = ({ washInfo, theme = 'light', onCreateSession, onViewHistory, u
                 </>
               )}
               
+              {/* Показываем информацию для созданной сессии (ожидание оплаты) */}
+              {userSession.status === 'created' && (
+                <div className={`${styles.sessionInfo} ${themeClass}`} style={{ 
+                  marginTop: '12px',
+                  padding: '12px',
+                  backgroundColor: '#FFF3E0',
+                  borderRadius: '8px',
+                  border: '1px solid #FFB74D'
+                }}>
+                  <p style={{ margin: '0 0 12px 0', fontSize: '14px' }}>
+                    Сессия создана, но оплата еще не произведена. 
+                    После оплаты сессия будет добавлена в очередь.
+                  </p>
+                  
+                  {/* Кнопка оплаты */}
+                  <Button 
+                    theme={theme} 
+                    onClick={() => {
+                      // Переходим на страницу оплаты с данными сессии
+                      navigate('/telegram/payment', {
+                        state: {
+                          session: userSession,
+                          payment: payment || null
+                        }
+                      });
+                    }}
+                    style={{ 
+                      marginTop: '8px',
+                      backgroundColor: '#FF9800',
+                      color: 'white'
+                    }}
+                  >
+                    💳 Оплатить
+                  </Button>
+                </div>
+              )}
+              
+              {/* Показываем информацию для сессии в очереди */}
+              {userSession.status === 'in_queue' && (
+                <div className={`${styles.sessionInfo} ${themeClass}`} style={{ 
+                  marginTop: '12px',
+                  padding: '12px',
+                  backgroundColor: '#E8F5E8',
+                  borderRadius: '8px',
+                  border: '1px solid #81C784'
+                }}>
+                  <p style={{ margin: '0 0 4px 0', color: '#2E7D32', fontWeight: 'bold' }}>
+                    💰 Стоимость: {loadingPayments ? 'Загрузка...' : sessionPayments ? formatSessionTotalCost(sessionPayments) : formatAmountWithRefund(payment)}
+                  </p>
+                  <p style={{ margin: '0 0 8px 0', fontWeight: 'bold', color: '#2E7D32' }}>
+                    ✅ Оплачено, в очереди
+                  </p>
+                  <p style={{ margin: '0 0 12px 0', fontSize: '14px' }}>
+                    Сессия оплачена и добавлена в очередь. 
+                    Ожидайте назначения свободного бокса.
+                  </p>
+                  
+                  {/* Показываем информацию о платеже, если есть */}
+                  {payment && (
+                    <div style={{ 
+                      marginTop: '8px',
+                      padding: '8px',
+                      backgroundColor: '#F1F8E9',
+                      borderRadius: '4px',
+                      fontSize: '12px'
+                    }}>
+                      <p style={{ margin: '0 0 4px 0', color: '#2E7D32', fontWeight: 'bold' }}>
+                        💰 Стоимость: {loadingPayments ? 'Загрузка...' : sessionPayments ? formatSessionTotalCost(sessionPayments) : formatAmountWithRefund(payment)}
+                      </p>
+                      {refundInfo.hasRefund && (
+                        <p style={{ margin: '0 0 4px 0', color: '#1976D2', fontWeight: 'bold' }}>
+                          💸 Возвращено: {formatAmount(refundInfo.refundedAmount)}
+                        </p>
+                      )}
+                      <p style={{ margin: '0', color: '#2E7D32' }}>
+                        ✅ Статус: {getPaymentStatusText(payment.status)}
+                      </p>
+                      {refundInfo.hasRefund && (
+                        <p style={{ margin: '4px 0 0 0', color: '#1976D2', fontWeight: 'bold' }}>
+                          💰 Итого: {formatAmount(refundInfo.finalAmount)}
+                        </p>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )}
+              
+              {/* Показываем информацию для сессии с ошибкой оплаты */}
+              {userSession.status === 'payment_failed' && (
+                <div className={`${styles.sessionInfo} ${themeClass}`} style={{ 
+                  marginTop: '12px',
+                  padding: '12px',
+                  backgroundColor: '#FFEBEE',
+                  borderRadius: '8px',
+                  border: '1px solid #E57373'
+                }}>
+                  <p style={{ margin: '0 0 8px 0', fontWeight: 'bold', color: '#C62828' }}>
+                    ❌ Ошибка оплаты
+                  </p>
+                  <p style={{ margin: '0 0 12px 0', fontSize: '14px' }}>
+                    Произошла ошибка при оплате. 
+                    Попробуйте создать новую сессию или повторить оплату.
+                  </p>
+                  
+                  {/* Показываем информацию о платеже, если есть */}
+                  {payment && (
+                    <div style={{ 
+                      marginBottom: '12px',
+                      padding: '8px',
+                      backgroundColor: '#FFCDD2',
+                      borderRadius: '4px',
+                      fontSize: '12px'
+                    }}>
+                      <p style={{ margin: '0 0 4px 0', color: '#C62828', fontWeight: 'bold' }}>
+                        💰 Стоимость: {loadingPayments ? 'Загрузка...' : sessionPayments ? formatSessionTotalCost(sessionPayments) : formatAmountWithRefund(payment)}
+                      </p>
+                      {refundInfo.hasRefund && (
+                        <p style={{ margin: '0 0 4px 0', color: '#1976D2', fontWeight: 'bold' }}>
+                          💸 Возвращено: {formatAmount(refundInfo.refundedAmount)}
+                        </p>
+                      )}
+                      <p style={{ margin: '0', color: '#C62828' }}>
+                        ❌ Статус: {getPaymentStatusText(payment.status)}
+                      </p>
+                      {refundInfo.hasRefund && (
+                        <p style={{ margin: '4px 0 0 0', color: '#1976D2', fontWeight: 'bold' }}>
+                          💰 Итого: {formatAmount(refundInfo.finalAmount)}
+                        </p>
+                      )}
+                    </div>
+                  )}
+                  
+                  {/* Кнопка повторной оплаты */}
+                  <Button 
+                    theme={theme} 
+                    onClick={() => {
+                      navigate('/telegram/payment', {
+                        state: {
+                          session: userSession,
+                          payment: payment || null
+                        }
+                      });
+                    }}
+                    style={{ 
+                      marginTop: '8px',
+                      backgroundColor: '#F44336',
+                      color: 'white'
+                    }}
+                  >
+                    🔄 Повторить оплату
+                  </Button>
+                </div>
+              )}
+              
               {/* Показываем информацию, если таймер не отображается */}
               {userSession.status === 'assigned' && timeLeft === null && (
                 <p className={`${styles.sessionInfo} ${themeClass}`} style={{ 
@@ -213,6 +458,20 @@ const WashInfo = ({ washInfo, theme = 'light', onCreateSession, onViewHistory, u
               >
                 Подробнее о сессии
               </Button>
+              {canCancelSession && (
+                <Button 
+                  theme={theme} 
+                  onClick={handleCancelSession}
+                  disabled={isCanceling}
+                  style={{ 
+                    marginTop: '8px',
+                    backgroundColor: '#F44336',
+                    color: 'white'
+                  }}
+                >
+                  {isCanceling ? 'Отмена...' : 'Отменить сессию'}
+                </Button>
+              )}
             </>
           ) : (
             <>

@@ -209,6 +209,72 @@ const ApiService = {
     }
   },
 
+  // === МЕТОДЫ ДЛЯ РАБОТЫ С ПЛАТЕЖАМИ ===
+  
+  // Расчет цены услуги
+  calculatePrice: async (data) => {
+    try {
+      const snakeData = toSnakeCase(data);
+      const response = await api.post('/payments/calculate-price', snakeData);
+      return response.data;
+    } catch (error) {
+      console.error('Ошибка при расчете цены:', error);
+      throw error;
+    }
+  },
+
+  // Расчет цены продления
+  calculateExtensionPrice: async (data) => {
+    try {
+      const snakeData = toSnakeCase(data);
+      const response = await api.post('/payments/calculate-extension-price', snakeData);
+      return response.data;
+    } catch (error) {
+      console.error('Ошибка при расчете цены продления:', error);
+      throw error;
+    }
+  },
+
+  // Создание сессии с платежом
+  createSessionWithPayment: async (data) => {
+    try {
+      // Добавляем обязательное поле idempotency_key
+      const sessionData = {
+        ...data,
+        idempotencyKey: uuidv4() // Генерируем уникальный ключ
+      };
+      
+      const snakeData = toSnakeCase(sessionData);
+      const response = await api.post('/sessions/with-payment', snakeData);
+      return response.data;
+    } catch (error) {
+      console.error('Ошибка при создании сессии с платежом:', error);
+      throw error;
+    }
+  },
+
+  // Повторная попытка оплаты
+  retryPayment: async (sessionId) => {
+    try {
+      const response = await api.post('/payments/retry', { session_id: sessionId });
+      return response.data;
+    } catch (error) {
+      console.error('Ошибка при повторной оплате:', error);
+      throw error;
+    }
+  },
+
+  // Получение статуса платежа
+  getPaymentStatus: async (paymentId) => {
+    try {
+      const response = await api.get(`/payments/status?payment_id=${paymentId}`);
+      return response.data;
+    } catch (error) {
+      console.error('Ошибка при получении статуса платежа:', error);
+      throw error;
+    }
+  },
+
   // Создание сессии (для Telegram приложения)
   createSession: async (data) => {
     try {
@@ -284,6 +350,31 @@ const ApiService = {
       throw error;
     }
   },
+
+  // Продление сессии с оплатой
+  extendSessionWithPayment: async (sessionId, extensionTimeMinutes) => {
+    try {
+      const response = await api.post('/sessions/extend-with-payment', { 
+        session_id: sessionId,
+        extension_time_minutes: extensionTimeMinutes
+      });
+      return response.data;
+    } catch (error) {
+      console.error('Ошибка при продлении сессии с оплатой:', error);
+      throw error;
+    }
+  },
+
+  // Получение платежей сессии
+  getSessionPayments: async (sessionId) => {
+    try {
+      const response = await api.get(`/sessions/payments?session_id=${sessionId}`);
+      return response.data;
+    } catch (error) {
+      console.error('Ошибка при получении платежей сессии:', error);
+      throw error;
+    }
+  },
   
   // Получение истории сессий пользователя
   getUserSessionHistory: async (userId, limit = 10, offset = 0) => {
@@ -295,6 +386,76 @@ const ApiService = {
       throw error;
     }
   },
+
+  // Получить сессию по ID
+  async getSession(sessionId) {
+    try {
+      const response = await api.get(`/sessions?session_id=${sessionId}`);
+      return response.data;
+    } catch (error) {
+      console.error('Ошибка получения сессии:', error);
+      throw error;
+    }
+  },
+
+  // Отменить сессию
+  async cancelSession(sessionId, userId) {
+    try {
+      const response = await api.post('/sessions/cancel', {
+        session_id: sessionId,
+        user_id: userId
+      });
+      return response.data;
+    } catch (error) {
+      console.error('Ошибка отмены сессии:', error);
+      throw error;
+    }
+  },
+
+  // === МЕТОДЫ ДЛЯ РАБОТЫ С ПЛАТЕЖАМИ ===
+  
+  // Получение списка платежей (админка)
+  getPayments: async (filters = {}) => {
+    const queryString = toSnakeCaseQuery(filters);
+    const response = await api.get(`/admin/payments?${queryString}`);
+    return response.data;
+  },
+
+  // Получение статистики платежей (админка)
+  getPaymentStatistics: async (filters = {}) => {
+    const queryString = toSnakeCaseQuery(filters);
+    const response = await api.get(`/admin/payments/statistics?${queryString}`);
+    return response.data;
+  },
+
+  // Возврат платежа (админка)
+  refundPayment: async (data) => {
+    const snakeData = toSnakeCase(data);
+    const response = await api.post('/admin/payments/refund', snakeData);
+    return response.data;
+  },
+
+  // === МЕТОДЫ ДЛЯ РАБОТЫ С НАСТРОЙКАМИ ===
+  
+  // Получение настроек сервиса (админка)
+  getSettings: async (serviceType) => {
+    const response = await api.get(`/admin/settings?service_type=${serviceType}`);
+    return response.data;
+  },
+
+  // Обновление цен (админка)
+  updatePrices: async (data) => {
+    const snakeData = toSnakeCase(data);
+    const response = await api.put('/admin/settings/prices', snakeData);
+    return response.data;
+  },
+
+  // Обновление времени аренды (админка)
+  updateRentalTimes: async (data) => {
+    const snakeData = toSnakeCase(data);
+    const response = await api.put('/admin/settings/rental-times', snakeData);
+    return response.data;
+  }
 };
 
 // Добавляем перехватчик для обработки ошибок

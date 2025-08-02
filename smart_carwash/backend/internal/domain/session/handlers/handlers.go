@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"log"
 	"net/http"
 	"strconv"
 	"time"
@@ -29,12 +30,16 @@ func (h *Handler) RegisterRoutes(router *gin.RouterGroup) {
 	sessionRoutes := router.Group("/sessions")
 	{
 		sessionRoutes.POST("", h.createSession)
+		sessionRoutes.POST("/with-payment", h.createSessionWithPayment) // создание сессии с платежом
 		sessionRoutes.GET("", h.getUserSession)                // user_id в query параметре
 		sessionRoutes.GET("/by-id", h.getSessionByID)          // session_id в query параметре
 		sessionRoutes.POST("/start", h.startSession)           // session_id в теле запроса
 		sessionRoutes.POST("/complete", h.completeSession)     // session_id в теле запроса
 		sessionRoutes.POST("/extend", h.extendSession)         // session_id и extension_time_minutes в теле запроса
+		sessionRoutes.POST("/extend-with-payment", h.extendSessionWithPayment) // session_id и extension_time_minutes в теле запроса
+		sessionRoutes.GET("/payments", h.getSessionPayments)   // session_id в query параметре
 		sessionRoutes.GET("/history", h.getUserSessionHistory) // user_id в query параметре
+		sessionRoutes.POST("/cancel", h.cancelSession)         // session_id и user_id в теле запроса
 	}
 
 	// Административные маршруты
@@ -66,6 +71,27 @@ func (h *Handler) createSession(c *gin.Context) {
 	c.JSON(http.StatusOK, models.CreateSessionResponse{Session: *session})
 }
 
+// createSessionWithPayment обработчик для создания сессии с платежом
+func (h *Handler) createSessionWithPayment(c *gin.Context) {
+	var req models.CreateSessionWithPaymentRequest
+
+	// Парсим JSON из тела запроса
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	// Создаем сессию с платежом
+	response, err := h.service.CreateSessionWithPayment(&req)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	// Возвращаем созданную сессию с платежом
+	c.JSON(http.StatusOK, response)
+}
+
 // getUserSession обработчик для получения сессии пользователя
 func (h *Handler) getUserSession(c *gin.Context) {
 	// Получаем ID пользователя из query параметра
@@ -82,7 +108,7 @@ func (h *Handler) getUserSession(c *gin.Context) {
 	}
 
 	// Получаем сессию пользователя
-	session, err := h.service.GetUserSession(&models.GetUserSessionRequest{
+	response, err := h.service.GetUserSession(&models.GetUserSessionRequest{
 		UserID: userID,
 	})
 	if err != nil {
@@ -91,7 +117,7 @@ func (h *Handler) getUserSession(c *gin.Context) {
 	}
 
 	// Возвращаем сессию пользователя
-	c.JSON(http.StatusOK, models.GetUserSessionResponse{Session: session})
+	c.JSON(http.StatusOK, response)
 }
 
 // getSessionByID обработчик для получения сессии по ID
@@ -110,7 +136,7 @@ func (h *Handler) getSessionByID(c *gin.Context) {
 	}
 
 	// Получаем сессию по ID
-	session, err := h.service.GetSession(&models.GetSessionRequest{
+	response, err := h.service.GetSession(&models.GetSessionRequest{
 		SessionID: sessionID,
 	})
 	if err != nil {
@@ -119,7 +145,7 @@ func (h *Handler) getSessionByID(c *gin.Context) {
 	}
 
 	// Возвращаем сессию
-	c.JSON(http.StatusOK, models.GetSessionResponse{Session: session})
+	c.JSON(http.StatusOK, response)
 }
 
 // startSession обработчик для запуска сессии (перевод в статус active)
@@ -154,14 +180,14 @@ func (h *Handler) completeSession(c *gin.Context) {
 	}
 
 	// Завершаем сессию
-	session, err := h.service.CompleteSession(&req)
+	response, err := h.service.CompleteSession(&req)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
 
-	// Возвращаем обновленную сессию
-	c.JSON(http.StatusOK, models.CompleteSessionResponse{Session: session})
+	// Возвращаем обновленную сессию с информацией о платеже
+	c.JSON(http.StatusOK, response)
 }
 
 // extendSession обработчик для продления сессии
@@ -183,6 +209,88 @@ func (h *Handler) extendSession(c *gin.Context) {
 
 	// Возвращаем обновленную сессию
 	c.JSON(http.StatusOK, models.ExtendSessionResponse{Session: session})
+}
+
+// extendSessionWithPayment обработчик для продления сессии с оплатой
+func (h *Handler) extendSessionWithPayment(c *gin.Context) {
+	var req models.ExtendSessionWithPaymentRequest
+
+	// Парсим JSON из тела запроса
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	// Логируем мета-параметр для поиска
+	log.Printf("Запрос на продление сессии с оплатой: SessionID=%s, ExtensionTime=%d", req.SessionID, req.ExtensionTimeMinutes)
+
+	// Продлеваем сессию с оплатой
+	response, err := h.service.ExtendSessionWithPayment(&req)
+	if err != nil {
+		log.Printf("Ошибка продления сессии с оплатой: %v", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	log.Printf("Успешно создан платеж продления: SessionID=%s, ExtensionTime=%d", req.SessionID, req.ExtensionTimeMinutes)
+	c.JSON(http.StatusOK, response)
+}
+
+// getSessionPayments обработчик для получения платежей сессии
+func (h *Handler) getSessionPayments(c *gin.Context) {
+	// Получаем ID сессии из query параметра
+	sessionIDStr := c.Query("session_id")
+	if sessionIDStr == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Не указан ID сессии"})
+		return
+	}
+
+	sessionID, err := uuid.Parse(sessionIDStr)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Некорректный ID сессии"})
+		return
+	}
+
+	// Логируем мета-параметр для поиска
+	log.Printf("Запрос на получение платежей сессии: SessionID=%s", sessionID)
+
+	// Получаем платежи сессии
+	response, err := h.service.GetSessionPayments(&models.GetSessionPaymentsRequest{
+		SessionID: sessionID,
+	})
+	if err != nil {
+		log.Printf("Ошибка получения платежей сессии: %v", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	log.Printf("Успешно получены платежи сессии: SessionID=%s", sessionID)
+	c.JSON(http.StatusOK, response)
+}
+
+// cancelSession обработчик для отмены сессии
+func (h *Handler) cancelSession(c *gin.Context) {
+	var req models.CancelSessionRequest
+
+	// Парсим JSON из тела запроса
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	// Логируем мета-параметр для поиска
+	log.Printf("Запрос на отмену сессии: SessionID=%s, UserID=%s", req.SessionID, req.UserID)
+
+	// Отменяем сессию
+	response, err := h.service.CancelSession(&req)
+	if err != nil {
+		log.Printf("Ошибка отмены сессии: %v", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	log.Printf("Успешно отменена сессия: SessionID=%s, UserID=%s", req.SessionID, req.UserID)
+	c.JSON(http.StatusOK, response)
 }
 
 // getUserSessionHistory обработчик для получения истории сессий пользователя

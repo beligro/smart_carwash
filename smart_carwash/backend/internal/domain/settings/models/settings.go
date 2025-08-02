@@ -35,7 +35,45 @@ type UpdateAvailableRentalTimesRequest struct {
 	AvailableTimes []int  `json:"available_times" binding:"required"`
 }
 
-// UpdateAvailableRentalTimesResponse представляет ответ на обновление доступного времени аренды
+// UpdateAvailableRentalTimesResponse представляет ответ на обновление времени аренды
 type UpdateAvailableRentalTimesResponse struct {
 	Success bool `json:"success"`
+}
+
+// AdminGetSettingsRequest запрос на получение всех настроек сервиса (админка)
+type AdminGetSettingsRequest struct {
+	ServiceType string `json:"service_type" binding:"required"`
+}
+
+// AdminGetSettingsResponse ответ на получение всех настроек сервиса (админка)
+type AdminGetSettingsResponse struct {
+	ServiceType           string `json:"service_type"`
+	PricePerMinute       int    `json:"price_per_minute"`
+	ChemistryPricePerMinute int `json:"chemistry_price_per_minute"`
+	AvailableRentalTimes []int `json:"available_rental_times"`
+}
+
+// AdminUpdatePricesRequest запрос на обновление цен (админка)
+type AdminUpdatePricesRequest struct {
+	ServiceType           string `json:"service_type" binding:"required"`
+	PricePerMinute       int    `json:"price_per_minute" binding:"required"`
+	ChemistryPricePerMinute int `json:"chemistry_price_per_minute" binding:"required"`
+}
+
+// AdminUpdatePricesResponse ответ на обновление цен (админка)
+type AdminUpdatePricesResponse struct {
+	Success bool   `json:"success"`
+	Message string `json:"message"`
+}
+
+// AdminUpdateRentalTimesRequest запрос на обновление времени аренды (админка)
+type AdminUpdateRentalTimesRequest struct {
+	ServiceType        string `json:"service_type" binding:"required"`
+	AvailableRentalTimes []int `json:"available_rental_times" binding:"required"`
+}
+
+// AdminUpdateRentalTimesResponse ответ на обновление времени аренды (админка)
+type AdminUpdateRentalTimesResponse struct {
+	Success bool   `json:"success"`
+	Message string `json:"message"`
 }

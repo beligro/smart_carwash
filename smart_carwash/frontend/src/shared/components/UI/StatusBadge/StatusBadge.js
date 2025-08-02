@@ -4,7 +4,7 @@ import styles from './StatusBadge.module.css';
 /**
  * Компонент StatusBadge - отображает статус в виде бейджа
  * @param {Object} props - Свойства компонента
- * @param {string} props.status - Статус ('created', 'assigned', 'active', 'complete', 'canceled', 'free', 'reserved', 'busy', 'maintenance')
+ * @param {string} props.status - Статус ('created', 'in_queue', 'payment_failed', 'assigned', 'active', 'complete', 'canceled', 'expired', 'free', 'reserved', 'busy', 'maintenance')
  * @param {string} props.theme - Тема оформления ('light' или 'dark')
  * @param {string} props.text - Текст для отображения (если не указан, будет использован статус)
  * @param {string} props.className - Дополнительные CSS классы
@@ -44,7 +44,11 @@ const getStatusText = (status) => {
   switch (status) {
     // Статусы сессий
     case 'created':
+      return 'Создана';
+    case 'in_queue':
       return 'В очереди';
+    case 'payment_failed':
+      return 'Ошибка оплаты';
     case 'assigned':
       return 'Назначена';
     case 'active':

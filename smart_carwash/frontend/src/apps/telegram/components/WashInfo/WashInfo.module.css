@@ -85,6 +85,15 @@
   animation: pulse 1.5s infinite;
 }
 
+.statusDot.in_queue {
+  background-color: #4CAF50;
+  animation: pulse 1.5s infinite;
+}
+
+.statusDot.payment_failed {
+  background-color: #F44336;
+}
+
 .statusDot.assigned {
   background-color: #2196F3;
 }

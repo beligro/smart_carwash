@@ -14,6 +14,7 @@ type Service interface {
 	UpdateWashBoxStatus(id uuid.UUID, status string) error
 	GetFreeWashBoxes() ([]models.WashBox, error)
 	GetFreeWashBoxesByServiceType(serviceType string) ([]models.WashBox, error)
+	GetFreeWashBoxesWithChemistry(serviceType string) ([]models.WashBox, error)
 	GetWashBoxesByServiceType(serviceType string) ([]models.WashBox, error)
 	GetAllWashBoxes() ([]models.WashBox, error)
 
@@ -23,6 +24,7 @@ type Service interface {
 	AdminDeleteWashBox(req *models.AdminDeleteWashBoxRequest) (*models.AdminDeleteWashBoxResponse, error)
 	AdminGetWashBox(req *models.AdminGetWashBoxRequest) (*models.AdminGetWashBoxResponse, error)
 	AdminListWashBoxes(req *models.AdminListWashBoxesRequest) (*models.AdminListWashBoxesResponse, error)
+	RestoreWashBox(id uuid.UUID, status string, serviceType string) (*models.WashBox, error)
 }
 
 // ServiceImpl реализация Service
@@ -57,6 +59,11 @@ func (s *ServiceImpl) GetFreeWashBoxesByServiceType(serviceType string) ([]model
 	return s.repo.GetFreeWashBoxesByServiceType(serviceType)
 }
 
+// GetFreeWashBoxesWithChemistry получает все свободные боксы мойки с химией определенного типа
+func (s *ServiceImpl) GetFreeWashBoxesWithChemistry(serviceType string) ([]models.WashBox, error) {
+	return s.repo.GetFreeWashBoxesWithChemistry(serviceType)
+}
+
 // GetWashBoxesByServiceType получает все боксы мойки определенного типа
 func (s *ServiceImpl) GetWashBoxesByServiceType(serviceType string) ([]models.WashBox, error) {
 	return s.repo.GetWashBoxesByServiceType(serviceType)
@@ -69,10 +76,23 @@ func (s *ServiceImpl) GetAllWashBoxes() ([]models.WashBox, error) {
 
 // AdminCreateWashBox создает новый бокс мойки
 func (s *ServiceImpl) AdminCreateWashBox(req *models.AdminCreateWashBoxRequest) (*models.AdminCreateWashBoxResponse, error) {
-	// Проверяем, не существует ли уже бокс с таким номером
+	// Проверяем, не существует ли уже активный бокс с таким номером
 	existingBox, err := s.repo.GetWashBoxByNumber(req.Number)
 	if err == nil && existingBox != nil {
 		return nil, errors.New("бокс с таким номером уже существует")
+	}
+
+	// Проверяем, есть ли удаленный бокс с таким номером
+	deletedBox, err := s.repo.GetWashBoxByNumberIncludingDeleted(req.Number)
+	if err == nil && deletedBox != nil && deletedBox.DeletedAt.Valid {
+		// Восстанавливаем удаленный бокс
+		restoredBox, err := s.RestoreWashBox(deletedBox.ID, req.Status, req.ServiceType)
+		if err != nil {
+			return nil, err
+		}
+		return &models.AdminCreateWashBoxResponse{
+			WashBox: *restoredBox,
+		}, nil
 	}
 
 	// Создаем новый бокс
@@ -80,6 +100,14 @@ func (s *ServiceImpl) AdminCreateWashBox(req *models.AdminCreateWashBoxRequest) 
 		Number:      req.Number,
 		Status:      req.Status,
 		ServiceType: req.ServiceType,
+	}
+
+	// Устанавливаем химию по умолчанию в зависимости от типа услуги
+	if req.ChemistryEnabled != nil {
+		washBox.ChemistryEnabled = *req.ChemistryEnabled
+	} else {
+		// По умолчанию химия включена только для wash
+		washBox.ChemistryEnabled = req.ServiceType == "wash"
 	}
 
 	createdBox, err := s.repo.CreateWashBox(washBox)
@@ -118,6 +146,10 @@ func (s *ServiceImpl) AdminUpdateWashBox(req *models.AdminUpdateWashBoxRequest) 
 
 	if req.ServiceType != nil {
 		existingBox.ServiceType = *req.ServiceType
+	}
+
+	if req.ChemistryEnabled != nil {
+		existingBox.ChemistryEnabled = *req.ChemistryEnabled
 	}
 
 	// Сохраняем изменения
@@ -181,15 +213,26 @@ func (s *ServiceImpl) AdminListWashBoxes(req *models.AdminListWashBoxesRequest) 
 	}
 
 	// Получаем боксы с фильтрацией
-	washBoxes, total, err := s.repo.GetWashBoxesWithFilters(req.Status, req.ServiceType, limit, offset)
+	boxes, total, err := s.repo.GetWashBoxesWithFilters(req.Status, req.ServiceType, limit, offset)
 	if err != nil {
 		return nil, err
 	}
 
 	return &models.AdminListWashBoxesResponse{
-		WashBoxes: washBoxes,
+		WashBoxes: boxes,
 		Total:     total,
 		Limit:     limit,
 		Offset:    offset,
 	}, nil
+}
+
+// RestoreWashBox восстанавливает удаленный бокс мойки
+func (s *ServiceImpl) RestoreWashBox(id uuid.UUID, status string, serviceType string) (*models.WashBox, error) {
+	// Восстанавливаем бокс через repository
+	restoredBox, err := s.repo.RestoreWashBox(id, status, serviceType)
+	if err != nil {
+		return nil, err
+	}
+
+	return restoredBox, nil
 }

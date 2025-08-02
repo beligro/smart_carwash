@@ -24,6 +24,12 @@ type Config struct {
 	AdminUsername string
 	AdminPassword string
 	JWTSecret     string
+
+	// Настройки Tinkoff Kassa
+	TinkoffTerminalKey string
+	TinkoffSecretKey   string
+	TinkoffSuccessURL  string
+	TinkoffFailURL     string
 }
 
 // LoadConfig загружает конфигурацию из переменных окружения
@@ -57,6 +63,12 @@ func LoadConfig() (*Config, error) {
 		AdminUsername: getEnv("ADMIN_USERNAME", "admin"),
 		AdminPassword: getEnv("ADMIN_PASSWORD", "admin"),
 		JWTSecret:     getEnv("JWT_SECRET", "your-secret-key"),
+
+		// Настройки Tinkoff Kassa
+		TinkoffTerminalKey: getEnv("TINKOFF_TERMINAL_KEY", ""),
+		TinkoffSecretKey:   getEnv("TINKOFF_SECRET_KEY", ""),
+		TinkoffSuccessURL:  getEnv("TINKOFF_SUCCESS_URL", "https://t.me/your_bot?startapp=payment_success"),
+		TinkoffFailURL:     getEnv("TINKOFF_FAIL_URL", "https://t.me/your_bot?startapp=payment_fail"),
 	}, nil
 }
 

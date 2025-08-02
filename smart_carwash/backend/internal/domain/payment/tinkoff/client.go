@@ -1,0 +1,248 @@
+package tinkoff
+
+import (
+	"bytes"
+	"crypto/hmac"
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
+	"fmt"
+	"io"
+	"net/http"
+	"sort"
+	"strings"
+	"time"
+	"log"
+
+	"carwash_backend/internal/domain/payment/service"
+)
+
+// Client реализация Tinkoff API клиента
+type Client struct {
+	terminalKey string
+	secretKey   string
+	successURL  string
+	failURL     string
+	baseURL     string
+	httpClient  *http.Client
+}
+
+// NewClient создает новый экземпляр Tinkoff клиента
+func NewClient(terminalKey, secretKey, successURL, failURL string) service.TinkoffClient {
+	return &Client{
+		terminalKey: terminalKey,
+		secretKey:   secretKey,
+		successURL:  successURL,
+		failURL:     failURL,
+		baseURL:     "https://securepay.tinkoff.ru/v2",
+		httpClient: &http.Client{
+			Timeout: 30 * time.Second,
+		},
+	}
+}
+
+// CreatePayment создает платеж в Tinkoff
+func (c *Client) CreatePayment(orderID string, amount int, description string) (*service.TinkoffPaymentResponse, error) {
+	// Формируем параметры запроса
+	params := map[string]interface{}{
+		"TerminalKey": c.terminalKey,
+		"Amount":      amount,
+		"OrderId":     orderID,
+		"Description": description,
+		"SuccessURL":  c.successURL,
+		"FailURL":     c.failURL,
+	}
+
+	// Добавляем подпись
+	params["Token"] = c.generateToken(params)
+
+	// Отправляем запрос
+	resp, err := c.sendRequest("POST", "/Init", params)
+	if err != nil {
+		return nil, fmt.Errorf("ошибка отправки запроса: %w", err)
+	}
+
+	// Парсим ответ
+	var tinkoffResp service.TinkoffPaymentResponse
+	if err := json.Unmarshal(resp, &tinkoffResp); err != nil {
+		return nil, fmt.Errorf("ошибка парсинга ответа: %w", err)
+	}
+
+	return &tinkoffResp, nil
+}
+
+// GetPaymentStatus получает статус платежа
+func (c *Client) GetPaymentStatus(paymentID string) (*service.TinkoffPaymentStatusResponse, error) {
+	// Формируем параметры запроса
+	params := map[string]interface{}{
+		"TerminalKey": c.terminalKey,
+		"PaymentId":   paymentID,
+	}
+
+	// Добавляем подпись
+	params["Token"] = c.generateToken(params)
+
+	// Отправляем запрос
+	resp, err := c.sendRequest("POST", "/GetState", params)
+	if err != nil {
+		return nil, fmt.Errorf("ошибка отправки запроса: %w", err)
+	}
+
+	// Парсим ответ
+	var tinkoffResp service.TinkoffPaymentStatusResponse
+	if err := json.Unmarshal(resp, &tinkoffResp); err != nil {
+		return nil, fmt.Errorf("ошибка парсинга ответа: %w", err)
+	}
+
+	return &tinkoffResp, nil
+}
+
+// RefundPayment возвращает деньги за платеж
+func (c *Client) RefundPayment(paymentID string, amount int) (*service.TinkoffRefundResponse, error) {
+	// Формируем параметры запроса
+	params := map[string]interface{}{
+		"TerminalKey": c.terminalKey,
+		"PaymentId":   paymentID,
+		"Amount":      amount,
+	}
+
+	// Добавляем подпись
+	params["Token"] = c.generateToken(params)
+
+	// Отправляем запрос
+	resp, err := c.sendRequest("POST", "/Cancel", params)
+	if err != nil {
+		return nil, fmt.Errorf("ошибка отправки запроса возврата: %w", err)
+	}
+
+	// Парсим ответ
+	var tinkoffResp service.TinkoffRefundResponse
+	if err := json.Unmarshal(resp, &tinkoffResp); err != nil {
+		return nil, fmt.Errorf("ошибка парсинга ответа возврата: %w", err)
+	}
+
+	return &tinkoffResp, nil
+}
+
+// VerifyWebhookSignature проверяет подпись webhook
+func (c *Client) VerifyWebhookSignature(data []byte, signature string) bool {
+	// Создаем HMAC подпись
+	h := hmac.New(sha256.New, []byte(c.secretKey))
+	h.Write(data)
+	expectedSignature := hex.EncodeToString(h.Sum(nil))
+
+	// Сравниваем подписи
+	return strings.EqualFold(expectedSignature, signature)
+}
+
+// sendRequest отправляет HTTP запрос к Tinkoff API
+func (c *Client) sendRequest(method, endpoint string, params map[string]interface{}) ([]byte, error) {
+	// Формируем URL
+	requestURL := c.baseURL + endpoint
+
+	// Подготавливаем данные для отправки
+	var requestBody io.Reader
+	if method == "POST" {
+		jsonData, err := json.Marshal(params)
+		if err != nil {
+			return nil, fmt.Errorf("ошибка маршалинга JSON: %w", err)
+		}
+		requestBody = bytes.NewBuffer(jsonData)
+	}
+
+	// Создаем запрос
+	req, err := http.NewRequest(method, requestURL, requestBody)
+	if err != nil {
+		return nil, fmt.Errorf("ошибка создания запроса: %w", err)
+	}
+
+	// Устанавливаем заголовки
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Accept", "application/json")
+
+	// Отправляем запрос
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("ошибка отправки запроса: %w", err)
+	}
+	defer resp.Body.Close()
+
+	// Читаем ответ
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("ошибка чтения ответа: %w", err)
+	}
+
+	// Проверяем статус ответа
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("ошибка HTTP: %d, тело: %s", resp.StatusCode, string(body))
+	}
+
+	return body, nil
+}
+
+func (c *Client) generateToken(params map[string]interface{}) string {
+    // Создаем копию параметров
+    tokenParams := make(map[string]interface{})
+    for k, v := range params {
+        tokenParams[k] = v
+    }
+
+	log.Println("tokenParams: ", tokenParams)
+	log.Println("c.secretKey: ", c.secretKey)
+    
+    // Добавляем пароль
+    tokenParams["Password"] = c.secretKey
+    
+    // Удаляем Token если есть
+    delete(tokenParams, "Token")
+    
+    // Получаем отсортированные ключи
+    keys := make([]string, 0, len(tokenParams))
+    for k := range tokenParams {
+        keys = append(keys, k)
+    }
+    sort.Strings(keys)
+    
+    // ОТЛАДКА: выводим что участвует в токене
+    log.Printf("Token generation params (sorted):\n")
+    for _, key := range keys {
+        log.Printf("%s: %v\n", key, tokenParams[key])
+    }
+    
+    // Конкатенируем значения
+    var values []string
+    for _, key := range keys {
+        valueStr := fmt.Sprintf("%v", tokenParams[key])
+        values = append(values, valueStr)
+    }
+    
+    concatenated := strings.Join(values, "")
+    log.Printf("Concatenated string: %s\n", concatenated)
+    
+    hash := sha256.Sum256([]byte(concatenated))
+    token := fmt.Sprintf("%x", hash)
+    
+    log.Printf("Generated token: %s\n", token)
+    return token
+}
+
+// buildReceipt формирует чек для фискализации
+func (c *Client) buildReceipt(amount int) string {
+	receipt := map[string]interface{}{
+		"Email": "customer@example.com",
+		"Taxation": "usn_income",
+		"Items": []map[string]interface{}{
+			{
+				"Name":     "Услуга автомойки",
+				"Price":    amount,
+				"Quantity": 1.00,
+				"Amount":   amount,
+				"Tax":      "none",
+			},
+		},
+	}
+
+	receiptJSON, _ := json.Marshal(receipt)
+	return string(receiptJSON)
+} 

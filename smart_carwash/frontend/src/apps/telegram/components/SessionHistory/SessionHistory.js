@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import styles from './SessionHistory.module.css';
 import { Card, Button, StatusBadge } from '../../../../shared/components/UI';
 import { formatDate } from '../../../../shared/utils/formatters';
-import { getSessionStatusDescription } from '../../../../shared/utils/statusHelpers';
+import { getSessionStatusDescription, formatSessionTotalCost } from '../../../../shared/utils/statusHelpers';
 import ApiService from '../../../../shared/services/ApiService';
 
 /**
@@ -50,7 +50,7 @@ const SessionHistory = ({ user, theme = 'light', onBack }) => {
         
         setError(null);
       } catch (err) {
-        console.error('Ошибка при загрузке истории сессий:', err);
+        alert('Ошибка при загрузке истории сессий: ' + err.message);
         setError('Не удалось загрузить историю сессий');
       } finally {
         setLoading(false);
@@ -111,6 +111,37 @@ const SessionHistory = ({ user, theme = 'light', onBack }) => {
                       <span className={`${styles.carNumberText} ${themeClass}`}>
                         Номер машины: {session.car_number}
                       </span>
+                    </div>
+                  )}
+                  
+                  {/* Информация о платеже */}
+                  {session.payment && (
+                    <div className={styles.paymentInfo}>
+                      <div className={styles.paymentAmount}>
+                        <span className={`${styles.paymentText} ${themeClass}`}>
+                          💰 Стоимость: {session.main_payment || session.extension_payments ? 
+                            formatSessionTotalCost({
+                              main_payment: session.main_payment,
+                              extension_payments: session.extension_payments || []
+                            }) : 
+                            session.payment ? `${(session.payment.amount / 100).toFixed(2)} ${session.payment.currency}` : 
+                            'Нет данных'}
+                        </span>
+                      </div>
+                      
+                      <div className={styles.paymentStatus}>
+                        <span className={`${styles.paymentText} ${themeClass}`} style={{
+                          color: session.payment.status === 'succeeded' ? '#4CAF50' : 
+                                 session.payment.status === 'pending' ? '#FF9800' : 
+                                 session.payment.status === 'refunded' ? '#2196F3' : '#F44336',
+                          fontWeight: 'bold'
+                        }}>
+                          {session.payment.status === 'succeeded' ? '✅ Оплачено' :
+                           session.payment.status === 'pending' ? '⏳ Ожидает оплаты' :
+                           session.payment.status === 'failed' ? '❌ Ошибка оплаты' :
+                           session.payment.status === 'refunded' ? '💸 Возвращено' : session.payment.status}
+                        </span>
+                      </div>
                     </div>
                   )}
                 </div>

@@ -10,8 +10,18 @@
   
   /* Статусы сессий */
   .created {
-    background-color: #E3F2FD;
-    color: #0D47A1;
+    background-color: #FFF3E0;
+    color: #E65100;
+  }
+  
+  .in_queue {
+    background-color: #E8F5E9;
+    color: #2E7D32;
+  }
+  
+  .payment_failed {
+    background-color: #FFEBEE;
+    color: #C62828;
   }
   
   .assigned {
@@ -57,7 +67,17 @@
   
   /* Темная тема */
   .dark.created {
-    background-color: #0D47A1;
+    background-color: #E65100;
+    color: #FFFFFF;
+  }
+  
+  .dark.in_queue {
+    background-color: #2E7D32;
+    color: #FFFFFF;
+  }
+  
+  .dark.payment_failed {
+    background-color: #C62828;
     color: #FFFFFF;
   }
   

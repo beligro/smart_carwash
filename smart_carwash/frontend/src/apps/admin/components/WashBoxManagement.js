@@ -131,6 +131,23 @@ const ServiceTypeBadge = styled.span`
   }
 `;
 
+const ChemistryBadge = styled.span`
+  padding: 4px 8px;
+  border-radius: 12px;
+  font-size: 12px;
+  font-weight: 500;
+  
+  &.enabled {
+    background-color: #e8f5e8;
+    color: #2d5a2d;
+  }
+  
+  &.disabled {
+    background-color: #ffe8e8;
+    color: #5a2d2d;
+  }
+`;
+
 const ActionButton = styled.button`
   background: none;
   border: none;
@@ -247,7 +264,8 @@ const WashBoxManagement = () => {
   const [formData, setFormData] = useState({
     number: '',
     status: 'free',
-    serviceType: 'wash'
+    serviceType: 'wash',
+    chemistryEnabled: true
   });
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
@@ -302,13 +320,14 @@ const WashBoxManagement = () => {
       const washBoxData = {
         number: parseInt(formData.number, 10),
         status: formData.status,
-        service_type: formData.serviceType
+        service_type: formData.serviceType,
+        chemistry_enabled: formData.chemistryEnabled
       };
       
       await ApiService.createWashBox(washBoxData);
       setSuccess('Бокс успешно создан');
       setShowCreateModal(false);
-      setFormData({ number: '', status: 'free', serviceType: 'wash' });
+      setFormData({ number: '', status: 'free', serviceType: 'wash', chemistryEnabled: true });
       fetchWashBoxes();
     } catch (err) {
       if (err.response?.data?.error) {
@@ -333,14 +352,15 @@ const WashBoxManagement = () => {
       const washBoxData = {
         number: parseInt(formData.number, 10),
         status: formData.status,
-        service_type: formData.serviceType
+        service_type: formData.serviceType,
+        chemistry_enabled: formData.chemistryEnabled
       };
       
       await ApiService.updateWashBox(editingWashBox.id, washBoxData);
       setSuccess('Бокс успешно обновлен');
       setShowEditModal(false);
       setEditingWashBox(null);
-      setFormData({ number: '', status: 'free', serviceType: 'wash' });
+      setFormData({ number: '', status: 'free', serviceType: 'wash', chemistryEnabled: true });
       fetchWashBoxes();
     } catch (err) {
       if (err.response?.data?.error) {
@@ -383,7 +403,8 @@ const WashBoxManagement = () => {
     setFormData({
       number: washBox.number.toString(),
       status: washBox.status,
-      serviceType: washBox.service_type
+      serviceType: washBox.service_type,
+      chemistryEnabled: washBox.chemistry_enabled
     });
     setShowEditModal(true);
   };
@@ -393,7 +414,7 @@ const WashBoxManagement = () => {
     setShowCreateModal(false);
     setShowEditModal(false);
     setEditingWashBox(null);
-    setFormData({ number: '', status: 'free', serviceType: 'wash' });
+    setFormData({ number: '', status: 'free', serviceType: 'wash', chemistryEnabled: true });
     setError('');
   };
 
@@ -462,6 +483,7 @@ const WashBoxManagement = () => {
             <Th theme={theme}>Номер</Th>
             <Th theme={theme}>Статус</Th>
             <Th theme={theme}>Тип услуги</Th>
+            <Th theme={theme}>Химия</Th>
             <Th theme={theme}>Дата создания</Th>
             <Th theme={theme}>Действия</Th>
           </tr>
@@ -484,6 +506,15 @@ const WashBoxManagement = () => {
                   <ServiceTypeBadge className={washBox.service_type}>
                     {getServiceTypeText(washBox.service_type)}
                   </ServiceTypeBadge>
+                </Td>
+                <Td>
+                  {washBox.service_type === 'wash' ? (
+                    <ChemistryBadge className={washBox.chemistry_enabled ? 'enabled' : 'disabled'}>
+                      {washBox.chemistry_enabled ? 'Включена' : 'Отключена'}
+                    </ChemistryBadge>
+                  ) : (
+                    <span style={{ color: '#999' }}>Недоступна</span>
+                  )}
                 </Td>
                 <Td>{new Date(washBox.created_at).toLocaleDateString('ru-RU')}</Td>
                 <Td>
@@ -558,6 +589,20 @@ const WashBoxManagement = () => {
                 </Select>
               </FormGroup>
               
+              {formData.serviceType === 'wash' && (
+                <FormGroup>
+                  <Label theme={theme}>
+                    <input
+                      type="checkbox"
+                      checked={formData.chemistryEnabled}
+                      onChange={(e) => setFormData({ ...formData, chemistryEnabled: e.target.checked })}
+                      style={{ marginRight: '8px' }}
+                    />
+                    Химия включена
+                  </Label>
+                </FormGroup>
+              )}
+              
               <ButtonGroup>
                 <Button theme={theme} type="button" onClick={closeModals}>
                   Отмена
@@ -614,6 +659,20 @@ const WashBoxManagement = () => {
                   <option value="vacuum">Пылесос</option>
                 </Select>
               </FormGroup>
+              
+              {formData.serviceType === 'wash' && (
+                <FormGroup>
+                  <Label theme={theme}>
+                    <input
+                      type="checkbox"
+                      checked={formData.chemistryEnabled}
+                      onChange={(e) => setFormData({ ...formData, chemistryEnabled: e.target.checked })}
+                      style={{ marginRight: '8px' }}
+                    />
+                    Химия включена
+                  </Label>
+                </FormGroup>
+              )}
               
               <ButtonGroup>
                 <Button theme={theme} type="button" onClick={closeModals}>
