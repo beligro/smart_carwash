@@ -16,6 +16,7 @@ type Repository interface {
 	GetPaymentByTinkoffID(tinkoffID string) (*models.Payment, error)
 	UpdatePayment(payment *models.Payment) error
 	ListPayments(req *models.AdminListPaymentsRequest) ([]models.Payment, int, error)
+	GetPaymentStatistics(req *models.PaymentStatisticsRequest) (*models.PaymentStatisticsResponse, error)
 }
 
 // repository реализация Repository
@@ -132,4 +133,86 @@ func (r *repository) ListPayments(req *models.AdminListPaymentsRequest) ([]model
 	}
 
 	return payments, int(total), nil
+}
+
+// GetPaymentStatistics получает статистику платежей
+func (r *repository) GetPaymentStatistics(req *models.PaymentStatisticsRequest) (*models.PaymentStatisticsResponse, error) {
+	// Структура для агрегации данных
+	type StatResult struct {
+		ServiceType    string `json:"service_type"`
+		WithChemistry  bool   `json:"with_chemistry"`
+		SessionCount   int64  `json:"session_count"`
+		TotalAmount    int64  `json:"total_amount"` // сумма с учетом возвратов (amount - refunded_amount)
+	}
+
+	var results []StatResult
+
+	// Базовый запрос с JOIN платежей и сессий
+	// Учитываем возвраты: вычитаем refunded_amount из amount
+	query := r.db.Table("payments").
+		Select(`
+			sessions.service_type,
+			sessions.with_chemistry,
+			COUNT(DISTINCT sessions.id) as session_count,
+			COALESCE(SUM(payments.amount - payments.refunded_amount), 0) as total_amount
+		`).
+		Joins("JOIN sessions ON payments.session_id = sessions.id").
+		Group("sessions.service_type, sessions.with_chemistry").
+		Order("sessions.service_type, sessions.with_chemistry")
+
+	// Применяем фильтры
+	if req.UserID != nil {
+		query = query.Where("sessions.user_id = ?", *req.UserID)
+	}
+	if req.DateFrom != nil {
+		query = query.Where("payments.created_at >= ?", *req.DateFrom)
+	}
+	if req.DateTo != nil {
+		query = query.Where("payments.created_at <= ?", *req.DateTo)
+	}
+
+	// Выполняем запрос
+	if err := query.Find(&results).Error; err != nil {
+		return nil, err
+	}
+
+	// Преобразуем результаты в нужный формат
+	statistics := make([]models.ServiceTypeStatistics, 0, len(results))
+	var totalSessions int64
+	var totalAmount int64
+
+	for _, result := range results {
+		statistics = append(statistics, models.ServiceTypeStatistics{
+			ServiceType:   result.ServiceType,
+			WithChemistry: result.WithChemistry,
+			SessionCount:  int(result.SessionCount),
+			TotalAmount:   int(result.TotalAmount),
+		})
+		totalSessions += result.SessionCount
+		totalAmount += result.TotalAmount
+	}
+
+	// Формируем итоговую статистику
+	total := models.ServiceTypeStatistics{
+		ServiceType:   "total",
+		WithChemistry: false,
+		SessionCount:  int(totalSessions),
+		TotalAmount:   int(totalAmount),
+	}
+
+	// Формируем описание периода
+	period := "все время"
+	if req.DateFrom != nil && req.DateTo != nil {
+		period = "с " + req.DateFrom.Format("02.01.2006") + " по " + req.DateTo.Format("02.01.2006")
+	} else if req.DateFrom != nil {
+		period = "с " + req.DateFrom.Format("02.01.2006")
+	} else if req.DateTo != nil {
+		period = "по " + req.DateTo.Format("02.01.2006")
+	}
+
+	return &models.PaymentStatisticsResponse{
+		Statistics: statistics,
+		Total:      total,
+		Period:     period,
+	}, nil
 } 

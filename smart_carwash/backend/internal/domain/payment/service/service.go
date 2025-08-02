@@ -78,6 +78,7 @@ type Service interface {
 	RefundPayment(req *models.RefundPaymentRequest) (*models.RefundPaymentResponse, error)
 	CalculatePartialRefund(req *models.CalculatePartialRefundRequest) (*models.CalculatePartialRefundResponse, error)
 	CalculateSessionRefund(req *models.CalculateSessionRefundRequest) (*models.CalculateSessionRefundResponse, error)
+	GetPaymentStatistics(req *models.PaymentStatisticsRequest) (*models.PaymentStatisticsResponse, error)
 }
 
 // service реализация Service
@@ -866,4 +867,21 @@ func (s *service) CalculateSessionRefund(req *models.CalculateSessionRefundReque
 		TotalRefundAmount: totalRefundAmount,
 		Refunds:           refunds,
 	}, nil
+} 
+
+// GetPaymentStatistics получает статистику платежей
+func (s *service) GetPaymentStatistics(req *models.PaymentStatisticsRequest) (*models.PaymentStatisticsResponse, error) {
+	log.Printf("Getting payment statistics with filters: user_id=%v, date_from=%v, date_to=%v, service_type=%v",
+		req.UserID, req.DateFrom, req.DateTo, req.ServiceType)
+
+	statistics, err := s.repository.GetPaymentStatistics(req)
+	if err != nil {
+		log.Printf("Error getting payment statistics: %v", err)
+		return nil, fmt.Errorf("failed to get payment statistics: %w", err)
+	}
+
+	log.Printf("Successfully retrieved payment statistics (with refunds): %d service types, total sessions: %d, total amount: %d",
+		len(statistics.Statistics), statistics.Total.SessionCount, statistics.Total.TotalAmount)
+
+	return statistics, nil
 } 

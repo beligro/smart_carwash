@@ -41,6 +41,7 @@ func (h *Handler) RegisterRoutes(router *gin.RouterGroup) {
 	adminRoutes := router.Group("/admin/payments")
 	{
 		adminRoutes.GET("", h.adminListPayments)
+		adminRoutes.GET("/statistics", h.adminGetPaymentStatistics)
 		adminRoutes.POST("/refund", h.adminRefundPayment)
 	}
 }
@@ -292,6 +293,55 @@ func (h *Handler) calculateSessionRefund(c *gin.Context) {
 
 	log.Printf("Рассчитан возврат по сессии: SessionID=%s, TotalRefundAmount=%d", 
 		req.SessionID, response.TotalRefundAmount)
+
+	c.JSON(http.StatusOK, response)
+} 
+
+// adminGetPaymentStatistics обработчик для получения статистики платежей
+func (h *Handler) adminGetPaymentStatistics(c *gin.Context) {
+	var req models.PaymentStatisticsRequest
+
+	// Парсим query параметры
+	if userIDStr := c.Query("user_id"); userIDStr != "" {
+		userID, err := uuid.Parse(userIDStr)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid user_id format"})
+			return
+		}
+		req.UserID = &userID
+	}
+
+	if dateFromStr := c.Query("date_from"); dateFromStr != "" {
+		dateFrom, err := time.Parse("2006-01-02", dateFromStr)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid date_from format, expected YYYY-MM-DD"})
+			return
+		}
+		req.DateFrom = &dateFrom
+	}
+
+	if dateToStr := c.Query("date_to"); dateToStr != "" {
+		dateTo, err := time.Parse("2006-01-02", dateToStr)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid date_to format, expected YYYY-MM-DD"})
+			return
+		}
+		req.DateTo = &dateTo
+	}
+
+	if serviceType := c.Query("service_type"); serviceType != "" {
+		req.ServiceType = &serviceType
+	}
+
+	log.Printf("Admin payment statistics request: user_id=%v, date_from=%v, date_to=%v, service_type=%v",
+		req.UserID, req.DateFrom, req.DateTo, req.ServiceType)
+
+	response, err := h.service.GetPaymentStatistics(&req)
+	if err != nil {
+		log.Printf("Error getting payment statistics: %v", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
 
 	c.JSON(http.StatusOK, response)
 } 

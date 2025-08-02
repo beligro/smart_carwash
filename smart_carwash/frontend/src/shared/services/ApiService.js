@@ -421,6 +421,13 @@ const ApiService = {
     return response.data;
   },
 
+  // Получение статистики платежей (админка)
+  getPaymentStatistics: async (filters = {}) => {
+    const queryString = toSnakeCaseQuery(filters);
+    const response = await api.get(`/admin/payments/statistics?${queryString}`);
+    return response.data;
+  },
+
   // Возврат платежа (админка)
   refundPayment: async (data) => {
     const snakeData = toSnakeCase(data);

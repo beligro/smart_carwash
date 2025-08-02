@@ -3,6 +3,7 @@ import styled from 'styled-components';
 import { useSearchParams, useLocation } from 'react-router-dom';
 import { getTheme } from '../../../shared/styles/theme';
 import ApiService from '../../../shared/services/ApiService';
+import PaymentStatistics from './PaymentStatistics';
 
 const Container = styled.div`
   padding: 20px;
@@ -230,6 +231,7 @@ const PaymentManagement = () => {
   const [payments, setPayments] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [showStatistics, setShowStatistics] = useState(false);
   const [filters, setFilters] = useState({
     payment_id: '',
     session_id: '',
@@ -329,19 +331,11 @@ const PaymentManagement = () => {
 
   const handleApplyFilters = () => {
     setPagination(prev => ({ ...prev, offset: 0 }));
-    
-    // Обновляем URL параметры
-    const newSearchParams = new URLSearchParams();
-    Object.keys(filters).forEach(key => {
-      if (filters[key]) {
-        newSearchParams.set(key, filters[key]);
-      }
-    });
-    setSearchParams(newSearchParams);
+    loadPayments();
   };
 
   const handleClearFilters = () => {
-    const newFilters = {
+    const clearedFilters = {
       payment_id: '',
       session_id: '',
       user_id: '',
@@ -350,11 +344,9 @@ const PaymentManagement = () => {
       date_from: '',
       date_to: ''
     };
-    setFilters(newFilters);
+    setFilters(clearedFilters);
     setPagination(prev => ({ ...prev, offset: 0 }));
-    
-    // Очищаем URL параметры
-    setSearchParams({});
+    loadPayments();
   };
 
   const handleRefund = async (paymentId, amount) => {
@@ -484,6 +476,86 @@ const PaymentManagement = () => {
               onChange={(e) => handleFilterChange('date_to', e.target.value)}
             />
           </FilterGroup>
+
+          <FilterGroup>
+            <FilterLabel theme={theme}>Быстрые фильтры</FilterLabel>
+            <FilterSelect
+              theme={theme}
+              onChange={(e) => {
+                const today = new Date();
+                const yesterday = new Date(today);
+                yesterday.setDate(yesterday.getDate() - 1);
+                
+                let dateFrom = '';
+                let dateTo = '';
+                
+                switch (e.target.value) {
+                  case 'today':
+                    dateFrom = today.toISOString().split('T')[0];
+                    dateTo = today.toISOString().split('T')[0];
+                    break;
+                  case 'yesterday':
+                    dateFrom = yesterday.toISOString().split('T')[0];
+                    dateTo = yesterday.toISOString().split('T')[0];
+                    break;
+                  case 'this_week':
+                    const startOfWeek = new Date(today);
+                    startOfWeek.setDate(today.getDate() - today.getDay());
+                    dateFrom = startOfWeek.toISOString().split('T')[0];
+                    dateTo = today.toISOString().split('T')[0];
+                    break;
+                  case 'last_week':
+                    const lastWeekStart = new Date(today);
+                    lastWeekStart.setDate(today.getDate() - today.getDay() - 7);
+                    const lastWeekEnd = new Date(lastWeekStart);
+                    lastWeekEnd.setDate(lastWeekStart.getDate() + 6);
+                    dateFrom = lastWeekStart.toISOString().split('T')[0];
+                    dateTo = lastWeekEnd.toISOString().split('T')[0];
+                    break;
+                  case 'this_month':
+                    dateFrom = new Date(today.getFullYear(), today.getMonth(), 1).toISOString().split('T')[0];
+                    dateTo = today.toISOString().split('T')[0];
+                    break;
+                  case 'last_month':
+                    const lastMonth = new Date(today.getFullYear(), today.getMonth() - 1, 1);
+                    const lastMonthEnd = new Date(today.getFullYear(), today.getMonth(), 0);
+                    dateFrom = lastMonth.toISOString().split('T')[0];
+                    dateTo = lastMonthEnd.toISOString().split('T')[0];
+                    break;
+                  case 'this_year':
+                    dateFrom = new Date(today.getFullYear(), 0, 1).toISOString().split('T')[0];
+                    dateTo = today.toISOString().split('T')[0];
+                    break;
+                  case 'last_year':
+                    const lastYearStart = new Date(today.getFullYear() - 1, 0, 1);
+                    const lastYearEnd = new Date(today.getFullYear() - 1, 11, 31);
+                    dateFrom = lastYearStart.toISOString().split('T')[0];
+                    dateTo = lastYearEnd.toISOString().split('T')[0];
+                    break;
+                  default:
+                    break;
+                }
+                
+                if (dateFrom || dateTo) {
+                  setFilters(prev => ({
+                    ...prev,
+                    date_from: dateFrom,
+                    date_to: dateTo
+                  }));
+                }
+              }}
+            >
+              <option value="">Выберите период</option>
+              <option value="today">Сегодня</option>
+              <option value="yesterday">Вчера</option>
+              <option value="this_week">Эта неделя</option>
+              <option value="last_week">Прошлая неделя</option>
+              <option value="this_month">Этот месяц</option>
+              <option value="last_month">Прошлый месяц</option>
+              <option value="this_year">Этот год</option>
+              <option value="last_year">Прошлый год</option>
+            </FilterSelect>
+          </FilterGroup>
         </FiltersGrid>
 
         <ButtonGroup>
@@ -493,8 +565,22 @@ const PaymentManagement = () => {
           <Button theme={theme} onClick={handleClearFilters}>
             Очистить фильтры
           </Button>
+          <Button 
+            theme={theme} 
+            onClick={() => setShowStatistics(!showStatistics)}
+            style={{ backgroundColor: showStatistics ? theme.secondaryColor : theme.primaryColor }}
+          >
+            {showStatistics ? 'Скрыть статистику' : 'Показать статистику'}
+          </Button>
         </ButtonGroup>
       </FiltersContainer>
+
+      {showStatistics && (
+        <PaymentStatistics 
+          filters={filters} 
+          onClose={() => setShowStatistics(false)}
+        />
+      )}
 
       <TableContainer theme={theme}>
         {loading ? (

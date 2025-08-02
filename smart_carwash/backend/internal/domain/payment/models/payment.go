@@ -238,4 +238,27 @@ type SessionRefundBreakdown struct {
 type CalculateSessionRefundResponse struct {
 	TotalRefundAmount int                    `json:"total_refund_amount"` // общая сумма возврата в копейках
 	Refunds           []SessionRefundBreakdown `json:"refunds"`           // детали возвратов по каждому платежу
+}
+
+// PaymentStatisticsRequest представляет запрос на получение статистики платежей
+type PaymentStatisticsRequest struct {
+	UserID      *uuid.UUID `json:"user_id"`
+	DateFrom    *time.Time `json:"date_from"`
+	DateTo      *time.Time `json:"date_to"`
+	ServiceType *string    `json:"service_type" binding:"omitempty,oneof=wash air_dry vacuum"`
+}
+
+// ServiceTypeStatistics представляет статистику по типу услуги
+type ServiceTypeStatistics struct {
+	ServiceType string `json:"service_type"` // wash, air_dry, vacuum
+	WithChemistry bool `json:"with_chemistry"` // true для "мойка+химия", false для "мойка"
+	SessionCount int  `json:"session_count"`   // количество сессий
+	TotalAmount  int  `json:"total_amount"`    // общая сумма в копейках (с учетом возвратов)
+}
+
+// PaymentStatisticsResponse представляет ответ со статистикой платежей
+type PaymentStatisticsResponse struct {
+	Statistics []ServiceTypeStatistics `json:"statistics"` // статистика по типам услуг (с учетом возвратов)
+	Total      ServiceTypeStatistics   `json:"total"`      // итоговая статистика (с учетом возвратов)
+	Period     string                 `json:"period"`     // описание периода
 } 
