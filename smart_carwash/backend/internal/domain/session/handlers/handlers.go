@@ -63,6 +63,10 @@ func (h *Handler) RegisterRoutes(router *gin.RouterGroup) {
 	cashierRoutes := router.Group("/cashier/sessions", h.cashierMiddleware())
 	{
 		cashierRoutes.GET("", h.cashierListSessions)
+		cashierRoutes.GET("/active", h.cashierGetActiveSessions)
+		cashierRoutes.POST("/start", h.cashierStartSession)
+		cashierRoutes.POST("/complete", h.cashierCompleteSession)
+		cashierRoutes.POST("/cancel", h.cashierCancelSession)
 	}
 
 	// 1C webhook маршруты
@@ -592,6 +596,123 @@ func (h *Handler) cashierListSessions(c *gin.Context) {
 
 	// Возвращаем результат
 	c.JSON(http.StatusOK, response)
+}
+
+// cashierGetActiveSessions обработчик для получения активных сессий кассира
+func (h *Handler) cashierGetActiveSessions(c *gin.Context) {
+	// Получаем параметры пагинации
+	limitStr := c.DefaultQuery("limit", "50")
+	offsetStr := c.DefaultQuery("offset", "0")
+
+	limit, err := strconv.Atoi(limitStr)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Некорректный параметр limit"})
+		return
+	}
+
+	offset, err := strconv.Atoi(offsetStr)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Некорректный параметр offset"})
+		return
+	}
+
+	// Создаем запрос
+	req := &models.CashierActiveSessionsRequest{
+		Limit:  limit,
+		Offset: offset,
+	}
+
+	// Получаем активные сессии
+	response, err := h.service.CashierGetActiveSessions(req)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	// Логируем мета-параметры
+	c.Set("meta", gin.H{
+		"limit":          limit,
+		"offset":         offset,
+		"total_sessions": response.Total,
+	})
+
+	// Возвращаем результат
+	c.JSON(http.StatusOK, response)
+}
+
+// cashierStartSession обработчик для запуска сессии кассиром
+func (h *Handler) cashierStartSession(c *gin.Context) {
+	var req models.CashierStartSessionRequest
+
+	// Парсим JSON из тела запроса
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	// Логируем мета-параметр для поиска
+	log.Printf("Запрос на запуск сессии кассиром: SessionID=%s", req.SessionID)
+
+	// Запускаем сессию
+	session, err := h.service.CashierStartSession(&req)
+	if err != nil {
+		log.Printf("Ошибка запуска сессии кассиром: %v", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	log.Printf("Успешно запущена сессия кассиром: SessionID=%s", req.SessionID)
+	c.JSON(http.StatusOK, models.CashierStartSessionResponse{Session: *session})
+}
+
+// cashierCompleteSession обработчик для завершения сессии кассиром
+func (h *Handler) cashierCompleteSession(c *gin.Context) {
+	var req models.CashierCompleteSessionRequest
+
+	// Парсим JSON из тела запроса
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	// Логируем мета-параметр для поиска
+	log.Printf("Запрос на завершение сессии кассиром: SessionID=%s", req.SessionID)
+
+	// Завершаем сессию
+	session, err := h.service.CashierCompleteSession(&req)
+	if err != nil {
+		log.Printf("Ошибка завершения сессии кассиром: %v", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	log.Printf("Успешно завершена сессия кассиром: SessionID=%s", req.SessionID)
+	c.JSON(http.StatusOK, models.CashierCompleteSessionResponse{Session: *session})
+}
+
+// cashierCancelSession обработчик для отмены сессии кассиром
+func (h *Handler) cashierCancelSession(c *gin.Context) {
+	var req models.CashierCancelSessionRequest
+
+	// Парсим JSON из тела запроса
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	// Логируем мета-параметр для поиска
+	log.Printf("Запрос на отмену сессии кассиром: SessionID=%s", req.SessionID)
+
+	// Отменяем сессию
+	session, err := h.service.CashierCancelSession(&req)
+	if err != nil {
+		log.Printf("Ошибка отмены сессии кассиром: %v", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	log.Printf("Успешно отменена сессия кассиром: SessionID=%s", req.SessionID)
+	c.JSON(http.StatusOK, models.CashierCancelSessionResponse{Session: *session})
 }
 
 // cashierMiddleware middleware для проверки авторизации кассира

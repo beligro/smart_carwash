@@ -185,6 +185,7 @@ type GetSessionPaymentsResponse struct {
 type CancelSessionRequest struct {
 	SessionID uuid.UUID `json:"session_id" binding:"required"`
 	UserID    uuid.UUID `json:"user_id" binding:"required"`
+	SkipRefund bool     `json:"skip_refund"` // Пропустить возврат средств
 }
 
 // CancelSessionResponse представляет ответ на отмену сессии
@@ -241,4 +242,49 @@ type CashierSessionsRequest struct {
 	ShiftStartedAt time.Time `json:"shift_started_at" binding:"required"`
 	Limit          int       `json:"limit"`
 	Offset         int       `json:"offset"`
+}
+
+// CashierActiveSessionsRequest представляет запрос на получение активных сессий кассира
+type CashierActiveSessionsRequest struct {
+	Limit  int `json:"limit"`
+	Offset int `json:"offset"`
+}
+
+// CashierActiveSessionsResponse представляет ответ на получение активных сессий кассира
+type CashierActiveSessionsResponse struct {
+	Sessions []Session `json:"sessions"`
+	Total    int       `json:"total"`
+	Limit    int       `json:"limit"`
+	Offset   int       `json:"offset"`
+}
+
+// CashierStartSessionRequest представляет запрос на запуск сессии кассиром
+type CashierStartSessionRequest struct {
+	SessionID uuid.UUID `json:"session_id" binding:"required"`
+}
+
+// CashierCompleteSessionRequest представляет запрос на завершение сессии кассиром
+type CashierCompleteSessionRequest struct {
+	SessionID uuid.UUID `json:"session_id" binding:"required"`
+}
+
+// CashierCancelSessionRequest представляет запрос на отмену сессии кассиром
+type CashierCancelSessionRequest struct {
+	SessionID uuid.UUID `json:"session_id" binding:"required"`
+	SkipRefund bool     `json:"skip_refund"` // Пропустить возврат средств
+}
+
+// CashierStartSessionResponse представляет ответ на запуск сессии кассиром
+type CashierStartSessionResponse struct {
+	Session Session `json:"session"`
+}
+
+// CashierCompleteSessionResponse представляет ответ на завершение сессии кассиром
+type CashierCompleteSessionResponse struct {
+	Session Session `json:"session"`
+}
+
+// CashierCancelSessionResponse представляет ответ на отмену сессии кассиром
+type CashierCancelSessionResponse struct {
+	Session Session `json:"session"`
 }

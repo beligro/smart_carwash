@@ -512,6 +512,53 @@ const ApiService = {
       console.error('Ошибка получения платежей кассира:', error);
       throw error;
     }
+  },
+
+  // Получить активные сессии кассира
+  getCashierActiveSessions: async (limit = 50, offset = 0) => {
+    try {
+      const response = await api.get(`/cashier/sessions/active?limit=${limit}&offset=${offset}`);
+      return response.data;
+    } catch (error) {
+      console.error('Ошибка получения активных сессий кассира:', error);
+      throw error;
+    }
+  },
+
+  // Запустить сессию кассиром
+  startCashierSession: async (sessionId) => {
+    try {
+      const response = await api.post('/cashier/sessions/start', { session_id: sessionId });
+      return response.data;
+    } catch (error) {
+      console.error('Ошибка запуска сессии кассиром:', error);
+      throw error;
+    }
+  },
+
+  // Завершить сессию кассиром
+  completeCashierSession: async (sessionId) => {
+    try {
+      const response = await api.post('/cashier/sessions/complete', { session_id: sessionId });
+      return response.data;
+    } catch (error) {
+      console.error('Ошибка завершения сессии кассиром:', error);
+      throw error;
+    }
+  },
+
+  // Отменить сессию кассиром
+  cancelCashierSession: async (sessionId) => {
+    try {
+      const response = await api.post('/cashier/sessions/cancel', { 
+        session_id: sessionId,
+        skip_refund: true 
+      });
+      return response.data;
+    } catch (error) {
+      console.error('Ошибка отмены сессии кассиром:', error);
+      throw error;
+    }
   }
 };
 

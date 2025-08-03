@@ -4,6 +4,7 @@ import { useNavigate, useLocation } from 'react-router-dom';
 import { getTheme } from '../../shared/styles/theme';
 import AuthService from '../../shared/services/AuthService';
 import ApiService from '../../shared/services/ApiService';
+import ActiveSessions from './components/ActiveSessions';
 
 const CashierContainer = styled.div`
   display: flex;
@@ -195,7 +196,7 @@ const CashierApp = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [hasActiveShift, setHasActiveShift] = useState(false);
   const [shiftInfo, setShiftInfo] = useState(null);
-  const [activeTab, setActiveTab] = useState('sessions');
+  const [activeTab, setActiveTab] = useState('active_sessions');
   const [sessions, setSessions] = useState([]);
   const [payments, setPayments] = useState([]);
   const [loadingShift, setLoadingShift] = useState(false);
@@ -293,6 +294,11 @@ const CashierApp = () => {
       return;
     }
     
+    // Не загружаем данные для вкладки активных сессий - компонент сам загружает
+    if (activeTab === 'active_sessions') {
+      return;
+    }
+    
     setLoadingData(true);
     setError(null);
     
@@ -302,7 +308,7 @@ const CashierApp = () => {
         const sessionsResponse = await ApiService.getCashierSessions(shiftInfo.started_at);
         console.log('Получены сессии:', sessionsResponse);
         setSessions(sessionsResponse.sessions || []);
-      } else {
+      } else if (activeTab === 'payments') {
         console.log('Загружаем платежи для кассира, shiftStartedAt:', shiftInfo.started_at);
         const paymentsResponse = await ApiService.getCashierPayments(shiftInfo.started_at);
         console.log('Получены платежи:', paymentsResponse);
@@ -409,6 +415,13 @@ const CashierApp = () => {
           <>
             <TabContainer theme={theme}>
               <Tab 
+                active={activeTab === 'active_sessions'} 
+                onClick={() => handleTabChange('active_sessions')}
+                theme={theme}
+              >
+                Активные сессии
+              </Tab>
+              <Tab 
                 active={activeTab === 'sessions'} 
                 onClick={() => handleTabChange('sessions')}
                 theme={theme}
@@ -427,6 +440,8 @@ const CashierApp = () => {
             <Card theme={theme}>
               {loadingData ? (
                 <LoadingSpinner theme={theme}>Загрузка данных...</LoadingSpinner>
+              ) : activeTab === 'active_sessions' ? (
+                <ActiveSessions />
               ) : activeTab === 'sessions' ? (
                 <div>
                   <h3>Сессии с начала смены</h3>
@@ -463,7 +478,7 @@ const CashierApp = () => {
                     </Table>
                   )}
                 </div>
-              ) : (
+              ) : activeTab === 'payments' ? (
                 <div>
                   <h3>Платежи с начала смены</h3>
                   {payments.length === 0 ? (
@@ -499,7 +514,7 @@ const CashierApp = () => {
                     </Table>
                   )}
                 </div>
-              )}
+              ) : null}
             </Card>
           </>
         )}

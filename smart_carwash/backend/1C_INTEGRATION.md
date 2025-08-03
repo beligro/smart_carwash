@@ -145,13 +145,13 @@ Successfully processed 1C payment: SessionID=12345678-1234-1234-1234-123456789ab
 ### cURL запрос
 
 ```bash
-curl -X POST http://localhost:8080/api/v1/1c/payment-callback \
+curl -X POST https://h2o-nsk.ru/api/1c/payment-callback \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer your-secret-api-key-here" \
   -d '{
     "service_type": "wash",
     "with_chemistry": true,
-    "payment_time": "2023-10-27T10:00:00Z",
+    "payment_time": "2025-08-03T12:00:00Z",
     "amount": 50000,
     "rental_time_minutes": 20
   }'
