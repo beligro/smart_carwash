@@ -4,11 +4,13 @@ import (
 	"log"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"carwash_backend/internal/domain/session/models"
 	"carwash_backend/internal/domain/session/service"
 	paymentService "carwash_backend/internal/domain/payment/service"
+	authService "carwash_backend/internal/domain/auth/service"
 	"carwash_backend/internal/domain/session/middleware"
 
 	"github.com/gin-gonic/gin"
@@ -19,14 +21,16 @@ import (
 type Handler struct {
 	service        service.Service
 	paymentService paymentService.Service
+	authService    authService.Service
 	apiKey1C       string
 }
 
 // NewHandler создает новый экземпляр Handler
-func NewHandler(service service.Service, paymentService paymentService.Service, apiKey1C string) *Handler {
+func NewHandler(service service.Service, paymentService paymentService.Service, authService authService.Service, apiKey1C string) *Handler {
 	return &Handler{
 		service:        service,
 		paymentService: paymentService,
+		authService:    authService,
 		apiKey1C:       apiKey1C,
 	}
 }
@@ -53,6 +57,12 @@ func (h *Handler) RegisterRoutes(router *gin.RouterGroup) {
 	{
 		adminRoutes.GET("", h.adminListSessions)
 		adminRoutes.GET("/by-id", h.adminGetSession)
+	}
+
+	// Маршруты для кассира
+	cashierRoutes := router.Group("/cashier/sessions", h.cashierMiddleware())
+	{
+		cashierRoutes.GET("", h.cashierListSessions)
 	}
 
 	// 1C webhook маршруты
@@ -525,4 +535,95 @@ func (h *Handler) handle1CPaymentCallback(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, response)
+}
+
+// cashierListSessions обработчик для получения списка сессий кассира
+func (h *Handler) cashierListSessions(c *gin.Context) {
+	// Получаем время начала смены из query параметра
+	shiftStartedAtStr := c.Query("shift_started_at")
+	if shiftStartedAtStr == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Не указано время начала смены"})
+		return
+	}
+
+	shiftStartedAt, err := time.Parse(time.RFC3339, shiftStartedAtStr)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Некорректный формат времени"})
+		return
+	}
+
+	// Получаем параметры пагинации
+	limitStr := c.DefaultQuery("limit", "50")
+	offsetStr := c.DefaultQuery("offset", "0")
+
+	limit, err := strconv.Atoi(limitStr)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Некорректный параметр limit"})
+		return
+	}
+
+	offset, err := strconv.Atoi(offsetStr)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Некорректный параметр offset"})
+		return
+	}
+
+	// Создаем запрос
+	req := &models.CashierSessionsRequest{
+		ShiftStartedAt: shiftStartedAt,
+		Limit:          limit,
+		Offset:         offset,
+	}
+
+	// Получаем список сессий
+	response, err := h.service.CashierListSessions(req)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	// Логируем мета-параметры
+	c.Set("meta", gin.H{
+		"shift_started_at": shiftStartedAt,
+		"limit":            limit,
+		"offset":           offset,
+		"total_sessions":   response.Total,
+	})
+
+	// Возвращаем результат
+	c.JSON(http.StatusOK, response)
+}
+
+// cashierMiddleware middleware для проверки авторизации кассира
+func (h *Handler) cashierMiddleware() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		// Получаем токен из заголовка
+		token := c.GetHeader("Authorization")
+		token = strings.TrimPrefix(token, "Bearer ")
+
+		if token == "" {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "Токен не предоставлен"})
+			c.Abort()
+			return
+		}
+
+		// Проверяем токен через auth service
+		claims, err := h.authService.ValidateToken(token)
+		if err != nil {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "Недействительный токен"})
+			c.Abort()
+			return
+		}
+
+		// Проверяем, что это кассир, а не администратор
+		if claims.IsAdmin {
+			c.JSON(http.StatusForbidden, gin.H{"error": "Доступ запрещен"})
+			c.Abort()
+			return
+		}
+
+		// Устанавливаем ID кассира в контекст
+		c.Set("cashier_id", claims.ID)
+		c.Next()
+	}
 }

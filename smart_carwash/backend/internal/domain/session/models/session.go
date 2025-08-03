@@ -235,3 +235,10 @@ type AdminListSessionsResponse struct {
 type AdminGetSessionResponse struct {
 	Session Session `json:"session"`
 }
+
+// CashierSessionsRequest представляет запрос на получение сессий кассира
+type CashierSessionsRequest struct {
+	ShiftStartedAt time.Time `json:"shift_started_at" binding:"required"`
+	Limit          int       `json:"limit"`
+	Offset         int       `json:"offset"`
+}

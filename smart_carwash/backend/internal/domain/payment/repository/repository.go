@@ -17,6 +17,7 @@ type Repository interface {
 	UpdatePayment(payment *models.Payment) error
 	ListPayments(req *models.AdminListPaymentsRequest) ([]models.Payment, int, error)
 	GetPaymentStatistics(req *models.PaymentStatisticsRequest) (*models.PaymentStatisticsResponse, error)
+	CashierListPayments(req *models.CashierPaymentsRequest) ([]models.Payment, int, error)
 }
 
 // repository реализация Repository
@@ -218,4 +219,39 @@ func (r *repository) GetPaymentStatistics(req *models.PaymentStatisticsRequest) 
 		Total:      total,
 		Period:     period,
 	}, nil
+}
+
+// CashierListPayments получает список платежей для кассира с начала смены
+func (r *repository) CashierListPayments(req *models.CashierPaymentsRequest) ([]models.Payment, int, error) {
+	var payments []models.Payment
+	var total int64
+
+	query := r.db.Model(&models.Payment{})
+
+	// Фильтруем по дате начала смены
+	query = query.Where("created_at >= ?", req.ShiftStartedAt)
+
+	// Получаем общее количество
+	if err := query.Count(&total).Error; err != nil {
+		return nil, 0, err
+	}
+
+	// Применяем пагинацию
+	limit := 50
+	if req.Limit != nil {
+		limit = *req.Limit
+	}
+	offset := 0
+	if req.Offset != nil {
+		offset = *req.Offset
+	}
+
+	query = query.Offset(offset).Limit(limit).Order("created_at DESC")
+
+	// Получаем платежи
+	if err := query.Find(&payments).Error; err != nil {
+		return nil, 0, err
+	}
+
+	return payments, int(total), nil
 } 

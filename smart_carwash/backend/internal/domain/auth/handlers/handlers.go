@@ -41,6 +41,14 @@ func (h *Handler) RegisterRoutes(router *gin.RouterGroup) {
 			cashierRoutes.PUT("", h.updateCashier)
 			cashierRoutes.DELETE("", h.deleteCashier)
 		}
+
+		// Маршруты для кассира (требуют авторизации кассира)
+		cashierShiftRoutes := authRoutes.Group("/cashier", h.cashierMiddleware())
+		{
+			cashierShiftRoutes.POST("/shift/start", h.startShift)
+			cashierShiftRoutes.POST("/shift/end", h.endShift)
+			cashierShiftRoutes.GET("/shift/status", h.getShiftStatus)
+		}
 	}
 }
 
@@ -266,6 +274,128 @@ func (h *Handler) adminMiddleware() gin.HandlerFunc {
 			return
 		}
 
+		c.Next()
+	}
+}
+
+// startShift обработчик для начала смены кассира
+func (h *Handler) startShift(c *gin.Context) {
+	// Получаем ID кассира из контекста (установлен middleware)
+	cashierID, exists := c.Get("cashier_id")
+	if !exists {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Не авторизован"})
+		return
+	}
+
+	// Создаем запрос
+	req := &models.StartShiftRequest{
+		CashierID: cashierID.(uuid.UUID),
+	}
+
+	// Начинаем смену
+	resp, err := h.service.StartShift(req)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	// Логируем мета-параметры
+	c.Set("meta", gin.H{
+		"cashier_id": req.CashierID,
+		"shift_id":   resp.ID,
+	})
+
+	// Возвращаем результат
+	c.JSON(http.StatusOK, resp)
+}
+
+// endShift обработчик для завершения смены кассира
+func (h *Handler) endShift(c *gin.Context) {
+	// Получаем ID кассира из контекста (установлен middleware)
+	cashierID, exists := c.Get("cashier_id")
+	if !exists {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Не авторизован"})
+		return
+	}
+
+	// Создаем запрос
+	req := &models.EndShiftRequest{
+		CashierID: cashierID.(uuid.UUID),
+	}
+
+	// Завершаем смену
+	resp, err := h.service.EndShift(req)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	// Логируем мета-параметры
+	c.Set("meta", gin.H{
+		"cashier_id": req.CashierID,
+		"shift_id":   resp.ID,
+	})
+
+	// Возвращаем результат
+	c.JSON(http.StatusOK, resp)
+}
+
+// getShiftStatus обработчик для получения статуса смены кассира
+func (h *Handler) getShiftStatus(c *gin.Context) {
+	// Получаем ID кассира из контекста (установлен middleware)
+	cashierID, exists := c.Get("cashier_id")
+	if !exists {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Не авторизован"})
+		return
+	}
+
+	// Получаем статус смены
+	resp, err := h.service.GetShiftStatus(cashierID.(uuid.UUID))
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	// Логируем мета-параметры
+	c.Set("meta", gin.H{
+		"cashier_id": cashierID,
+		"has_shift":  resp.HasActiveShift,
+	})
+
+	// Возвращаем результат
+	c.JSON(http.StatusOK, resp)
+}
+
+// cashierMiddleware middleware для проверки авторизации кассира
+func (h *Handler) cashierMiddleware() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		// Получаем токен из заголовка
+		token := c.GetHeader("Authorization")
+		token = strings.TrimPrefix(token, "Bearer ")
+
+		if token == "" {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "Токен не предоставлен"})
+			c.Abort()
+			return
+		}
+
+		// Проверяем токен
+		claims, err := h.service.ValidateToken(token)
+		if err != nil {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "Недействительный токен"})
+			c.Abort()
+			return
+		}
+
+		// Проверяем, что это кассир, а не администратор
+		if claims.IsAdmin {
+			c.JSON(http.StatusForbidden, gin.H{"error": "Доступ запрещен"})
+			c.Abort()
+			return
+		}
+
+		// Устанавливаем ID кассира в контекст
+		c.Set("cashier_id", claims.ID)
 		c.Next()
 	}
 }

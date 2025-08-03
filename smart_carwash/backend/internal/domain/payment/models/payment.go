@@ -263,4 +263,11 @@ type PaymentStatisticsResponse struct {
 	Statistics []ServiceTypeStatistics `json:"statistics"` // статистика по типам услуг (с учетом возвратов)
 	Total      ServiceTypeStatistics   `json:"total"`      // итоговая статистика (с учетом возвратов)
 	Period     string                 `json:"period"`     // описание периода
+}
+
+// CashierPaymentsRequest представляет запрос на получение платежей кассира
+type CashierPaymentsRequest struct {
+	ShiftStartedAt time.Time `json:"shift_started_at" binding:"required"`
+	Limit          *int      `json:"limit"`
+	Offset         *int      `json:"offset"`
 } 

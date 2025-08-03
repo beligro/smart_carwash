@@ -42,6 +42,9 @@ type Service interface {
 	// Административные методы
 	AdminListSessions(req *models.AdminListSessionsRequest) (*models.AdminListSessionsResponse, error)
 	AdminGetSession(req *models.AdminGetSessionRequest) (*models.AdminGetSessionResponse, error)
+
+	// Методы для кассира
+	CashierListSessions(req *models.CashierSessionsRequest) (*models.AdminListSessionsResponse, error)
 }
 
 // ServiceImpl реализация Service
@@ -1220,4 +1223,80 @@ func (s *ServiceImpl) UpdateSessionExtension(sessionID uuid.UUID, extensionTimeM
 	}
 
 	return nil
+}
+
+// CashierListSessions возвращает список сессий для кассира с начала смены
+func (s *ServiceImpl) CashierListSessions(req *models.CashierSessionsRequest) (*models.AdminListSessionsResponse, error) {
+	// Устанавливаем значения по умолчанию для пагинации
+	limit := 50
+	if req.Limit > 0 {
+		limit = req.Limit
+	}
+	offset := 0
+	if req.Offset > 0 {
+		offset = req.Offset
+	}
+
+	// Получаем сессии с начала смены
+	sessions, total, err := s.repo.GetSessionsWithFilters(nil, nil, nil, nil, nil, &req.ShiftStartedAt, nil, limit, offset)
+	if err != nil {
+		return nil, err
+	}
+
+			// Загружаем платежи для каждой сессии
+		for i := range sessions {
+			payments, err := s.paymentService.GetPaymentsBySessionID(sessions[i].ID)
+			if err != nil {
+				// Логируем ошибку, но продолжаем работу
+				continue
+			}
+
+			// Устанавливаем основной платеж
+			if payments.MainPayment != nil {
+				sessions[i].MainPayment = &models.Payment{
+					ID:             payments.MainPayment.ID,
+					SessionID:      payments.MainPayment.SessionID,
+					Amount:         payments.MainPayment.Amount,
+					RefundedAmount: payments.MainPayment.RefundedAmount,
+					Currency:       payments.MainPayment.Currency,
+					Status:         payments.MainPayment.Status,
+					PaymentType:    payments.MainPayment.PaymentType,
+					PaymentURL:     payments.MainPayment.PaymentURL,
+					TinkoffID:      payments.MainPayment.TinkoffID,
+					ExpiresAt:      payments.MainPayment.ExpiresAt,
+					RefundedAt:     payments.MainPayment.RefundedAt,
+					CreatedAt:      payments.MainPayment.CreatedAt,
+					UpdatedAt:      payments.MainPayment.UpdatedAt,
+				}
+			}
+
+			// Устанавливаем платежи продления
+			if len(payments.ExtensionPayments) > 0 {
+				sessions[i].ExtensionPayments = make([]models.Payment, len(payments.ExtensionPayments))
+				for j, payment := range payments.ExtensionPayments {
+					sessions[i].ExtensionPayments[j] = models.Payment{
+						ID:             payment.ID,
+						SessionID:      payment.SessionID,
+						Amount:         payment.Amount,
+						RefundedAmount: payment.RefundedAmount,
+						Currency:       payment.Currency,
+						Status:         payment.Status,
+						PaymentType:    payment.PaymentType,
+						PaymentURL:     payment.PaymentURL,
+						TinkoffID:      payment.TinkoffID,
+						ExpiresAt:      payment.ExpiresAt,
+						RefundedAt:     payment.RefundedAt,
+						CreatedAt:      payment.CreatedAt,
+						UpdatedAt:      payment.UpdatedAt,
+					}
+				}
+			}
+	}
+
+	return &models.AdminListSessionsResponse{
+		Sessions: sessions,
+		Total:    total,
+		Limit:    limit,
+		Offset:   offset,
+	}, nil
 }

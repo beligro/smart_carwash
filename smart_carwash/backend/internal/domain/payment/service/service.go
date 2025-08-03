@@ -80,6 +80,7 @@ type Service interface {
 	CalculateSessionRefund(req *models.CalculateSessionRefundRequest) (*models.CalculateSessionRefundResponse, error)
 	GetPaymentStatistics(req *models.PaymentStatisticsRequest) (*models.PaymentStatisticsResponse, error)
 	CreateForCashier(sessionID uuid.UUID, amount int) (*models.Payment, error)
+	CashierListPayments(req *models.CashierPaymentsRequest) (*models.AdminListPaymentsResponse, error)
 }
 
 // service реализация Service
@@ -913,4 +914,28 @@ func (s *service) CreateForCashier(sessionID uuid.UUID, amount int) (*models.Pay
 		payment.ID, sessionID, amount)
 
 	return payment, nil
+} 
+
+// CashierListPayments получает список платежей для кассира
+func (s *service) CashierListPayments(req *models.CashierPaymentsRequest) (*models.AdminListPaymentsResponse, error) {
+	payments, total, err := s.repository.CashierListPayments(req)
+	if err != nil {
+		return nil, fmt.Errorf("ошибка получения списка платежей для кассира: %w", err)
+	}
+
+	limit := 50
+	if req.Limit != nil {
+		limit = *req.Limit
+	}
+	offset := 0
+	if req.Offset != nil {
+		offset = *req.Offset
+	}
+
+	return &models.AdminListPaymentsResponse{
+		Payments: payments,
+		Total:    total,
+		Limit:    limit,
+		Offset:   offset,
+	}, nil
 } 

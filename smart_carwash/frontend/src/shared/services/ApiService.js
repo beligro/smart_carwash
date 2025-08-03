@@ -455,6 +455,63 @@ const ApiService = {
     const snakeData = toSnakeCase(data);
     const response = await api.put('/admin/settings/rental-times', snakeData);
     return response.data;
+  },
+
+  // === МЕТОДЫ ДЛЯ РАБОТЫ С КАССИРОМ ===
+
+  // Получить статус смены кассира
+  getShiftStatus: async () => {
+    try {
+      const response = await api.get('/auth/cashier/shift/status');
+      return response.data;
+    } catch (error) {
+      console.error('Ошибка получения статуса смены:', error);
+      throw error;
+    }
+  },
+
+  // Начать смену кассира
+  startShift: async () => {
+    try {
+      const response = await api.post('/auth/cashier/shift/start');
+      return response.data;
+    } catch (error) {
+      console.error('Ошибка начала смены:', error);
+      throw error;
+    }
+  },
+
+  // Завершить смену кассира
+  endShift: async () => {
+    try {
+      const response = await api.post('/auth/cashier/shift/end');
+      return response.data;
+    } catch (error) {
+      console.error('Ошибка завершения смены:', error);
+      throw error;
+    }
+  },
+
+  // Получить сессии кассира
+  getCashierSessions: async (shiftStartedAt, limit = 50, offset = 0) => {
+    try {
+      const response = await api.get(`/cashier/sessions?shift_started_at=${shiftStartedAt}&limit=${limit}&offset=${offset}`);
+      return response.data;
+    } catch (error) {
+      console.error('Ошибка получения сессий кассира:', error);
+      throw error;
+    }
+  },
+
+  // Получить платежи кассира
+  getCashierPayments: async (shiftStartedAt, limit = 50, offset = 0) => {
+    try {
+      const response = await api.get(`/cashier/payments?shift_started_at=${shiftStartedAt}&limit=${limit}&offset=${offset}`);
+      return response.data;
+    } catch (error) {
+      console.error('Ошибка получения платежей кассира:', error);
+      throw error;
+    }
   }
 };
 
