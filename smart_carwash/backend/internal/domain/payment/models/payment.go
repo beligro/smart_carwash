@@ -30,6 +30,7 @@ type Payment struct {
 	Currency       string         `json:"currency" gorm:"default:RUB"`
 	Status         string         `json:"status" gorm:"default:pending;index"`
 	PaymentType    string         `json:"payment_type" gorm:"default:main;index"` // тип платежа: main или extension
+	PaymentMethod  string         `json:"payment_method" gorm:"default:tinkoff"` // метод платежа: tinkoff, cashier
 	PaymentURL     string         `json:"payment_url"`
 	TinkoffID      string         `json:"tinkoff_id" gorm:"index"`
 	ExpiresAt      *time.Time     `json:"expires_at"`
@@ -131,15 +132,16 @@ type WebhookRequest struct {
 
 // AdminListPaymentsRequest запрос на получение списка платежей с фильтрацией
 type AdminListPaymentsRequest struct {
-	PaymentID   *uuid.UUID `json:"payment_id"`
-	SessionID   *uuid.UUID `json:"session_id"`
-	UserID      *uuid.UUID `json:"user_id"`
-	Status      *string    `json:"status" binding:"omitempty,oneof=pending succeeded failed refunded"`
-	PaymentType *string    `json:"payment_type" binding:"omitempty,oneof=main extension"`
-	DateFrom    *time.Time `json:"date_from"`
-	DateTo      *time.Time `json:"date_to"`
-	Limit       *int       `json:"limit"`
-	Offset      *int       `json:"offset"`
+	PaymentID     *uuid.UUID `json:"payment_id"`
+	SessionID     *uuid.UUID `json:"session_id"`
+	UserID        *uuid.UUID `json:"user_id"`
+	Status        *string    `json:"status" binding:"omitempty,oneof=pending succeeded failed refunded"`
+	PaymentType   *string    `json:"payment_type" binding:"omitempty,oneof=main extension"`
+	PaymentMethod *string    `json:"payment_method" binding:"omitempty,oneof=tinkoff cashier"`
+	DateFrom      *time.Time `json:"date_from"`
+	DateTo        *time.Time `json:"date_to"`
+	Limit         *int       `json:"limit"`
+	Offset        *int       `json:"offset"`
 }
 
 // AdminListPaymentsResponse ответ на получение списка платежей

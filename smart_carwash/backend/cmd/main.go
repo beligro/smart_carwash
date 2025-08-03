@@ -99,13 +99,13 @@ func main() {
 	}
 
 	// Создаем сервис сессий с зависимостями
-	sessionSvc := sessionService.NewService(sessionRepository, washboxSvc, userSvc, bot, nil) // paymentSvc будет nil пока
+	sessionSvc := sessionService.NewService(sessionRepository, washboxSvc, userSvc, bot, nil, cfg.CashierUserID) // paymentSvc будет nil пока
 
 	// Создаем сервис платежей с зависимостью от sessionSvc как SessionStatusUpdater и SessionExtensionUpdater
 	paymentSvc := paymentService.NewService(paymentRepository, settingsRepository, sessionSvc, sessionSvc, tinkoffClient, cfg.TinkoffTerminalKey, cfg.TinkoffSecretKey)
 
 	// Обновляем sessionSvc с правильным paymentSvc
-	sessionSvc = sessionService.NewService(sessionRepository, washboxSvc, userSvc, bot, paymentSvc)
+	sessionSvc = sessionService.NewService(sessionRepository, washboxSvc, userSvc, bot, paymentSvc, cfg.CashierUserID)
 
 	// Создаем сервис очереди, который зависит от сервисов сессий, боксов и пользователей
 	queueSvc := queueService.NewService(sessionSvc, washboxSvc, userSvc)
@@ -118,7 +118,7 @@ func main() {
 	// Создаем обработчики
 	userHandler := userHandlers.NewHandler(userSvc)
 	washboxHandler := washboxHandlers.NewHandler(washboxSvc)
-	sessionHandler := sessionHandlers.NewHandler(sessionSvc)
+	sessionHandler := sessionHandlers.NewHandler(sessionSvc, paymentSvc, cfg.APIKey1C)
 	queueHandler := queueHandlers.NewHandler(queueSvc)
 	settingsHandler := settingsHandlers.NewHandler(settingsSvc)
 	authHandler := authHandlers.NewHandler(authSvc)

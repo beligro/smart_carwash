@@ -79,6 +79,7 @@ type Service interface {
 	CalculatePartialRefund(req *models.CalculatePartialRefundRequest) (*models.CalculatePartialRefundResponse, error)
 	CalculateSessionRefund(req *models.CalculateSessionRefundRequest) (*models.CalculateSessionRefundResponse, error)
 	GetPaymentStatistics(req *models.PaymentStatisticsRequest) (*models.PaymentStatisticsResponse, error)
+	CreateForCashier(sessionID uuid.UUID, amount int) (*models.Payment, error)
 }
 
 // service реализация Service
@@ -884,4 +885,32 @@ func (s *service) GetPaymentStatistics(req *models.PaymentStatisticsRequest) (*m
 		len(statistics.Statistics), statistics.Total.SessionCount, statistics.Total.TotalAmount)
 
 	return statistics, nil
+} 
+
+// CreateForCashier создает платеж для кассира
+func (s *service) CreateForCashier(sessionID uuid.UUID, amount int) (*models.Payment, error) {
+	log.Printf("Creating payment for cashier: SessionID=%s, Amount=%d", sessionID, amount)
+
+	// Создаем платеж
+	payment := &models.Payment{
+		SessionID:     sessionID,
+		Amount:        amount,
+		Currency:      "RUB",
+		Status:        models.PaymentStatusSucceeded, // Статус "оплачен" как указано в требованиях
+		PaymentType:   models.PaymentTypeMain,        // Тип "основной" как указано в требованиях
+		PaymentMethod: "cashier",                     // Метод "кассир" как указано в требованиях
+		TinkoffID:     "",                           // Пустой TinkoffID как указано в требованиях
+	}
+
+	// Сохраняем платеж в базе данных
+	err := s.repository.CreatePayment(payment)
+	if err != nil {
+		log.Printf("Error creating payment for cashier: %v", err)
+		return nil, fmt.Errorf("failed to create payment for cashier: %w", err)
+	}
+
+	log.Printf("Successfully created payment for cashier: PaymentID=%s, SessionID=%s, Amount=%d", 
+		payment.ID, sessionID, amount)
+
+	return payment, nil
 } 

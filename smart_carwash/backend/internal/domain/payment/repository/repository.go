@@ -104,6 +104,9 @@ func (r *repository) ListPayments(req *models.AdminListPaymentsRequest) ([]model
 	if req.PaymentType != nil {
 		query = query.Where("payment_type = ?", *req.PaymentType)
 	}
+	if req.PaymentMethod != nil {
+		query = query.Where("payment_method = ?", *req.PaymentMethod)
+	}
 	if req.DateFrom != nil {
 		query = query.Where("created_at >= ?", *req.DateFrom)
 	}

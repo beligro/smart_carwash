@@ -37,6 +37,7 @@ type Service interface {
 	CountSessionsByStatus(status string) (int, error)
 	GetSessionsByStatus(status string) ([]models.Session, error)
 	GetUserSessionHistory(req *models.GetUserSessionHistoryRequest) ([]models.Session, error)
+	CreateFromCashier(req *models.CashierPaymentRequest) (*models.Session, error)
 
 	// Административные методы
 	AdminListSessions(req *models.AdminListSessionsRequest) (*models.AdminListSessionsResponse, error)
@@ -50,16 +51,18 @@ type ServiceImpl struct {
 	userService    userService.Service
 	telegramBot    telegram.NotificationService
 	paymentService paymentService.Service
+	cashierUserID  string
 }
 
 // NewService создает новый экземпляр Service
-func NewService(repo repository.Repository, washboxService washboxService.Service, userService userService.Service, telegramBot telegram.NotificationService, paymentService paymentService.Service) *ServiceImpl {
+func NewService(repo repository.Repository, washboxService washboxService.Service, userService userService.Service, telegramBot telegram.NotificationService, paymentService paymentService.Service, cashierUserID string) *ServiceImpl {
 	return &ServiceImpl{
 		repo:           repo,
 		washboxService: washboxService,
 		userService:    userService,
 		telegramBot:    telegramBot,
 		paymentService: paymentService,
+		cashierUserID:  cashierUserID,
 	}
 }
 
@@ -1071,6 +1074,51 @@ func (s *ServiceImpl) GetUserSessionHistory(req *models.GetUserSessionHistoryReq
 	}
 
 	return sessions, nil
+}
+
+// CreateFromCashier создает сессию из запроса кассира
+func (s *ServiceImpl) CreateFromCashier(req *models.CashierPaymentRequest) (*models.Session, error) {
+	// Проверяем, что ID кассира настроен
+	if s.cashierUserID == "" {
+		return nil, fmt.Errorf("CASHIER_USER_ID не настроен")
+	}
+
+	cashierUserID, err := uuid.Parse(s.cashierUserID)
+	if err != nil {
+		return nil, fmt.Errorf("неверный формат CASHIER_USER_ID: %v", err)
+	}
+
+	// Валидация химии
+	if req.WithChemistry {
+		switch req.ServiceType {
+		case "wash":
+			// Химия разрешена для мойки
+		case "air_dry", "vacuum":
+			return nil, fmt.Errorf("chemistry is not available for service type: %s", req.ServiceType)
+		default:
+			return nil, fmt.Errorf("invalid service type: %s", req.ServiceType)
+		}
+	}
+
+	// Создаем новую сессию
+	now := time.Now()
+	session := &models.Session{
+		UserID:            cashierUserID,
+		Status:            models.SessionStatusInQueue, // Статус "в очереди" как указано в требованиях
+		ServiceType:       req.ServiceType,
+		WithChemistry:     req.WithChemistry,
+		CarNumber:         "", // Пустой номер машины как указано в требованиях
+		RentalTimeMinutes: req.RentalTimeMinutes,
+		StatusUpdatedAt:   now,
+	}
+
+	// Сохраняем сессию в базе данных
+	err = s.repo.CreateSession(session)
+	if err != nil {
+		return nil, err
+	}
+
+	return session, nil
 }
 
 // AdminListSessions список сессий для администратора

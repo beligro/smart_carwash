@@ -194,6 +194,10 @@ func (h *Handler) adminListPayments(c *gin.Context) {
 		req.PaymentType = &paymentType
 	}
 
+	if paymentMethod := c.Query("payment_method"); paymentMethod != "" {
+		req.PaymentMethod = &paymentMethod
+	}
+
 	if dateFromStr := c.Query("date_from"); dateFromStr != "" {
 		if dateFrom, err := time.Parse("2006-01-02", dateFromStr); err == nil {
 			req.DateFrom = &dateFrom
@@ -219,8 +223,8 @@ func (h *Handler) adminListPayments(c *gin.Context) {
 	}
 
 	// Логируем запрос с мета-параметрами
-	log.Printf("Запрос списка платежей (админка): PaymentID=%v, SessionID=%v, UserID=%v, Status=%v, PaymentType=%v, Limit=%v, Offset=%v", 
-		req.PaymentID, req.SessionID, req.UserID, req.Status, req.PaymentType, req.Limit, req.Offset)
+	log.Printf("Запрос списка платежей (админка): PaymentID=%v, SessionID=%v, UserID=%v, Status=%v, PaymentType=%v, PaymentMethod=%v, Limit=%v, Offset=%v", 
+		req.PaymentID, req.SessionID, req.UserID, req.Status, req.PaymentType, req.PaymentMethod, req.Limit, req.Offset)
 
 	response, err := h.service.ListPayments(&req)
 	if err != nil {

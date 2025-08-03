@@ -8,6 +8,8 @@ import (
 
 	"carwash_backend/internal/domain/session/models"
 	"carwash_backend/internal/domain/session/service"
+	paymentService "carwash_backend/internal/domain/payment/service"
+	"carwash_backend/internal/domain/session/middleware"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -15,13 +17,17 @@ import (
 
 // Handler структура для обработчиков HTTP запросов сессий
 type Handler struct {
-	service service.Service
+	service        service.Service
+	paymentService paymentService.Service
+	apiKey1C       string
 }
 
 // NewHandler создает новый экземпляр Handler
-func NewHandler(service service.Service) *Handler {
+func NewHandler(service service.Service, paymentService paymentService.Service, apiKey1C string) *Handler {
 	return &Handler{
-		service: service,
+		service:        service,
+		paymentService: paymentService,
+		apiKey1C:       apiKey1C,
 	}
 }
 
@@ -47,6 +53,12 @@ func (h *Handler) RegisterRoutes(router *gin.RouterGroup) {
 	{
 		adminRoutes.GET("", h.adminListSessions)
 		adminRoutes.GET("/by-id", h.adminGetSession)
+	}
+
+	// 1C webhook маршруты
+	oneCRoutes := router.Group("/1c")
+	{
+		oneCRoutes.POST("/payment-callback", middleware.Auth1CMiddleware(h.apiKey1C), h.handle1CPaymentCallback)
 	}
 }
 
@@ -467,4 +479,50 @@ func (h *Handler) adminGetSession(c *gin.Context) {
 	})
 
 	c.JSON(http.StatusOK, resp)
+}
+
+// handle1CPaymentCallback обработчик для webhook от 1C для платежей через кассира
+func (h *Handler) handle1CPaymentCallback(c *gin.Context) {
+	var req models.CashierPaymentRequest
+
+	// Парсим JSON из тела запроса
+	if err := c.ShouldBindJSON(&req); err != nil {
+		log.Printf("Error parsing 1C payment request: %v", err)
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	// Логируем входящий запрос
+	log.Printf("Received 1C payment callback: ServiceType=%s, WithChemistry=%t, Amount=%d, RentalTimeMinutes=%d",
+		req.ServiceType, req.WithChemistry, req.Amount, req.RentalTimeMinutes)
+
+	// Создаем сессию через кассира
+	session, err := h.service.CreateFromCashier(&req)
+	if err != nil {
+		log.Printf("Error creating session from cashier: %v", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	// Создаем платеж для кассира
+	payment, err := h.paymentService.CreateForCashier(session.ID, req.Amount)
+	if err != nil {
+		log.Printf("Error creating payment for cashier: %v", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	// Логируем успешное создание
+	log.Printf("Successfully processed 1C payment: SessionID=%s, PaymentID=%s, Amount=%d",
+		session.ID, payment.ID, req.Amount)
+
+	// Возвращаем успешный ответ
+	response := models.CashierPaymentResponse{
+		Success:   true,
+		SessionID: session.ID.String(),
+		PaymentID: payment.ID.String(),
+		Message:   "Payment processed successfully",
+	}
+
+	c.JSON(http.StatusOK, response)
 }

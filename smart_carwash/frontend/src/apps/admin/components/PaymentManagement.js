@@ -238,6 +238,7 @@ const PaymentManagement = () => {
     user_id: '',
     status: '',
     payment_type: '',
+    payment_method: '',
     date_from: '',
     date_to: ''
   });
@@ -260,6 +261,7 @@ const PaymentManagement = () => {
         user_id: userId || '',
         status: '',
         payment_type: '',
+        payment_method: '',
         date_from: '',
         date_to: ''
       };
@@ -284,6 +286,12 @@ const PaymentManagement = () => {
     { value: '', label: 'Все типы' },
     { value: 'main', label: 'Основной' },
     { value: 'extension', label: 'Продление' }
+  ];
+
+  const paymentMethodOptions = [
+    { value: '', label: 'Все методы' },
+    { value: 'tinkoff', label: 'Tinkoff' },
+    { value: 'cashier', label: 'Кассир' }
   ];
 
   const loadPayments = async () => {
@@ -377,7 +385,9 @@ const PaymentManagement = () => {
   };
 
   const canRefund = (payment) => {
-    return payment.status === 'succeeded' && payment.refunded_amount < payment.amount;
+    return payment.status === 'succeeded' && 
+           payment.refunded_amount < payment.amount && 
+           payment.payment_method !== 'cashier';
   };
 
   const getRefundAmount = (payment) => {
@@ -450,6 +460,21 @@ const PaymentManagement = () => {
               onChange={(e) => handleFilterChange('payment_type', e.target.value)}
             >
               {paymentTypeOptions.map(option => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </FilterSelect>
+          </FilterGroup>
+
+          <FilterGroup>
+            <FilterLabel theme={theme}>Метод платежа</FilterLabel>
+            <FilterSelect
+              theme={theme}
+              value={filters.payment_method}
+              onChange={(e) => handleFilterChange('payment_method', e.target.value)}
+            >
+              {paymentMethodOptions.map(option => (
                 <option key={option.value} value={option.value}>
                   {option.label}
                 </option>
@@ -595,6 +620,7 @@ const PaymentManagement = () => {
                   <TableHeader theme={theme}>Сумма</TableHeader>
                   <TableHeader theme={theme}>Статус</TableHeader>
                   <TableHeader theme={theme}>Тип</TableHeader>
+                  <TableHeader theme={theme}>Метод</TableHeader>
                   <TableHeader theme={theme}>Возврат</TableHeader>
                   <TableHeader theme={theme}>Дата создания</TableHeader>
                   <TableHeader theme={theme}>Действия</TableHeader>
@@ -619,6 +645,11 @@ const PaymentManagement = () => {
                     </TableCell>
                     <TableCell theme={theme}>
                       {payment.payment_type === 'main' ? 'Основной' : 'Продление'}
+                    </TableCell>
+                    <TableCell theme={theme}>
+                      {payment.payment_method === 'tinkoff' ? 'Tinkoff' : 
+                       payment.payment_method === 'cashier' ? 'Кассир' : 
+                       payment.payment_method || '-'}
                     </TableCell>
                     <TableCell theme={theme}>
                       {payment.refunded_amount > 0 ? formatAmount(payment.refunded_amount) : '-'}
