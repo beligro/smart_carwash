@@ -270,4 +270,25 @@ type CashierPaymentsRequest struct {
 	ShiftStartedAt time.Time `json:"shift_started_at" binding:"required"`
 	Limit          *int      `json:"limit"`
 	Offset         *int      `json:"offset"`
+}
+
+// CashierLastShiftStatisticsRequest представляет запрос на получение статистики последней смены кассира
+type CashierLastShiftStatisticsRequest struct {
+	CashierID uuid.UUID `json:"cashier_id" binding:"required"`
+}
+
+// CashierShiftStatistics представляет статистику смены кассира
+type CashierShiftStatistics struct {
+	ShiftStartedAt time.Time `json:"shift_started_at"`
+	ShiftEndedAt   time.Time `json:"shift_ended_at"`
+	CashierSessions []ServiceTypeStatistics `json:"cashier_sessions"` // сессии через кассира
+	MiniAppSessions []ServiceTypeStatistics `json:"mini_app_sessions"` // сессии из mini app
+	TotalSessions   []ServiceTypeStatistics `json:"total_sessions"`   // общий итог
+}
+
+// CashierLastShiftStatisticsResponse представляет ответ со статистикой последней смены кассира
+type CashierLastShiftStatisticsResponse struct {
+	Statistics *CashierShiftStatistics `json:"statistics,omitempty"`
+	Message    string                 `json:"message"`
+	HasShift   bool                   `json:"has_shift"`
 } 

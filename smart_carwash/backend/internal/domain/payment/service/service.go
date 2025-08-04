@@ -81,6 +81,7 @@ type Service interface {
 	GetPaymentStatistics(req *models.PaymentStatisticsRequest) (*models.PaymentStatisticsResponse, error)
 	CreateForCashier(sessionID uuid.UUID, amount int) (*models.Payment, error)
 	CashierListPayments(req *models.CashierPaymentsRequest) (*models.AdminListPaymentsResponse, error)
+	GetCashierLastShiftStatistics(req *models.CashierLastShiftStatisticsRequest) (*models.CashierLastShiftStatisticsResponse, error)
 }
 
 // service реализация Service
@@ -938,4 +939,25 @@ func (s *service) CashierListPayments(req *models.CashierPaymentsRequest) (*mode
 		Limit:    limit,
 		Offset:   offset,
 	}, nil
+} 
+
+// GetCashierLastShiftStatistics получает статистику последней смены кассира
+func (s *service) GetCashierLastShiftStatistics(req *models.CashierLastShiftStatisticsRequest) (*models.CashierLastShiftStatisticsResponse, error) {
+	log.Printf("Getting cashier last shift statistics: CashierID=%s", req.CashierID)
+
+	statistics, err := s.repository.GetCashierLastShiftStatistics(req)
+	if err != nil {
+		log.Printf("Error getting cashier last shift statistics: %v", err)
+		return nil, fmt.Errorf("failed to get cashier last shift statistics: %w", err)
+	}
+
+	if statistics.HasShift {
+		log.Printf("Successfully retrieved cashier last shift statistics: ShiftStartedAt=%v, ShiftEndedAt=%v, CashierSessions=%d, MiniAppSessions=%d, TotalSessions=%d",
+			statistics.Statistics.ShiftStartedAt, statistics.Statistics.ShiftEndedAt,
+			len(statistics.Statistics.CashierSessions), len(statistics.Statistics.MiniAppSessions), len(statistics.Statistics.TotalSessions))
+	} else {
+		log.Printf("No completed shifts found for cashier: CashierID=%s", req.CashierID)
+	}
+
+	return statistics, nil
 } 

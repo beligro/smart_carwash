@@ -559,6 +559,17 @@ const ApiService = {
       console.error('Ошибка отмены сессии кассиром:', error);
       throw error;
     }
+  },
+
+  // Получить статистику последней смены кассира
+  getCashierLastShiftStatistics: async () => {
+    try {
+      const response = await api.get('/cashier/statistics/last-shift');
+      return response.data;
+    } catch (error) {
+      console.error('Ошибка получения статистики последней смены:', error);
+      throw error;
+    }
   }
 };
 

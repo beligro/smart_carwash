@@ -5,6 +5,7 @@ import { getTheme } from '../../shared/styles/theme';
 import AuthService from '../../shared/services/AuthService';
 import ApiService from '../../shared/services/ApiService';
 import ActiveSessions from './components/ActiveSessions';
+import LastShiftStatistics from './components/LastShiftStatistics';
 
 const CashierContainer = styled.div`
   display: flex;
@@ -202,6 +203,7 @@ const CashierApp = () => {
   const [loadingShift, setLoadingShift] = useState(false);
   const [loadingData, setLoadingData] = useState(false);
   const [error, setError] = useState(null);
+  const [showLastShiftStatistics, setShowLastShiftStatistics] = useState(false);
 
   useEffect(() => {
     // Проверяем авторизацию при загрузке компонента
@@ -381,6 +383,28 @@ const CashierApp = () => {
               >
                 {loadingShift ? 'Начинаем смену...' : 'Начать смену'}
               </ShiftButton>
+              
+              {/* Кнопка для показа статистики последней смены */}
+              <div style={{ marginTop: '20px' }}>
+                <button
+                  onClick={() => setShowLastShiftStatistics(!showLastShiftStatistics)}
+                  style={{
+                    background: 'none',
+                    border: '1px solid #007bff',
+                    color: '#007bff',
+                    padding: '8px 16px',
+                    borderRadius: '4px',
+                    cursor: 'pointer',
+                    fontSize: '0.9rem'
+                  }}
+                >
+                  {showLastShiftStatistics ? 'Скрыть статистику' : 'Показать статистику последней смены'}
+                </button>
+                
+                {showLastShiftStatistics && (
+                  <LastShiftStatistics onClose={() => setShowLastShiftStatistics(false)} />
+                )}
+              </div>
             </div>
           ) : (
             <div>

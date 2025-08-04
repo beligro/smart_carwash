@@ -54,6 +54,12 @@ func (h *Handler) RegisterRoutes(router *gin.RouterGroup) {
 	{
 		cashierRoutes.GET("", h.cashierListPayments)
 	}
+
+	// Маршруты для статистики кассира
+	cashierStatsRoutes := router.Group("/cashier/statistics", h.cashierMiddleware())
+	{
+		cashierStatsRoutes.GET("/last-shift", h.cashierGetLastShiftStatistics)
+	}
 }
 
 // calculatePrice обработчик для расчета цены
@@ -449,4 +455,48 @@ func (h *Handler) cashierMiddleware() gin.HandlerFunc {
 		c.Set("cashier_id", claims.ID)
 		c.Next()
 	}
+}
+
+// cashierGetLastShiftStatistics обработчик для получения статистики последней смены кассира
+func (h *Handler) cashierGetLastShiftStatistics(c *gin.Context) {
+	// Получаем ID кассира из контекста (установлен в middleware)
+	cashierIDInterface, exists := c.Get("cashier_id")
+	if !exists {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Не авторизован"})
+		return
+	}
+
+	cashierID, ok := cashierIDInterface.(uuid.UUID)
+	if !ok {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Некорректный ID кассира в контексте"})
+		return
+	}
+
+	// Создаем запрос
+	req := &models.CashierLastShiftStatisticsRequest{
+		CashierID: cashierID,
+	}
+
+	// Логируем запрос
+	log.Printf("Cashier last shift statistics request: CashierID=%s", cashierID)
+
+	// Получаем статистику
+	response, err := h.service.GetCashierLastShiftStatistics(req)
+	if err != nil {
+		log.Printf("Error getting cashier last shift statistics: %v", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	// Логируем результат
+	if response.HasShift {
+		log.Printf("Successfully retrieved cashier last shift statistics: CashierID=%s, HasShift=%t, Message=%s",
+			cashierID, response.HasShift, response.Message)
+	} else {
+		log.Printf("No completed shifts found for cashier: CashierID=%s, Message=%s",
+			cashierID, response.Message)
+	}
+
+	// Возвращаем результат
+	c.JSON(http.StatusOK, response)
 } 
