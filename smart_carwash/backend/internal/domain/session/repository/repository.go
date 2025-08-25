@@ -2,6 +2,7 @@ package repository
 
 import (
 	"carwash_backend/internal/domain/session/models"
+	"fmt"
 	"time"
 
 	"github.com/google/uuid"
@@ -21,6 +22,9 @@ type Repository interface {
 
 	// Административные методы
 	GetSessionsWithFilters(userID *uuid.UUID, boxID *uuid.UUID, boxNumber *int, status *string, serviceType *string, dateFrom *time.Time, dateTo *time.Time, limit int, offset int) ([]models.Session, int, error)
+	
+	// Методы для статистики химии
+	GetChemistryStats(dateFrom *time.Time, dateTo *time.Time) (*models.ChemistryStats, error)
 }
 
 // PostgresRepository реализация Repository для PostgreSQL
@@ -188,4 +192,54 @@ func (r *PostgresRepository) GetSessionsWithFilters(userID *uuid.UUID, boxID *uu
 	}
 
 	return sessions, int(total), nil
+}
+
+// GetChemistryStats получает статистику использования химии
+func (r *PostgresRepository) GetChemistryStats(dateFrom *time.Time, dateTo *time.Time) (*models.ChemistryStats, error) {
+	query := r.db.Model(&models.Session{})
+	
+	// Применяем фильтры по датам
+	if dateFrom != nil {
+		query = query.Where("created_at >= ?", *dateFrom)
+	}
+	if dateTo != nil {
+		query = query.Where("created_at <= ?", *dateTo)
+	}
+	
+	// Подсчитываем общее количество сессий с химией
+	var totalWithChemistry int64
+	err := query.Where("with_chemistry = ?", true).Count(&totalWithChemistry).Error
+	if err != nil {
+		return nil, err
+	}
+	
+	// Подсчитываем количество сессий где химия была включена
+	var totalChemistryEnabled int64
+	err = query.Where("with_chemistry = ? AND was_chemistry_on = ?", true, true).Count(&totalChemistryEnabled).Error
+	if err != nil {
+		return nil, err
+	}
+	
+	// Вычисляем процент использования
+	var usagePercentage float64
+	if totalWithChemistry > 0 {
+		usagePercentage = float64(totalChemistryEnabled) / float64(totalWithChemistry) * 100
+	}
+	
+	// Формируем период для отображения
+	period := "все время"
+	if dateFrom != nil && dateTo != nil {
+		period = fmt.Sprintf("с %s по %s", dateFrom.Format("02.01.2006"), dateTo.Format("02.01.2006"))
+	} else if dateFrom != nil {
+		period = fmt.Sprintf("с %s", dateFrom.Format("02.01.2006"))
+	} else if dateTo != nil {
+		period = fmt.Sprintf("по %s", dateTo.Format("02.01.2006"))
+	}
+	
+	return &models.ChemistryStats{
+		TotalSessionsWithChemistry: int(totalWithChemistry),
+		TotalChemistryEnabled:      int(totalChemistryEnabled),
+		UsagePercentage:            usagePercentage,
+		Period:                     period,
+	}, nil
 }

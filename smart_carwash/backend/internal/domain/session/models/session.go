@@ -28,6 +28,7 @@ type Session struct {
 	Status                       string         `json:"status" gorm:"default:created;index"`
 	ServiceType                  string         `json:"service_type,omitempty" gorm:"default:null"`
 	WithChemistry                bool           `json:"with_chemistry" gorm:"default:false"`
+	WasChemistryOn               bool           `json:"was_chemistry_on" gorm:"default:false"`   // Была ли фактически включена химия
 	CarNumber                    string         `json:"car_number"`                              // Номер машины в сессии
 	RentalTimeMinutes            int            `json:"rental_time_minutes" gorm:"default:5"`    // Время аренды в минутах
 	ExtensionTimeMinutes         int            `json:"extension_time_minutes" gorm:"default:0"` // Время продления в минутах
@@ -287,4 +288,33 @@ type CashierCompleteSessionResponse struct {
 // CashierCancelSessionResponse представляет ответ на отмену сессии кассиром
 type CashierCancelSessionResponse struct {
 	Session Session `json:"session"`
+}
+
+// EnableChemistryRequest представляет запрос на включение химии
+type EnableChemistryRequest struct {
+	SessionID uuid.UUID `json:"session_id" binding:"required"`
+}
+
+// EnableChemistryResponse представляет ответ на включение химии
+type EnableChemistryResponse struct {
+	Session Session `json:"session"`
+}
+
+// ChemistryStats представляет статистику использования химии
+type ChemistryStats struct {
+	TotalSessionsWithChemistry int     `json:"total_sessions_with_chemistry"` // Общее количество сессий с химией
+	TotalChemistryEnabled      int     `json:"total_chemistry_enabled"`       // Количество сессий где химия была включена
+	UsagePercentage            float64 `json:"usage_percentage"`              // Процент использования химии
+	Period                     string  `json:"period"`                        // Период статистики
+}
+
+// GetChemistryStatsRequest представляет запрос на получение статистики химии
+type GetChemistryStatsRequest struct {
+	DateFrom *time.Time `json:"date_from"`
+	DateTo   *time.Time `json:"date_to"`
+}
+
+// GetChemistryStatsResponse представляет ответ на получение статистики химии
+type GetChemistryStatsResponse struct {
+	Stats ChemistryStats `json:"stats"`
 }

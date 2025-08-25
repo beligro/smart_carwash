@@ -8,6 +8,90 @@ import { getSessionStatusDescription, getServiceTypeDescription, formatRefundInf
 import useTimer from '../../../../shared/hooks/useTimer';
 import ApiService from '../../../../shared/services/ApiService';
 
+// Компонент кнопки включения химии
+const ChemistryEnableButton = ({ session, theme, onChemistryEnabled }) => {
+  const [isEnabling, setIsEnabling] = useState(false);
+  const [timeLeft, setTimeLeft] = useState(null);
+  const [isExpired, setIsExpired] = useState(false);
+
+  // Проверяем время доступности кнопки (по умолчанию 10 минут)
+  useEffect(() => {
+    if (!session || !session.statusUpdatedAt) return;
+
+    const checkTimeLimit = () => {
+      const startTime = new Date(session.statusUpdatedAt);
+      const now = new Date();
+      const timeLimit = 10 * 60 * 1000; // 10 минут в миллисекундах
+      const timePassed = now - startTime;
+      const remaining = timeLimit - timePassed;
+
+      if (remaining <= 0) {
+        setIsExpired(true);
+        setTimeLeft(0);
+      } else {
+        setTimeLeft(Math.floor(remaining / 1000));
+      }
+    };
+
+    checkTimeLimit();
+    const interval = setInterval(checkTimeLimit, 1000);
+
+    return () => clearInterval(interval);
+  }, [session]);
+
+  const handleEnableChemistry = async () => {
+    if (isEnabling || isExpired) return;
+
+    try {
+      setIsEnabling(true);
+      await ApiService.enableChemistry(session.id);
+      
+      if (onChemistryEnabled) {
+        onChemistryEnabled();
+      }
+      
+      // Показываем уведомление об успехе
+      alert('Химия успешно включена!');
+    } catch (error) {
+      console.error('Ошибка включения химии:', error);
+      alert('Ошибка включения химии: ' + (error.response?.data?.error || error.message));
+    } finally {
+      setIsEnabling(false);
+    }
+  };
+
+  if (isExpired) {
+    return null; // Не показываем ничего, когда время истекло
+  }
+
+  return (
+    <div style={{ marginTop: '12px' }}>
+      <Button 
+        theme={theme} 
+        onClick={handleEnableChemistry}
+        disabled={isEnabling}
+        style={{ 
+          backgroundColor: '#4CAF50',
+          color: 'white',
+          width: '100%'
+        }}
+      >
+        {isEnabling ? 'Включение...' : '🧪 Включить химию'}
+      </Button>
+      {timeLeft !== null && (
+        <p style={{ 
+          marginTop: '4px',
+          fontSize: '11px',
+          color: '#666',
+          textAlign: 'center'
+        }}>
+          ⏰ Осталось времени: {Math.floor(timeLeft / 60)}:{(timeLeft % 60).toString().padStart(2, '0')}
+        </p>
+      )}
+    </div>
+  );
+};
+
 /**
  * Компонент WashInfo - отображает информацию о мойке
  * @param {Object} props - Свойства компонента
@@ -18,7 +102,7 @@ import ApiService from '../../../../shared/services/ApiService';
  * @param {Function} props.onCancelSession - Функция для отмены сессии
  * @param {Object} props.user - Данные пользователя
  */
-const WashInfo = ({ washInfo, theme = 'light', onCreateSession, onViewHistory, onCancelSession, user }) => {
+const WashInfo = ({ washInfo, theme = 'light', onCreateSession, onViewHistory, onCancelSession, onChemistryEnabled, user }) => {
   const navigate = useNavigate();
   const [showServiceSelector, setShowServiceSelector] = useState(false);
   const [isCanceling, setIsCanceling] = useState(false);
@@ -269,6 +353,16 @@ const WashInfo = ({ washInfo, theme = 'light', onCreateSession, onViewHistory, o
                     Оставшееся время мойки:
                   </p>
                   <Timer seconds={timeLeft} theme={theme} />
+                  
+                  {/* Кнопка включения химии */}
+                  {(userSession.withChemistry || userSession.with_chemistry) && 
+                   !(userSession.wasChemistryOn || userSession.was_chemistry_on) && (
+                    <ChemistryEnableButton 
+                      session={userSession} 
+                      theme={theme} 
+                      onChemistryEnabled={onChemistryEnabled}
+                    />
+                  )}
                 </>
               )}
               

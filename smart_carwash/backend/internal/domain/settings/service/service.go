@@ -13,6 +13,10 @@ type Service interface {
 	GetSettings(req *models.AdminGetSettingsRequest) (*models.AdminGetSettingsResponse, error)
 	UpdatePrices(req *models.AdminUpdatePricesRequest) (*models.AdminUpdatePricesResponse, error)
 	UpdateRentalTimes(req *models.AdminUpdateRentalTimesRequest) (*models.AdminUpdateRentalTimesResponse, error)
+	
+	// Методы для управления временем доступности химии
+	GetChemistryTimeout(req *models.AdminGetChemistryTimeoutRequest) (*models.AdminGetChemistryTimeoutResponse, error)
+	UpdateChemistryTimeout(req *models.AdminUpdateChemistryTimeoutRequest) (*models.AdminUpdateChemistryTimeoutResponse, error)
 }
 
 // ServiceImpl реализация Service
@@ -120,5 +124,40 @@ func (s *ServiceImpl) UpdateRentalTimes(req *models.AdminUpdateRentalTimesReques
 	return &models.AdminUpdateRentalTimesResponse{
 		Success: true,
 		Message: "Время аренды успешно обновлено",
+	}, nil
+}
+
+// GetChemistryTimeout получает время доступности кнопки химии
+func (s *ServiceImpl) GetChemistryTimeout(req *models.AdminGetChemistryTimeoutRequest) (*models.AdminGetChemistryTimeoutResponse, error) {
+	setting, err := s.repo.GetServiceSetting(req.ServiceType, "chemistry_enable_timeout_minutes")
+	if err != nil {
+		return nil, err
+	}
+
+	var timeoutMinutes int
+	if setting != nil {
+		if err := json.Unmarshal(setting.SettingValue, &timeoutMinutes); err != nil {
+			return nil, err
+		}
+	} else {
+		// Значение по умолчанию
+		timeoutMinutes = 10
+	}
+
+	return &models.AdminGetChemistryTimeoutResponse{
+		ServiceType:              req.ServiceType,
+		ChemistryEnableTimeoutMinutes: timeoutMinutes,
+	}, nil
+}
+
+// UpdateChemistryTimeout обновляет время доступности кнопки химии
+func (s *ServiceImpl) UpdateChemistryTimeout(req *models.AdminUpdateChemistryTimeoutRequest) (*models.AdminUpdateChemistryTimeoutResponse, error) {
+	if err := s.repo.UpdateServiceSetting(req.ServiceType, "chemistry_enable_timeout_minutes", req.ChemistryEnableTimeoutMinutes); err != nil {
+		return nil, err
+	}
+
+	return &models.AdminUpdateChemistryTimeoutResponse{
+		Success: true,
+		Message: "Время доступности кнопки химии успешно обновлено",
 	}, nil
 }

@@ -50,6 +50,7 @@ func (h *Handler) RegisterRoutes(router *gin.RouterGroup) {
 		sessionRoutes.GET("/payments", h.getSessionPayments)   // session_id в query параметре
 		sessionRoutes.GET("/history", h.getUserSessionHistory) // user_id в query параметре
 		sessionRoutes.POST("/cancel", h.cancelSession)         // session_id и user_id в теле запроса
+		sessionRoutes.POST("/enable-chemistry", h.enableChemistry) // session_id и user_id в теле запроса
 	}
 
 	// Административные маршруты
@@ -57,6 +58,7 @@ func (h *Handler) RegisterRoutes(router *gin.RouterGroup) {
 	{
 		adminRoutes.GET("", h.adminListSessions)
 		adminRoutes.GET("/by-id", h.adminGetSession)
+		adminRoutes.GET("/chemistry-stats", h.getChemistryStats) // статистика химии
 	}
 
 	// Маршруты для кассира
@@ -67,6 +69,7 @@ func (h *Handler) RegisterRoutes(router *gin.RouterGroup) {
 		cashierRoutes.POST("/start", h.cashierStartSession)
 		cashierRoutes.POST("/complete", h.cashierCompleteSession)
 		cashierRoutes.POST("/cancel", h.cashierCancelSession)
+		cashierRoutes.POST("/enable-chemistry", h.cashierEnableChemistry) // включение химии кассиром
 	}
 
 	// 1C webhook маршруты
@@ -747,4 +750,104 @@ func (h *Handler) cashierMiddleware() gin.HandlerFunc {
 		c.Set("cashier_id", claims.ID)
 		c.Next()
 	}
+}
+
+// enableChemistry обработчик для включения химии
+func (h *Handler) enableChemistry(c *gin.Context) {
+	var req models.EnableChemistryRequest
+
+	// Парсим JSON из тела запроса
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	// Логируем мета-параметр для поиска
+	log.Printf("Запрос на включение химии: SessionID=%s", req.SessionID)
+
+	// Включаем химию
+	response, err := h.service.EnableChemistry(&req)
+	if err != nil {
+		log.Printf("Ошибка включения химии: %v", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	log.Printf("Успешно включена химия: SessionID=%s", req.SessionID)
+	c.JSON(http.StatusOK, response)
+}
+
+// cashierEnableChemistry обработчик для включения химии кассиром
+func (h *Handler) cashierEnableChemistry(c *gin.Context) {
+	var req models.EnableChemistryRequest
+
+	// Парсим JSON из тела запроса
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	// Логируем мета-параметр для поиска
+	log.Printf("Запрос на включение химии кассиром: SessionID=%s", req.SessionID)
+
+	// Включаем химию
+	response, err := h.service.EnableChemistry(&req)
+	if err != nil {
+		log.Printf("Ошибка включения химии кассиром: %v", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	log.Printf("Успешно включена химия кассиром: SessionID=%s", req.SessionID)
+	c.JSON(http.StatusOK, response)
+}
+
+// getChemistryStats обработчик для получения статистики химии
+func (h *Handler) getChemistryStats(c *gin.Context) {
+	// Парсим параметры запроса
+	dateFromStr := c.Query("date_from")
+	dateToStr := c.Query("date_to")
+
+	var dateFrom, dateTo *time.Time
+
+	// Парсим дату начала периода
+	if dateFromStr != "" {
+		parsedDateFrom, err := time.Parse("2006-01-02", dateFromStr)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Неверный формат даты начала периода"})
+			return
+		}
+		dateFrom = &parsedDateFrom
+	}
+
+	// Парсим дату окончания периода
+	if dateToStr != "" {
+		parsedDateTo, err := time.Parse("2006-01-02", dateToStr)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Неверный формат даты окончания периода"})
+			return
+		}
+		// Устанавливаем время на конец дня
+		parsedDateTo = parsedDateTo.Add(23*time.Hour + 59*time.Minute + 59*time.Second)
+		dateTo = &parsedDateTo
+	}
+
+	req := &models.GetChemistryStatsRequest{
+		DateFrom: dateFrom,
+		DateTo:   dateTo,
+	}
+
+	// Логируем запрос
+	log.Printf("Запрос статистики химии: DateFrom=%v, DateTo=%v", dateFrom, dateTo)
+
+	// Получаем статистику
+	response, err := h.service.GetChemistryStats(req)
+	if err != nil {
+		log.Printf("Ошибка получения статистики химии: %v", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	log.Printf("Успешно получена статистика химии")
+	c.JSON(http.StatusOK, response)
 }

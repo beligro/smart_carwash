@@ -188,10 +188,61 @@ const getServiceTypeText = (serviceType) => {
   }
 };
 
+// Компонент кнопки включения химии для кассира
+const ChemistryEnableButton = ({ session, onEnable, actionLoading, theme }) => {
+  const [timeLeft, setTimeLeft] = useState(null);
+  const [isExpired, setIsExpired] = useState(false);
+
+  // Проверяем время доступности кнопки (по умолчанию 10 минут)
+  useEffect(() => {
+    if (!session || !session.status_updated_at) return;
+
+    const checkTimeLimit = () => {
+      const startTime = new Date(session.status_updated_at);
+      const now = new Date();
+      const timeLimit = 10 * 60 * 1000; // 10 минут в миллисекундах
+      const timePassed = now - startTime;
+      const remaining = timeLimit - timePassed;
+
+      if (remaining <= 0) {
+        setIsExpired(true);
+        setTimeLeft(0);
+      } else {
+        setTimeLeft(Math.floor(remaining / 1000));
+      }
+    };
+
+    checkTimeLimit();
+    const interval = setInterval(checkTimeLimit, 1000);
+
+    return () => clearInterval(interval);
+  }, [session]);
+
+  if (isExpired) {
+    return null; // Не показываем ничего, когда время истекло
+  }
+
+  return (
+    <ActionButton
+      className="chemistry"
+      onClick={() => onEnable(session.id)}
+      disabled={actionLoading[session.id]}
+      style={{ backgroundColor: '#4CAF50', color: 'white' }}
+    >
+      {actionLoading[session.id] ? 'Включение...' : '🧪 Включить химию'}
+      {timeLeft !== null && (
+        <span style={{ fontSize: '0.8rem', marginLeft: '4px' }}>
+          ({Math.floor(timeLeft / 60)}:{(timeLeft % 60).toString().padStart(2, '0')})
+        </span>
+      )}
+    </ActionButton>
+  );
+};
+
 /**
  * Компонент для отображения одной сессии
  */
-const SessionCardComponent = ({ session, onStart, onComplete, onCancel, actionLoading, theme }) => {
+const SessionCardComponent = ({ session, onStart, onComplete, onCancel, onEnableChemistry, actionLoading, theme }) => {
   const { timeLeft } = useTimer(session);
 
   return (
@@ -283,6 +334,18 @@ const SessionCardComponent = ({ session, onStart, onComplete, onCancel, actionLo
             {actionLoading[session.id] ? 'Отменяем...' : 'Отменить'}
           </ActionButton>
         )}
+
+        {/* Кнопка включения химии */}
+        {session.status === 'active' && 
+         session.with_chemistry && 
+         !session.was_chemistry_on && (
+          <ChemistryEnableButton
+            session={session}
+            onEnable={onEnableChemistry}
+            actionLoading={actionLoading}
+            theme={theme}
+          />
+        )}
       </ActionButtons>
     </SessionCard>
   );
@@ -367,6 +430,25 @@ const ActiveSessions = () => {
     }
   };
 
+  const handleEnableChemistry = async (sessionId) => {
+    if (!window.confirm('Вы уверены, что хотите включить химию для этой сессии?')) {
+      return;
+    }
+
+    setActionLoading(prev => ({ ...prev, [sessionId]: true }));
+    
+    try {
+      await ApiService.enableChemistryCashier(sessionId);
+      await loadActiveSessions(); // Перезагружаем список
+      alert('Химия успешно включена!');
+    } catch (error) {
+      console.error('Ошибка включения химии:', error);
+      setError('Ошибка включения химии: ' + (error.response?.data?.error || error.message));
+    } finally {
+      setActionLoading(prev => ({ ...prev, [sessionId]: false }));
+    }
+  };
+
   if (loading) {
     return <LoadingSpinner theme={theme}>Загрузка активных сессий...</LoadingSpinner>;
   }
@@ -391,6 +473,7 @@ const ActiveSessions = () => {
             onStart={handleStartSession}
             onComplete={handleCompleteSession}
             onCancel={handleCancelSession}
+            onEnableChemistry={handleEnableChemistry}
             actionLoading={actionLoading}
             theme={theme}
           />

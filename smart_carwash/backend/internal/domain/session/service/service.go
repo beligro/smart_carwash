@@ -50,6 +50,10 @@ type Service interface {
 	CashierStartSession(req *models.CashierStartSessionRequest) (*models.Session, error)
 	CashierCompleteSession(req *models.CashierCompleteSessionRequest) (*models.Session, error)
 	CashierCancelSession(req *models.CashierCancelSessionRequest) (*models.Session, error)
+	
+	// Методы для химии
+	EnableChemistry(req *models.EnableChemistryRequest) (*models.EnableChemistryResponse, error)
+	GetChemistryStats(req *models.GetChemistryStatsRequest) (*models.GetChemistryStatsResponse, error)
 }
 
 // ServiceImpl реализация Service
@@ -1507,4 +1511,67 @@ func (s *ServiceImpl) CashierCancelSession(req *models.CashierCancelSessionReque
 	}
 
 	return &response.Session, nil
+}
+
+// EnableChemistry включает химию в сессии
+func (s *ServiceImpl) EnableChemistry(req *models.EnableChemistryRequest) (*models.EnableChemistryResponse, error) {
+	// Получаем сессию
+	session, err := s.repo.GetSessionByID(req.SessionID)
+	if err != nil {
+		return nil, fmt.Errorf("сессия не найдена: %w", err)
+	}
+
+	// Проверяем, что химия была оплачена
+	if !session.WithChemistry {
+		return nil, fmt.Errorf("химия не была оплачена для этой сессии")
+	}
+
+	// Проверяем, что химия еще не была включена
+	if session.WasChemistryOn {
+		return nil, fmt.Errorf("химия уже была включена для этой сессии")
+	}
+
+	// Проверяем статус сессии
+	if session.Status != "active" {
+		return nil, fmt.Errorf("химию можно включить только в активной сессии")
+	}
+
+	// Проверяем время доступности кнопки химии
+	// TODO: Получить настройку времени из settings service
+	chemistryTimeoutMinutes := 10 // По умолчанию 10 минут
+	
+	// Вычисляем время, когда истекет возможность включения химии
+	chemistryDeadline := session.StatusUpdatedAt.Add(time.Duration(chemistryTimeoutMinutes) * time.Minute)
+	
+	if time.Now().After(chemistryDeadline) {
+		return nil, fmt.Errorf("время для включения химии истекло (доступно в первые %d минут после старта)", chemistryTimeoutMinutes)
+	}
+
+	// Включаем химию
+	session.WasChemistryOn = true
+	session.UpdatedAt = time.Now()
+
+	// Сохраняем изменения
+	err = s.repo.UpdateSession(session)
+	if err != nil {
+		return nil, fmt.Errorf("ошибка при обновлении сессии: %w", err)
+	}
+
+	log.Printf("Химия включена: SessionID=%s", session.ID)
+
+	return &models.EnableChemistryResponse{
+		Session: *session,
+	}, nil
+}
+
+// GetChemistryStats получает статистику использования химии
+func (s *ServiceImpl) GetChemistryStats(req *models.GetChemistryStatsRequest) (*models.GetChemistryStatsResponse, error) {
+	stats, err := s.repo.GetChemistryStats(req.DateFrom, req.DateTo)
+	if err != nil {
+		return nil, fmt.Errorf("ошибка при получении статистики химии: %w", err)
+	}
+
+	return &models.GetChemistryStatsResponse{
+		Stats: *stats,
+	}, nil
 }

@@ -570,6 +570,71 @@ const ApiService = {
       console.error('Ошибка получения статистики последней смены:', error);
       throw error;
     }
+  },
+
+  // === МЕТОДЫ ДЛЯ РАБОТЫ С ХИМИЕЙ ===
+
+  // Включить химию в сессии
+  enableChemistry: async (sessionId) => {
+    try {
+      const response = await api.post('/sessions/enable-chemistry', { 
+        session_id: sessionId
+      });
+      return response.data;
+    } catch (error) {
+      console.error('Ошибка включения химии:', error);
+      throw error;
+    }
+  },
+
+  // Включить химию кассиром
+  enableChemistryCashier: async (sessionId) => {
+    try {
+      const response = await api.post('/cashier/sessions/enable-chemistry', { session_id: sessionId });
+      return response.data;
+    } catch (error) {
+      console.error('Ошибка включения химии кассиром:', error);
+      throw error;
+    }
+  },
+
+  // Получить статистику химии
+  getChemistryStats: async (filters = {}) => {
+    try {
+      const queryString = toSnakeCaseQuery(filters);
+      const response = await api.get(`/admin/sessions/chemistry-stats?${queryString}`);
+      return response.data;
+    } catch (error) {
+      console.error('Ошибка получения статистики химии:', error);
+      throw error;
+    }
+  },
+
+  // === МЕТОДЫ ДЛЯ УПРАВЛЕНИЯ НАСТРОЙКАМИ ХИМИИ ===
+
+  // Получить время доступности кнопки химии
+  getChemistryTimeout: async (serviceType) => {
+    try {
+      const response = await api.get(`/admin/settings/chemistry-timeout?service_type=${serviceType}`);
+      return response.data;
+    } catch (error) {
+      console.error('Ошибка получения времени доступности химии:', error);
+      throw error;
+    }
+  },
+
+  // Обновить время доступности кнопки химии
+  updateChemistryTimeout: async (serviceType, timeoutMinutes) => {
+    try {
+      const response = await api.put('/admin/settings/chemistry-timeout', {
+        service_type: serviceType,
+        chemistry_enable_timeout_minutes: timeoutMinutes
+      });
+      return response.data;
+    } catch (error) {
+      console.error('Ошибка обновления времени доступности химии:', error);
+      throw error;
+    }
   }
 };
 
