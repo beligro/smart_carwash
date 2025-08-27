@@ -11,6 +11,7 @@ type CashierPaymentRequest struct {
 	PaymentTime       time.Time `json:"payment_time" binding:"required"`
 	Amount            int       `json:"amount" binding:"required,min=1"` // сумма в копейках
 	RentalTimeMinutes int       `json:"rental_time_minutes" binding:"required,min=1"`
+	CarNumber         string    `json:"car_number"` // Опциональный номер машины
 }
 
 // CashierPaymentResponse представляет ответ на запрос от 1C

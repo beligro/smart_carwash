@@ -218,6 +218,11 @@ const LastShiftStatistics = ({ onClose }) => {
             <StatTitle>{getServiceTypeName(stat.service_type, stat.with_chemistry)}</StatTitle>
             <StatValue>{formatAmount(stat.total_amount)}</StatValue>
             <StatSubValue>{stat.session_count} сессий</StatSubValue>
+            {stat.with_chemistry && (
+              <StatSubValue style={{ fontSize: '0.8rem', color: '#28a745' }}>
+                🧪 С химией
+              </StatSubValue>
+            )}
           </StatCard>
         ))}
       </StatisticsGrid>
@@ -230,6 +235,11 @@ const LastShiftStatistics = ({ onClose }) => {
             <StatTitle>{getServiceTypeName(stat.service_type, stat.with_chemistry)}</StatTitle>
             <StatValue>{formatAmount(stat.total_amount)}</StatValue>
             <StatSubValue>{stat.session_count} сессий</StatSubValue>
+            {stat.with_chemistry && (
+              <StatSubValue style={{ fontSize: '0.8rem', color: '#28a745' }}>
+                🧪 С химией
+              </StatSubValue>
+            )}
           </StatCard>
         ))}
       </StatisticsGrid>
@@ -242,6 +252,11 @@ const LastShiftStatistics = ({ onClose }) => {
             <StatTitle>{getServiceTypeName(stat.service_type, stat.with_chemistry)}</StatTitle>
             <StatValue>{formatAmount(stat.total_amount)}</StatValue>
             <StatSubValue>{stat.session_count} сессий</StatSubValue>
+            {stat.with_chemistry && (
+              <StatSubValue style={{ fontSize: '0.8rem', color: '#28a745' }}>
+                🧪 С химией
+              </StatSubValue>
+            )}
           </StatCard>
         ))}
       </StatisticsGrid>

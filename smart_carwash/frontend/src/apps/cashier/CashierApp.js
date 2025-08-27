@@ -167,6 +167,19 @@ const StatusBadge = styled.span`
   color: white;
 `;
 
+const ChemistryStatus = styled.div`
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 0.9rem;
+  color: ${props => props.theme.textColor};
+  font-weight: 500;
+`;
+
+const ChemistryIcon = styled.span`
+  font-size: 1rem;
+`;
+
 const LoadingSpinner = styled.div`
   display: flex;
   justify-content: center;
@@ -341,6 +354,25 @@ const CashierApp = () => {
     }).format(amount / 100);
   };
 
+  const getServiceTypeText = (serviceType) => {
+    switch (serviceType) {
+      case 'wash': return 'Мойка';
+      case 'air_dry': return 'Сушка';
+      case 'vacuum': return 'Пылесос';
+      default: return serviceType;
+    }
+  };
+
+  const getChemistryStatus = (session) => {
+    if (!session.with_chemistry) {
+      return { text: 'Без химии', icon: '❌', color: '#6c757d' };
+    }
+    if (session.was_chemistry_on) {
+      return { text: 'Химия включена', icon: '🧪✅', color: '#28a745' };
+    }
+    return { text: 'Химия оплачена', icon: '🧪', color: '#ffc107' };
+  };
+
   // Обработчик выхода из системы
   const handleLogout = async () => {
     await AuthService.logout();
@@ -479,25 +511,37 @@ const CashierApp = () => {
                           <Th theme={theme}>Статус</Th>
                           <Th theme={theme}>Тип услуги</Th>
                           <Th theme={theme}>Номер машины</Th>
+                          <Th theme={theme}>Номер бокса</Th>
+                          <Th theme={theme}>Химия</Th>
                           <Th theme={theme}>Время аренды</Th>
                           <Th theme={theme}>Создана</Th>
                         </tr>
                       </thead>
                       <tbody>
-                        {sessions.map(session => (
-                          <tr key={session.id}>
-                            <Td theme={theme}>{session.id}</Td>
-                            <Td theme={theme}>
-                              <StatusBadge status={session.status}>
-                                {session.status}
-                              </StatusBadge>
-                            </Td>
-                            <Td theme={theme}>{session.service_type}</Td>
-                            <Td theme={theme}>{session.car_number}</Td>
-                            <Td theme={theme}>{session.rental_time_minutes} мин</Td>
-                            <Td theme={theme}>{formatDateTime(session.created_at)}</Td>
-                          </tr>
-                        ))}
+                        {sessions.map(session => {
+                          const chemistryStatus = getChemistryStatus(session);
+                          return (
+                            <tr key={session.id}>
+                              <Td theme={theme}>{session.id}</Td>
+                              <Td theme={theme}>
+                                <StatusBadge status={session.status}>
+                                  {session.status}
+                                </StatusBadge>
+                              </Td>
+                              <Td theme={theme}>{getServiceTypeText(session.service_type)}</Td>
+                              <Td theme={theme}>{session.car_number || 'Не указан'}</Td>
+                              <Td theme={theme}>{session.box_number ? `Бокс ${session.box_number}` : 'Не назначен'}</Td>
+                              <Td theme={theme}>
+                                <ChemistryStatus theme={theme} style={{ color: chemistryStatus.color }}>
+                                  <ChemistryIcon>{chemistryStatus.icon}</ChemistryIcon>
+                                  {chemistryStatus.text}
+                                </ChemistryStatus>
+                              </Td>
+                              <Td theme={theme}>{session.rental_time_minutes} мин</Td>
+                              <Td theme={theme}>{formatDateTime(session.created_at)}</Td>
+                            </tr>
+                          );
+                        })}
                       </tbody>
                     </Table>
                   )}

@@ -2,6 +2,9 @@ package handlers
 
 import (
 	"log"
+	"io"
+	"bytes"
+	"encoding/json"
 	"net/http"
 	"strconv"
 	"strings"
@@ -500,18 +503,33 @@ func (h *Handler) adminGetSession(c *gin.Context) {
 
 // handle1CPaymentCallback обработчик для webhook от 1C для платежей через кассира
 func (h *Handler) handle1CPaymentCallback(c *gin.Context) {
+	bodyBytes, err := io.ReadAll(c.Request.Body)
+    if err != nil {
+        log.Printf("Error reading request body: %v", err)
+        c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request body"})
+        return
+    }
+    
+    // Логируем тело запроса
+    log.Printf("Raw request body: %s", string(bodyBytes))
+
+	bodyBytes = bytes.TrimPrefix(bodyBytes, []byte("\xef\xbb\xbf"))
+    
+    // ВАЖНО: Восстанавливаем body для дальнейшего использования
+    c.Request.Body = io.NopCloser(bytes.NewBuffer(bodyBytes))
+
 	var req models.CashierPaymentRequest
 
 	// Парсим JSON из тела запроса
-	if err := c.ShouldBindJSON(&req); err != nil {
+	if err := json.Unmarshal(bodyBytes, &req); err != nil {
 		log.Printf("Error parsing 1C payment request: %v", err)
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
 
 	// Логируем входящий запрос
-	log.Printf("Received 1C payment callback: ServiceType=%s, WithChemistry=%t, Amount=%d, RentalTimeMinutes=%d",
-		req.ServiceType, req.WithChemistry, req.Amount, req.RentalTimeMinutes)
+	log.Printf("Received 1C payment callback: ServiceType=%s, WithChemistry=%t, Amount=%d, RentalTimeMinutes=%d, CarNumber=%s",
+		req.ServiceType, req.WithChemistry, req.Amount, req.RentalTimeMinutes, req.CarNumber)
 
 	// Создаем сессию через кассира
 	session, err := h.service.CreateFromCashier(&req)

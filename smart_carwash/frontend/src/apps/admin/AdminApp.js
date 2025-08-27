@@ -11,7 +11,7 @@ import QueueStatus from './components/QueueStatus';
 import UserManagement from './components/UserManagement';
 import PaymentManagement from './components/PaymentManagement';
 import SettingsManagement from './components/SettingsManagement';
-import ChemistryStats from './components/ChemistryStats';
+
 
 const AdminContainer = styled.div`
   display: flex;
@@ -208,11 +208,7 @@ const AdminApp = () => {
               Настройки
             </NavLink>
           </NavItem>
-          <NavItem>
-            <NavLink to="/admin/chemistry-stats" theme={theme}>
-              Статистика химии
-            </NavLink>
-          </NavItem>
+          
         </NavList>
       </Navigation>
       
@@ -226,7 +222,7 @@ const AdminApp = () => {
           <Route path="/cashiers" element={<CashierManagement />} />
           <Route path="/payments" element={<PaymentManagement />} />
           <Route path="/settings" element={<SettingsManagement />} />
-          <Route path="/chemistry-stats" element={<ChemistryStats />} />
+  
         </Routes>
       </Content>
     </AdminContainer>

@@ -239,11 +239,36 @@ const ChemistryEnableButton = ({ session, onEnable, actionLoading, theme }) => {
   );
 };
 
+const ChemistryStatus = styled.div`
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 0.9rem;
+  color: ${props => props.theme.textColor};
+  font-weight: 500;
+`;
+
+const ChemistryIcon = styled.span`
+  font-size: 1rem;
+`;
+
 /**
  * Компонент для отображения одной сессии
  */
 const SessionCardComponent = ({ session, onStart, onComplete, onCancel, onEnableChemistry, actionLoading, theme }) => {
   const { timeLeft } = useTimer(session);
+
+  const getChemistryStatus = () => {
+    if (!session.with_chemistry) {
+      return { text: 'Без химии', icon: '❌', color: '#6c757d' };
+    }
+    if (session.was_chemistry_on) {
+      return { text: 'Химия включена', icon: '🧪✅', color: '#28a745' };
+    }
+    return { text: 'Химия оплачена', icon: '🧪', color: '#ffc107' };
+  };
+
+  const chemistryStatus = getChemistryStatus();
 
   return (
     <SessionCard theme={theme} status={session.status}>
@@ -268,7 +293,6 @@ const SessionCardComponent = ({ session, onStart, onComplete, onCancel, onEnable
           <DetailLabel theme={theme}>Тип услуги</DetailLabel>
           <DetailValue theme={theme}>
             {getServiceTypeText(session.service_type)}
-            {session.with_chemistry && ' + химия'}
           </DetailValue>
         </DetailItem>
 
@@ -277,6 +301,21 @@ const SessionCardComponent = ({ session, onStart, onComplete, onCancel, onEnable
           <DetailValue theme={theme}>
             {session.car_number || 'Не указан'}
           </DetailValue>
+        </DetailItem>
+
+        <DetailItem>
+          <DetailLabel theme={theme}>Номер бокса</DetailLabel>
+          <DetailValue theme={theme}>
+            {session.box_number ? `Бокс ${session.box_number}` : 'Не назначен'}
+          </DetailValue>
+        </DetailItem>
+
+        <DetailItem>
+          <DetailLabel theme={theme}>Химия</DetailLabel>
+          <ChemistryStatus theme={theme} style={{ color: chemistryStatus.color }}>
+            <ChemistryIcon>{chemistryStatus.icon}</ChemistryIcon>
+            {chemistryStatus.text}
+          </ChemistryStatus>
         </DetailItem>
 
         <DetailItem>
@@ -440,7 +479,6 @@ const ActiveSessions = () => {
     try {
       await ApiService.enableChemistryCashier(sessionId);
       await loadActiveSessions(); // Перезагружаем список
-      alert('Химия успешно включена!');
     } catch (error) {
       console.error('Ошибка включения химии:', error);
       setError('Ошибка включения химии: ' + (error.response?.data?.error || error.message));

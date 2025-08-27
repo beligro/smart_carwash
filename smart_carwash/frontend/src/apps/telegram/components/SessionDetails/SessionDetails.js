@@ -48,9 +48,6 @@ const ChemistryEnableButton = ({ session, theme, onChemistryEnabled }) => {
       if (onChemistryEnabled) {
         onChemistryEnabled();
       }
-      
-      // Показываем уведомление об успехе
-      alert('Химия успешно включена!');
     } catch (error) {
       console.error('Ошибка включения химии:', error);
       alert('Ошибка включения химии: ' + (error.response?.data?.error || error.message));

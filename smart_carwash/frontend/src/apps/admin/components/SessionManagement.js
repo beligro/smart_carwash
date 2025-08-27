@@ -505,6 +505,7 @@ const SessionManagement = () => {
             <Th theme={theme}>Бокс</Th>
             <Th theme={theme}>Статус</Th>
             <Th theme={theme}>Тип услуги</Th>
+            <Th theme={theme}>Химия</Th>
             <Th theme={theme}>Время аренды</Th>
             <Th theme={theme}>Дата создания</Th>
             <Th theme={theme}>Действия</Th>
@@ -525,6 +526,21 @@ const SessionManagement = () => {
                 <ServiceTypeBadge className={session.service_type}>
                   {getServiceTypeText(session.service_type)}
                 </ServiceTypeBadge>
+              </Td>
+              <Td>
+                {session.with_chemistry ? (
+                  <span style={{ 
+                    display: 'flex', 
+                    alignItems: 'center', 
+                    gap: '4px',
+                    fontSize: '12px'
+                  }}>
+                    <span style={{ color: '#4CAF50' }}>🧪</span>
+                    {session.was_chemistry_on ? 'Включена' : 'Не включена'}
+                  </span>
+                ) : (
+                  <span style={{ color: '#999', fontSize: '12px' }}>-</span>
+                )}
               </Td>
               <Td>{session.rental_time_minutes} мин</Td>
               <Td>{formatDate(session.created_at)}</Td>
@@ -633,7 +649,6 @@ const SessionManagement = () => {
                       <ServiceTypeBadge className={sessionDetails.service_type}>
                         {getServiceTypeText(sessionDetails.service_type)}
                         {sessionDetails.with_chemistry && ' с химией'}
-                        {sessionDetails.with_vacuum && ' + пылесос'}
                       </ServiceTypeBadge>
                     </DetailValue>
                   </DetailGroup>
@@ -652,13 +667,6 @@ const SessionManagement = () => {
                     <DetailLabel theme={theme}>С химией:</DetailLabel>
                     <DetailValue theme={theme}>
                       {sessionDetails.with_chemistry ? 'Да' : 'Нет'}
-                    </DetailValue>
-                  </DetailGroup>
-                  
-                  <DetailGroup>
-                    <DetailLabel theme={theme}>С пылесосом:</DetailLabel>
-                    <DetailValue theme={theme}>
-                      {sessionDetails.with_vacuum ? 'Да' : 'Нет'}
                     </DetailValue>
                   </DetailGroup>
                   

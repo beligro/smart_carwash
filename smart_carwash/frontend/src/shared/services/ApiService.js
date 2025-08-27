@@ -575,10 +575,11 @@ const ApiService = {
   // === МЕТОДЫ ДЛЯ РАБОТЫ С ХИМИЕЙ ===
 
   // Включить химию в сессии
-  enableChemistry: async (sessionId) => {
+  enableChemistry: async (sessionId, userId) => {
     try {
       const response = await api.post('/sessions/enable-chemistry', { 
-        session_id: sessionId
+        session_id: sessionId,
+        user_id: userId
       });
       return response.data;
     } catch (error) {
@@ -598,17 +599,7 @@ const ApiService = {
     }
   },
 
-  // Получить статистику химии
-  getChemistryStats: async (filters = {}) => {
-    try {
-      const queryString = toSnakeCaseQuery(filters);
-      const response = await api.get(`/admin/sessions/chemistry-stats?${queryString}`);
-      return response.data;
-    } catch (error) {
-      console.error('Ошибка получения статистики химии:', error);
-      throw error;
-    }
-  },
+
 
   // === МЕТОДЫ ДЛЯ УПРАВЛЕНИЯ НАСТРОЙКАМИ ХИМИИ ===
 

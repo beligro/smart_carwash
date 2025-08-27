@@ -1119,7 +1119,7 @@ func (s *ServiceImpl) CreateFromCashier(req *models.CashierPaymentRequest) (*mod
 		Status:            models.SessionStatusInQueue, // Статус "в очереди" как указано в требованиях
 		ServiceType:       req.ServiceType,
 		WithChemistry:     req.WithChemistry,
-		CarNumber:         "", // Пустой номер машины как указано в требованиях
+		CarNumber:         req.CarNumber, // Используем переданный номер машины или пустую строку
 		RentalTimeMinutes: req.RentalTimeMinutes,
 		StatusUpdatedAt:   now,
 	}
