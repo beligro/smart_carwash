@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"time"
 	"log"
+	"sort"
 
 	"github.com/google/uuid"
 )
@@ -37,10 +38,22 @@ type Service interface {
 	CountSessionsByStatus(status string) (int, error)
 	GetSessionsByStatus(status string) ([]models.Session, error)
 	GetUserSessionHistory(req *models.GetUserSessionHistoryRequest) ([]models.Session, error)
+	CreateFromCashier(req *models.CashierPaymentRequest) (*models.Session, error)
 
 	// Административные методы
 	AdminListSessions(req *models.AdminListSessionsRequest) (*models.AdminListSessionsResponse, error)
 	AdminGetSession(req *models.AdminGetSessionRequest) (*models.AdminGetSessionResponse, error)
+
+	// Методы для кассира
+	CashierListSessions(req *models.CashierSessionsRequest) (*models.AdminListSessionsResponse, error)
+	CashierGetActiveSessions(req *models.CashierActiveSessionsRequest) (*models.CashierActiveSessionsResponse, error)
+	CashierStartSession(req *models.CashierStartSessionRequest) (*models.Session, error)
+	CashierCompleteSession(req *models.CashierCompleteSessionRequest) (*models.Session, error)
+	CashierCancelSession(req *models.CashierCancelSessionRequest) (*models.Session, error)
+	
+	// Методы для химии
+	EnableChemistry(req *models.EnableChemistryRequest) (*models.EnableChemistryResponse, error)
+	GetChemistryStats(req *models.GetChemistryStatsRequest) (*models.GetChemistryStatsResponse, error)
 }
 
 // ServiceImpl реализация Service
@@ -50,16 +63,18 @@ type ServiceImpl struct {
 	userService    userService.Service
 	telegramBot    telegram.NotificationService
 	paymentService paymentService.Service
+	cashierUserID  string
 }
 
 // NewService создает новый экземпляр Service
-func NewService(repo repository.Repository, washboxService washboxService.Service, userService userService.Service, telegramBot telegram.NotificationService, paymentService paymentService.Service) *ServiceImpl {
+func NewService(repo repository.Repository, washboxService washboxService.Service, userService userService.Service, telegramBot telegram.NotificationService, paymentService paymentService.Service, cashierUserID string) *ServiceImpl {
 	return &ServiceImpl{
 		repo:           repo,
 		washboxService: washboxService,
 		userService:    userService,
 		telegramBot:    telegramBot,
 		paymentService: paymentService,
+		cashierUserID:  cashierUserID,
 	}
 }
 
@@ -632,7 +647,7 @@ func (s *ServiceImpl) CancelSession(req *models.CancelSessionRequest) (*models.C
 	}
 
 	// Если сессия оплачена (in_queue или assigned), возвращаем деньги
-	if session.Status == models.SessionStatusInQueue || session.Status == models.SessionStatusAssigned {
+	if (session.Status == models.SessionStatusInQueue || session.Status == models.SessionStatusAssigned) && !req.SkipRefund {
 		// Получаем основной платеж сессии
 		paymentResp, err := s.paymentService.GetMainPaymentBySessionID(session.ID)
 		if err == nil && paymentResp != nil {
@@ -1073,6 +1088,51 @@ func (s *ServiceImpl) GetUserSessionHistory(req *models.GetUserSessionHistoryReq
 	return sessions, nil
 }
 
+// CreateFromCashier создает сессию из запроса кассира
+func (s *ServiceImpl) CreateFromCashier(req *models.CashierPaymentRequest) (*models.Session, error) {
+	// Проверяем, что ID кассира настроен
+	if s.cashierUserID == "" {
+		return nil, fmt.Errorf("CASHIER_USER_ID не настроен")
+	}
+
+	cashierUserID, err := uuid.Parse(s.cashierUserID)
+	if err != nil {
+		return nil, fmt.Errorf("неверный формат CASHIER_USER_ID: %v", err)
+	}
+
+	// Валидация химии
+	if req.WithChemistry {
+		switch req.ServiceType {
+		case "wash":
+			// Химия разрешена для мойки
+		case "air_dry", "vacuum":
+			return nil, fmt.Errorf("chemistry is not available for service type: %s", req.ServiceType)
+		default:
+			return nil, fmt.Errorf("invalid service type: %s", req.ServiceType)
+		}
+	}
+
+	// Создаем новую сессию
+	now := time.Now()
+	session := &models.Session{
+		UserID:            cashierUserID,
+		Status:            models.SessionStatusInQueue, // Статус "в очереди" как указано в требованиях
+		ServiceType:       req.ServiceType,
+		WithChemistry:     req.WithChemistry,
+		CarNumber:         req.CarNumber, // Используем переданный номер машины или пустую строку
+		RentalTimeMinutes: req.RentalTimeMinutes,
+		StatusUpdatedAt:   now,
+	}
+
+	// Сохраняем сессию в базе данных
+	err = s.repo.CreateSession(session)
+	if err != nil {
+		return nil, err
+	}
+
+	return session, nil
+}
+
 // AdminListSessions список сессий для администратора
 func (s *ServiceImpl) AdminListSessions(req *models.AdminListSessionsRequest) (*models.AdminListSessionsResponse, error) {
 	// Устанавливаем значения по умолчанию
@@ -1172,4 +1232,346 @@ func (s *ServiceImpl) UpdateSessionExtension(sessionID uuid.UUID, extensionTimeM
 	}
 
 	return nil
+}
+
+// CashierListSessions возвращает список сессий для кассира с начала смены
+func (s *ServiceImpl) CashierListSessions(req *models.CashierSessionsRequest) (*models.AdminListSessionsResponse, error) {
+	// Устанавливаем значения по умолчанию для пагинации
+	limit := 50
+	if req.Limit > 0 {
+		limit = req.Limit
+	}
+	offset := 0
+	if req.Offset > 0 {
+		offset = req.Offset
+	}
+
+	// Получаем сессии с начала смены
+	sessions, total, err := s.repo.GetSessionsWithFilters(nil, nil, nil, nil, nil, &req.ShiftStartedAt, nil, limit, offset)
+	if err != nil {
+		return nil, err
+	}
+
+			// Загружаем платежи для каждой сессии
+		for i := range sessions {
+			payments, err := s.paymentService.GetPaymentsBySessionID(sessions[i].ID)
+			if err != nil {
+				// Логируем ошибку, но продолжаем работу
+				continue
+			}
+
+			// Устанавливаем основной платеж
+			if payments.MainPayment != nil {
+				sessions[i].MainPayment = &models.Payment{
+					ID:             payments.MainPayment.ID,
+					SessionID:      payments.MainPayment.SessionID,
+					Amount:         payments.MainPayment.Amount,
+					RefundedAmount: payments.MainPayment.RefundedAmount,
+					Currency:       payments.MainPayment.Currency,
+					Status:         payments.MainPayment.Status,
+					PaymentType:    payments.MainPayment.PaymentType,
+					PaymentURL:     payments.MainPayment.PaymentURL,
+					TinkoffID:      payments.MainPayment.TinkoffID,
+					ExpiresAt:      payments.MainPayment.ExpiresAt,
+					RefundedAt:     payments.MainPayment.RefundedAt,
+					CreatedAt:      payments.MainPayment.CreatedAt,
+					UpdatedAt:      payments.MainPayment.UpdatedAt,
+				}
+			}
+
+			// Устанавливаем платежи продления
+			if len(payments.ExtensionPayments) > 0 {
+				sessions[i].ExtensionPayments = make([]models.Payment, len(payments.ExtensionPayments))
+				for j, payment := range payments.ExtensionPayments {
+					sessions[i].ExtensionPayments[j] = models.Payment{
+						ID:             payment.ID,
+						SessionID:      payment.SessionID,
+						Amount:         payment.Amount,
+						RefundedAmount: payment.RefundedAmount,
+						Currency:       payment.Currency,
+						Status:         payment.Status,
+						PaymentType:    payment.PaymentType,
+						PaymentURL:     payment.PaymentURL,
+						TinkoffID:      payment.TinkoffID,
+						ExpiresAt:      payment.ExpiresAt,
+						RefundedAt:     payment.RefundedAt,
+						CreatedAt:      payment.CreatedAt,
+						UpdatedAt:      payment.UpdatedAt,
+					}
+				}
+			}
+	}
+
+	return &models.AdminListSessionsResponse{
+		Sessions: sessions,
+		Total:    total,
+		Limit:    limit,
+		Offset:   offset,
+	}, nil
+}
+
+// CashierGetActiveSessions возвращает активные сессии кассира
+func (s *ServiceImpl) CashierGetActiveSessions(req *models.CashierActiveSessionsRequest) (*models.CashierActiveSessionsResponse, error) {
+	// Устанавливаем значения по умолчанию для пагинации
+	limit := 50
+	if req.Limit > 0 {
+		limit = req.Limit
+	}
+	offset := 0
+	if req.Offset > 0 {
+		offset = req.Offset
+	}
+
+	// Получаем ID кассира из конфигурации
+	cashierUserID, err := uuid.Parse(s.cashierUserID)
+	if err != nil {
+		return nil, fmt.Errorf("некорректный ID кассира: %w", err)
+	}
+
+	// Получаем активные сессии кассира (не завершенные)
+	// Активные статусы: created, in_queue, assigned, active
+	// Терминальные статусы: complete, canceled, expired, payment_failed
+	sessions, _, err := s.repo.GetSessionsWithFilters(&cashierUserID, nil, nil, nil, nil, nil, nil, limit, offset)
+	if err != nil {
+		return nil, err
+	}
+
+	// Фильтруем только активные сессии
+	var activeSessions []models.Session
+	for _, session := range sessions {
+		if session.Status == "created" || session.Status == "in_queue" || 
+		   session.Status == "assigned" || session.Status == "active" {
+			activeSessions = append(activeSessions, session)
+		}
+	}
+
+	// Сортируем сессии: сначала in_queue, потом active, потом остальные
+	sort.Slice(activeSessions, func(i, j int) bool {
+		if activeSessions[i].Status == "in_queue" && activeSessions[j].Status != "in_queue" {
+			return true
+		}
+		if activeSessions[i].Status == "active" && activeSessions[j].Status != "in_queue" && activeSessions[j].Status != "active" {
+			return true
+		}
+		return false
+	})
+
+	// Загружаем платежи для каждой сессии
+	for i := range activeSessions {
+		payments, err := s.paymentService.GetPaymentsBySessionID(activeSessions[i].ID)
+		if err != nil {
+			// Логируем ошибку, но продолжаем работу
+			continue
+		}
+
+		// Устанавливаем основной платеж
+		if payments.MainPayment != nil {
+			activeSessions[i].MainPayment = &models.Payment{
+				ID:             payments.MainPayment.ID,
+				SessionID:      payments.MainPayment.SessionID,
+				Amount:         payments.MainPayment.Amount,
+				RefundedAmount: payments.MainPayment.RefundedAmount,
+				Currency:       payments.MainPayment.Currency,
+				Status:         payments.MainPayment.Status,
+				PaymentType:    payments.MainPayment.PaymentType,
+				PaymentURL:     payments.MainPayment.PaymentURL,
+				TinkoffID:      payments.MainPayment.TinkoffID,
+				ExpiresAt:      payments.MainPayment.ExpiresAt,
+				RefundedAt:     payments.MainPayment.RefundedAt,
+				CreatedAt:      payments.MainPayment.CreatedAt,
+				UpdatedAt:      payments.MainPayment.UpdatedAt,
+			}
+		}
+
+		// Устанавливаем платежи продления
+		if len(payments.ExtensionPayments) > 0 {
+			activeSessions[i].ExtensionPayments = make([]models.Payment, len(payments.ExtensionPayments))
+			for j, payment := range payments.ExtensionPayments {
+				activeSessions[i].ExtensionPayments[j] = models.Payment{
+					ID:             payment.ID,
+					SessionID:      payment.SessionID,
+					Amount:         payment.Amount,
+					RefundedAmount: payment.RefundedAmount,
+					Currency:       payment.Currency,
+					Status:         payment.Status,
+					PaymentType:    payment.PaymentType,
+					PaymentURL:     payment.PaymentURL,
+					TinkoffID:      payment.TinkoffID,
+					ExpiresAt:      payment.ExpiresAt,
+					RefundedAt:     payment.RefundedAt,
+					CreatedAt:      payment.CreatedAt,
+					UpdatedAt:      payment.UpdatedAt,
+				}
+			}
+		}
+	}
+
+	return &models.CashierActiveSessionsResponse{
+		Sessions: activeSessions,
+		Total:    len(activeSessions),
+		Limit:    limit,
+		Offset:   offset,
+	}, nil
+}
+
+// CashierStartSession запускает сессию кассиром
+func (s *ServiceImpl) CashierStartSession(req *models.CashierStartSessionRequest) (*models.Session, error) {
+	// Получаем сессию
+	session, err := s.repo.GetSessionByID(req.SessionID)
+	if err != nil {
+		return nil, fmt.Errorf("сессия не найдена: %w", err)
+	}
+
+	// Проверяем, что это сессия кассира
+	cashierUserID, err := uuid.Parse(s.cashierUserID)
+	if err != nil {
+		return nil, fmt.Errorf("некорректный ID кассира: %w", err)
+	}
+
+	if session.UserID != cashierUserID {
+		return nil, fmt.Errorf("доступ запрещен: сессия не принадлежит кассиру")
+	}
+
+	// Проверяем статус сессии
+	if session.Status != "assigned" {
+		return nil, fmt.Errorf("нельзя запустить сессию со статусом: %s", session.Status)
+	}
+
+	// Запускаем сессию
+	return s.StartSession(&models.StartSessionRequest{
+		SessionID: req.SessionID,
+	})
+}
+
+// CashierCompleteSession завершает сессию кассиром
+func (s *ServiceImpl) CashierCompleteSession(req *models.CashierCompleteSessionRequest) (*models.Session, error) {
+	// Получаем сессию
+	session, err := s.repo.GetSessionByID(req.SessionID)
+	if err != nil {
+		return nil, fmt.Errorf("сессия не найдена: %w", err)
+	}
+
+	// Проверяем, что это сессия кассира
+	cashierUserID, err := uuid.Parse(s.cashierUserID)
+	if err != nil {
+		return nil, fmt.Errorf("некорректный ID кассира: %w", err)
+	}
+
+	if session.UserID != cashierUserID {
+		return nil, fmt.Errorf("доступ запрещен: сессия не принадлежит кассиру")
+	}
+
+	// Проверяем статус сессии
+	if session.Status != "active" {
+		return nil, fmt.Errorf("нельзя завершить сессию со статусом: %s", session.Status)
+	}
+
+	// Завершаем сессию
+	response, err := s.CompleteSession(&models.CompleteSessionRequest{
+		SessionID: req.SessionID,
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	return response.Session, nil
+}
+
+// CashierCancelSession отменяет сессию кассиром
+func (s *ServiceImpl) CashierCancelSession(req *models.CashierCancelSessionRequest) (*models.Session, error) {
+	// Получаем сессию
+	session, err := s.repo.GetSessionByID(req.SessionID)
+	if err != nil {
+		return nil, fmt.Errorf("сессия не найдена: %w", err)
+	}
+
+	// Проверяем, что это сессия кассира
+	cashierUserID, err := uuid.Parse(s.cashierUserID)
+	if err != nil {
+		return nil, fmt.Errorf("некорректный ID кассира: %w", err)
+	}
+
+	if session.UserID != cashierUserID {
+		return nil, fmt.Errorf("доступ запрещен: сессия не принадлежит кассиру")
+	}
+
+	// Проверяем статус сессии
+	if session.Status != "in_queue" && session.Status != "assigned" {
+		return nil, fmt.Errorf("нельзя отменить сессию со статусом: %s", session.Status)
+	}
+
+	// Отменяем сессию
+	response, err := s.CancelSession(&models.CancelSessionRequest{
+		SessionID: req.SessionID,
+		UserID:    cashierUserID,
+		SkipRefund: req.SkipRefund, // Передаем признак пропуска возврата
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	return &response.Session, nil
+}
+
+// EnableChemistry включает химию в сессии
+func (s *ServiceImpl) EnableChemistry(req *models.EnableChemistryRequest) (*models.EnableChemistryResponse, error) {
+	// Получаем сессию
+	session, err := s.repo.GetSessionByID(req.SessionID)
+	if err != nil {
+		return nil, fmt.Errorf("сессия не найдена: %w", err)
+	}
+
+	// Проверяем, что химия была оплачена
+	if !session.WithChemistry {
+		return nil, fmt.Errorf("химия не была оплачена для этой сессии")
+	}
+
+	// Проверяем, что химия еще не была включена
+	if session.WasChemistryOn {
+		return nil, fmt.Errorf("химия уже была включена для этой сессии")
+	}
+
+	// Проверяем статус сессии
+	if session.Status != "active" {
+		return nil, fmt.Errorf("химию можно включить только в активной сессии")
+	}
+
+	// Проверяем время доступности кнопки химии
+	// TODO: Получить настройку времени из settings service
+	chemistryTimeoutMinutes := 10 // По умолчанию 10 минут
+	
+	// Вычисляем время, когда истекет возможность включения химии
+	chemistryDeadline := session.StatusUpdatedAt.Add(time.Duration(chemistryTimeoutMinutes) * time.Minute)
+	
+	if time.Now().After(chemistryDeadline) {
+		return nil, fmt.Errorf("время для включения химии истекло (доступно в первые %d минут после старта)", chemistryTimeoutMinutes)
+	}
+
+	// Включаем химию
+	session.WasChemistryOn = true
+	session.UpdatedAt = time.Now()
+
+	// Сохраняем изменения
+	err = s.repo.UpdateSession(session)
+	if err != nil {
+		return nil, fmt.Errorf("ошибка при обновлении сессии: %w", err)
+	}
+
+	log.Printf("Химия включена: SessionID=%s", session.ID)
+
+	return &models.EnableChemistryResponse{
+		Session: *session,
+	}, nil
+}
+
+// GetChemistryStats получает статистику использования химии
+func (s *ServiceImpl) GetChemistryStats(req *models.GetChemistryStatsRequest) (*models.GetChemistryStatsResponse, error) {
+	stats, err := s.repo.GetChemistryStats(req.DateFrom, req.DateTo)
+	if err != nil {
+		return nil, fmt.Errorf("ошибка при получении статистики химии: %w", err)
+	}
+
+	return &models.GetChemistryStatsResponse{
+		Stats: *stats,
+	}, nil
 }

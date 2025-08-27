@@ -79,6 +79,9 @@ type Service interface {
 	CalculatePartialRefund(req *models.CalculatePartialRefundRequest) (*models.CalculatePartialRefundResponse, error)
 	CalculateSessionRefund(req *models.CalculateSessionRefundRequest) (*models.CalculateSessionRefundResponse, error)
 	GetPaymentStatistics(req *models.PaymentStatisticsRequest) (*models.PaymentStatisticsResponse, error)
+	CreateForCashier(sessionID uuid.UUID, amount int) (*models.Payment, error)
+	CashierListPayments(req *models.CashierPaymentsRequest) (*models.AdminListPaymentsResponse, error)
+	GetCashierLastShiftStatistics(req *models.CashierLastShiftStatisticsRequest) (*models.CashierLastShiftStatisticsResponse, error)
 }
 
 // service реализация Service
@@ -882,6 +885,79 @@ func (s *service) GetPaymentStatistics(req *models.PaymentStatisticsRequest) (*m
 
 	log.Printf("Successfully retrieved payment statistics (with refunds): %d service types, total sessions: %d, total amount: %d",
 		len(statistics.Statistics), statistics.Total.SessionCount, statistics.Total.TotalAmount)
+
+	return statistics, nil
+} 
+
+// CreateForCashier создает платеж для кассира
+func (s *service) CreateForCashier(sessionID uuid.UUID, amount int) (*models.Payment, error) {
+	log.Printf("Creating payment for cashier: SessionID=%s, Amount=%d", sessionID, amount)
+
+	// Создаем платеж
+	payment := &models.Payment{
+		SessionID:     sessionID,
+		Amount:        amount,
+		Currency:      "RUB",
+		Status:        models.PaymentStatusSucceeded, // Статус "оплачен" как указано в требованиях
+		PaymentType:   models.PaymentTypeMain,        // Тип "основной" как указано в требованиях
+		PaymentMethod: "cashier",                     // Метод "кассир" как указано в требованиях
+		TinkoffID:     "",                           // Пустой TinkoffID как указано в требованиях
+	}
+
+	// Сохраняем платеж в базе данных
+	err := s.repository.CreatePayment(payment)
+	if err != nil {
+		log.Printf("Error creating payment for cashier: %v", err)
+		return nil, fmt.Errorf("failed to create payment for cashier: %w", err)
+	}
+
+	log.Printf("Successfully created payment for cashier: PaymentID=%s, SessionID=%s, Amount=%d", 
+		payment.ID, sessionID, amount)
+
+	return payment, nil
+} 
+
+// CashierListPayments получает список платежей для кассира
+func (s *service) CashierListPayments(req *models.CashierPaymentsRequest) (*models.AdminListPaymentsResponse, error) {
+	payments, total, err := s.repository.CashierListPayments(req)
+	if err != nil {
+		return nil, fmt.Errorf("ошибка получения списка платежей для кассира: %w", err)
+	}
+
+	limit := 50
+	if req.Limit != nil {
+		limit = *req.Limit
+	}
+	offset := 0
+	if req.Offset != nil {
+		offset = *req.Offset
+	}
+
+	return &models.AdminListPaymentsResponse{
+		Payments: payments,
+		Total:    total,
+		Limit:    limit,
+		Offset:   offset,
+	}, nil
+} 
+
+// GetCashierLastShiftStatistics получает статистику последней смены кассира
+func (s *service) GetCashierLastShiftStatistics(req *models.CashierLastShiftStatisticsRequest) (*models.CashierLastShiftStatisticsResponse, error) {
+	log.Printf("Getting cashier last shift statistics: CashierID=%s", req.CashierID)
+
+	statistics, err := s.repository.GetCashierLastShiftStatistics(req)
+	if err != nil {
+		log.Printf("Error getting cashier last shift statistics: %v", err)
+		return nil, fmt.Errorf("failed to get cashier last shift statistics: %w", err)
+	}
+
+	if statistics.HasShift {
+		log.Printf("Successfully retrieved cashier last shift statistics: ShiftStartedAt=%v, ShiftEndedAt=%v, CashierSessions=%d, MiniAppSessions=%d, TotalSessions=%d",
+			statistics.Statistics.ShiftStartedAt, statistics.Statistics.ShiftEndedAt,
+			len(statistics.Statistics.CashierSessions), len(statistics.Statistics.MiniAppSessions), len(statistics.Statistics.TotalSessions))
+	} else {
+		log.Printf("No completed shifts found for cashier: CashierID=%s", req.CashierID)
+	}
 
 	return statistics, nil
 } 

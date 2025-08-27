@@ -34,6 +34,8 @@ func (h *Handler) RegisterRoutes(router gin.IRouter) {
 		adminSettingsGroup.GET("", h.AdminGetSettings)
 		adminSettingsGroup.PUT("/prices", h.AdminUpdatePrices)
 		adminSettingsGroup.PUT("/rental-times", h.AdminUpdateRentalTimes)
+		adminSettingsGroup.GET("/chemistry-timeout", h.AdminGetChemistryTimeout)
+		adminSettingsGroup.PUT("/chemistry-timeout", h.AdminUpdateChemistryTimeout)
 	}
 }
 
@@ -144,6 +146,45 @@ func (h *Handler) AdminUpdateRentalTimes(c *gin.Context) {
 	}
 
 	resp, err := h.service.UpdateRentalTimes(&req)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, resp)
+}
+
+// AdminGetChemistryTimeout получает время доступности кнопки химии
+func (h *Handler) AdminGetChemistryTimeout(c *gin.Context) {
+	serviceType := c.Query("service_type")
+	if serviceType == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "service_type is required"})
+		return
+	}
+
+	req := &models.AdminGetChemistryTimeoutRequest{
+		ServiceType: serviceType,
+	}
+
+	resp, err := h.service.GetChemistryTimeout(req)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, resp)
+}
+
+// AdminUpdateChemistryTimeout обновляет время доступности кнопки химии
+func (h *Handler) AdminUpdateChemistryTimeout(c *gin.Context) {
+	var req models.AdminUpdateChemistryTimeoutRequest
+
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	resp, err := h.service.UpdateChemistryTimeout(&req)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return

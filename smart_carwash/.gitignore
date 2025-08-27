@@ -11,6 +11,8 @@
 /build
 /dist
 
+/backups
+
 # Разное
 .DS_Store
 .env.local

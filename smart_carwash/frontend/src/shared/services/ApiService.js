@@ -455,6 +455,177 @@ const ApiService = {
     const snakeData = toSnakeCase(data);
     const response = await api.put('/admin/settings/rental-times', snakeData);
     return response.data;
+  },
+
+  // === МЕТОДЫ ДЛЯ РАБОТЫ С КАССИРОМ ===
+
+  // Получить статус смены кассира
+  getShiftStatus: async () => {
+    try {
+      const response = await api.get('/auth/cashier/shift/status');
+      return response.data;
+    } catch (error) {
+      console.error('Ошибка получения статуса смены:', error);
+      throw error;
+    }
+  },
+
+  // Начать смену кассира
+  startShift: async () => {
+    try {
+      const response = await api.post('/auth/cashier/shift/start');
+      return response.data;
+    } catch (error) {
+      console.error('Ошибка начала смены:', error);
+      throw error;
+    }
+  },
+
+  // Завершить смену кассира
+  endShift: async () => {
+    try {
+      const response = await api.post('/auth/cashier/shift/end');
+      return response.data;
+    } catch (error) {
+      console.error('Ошибка завершения смены:', error);
+      throw error;
+    }
+  },
+
+  // Получить сессии кассира
+  getCashierSessions: async (shiftStartedAt, limit = 50, offset = 0) => {
+    try {
+      const response = await api.get(`/cashier/sessions?shift_started_at=${shiftStartedAt}&limit=${limit}&offset=${offset}`);
+      return response.data;
+    } catch (error) {
+      console.error('Ошибка получения сессий кассира:', error);
+      throw error;
+    }
+  },
+
+  // Получить платежи кассира
+  getCashierPayments: async (shiftStartedAt, limit = 50, offset = 0) => {
+    try {
+      const response = await api.get(`/cashier/payments?shift_started_at=${shiftStartedAt}&limit=${limit}&offset=${offset}`);
+      return response.data;
+    } catch (error) {
+      console.error('Ошибка получения платежей кассира:', error);
+      throw error;
+    }
+  },
+
+  // Получить активные сессии кассира
+  getCashierActiveSessions: async (limit = 50, offset = 0) => {
+    try {
+      const response = await api.get(`/cashier/sessions/active?limit=${limit}&offset=${offset}`);
+      return response.data;
+    } catch (error) {
+      console.error('Ошибка получения активных сессий кассира:', error);
+      throw error;
+    }
+  },
+
+  // Запустить сессию кассиром
+  startCashierSession: async (sessionId) => {
+    try {
+      const response = await api.post('/cashier/sessions/start', { session_id: sessionId });
+      return response.data;
+    } catch (error) {
+      console.error('Ошибка запуска сессии кассиром:', error);
+      throw error;
+    }
+  },
+
+  // Завершить сессию кассиром
+  completeCashierSession: async (sessionId) => {
+    try {
+      const response = await api.post('/cashier/sessions/complete', { session_id: sessionId });
+      return response.data;
+    } catch (error) {
+      console.error('Ошибка завершения сессии кассиром:', error);
+      throw error;
+    }
+  },
+
+  // Отменить сессию кассиром
+  cancelCashierSession: async (sessionId) => {
+    try {
+      const response = await api.post('/cashier/sessions/cancel', { 
+        session_id: sessionId,
+        skip_refund: true 
+      });
+      return response.data;
+    } catch (error) {
+      console.error('Ошибка отмены сессии кассиром:', error);
+      throw error;
+    }
+  },
+
+  // Получить статистику последней смены кассира
+  getCashierLastShiftStatistics: async () => {
+    try {
+      const response = await api.get('/cashier/statistics/last-shift');
+      return response.data;
+    } catch (error) {
+      console.error('Ошибка получения статистики последней смены:', error);
+      throw error;
+    }
+  },
+
+  // === МЕТОДЫ ДЛЯ РАБОТЫ С ХИМИЕЙ ===
+
+  // Включить химию в сессии
+  enableChemistry: async (sessionId, userId) => {
+    try {
+      const response = await api.post('/sessions/enable-chemistry', { 
+        session_id: sessionId,
+        user_id: userId
+      });
+      return response.data;
+    } catch (error) {
+      console.error('Ошибка включения химии:', error);
+      throw error;
+    }
+  },
+
+  // Включить химию кассиром
+  enableChemistryCashier: async (sessionId) => {
+    try {
+      const response = await api.post('/cashier/sessions/enable-chemistry', { session_id: sessionId });
+      return response.data;
+    } catch (error) {
+      console.error('Ошибка включения химии кассиром:', error);
+      throw error;
+    }
+  },
+
+
+
+  // === МЕТОДЫ ДЛЯ УПРАВЛЕНИЯ НАСТРОЙКАМИ ХИМИИ ===
+
+  // Получить время доступности кнопки химии
+  getChemistryTimeout: async (serviceType) => {
+    try {
+      const response = await api.get(`/admin/settings/chemistry-timeout?service_type=${serviceType}`);
+      return response.data;
+    } catch (error) {
+      console.error('Ошибка получения времени доступности химии:', error);
+      throw error;
+    }
+  },
+
+  // Обновить время доступности кнопки химии
+  updateChemistryTimeout: async (serviceType, timeoutMinutes) => {
+    try {
+      const response = await api.put('/admin/settings/chemistry-timeout', {
+        service_type: serviceType,
+        chemistry_enable_timeout_minutes: timeoutMinutes
+      });
+      return response.data;
+    } catch (error) {
+      console.error('Ошибка обновления времени доступности химии:', error);
+      throw error;
+    }
   }
 };
 

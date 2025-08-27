@@ -30,6 +30,7 @@ type Payment struct {
 	Currency       string         `json:"currency" gorm:"default:RUB"`
 	Status         string         `json:"status" gorm:"default:pending;index"`
 	PaymentType    string         `json:"payment_type" gorm:"default:main;index"` // тип платежа: main или extension
+	PaymentMethod  string         `json:"payment_method" gorm:"default:tinkoff"` // метод платежа: tinkoff, cashier
 	PaymentURL     string         `json:"payment_url"`
 	TinkoffID      string         `json:"tinkoff_id" gorm:"index"`
 	ExpiresAt      *time.Time     `json:"expires_at"`
@@ -131,15 +132,16 @@ type WebhookRequest struct {
 
 // AdminListPaymentsRequest запрос на получение списка платежей с фильтрацией
 type AdminListPaymentsRequest struct {
-	PaymentID   *uuid.UUID `json:"payment_id"`
-	SessionID   *uuid.UUID `json:"session_id"`
-	UserID      *uuid.UUID `json:"user_id"`
-	Status      *string    `json:"status" binding:"omitempty,oneof=pending succeeded failed refunded"`
-	PaymentType *string    `json:"payment_type" binding:"omitempty,oneof=main extension"`
-	DateFrom    *time.Time `json:"date_from"`
-	DateTo      *time.Time `json:"date_to"`
-	Limit       *int       `json:"limit"`
-	Offset      *int       `json:"offset"`
+	PaymentID     *uuid.UUID `json:"payment_id"`
+	SessionID     *uuid.UUID `json:"session_id"`
+	UserID        *uuid.UUID `json:"user_id"`
+	Status        *string    `json:"status" binding:"omitempty,oneof=pending succeeded failed refunded"`
+	PaymentType   *string    `json:"payment_type" binding:"omitempty,oneof=main extension"`
+	PaymentMethod *string    `json:"payment_method" binding:"omitempty,oneof=tinkoff cashier"`
+	DateFrom      *time.Time `json:"date_from"`
+	DateTo        *time.Time `json:"date_to"`
+	Limit         *int       `json:"limit"`
+	Offset        *int       `json:"offset"`
 }
 
 // AdminListPaymentsResponse ответ на получение списка платежей
@@ -261,4 +263,32 @@ type PaymentStatisticsResponse struct {
 	Statistics []ServiceTypeStatistics `json:"statistics"` // статистика по типам услуг (с учетом возвратов)
 	Total      ServiceTypeStatistics   `json:"total"`      // итоговая статистика (с учетом возвратов)
 	Period     string                 `json:"period"`     // описание периода
+}
+
+// CashierPaymentsRequest представляет запрос на получение платежей кассира
+type CashierPaymentsRequest struct {
+	ShiftStartedAt time.Time `json:"shift_started_at" binding:"required"`
+	Limit          *int      `json:"limit"`
+	Offset         *int      `json:"offset"`
+}
+
+// CashierLastShiftStatisticsRequest представляет запрос на получение статистики последней смены кассира
+type CashierLastShiftStatisticsRequest struct {
+	CashierID uuid.UUID `json:"cashier_id" binding:"required"`
+}
+
+// CashierShiftStatistics представляет статистику смены кассира
+type CashierShiftStatistics struct {
+	ShiftStartedAt time.Time `json:"shift_started_at"`
+	ShiftEndedAt   time.Time `json:"shift_ended_at"`
+	CashierSessions []ServiceTypeStatistics `json:"cashier_sessions"` // сессии через кассира
+	MiniAppSessions []ServiceTypeStatistics `json:"mini_app_sessions"` // сессии из mini app
+	TotalSessions   []ServiceTypeStatistics `json:"total_sessions"`   // общий итог
+}
+
+// CashierLastShiftStatisticsResponse представляет ответ со статистикой последней смены кассира
+type CashierLastShiftStatisticsResponse struct {
+	Statistics *CashierShiftStatistics `json:"statistics,omitempty"`
+	Message    string                 `json:"message"`
+	HasShift   bool                   `json:"has_shift"`
 } 

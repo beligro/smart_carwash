@@ -100,3 +100,62 @@ type TwoFactorAuthSettings struct {
 	UpdatedAt time.Time      `json:"updated_at"`
 	DeletedAt gorm.DeletedAt `json:"-" gorm:"index"`
 }
+
+// CashierShift представляет активную смену кассира
+type CashierShift struct {
+	ID        uuid.UUID      `json:"id" gorm:"primaryKey;type:uuid;default:gen_random_uuid()"`
+	CashierID uuid.UUID      `json:"cashier_id" gorm:"type:uuid;index"`
+	StartedAt time.Time      `json:"started_at"`
+	EndedAt   *time.Time     `json:"ended_at"`
+	ExpiresAt time.Time      `json:"expires_at"`
+	IsActive  bool           `json:"is_active" gorm:"default:true"`
+	CreatedAt time.Time      `json:"created_at"`
+	UpdatedAt time.Time      `json:"updated_at"`
+	DeletedAt gorm.DeletedAt `json:"-" gorm:"index"`
+}
+
+// StartShiftRequest представляет запрос на начало смены
+type StartShiftRequest struct {
+	CashierID uuid.UUID `json:"cashier_id" binding:"required"`
+}
+
+// StartShiftResponse представляет ответ на начало смены
+type StartShiftResponse struct {
+	ID        uuid.UUID `json:"id"`
+	StartedAt time.Time `json:"started_at"`
+	ExpiresAt time.Time `json:"expires_at"`
+	IsActive  bool      `json:"is_active"`
+}
+
+// EndShiftRequest представляет запрос на завершение смены
+type EndShiftRequest struct {
+	CashierID uuid.UUID `json:"cashier_id" binding:"required"`
+}
+
+// EndShiftResponse представляет ответ на завершение смены
+type EndShiftResponse struct {
+	ID        uuid.UUID `json:"id"`
+	StartedAt time.Time `json:"started_at"`
+	EndedAt   time.Time `json:"ended_at"`
+	IsActive  bool      `json:"is_active"`
+}
+
+// ShiftStatusResponse представляет ответ на запрос статуса смены
+type ShiftStatusResponse struct {
+	HasActiveShift bool       `json:"has_active_shift"`
+	Shift          *CashierShift `json:"shift,omitempty"`
+}
+
+// CashierSessionsRequest представляет запрос на получение сессий кассира
+type CashierSessionsRequest struct {
+	CashierID uuid.UUID `json:"cashier_id" binding:"required"`
+	Limit     int       `json:"limit"`
+	Offset    int       `json:"offset"`
+}
+
+// CashierPaymentsRequest представляет запрос на получение платежей кассира
+type CashierPaymentsRequest struct {
+	CashierID uuid.UUID `json:"cashier_id" binding:"required"`
+	Limit     int       `json:"limit"`
+	Offset    int       `json:"offset"`
+}

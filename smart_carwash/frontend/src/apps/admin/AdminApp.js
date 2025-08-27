@@ -12,6 +12,7 @@ import UserManagement from './components/UserManagement';
 import PaymentManagement from './components/PaymentManagement';
 import SettingsManagement from './components/SettingsManagement';
 
+
 const AdminContainer = styled.div`
   display: flex;
   flex-direction: column;
@@ -207,6 +208,7 @@ const AdminApp = () => {
               Настройки
             </NavLink>
           </NavItem>
+          
         </NavList>
       </Navigation>
       
@@ -220,6 +222,7 @@ const AdminApp = () => {
           <Route path="/cashiers" element={<CashierManagement />} />
           <Route path="/payments" element={<PaymentManagement />} />
           <Route path="/settings" element={<SettingsManagement />} />
+  
         </Routes>
       </Content>
     </AdminContainer>

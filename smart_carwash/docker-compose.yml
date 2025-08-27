@@ -5,6 +5,8 @@ services:
     image: postgres:latest
     container_name: carwash_postgres
     restart: always
+    ports:
+      - "5432:5432"
     environment:
       - POSTGRES_HOST=${POSTGRES_HOST}
       - POSTGRES_USER=${POSTGRES_USER}
@@ -55,6 +57,26 @@ services:
       - ./nginx/ssl:/etc/nginx/ssl
     networks:
       - carwash_network
+
+  postgres-backup:
+    image: postgres:latest
+    container_name: carwash_postgres_backup
+    environment:
+      - POSTGRES_HOST=postgres
+      - POSTGRES_USER=${POSTGRES_USER}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+      - POSTGRES_DB=${POSTGRES_DB}
+    volumes:
+      - ./backups:/backups
+    command: >
+      bash -c "while true; do
+        PGPASSWORD=${POSTGRES_PASSWORD} pg_dump -h postgres -U ${POSTGRES_USER} ${POSTGRES_DB} > /backups/backup_$$(date +\%Y\%m\%d_\%H\%M\%S).sql
+        sleep 86400
+      done"
+    networks:
+      - carwash_network
+    depends_on:
+      - postgres
 
 networks:
   carwash_network:

@@ -3,6 +3,7 @@ package service
 import (
 	"errors"
 	"fmt"
+	"log"
 	"time"
 
 	"carwash_backend/internal/config"
@@ -42,6 +43,11 @@ type Service interface {
 	DeleteCashier(id uuid.UUID) error
 	GetCashiers() (*models.GetCashiersResponse, error)
 	GetCashierByID(id uuid.UUID) (*models.Cashier, error)
+
+	// Методы для управления сменами кассиров
+	StartShift(req *models.StartShiftRequest) (*models.StartShiftResponse, error)
+	EndShift(req *models.EndShiftRequest) (*models.EndShiftResponse, error)
+	GetShiftStatus(cashierID uuid.UUID) (*models.ShiftStatusResponse, error)
 
 	// Методы для двухфакторной аутентификации (заглушки для будущей реализации)
 	EnableTwoFactorAuth(userID uuid.UUID) (string, error)
@@ -92,24 +98,34 @@ func (s *ServiceImpl) LoginAdmin(username, password string) (*models.LoginRespon
 
 // LoginCashier авторизует кассира
 func (s *ServiceImpl) LoginCashier(username, password string) (*models.LoginResponse, error) {
+	log.Printf("Попытка входа кассира: username=%s", username)
+	
 	// Получаем кассира по имени пользователя
 	cashier, err := s.repo.GetCashierByUsername(username)
 	if err != nil {
+		log.Printf("Ошибка получения кассира: %v", err)
 		if errors.Is(err, repository.ErrCashierNotFound) {
 			return nil, ErrInvalidCredentials
 		}
 		return nil, err
 	}
 
+	log.Printf("Кассир найден: ID=%s, Username=%s, IsActive=%t", cashier.ID, cashier.Username, cashier.IsActive)
+
 	// Проверяем, активен ли кассир
 	if !cashier.IsActive {
+		log.Printf("Кассир неактивен: ID=%s", cashier.ID)
 		return nil, ErrCashierInactive
 	}
 
 	// Проверяем пароль
+	log.Printf("Проверка пароля для кассира: ID=%s", cashier.ID)
 	if err := bcrypt.CompareHashAndPassword([]byte(cashier.PasswordHash), []byte(password)); err != nil {
+		log.Printf("Неверный пароль для кассира: ID=%s, error=%v", cashier.ID, err)
 		return nil, ErrInvalidCredentials
 	}
+
+	log.Printf("Пароль верный для кассира: ID=%s", cashier.ID)
 
 	// Создаем JWT токен для кассира
 	claims := models.TokenClaims{
@@ -345,6 +361,137 @@ func (s *ServiceImpl) GetCashiers() (*models.GetCashiersResponse, error) {
 // GetCashierByID возвращает кассира по ID
 func (s *ServiceImpl) GetCashierByID(id uuid.UUID) (*models.Cashier, error) {
 	return s.repo.GetCashierByID(id)
+}
+
+// StartShift начинает смену для кассира
+func (s *ServiceImpl) StartShift(req *models.StartShiftRequest) (*models.StartShiftResponse, error) {
+	// Проверяем, существует ли кассир
+	cashier, err := s.repo.GetCashierByID(req.CashierID)
+	if err != nil {
+		if errors.Is(err, repository.ErrCashierNotFound) {
+			return nil, fmt.Errorf("кассир с ID %s не найден", req.CashierID)
+		}
+		return nil, err
+	}
+
+	// Проверяем, активен ли кассир
+	if !cashier.IsActive {
+		return nil, ErrCashierInactive
+	}
+
+	// Создаем новую смену
+	now := time.Now()
+	expiresAt := now.Add(24 * time.Hour) // Смена длится 24 часа
+	
+	shift := &models.CashierShift{
+		CashierID: req.CashierID,
+		StartedAt: now,
+		ExpiresAt: expiresAt,
+		IsActive:  true,
+	}
+
+	if err := s.repo.CreateCashierShift(shift); err != nil {
+		if errors.Is(err, repository.ErrActiveShiftExists) {
+			return nil, fmt.Errorf("уже есть активная смена")
+		}
+		return nil, err
+	}
+
+	return &models.StartShiftResponse{
+		ID:        shift.ID,
+		StartedAt: shift.StartedAt,
+		ExpiresAt: shift.ExpiresAt,
+		IsActive:  shift.IsActive,
+	}, nil
+}
+
+// EndShift завершает смену для кассира
+func (s *ServiceImpl) EndShift(req *models.EndShiftRequest) (*models.EndShiftResponse, error) {
+	// Проверяем, существует ли кассир
+	cashier, err := s.repo.GetCashierByID(req.CashierID)
+	if err != nil {
+		if errors.Is(err, repository.ErrCashierNotFound) {
+			return nil, fmt.Errorf("кассир с ID %s не найден", req.CashierID)
+		}
+		return nil, err
+	}
+
+	// Проверяем, активен ли кассир
+	if !cashier.IsActive {
+		return nil, ErrCashierInactive
+	}
+
+	// Получаем активную смену
+	shift, err := s.repo.GetActiveCashierShift()
+	if err != nil {
+		if errors.Is(err, repository.ErrNoActiveShift) {
+			return nil, fmt.Errorf("нет активной смены")
+		}
+		return nil, err
+	}
+
+	// Проверяем, что смена принадлежит этому кассиру
+	if shift.CashierID != req.CashierID {
+		return nil, fmt.Errorf("активная смена принадлежит другому кассиру")
+	}
+
+	// Завершаем смену
+	now := time.Now()
+	shift.EndedAt = &now
+	shift.IsActive = false
+
+	if err := s.repo.UpdateCashierShift(shift); err != nil {
+		return nil, err
+	}
+
+	return &models.EndShiftResponse{
+		ID:        shift.ID,
+		StartedAt: shift.StartedAt,
+		EndedAt:   *shift.EndedAt,
+		IsActive:  shift.IsActive,
+	}, nil
+}
+
+// GetShiftStatus возвращает статус смены для кассира
+func (s *ServiceImpl) GetShiftStatus(cashierID uuid.UUID) (*models.ShiftStatusResponse, error) {
+	// Проверяем, существует ли кассир
+	cashier, err := s.repo.GetCashierByID(cashierID)
+	if err != nil {
+		if errors.Is(err, repository.ErrCashierNotFound) {
+			return nil, fmt.Errorf("кассир с ID %s не найден", cashierID)
+		}
+		return nil, err
+	}
+
+	// Проверяем, активен ли кассир
+	if !cashier.IsActive {
+		return nil, ErrCashierInactive
+	}
+
+	// Получаем активную смену
+	shift, err := s.repo.GetActiveCashierShift()
+	if err != nil {
+		if errors.Is(err, repository.ErrNoActiveShift) {
+			return &models.ShiftStatusResponse{
+				HasActiveShift: false,
+				Shift:          nil,
+			}, nil
+		}
+		return nil, err
+	}
+
+	// Проверяем, что смена принадлежит этому кассиру
+	if shift.CashierID != cashierID {
+		return &models.ShiftStatusResponse{
+			HasActiveShift: false,
+			Shift:          nil,
+		}, nil
+	}
+
+	return &models.ShiftStatusResponse{
+		HasActiveShift: true,
+		Shift:          shift,
+	}, nil
 }
 
 // EnableTwoFactorAuth включает двухфакторную аутентификацию для пользователя

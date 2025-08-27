@@ -92,6 +92,9 @@ func main() {
 	settingsSvc := settingsService.NewService(settingsRepository)
 	authSvc := authService.NewService(authRepository, cfg)
 
+	// Создаем фоновые задачи для кассиров
+	backgroundTasks := authService.NewBackgroundTasks(authRepository)
+
 	// Создаем Telegram бота
 	bot, err := telegram.NewBot(userSvc, cfg)
 	if err != nil {
@@ -99,13 +102,13 @@ func main() {
 	}
 
 	// Создаем сервис сессий с зависимостями
-	sessionSvc := sessionService.NewService(sessionRepository, washboxSvc, userSvc, bot, nil) // paymentSvc будет nil пока
+	sessionSvc := sessionService.NewService(sessionRepository, washboxSvc, userSvc, bot, nil, cfg.CashierUserID) // paymentSvc будет nil пока
 
 	// Создаем сервис платежей с зависимостью от sessionSvc как SessionStatusUpdater и SessionExtensionUpdater
 	paymentSvc := paymentService.NewService(paymentRepository, settingsRepository, sessionSvc, sessionSvc, tinkoffClient, cfg.TinkoffTerminalKey, cfg.TinkoffSecretKey)
 
 	// Обновляем sessionSvc с правильным paymentSvc
-	sessionSvc = sessionService.NewService(sessionRepository, washboxSvc, userSvc, bot, paymentSvc)
+	sessionSvc = sessionService.NewService(sessionRepository, washboxSvc, userSvc, bot, paymentSvc, cfg.CashierUserID)
 
 	// Создаем сервис очереди, который зависит от сервисов сессий, боксов и пользователей
 	queueSvc := queueService.NewService(sessionSvc, washboxSvc, userSvc)
@@ -118,11 +121,11 @@ func main() {
 	// Создаем обработчики
 	userHandler := userHandlers.NewHandler(userSvc)
 	washboxHandler := washboxHandlers.NewHandler(washboxSvc)
-	sessionHandler := sessionHandlers.NewHandler(sessionSvc)
+	sessionHandler := sessionHandlers.NewHandler(sessionSvc, paymentSvc, authSvc, cfg.APIKey1C)
 	queueHandler := queueHandlers.NewHandler(queueSvc)
 	settingsHandler := settingsHandlers.NewHandler(settingsSvc)
 	authHandler := authHandlers.NewHandler(authSvc)
-	paymentHandler := paymentHandlers.NewHandler(paymentSvc)
+	paymentHandler := paymentHandlers.NewHandler(paymentSvc, authSvc)
 
 	// Создаем роутер
 	router := gin.Default()
@@ -269,6 +272,23 @@ func main() {
 			case <-ticker.C:
 				if err := sessionSvc.CheckAndNotifyCompletingSessions(); err != nil {
 					log.Printf("Ошибка отправки уведомлений о скором завершении сессий: %v", err)
+				}
+			case <-quit:
+				return
+			}
+		}
+	}()
+
+	// Запускаем периодическую задачу для деактивации истекших смен кассиров
+	go func() {
+		ticker := time.NewTicker(5 * time.Minute)
+		defer ticker.Stop()
+
+		for {
+			select {
+			case <-ticker.C:
+				if err := backgroundTasks.DeactivateExpiredShifts(); err != nil {
+					log.Printf("Ошибка деактивации истекших смен кассиров: %v", err)
 				}
 			case <-quit:
 				return

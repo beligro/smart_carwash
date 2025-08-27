@@ -19,6 +19,12 @@ var (
 
 	// ErrActiveCashierSessionExists возвращается, когда уже есть активная сессия кассира
 	ErrActiveCashierSessionExists = errors.New("уже есть активная сессия кассира")
+
+	// ErrActiveShiftExists возвращается, когда уже есть активная смена
+	ErrActiveShiftExists = errors.New("уже есть активная смена")
+
+	// ErrNoActiveShift возвращается, когда нет активной смены
+	ErrNoActiveShift = errors.New("нет активной смены")
 )
 
 // Repository интерфейс для работы с авторизацией в базе данных
@@ -41,6 +47,13 @@ type Repository interface {
 	// Методы для работы с двухфакторной аутентификацией
 	GetTwoFactorAuthSettings(userID uuid.UUID) (*models.TwoFactorAuthSettings, error)
 	SaveTwoFactorAuthSettings(settings *models.TwoFactorAuthSettings) error
+
+	// Методы для работы со сменами кассиров
+	CreateCashierShift(shift *models.CashierShift) error
+	GetActiveCashierShift() (*models.CashierShift, error)
+	GetActiveCashierShifts() ([]models.CashierShift, error)
+	UpdateCashierShift(shift *models.CashierShift) error
+	DeleteCashierShift(id uuid.UUID) error
 }
 
 // PostgresRepository реализация Repository для PostgreSQL
@@ -199,4 +212,49 @@ func (r *PostgresRepository) SaveTwoFactorAuthSettings(settings *models.TwoFacto
 	existingSettings.IsEnabled = settings.IsEnabled
 	existingSettings.Secret = settings.Secret
 	return r.db.Save(&existingSettings).Error
+}
+
+// CreateCashierShift создает новую смену для кассира
+func (r *PostgresRepository) CreateCashierShift(shift *models.CashierShift) error {
+	// Проверяем, есть ли уже активная смена
+	var activeShift models.CashierShift
+	err := r.db.Where("is_active = ? AND expires_at > ?", true, time.Now()).First(&activeShift).Error
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			// Если активной смены нет, создаем новую
+			return r.db.Create(shift).Error
+		}
+		return err
+	}
+	return ErrActiveShiftExists
+}
+
+// GetActiveCashierShift получает активную смену
+func (r *PostgresRepository) GetActiveCashierShift() (*models.CashierShift, error) {
+	var shift models.CashierShift
+	err := r.db.Where("is_active = ? AND expires_at > ?", true, time.Now()).First(&shift).Error
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, ErrNoActiveShift
+		}
+		return nil, err
+	}
+	return &shift, nil
+}
+
+// GetActiveCashierShifts получает все активные смены
+func (r *PostgresRepository) GetActiveCashierShifts() ([]models.CashierShift, error) {
+	var shifts []models.CashierShift
+	err := r.db.Where("is_active = ? AND expires_at > ?", true, time.Now()).Find(&shifts).Error
+	return shifts, err
+}
+
+// UpdateCashierShift обновляет смену
+func (r *PostgresRepository) UpdateCashierShift(shift *models.CashierShift) error {
+	return r.db.Save(shift).Error
+}
+
+// DeleteCashierShift удаляет смену
+func (r *PostgresRepository) DeleteCashierShift(id uuid.UUID) error {
+	return r.db.Delete(&models.CashierShift{}, id).Error
 }

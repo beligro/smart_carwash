@@ -28,6 +28,7 @@ type Session struct {
 	Status                       string         `json:"status" gorm:"default:created;index"`
 	ServiceType                  string         `json:"service_type,omitempty" gorm:"default:null"`
 	WithChemistry                bool           `json:"with_chemistry" gorm:"default:false"`
+	WasChemistryOn               bool           `json:"was_chemistry_on" gorm:"default:false"`   // Была ли фактически включена химия
 	CarNumber                    string         `json:"car_number"`                              // Номер машины в сессии
 	RentalTimeMinutes            int            `json:"rental_time_minutes" gorm:"default:5"`    // Время аренды в минутах
 	ExtensionTimeMinutes         int            `json:"extension_time_minutes" gorm:"default:0"` // Время продления в минутах
@@ -185,6 +186,7 @@ type GetSessionPaymentsResponse struct {
 type CancelSessionRequest struct {
 	SessionID uuid.UUID `json:"session_id" binding:"required"`
 	UserID    uuid.UUID `json:"user_id" binding:"required"`
+	SkipRefund bool     `json:"skip_refund"` // Пропустить возврат средств
 }
 
 // CancelSessionResponse представляет ответ на отмену сессии
@@ -234,4 +236,85 @@ type AdminListSessionsResponse struct {
 // AdminGetSessionResponse ответ на получение сессии
 type AdminGetSessionResponse struct {
 	Session Session `json:"session"`
+}
+
+// CashierSessionsRequest представляет запрос на получение сессий кассира
+type CashierSessionsRequest struct {
+	ShiftStartedAt time.Time `json:"shift_started_at" binding:"required"`
+	Limit          int       `json:"limit"`
+	Offset         int       `json:"offset"`
+}
+
+// CashierActiveSessionsRequest представляет запрос на получение активных сессий кассира
+type CashierActiveSessionsRequest struct {
+	Limit  int `json:"limit"`
+	Offset int `json:"offset"`
+}
+
+// CashierActiveSessionsResponse представляет ответ на получение активных сессий кассира
+type CashierActiveSessionsResponse struct {
+	Sessions []Session `json:"sessions"`
+	Total    int       `json:"total"`
+	Limit    int       `json:"limit"`
+	Offset   int       `json:"offset"`
+}
+
+// CashierStartSessionRequest представляет запрос на запуск сессии кассиром
+type CashierStartSessionRequest struct {
+	SessionID uuid.UUID `json:"session_id" binding:"required"`
+}
+
+// CashierCompleteSessionRequest представляет запрос на завершение сессии кассиром
+type CashierCompleteSessionRequest struct {
+	SessionID uuid.UUID `json:"session_id" binding:"required"`
+}
+
+// CashierCancelSessionRequest представляет запрос на отмену сессии кассиром
+type CashierCancelSessionRequest struct {
+	SessionID uuid.UUID `json:"session_id" binding:"required"`
+	SkipRefund bool     `json:"skip_refund"` // Пропустить возврат средств
+}
+
+// CashierStartSessionResponse представляет ответ на запуск сессии кассиром
+type CashierStartSessionResponse struct {
+	Session Session `json:"session"`
+}
+
+// CashierCompleteSessionResponse представляет ответ на завершение сессии кассиром
+type CashierCompleteSessionResponse struct {
+	Session Session `json:"session"`
+}
+
+// CashierCancelSessionResponse представляет ответ на отмену сессии кассиром
+type CashierCancelSessionResponse struct {
+	Session Session `json:"session"`
+}
+
+// EnableChemistryRequest представляет запрос на включение химии
+type EnableChemistryRequest struct {
+	SessionID uuid.UUID `json:"session_id" binding:"required"`
+}
+
+// EnableChemistryResponse представляет ответ на включение химии
+type EnableChemistryResponse struct {
+	Session Session `json:"session"`
+}
+
+// ChemistryStats представляет статистику использования химии
+type ChemistryStats struct {
+	TotalSessionsWithChemistry int     `json:"total_sessions_with_chemistry"` // Общее количество сессий с химией
+	TotalChemistryEnabled      int     `json:"total_chemistry_enabled"`       // Количество сессий где химия была включена
+	UsagePercentage            float64 `json:"usage_percentage"`              // Процент использования химии
+	Period                     string  `json:"period"`                        // Период статистики
+}
+
+// GetChemistryStatsRequest представляет запрос на получение статистики химии
+type GetChemistryStatsRequest struct {
+	DateFrom *time.Time `json:"date_from"`
+	DateTo   *time.Time `json:"date_to"`
+}
+
+// GetChemistryStatsResponse представляет ответ на получение статистики химии
+type GetChemistryStatsResponse struct {
+	Stats ChemistryStats `json:"stats"`
 }

@@ -2,12 +2,19 @@ package handlers
 
 import (
 	"log"
+	"io"
+	"bytes"
+	"encoding/json"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"carwash_backend/internal/domain/session/models"
 	"carwash_backend/internal/domain/session/service"
+	paymentService "carwash_backend/internal/domain/payment/service"
+	authService "carwash_backend/internal/domain/auth/service"
+	"carwash_backend/internal/domain/session/middleware"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -15,13 +22,19 @@ import (
 
 // Handler структура для обработчиков HTTP запросов сессий
 type Handler struct {
-	service service.Service
+	service        service.Service
+	paymentService paymentService.Service
+	authService    authService.Service
+	apiKey1C       string
 }
 
 // NewHandler создает новый экземпляр Handler
-func NewHandler(service service.Service) *Handler {
+func NewHandler(service service.Service, paymentService paymentService.Service, authService authService.Service, apiKey1C string) *Handler {
 	return &Handler{
-		service: service,
+		service:        service,
+		paymentService: paymentService,
+		authService:    authService,
+		apiKey1C:       apiKey1C,
 	}
 }
 
@@ -40,6 +53,7 @@ func (h *Handler) RegisterRoutes(router *gin.RouterGroup) {
 		sessionRoutes.GET("/payments", h.getSessionPayments)   // session_id в query параметре
 		sessionRoutes.GET("/history", h.getUserSessionHistory) // user_id в query параметре
 		sessionRoutes.POST("/cancel", h.cancelSession)         // session_id и user_id в теле запроса
+		sessionRoutes.POST("/enable-chemistry", h.enableChemistry) // session_id и user_id в теле запроса
 	}
 
 	// Административные маршруты
@@ -47,6 +61,24 @@ func (h *Handler) RegisterRoutes(router *gin.RouterGroup) {
 	{
 		adminRoutes.GET("", h.adminListSessions)
 		adminRoutes.GET("/by-id", h.adminGetSession)
+		adminRoutes.GET("/chemistry-stats", h.getChemistryStats) // статистика химии
+	}
+
+	// Маршруты для кассира
+	cashierRoutes := router.Group("/cashier/sessions", h.cashierMiddleware())
+	{
+		cashierRoutes.GET("", h.cashierListSessions)
+		cashierRoutes.GET("/active", h.cashierGetActiveSessions)
+		cashierRoutes.POST("/start", h.cashierStartSession)
+		cashierRoutes.POST("/complete", h.cashierCompleteSession)
+		cashierRoutes.POST("/cancel", h.cashierCancelSession)
+		cashierRoutes.POST("/enable-chemistry", h.cashierEnableChemistry) // включение химии кассиром
+	}
+
+	// 1C webhook маршруты
+	oneCRoutes := router.Group("/1c")
+	{
+		oneCRoutes.POST("/payment-callback", middleware.Auth1CMiddleware(h.apiKey1C), h.handle1CPaymentCallback)
 	}
 }
 
@@ -467,4 +499,373 @@ func (h *Handler) adminGetSession(c *gin.Context) {
 	})
 
 	c.JSON(http.StatusOK, resp)
+}
+
+// handle1CPaymentCallback обработчик для webhook от 1C для платежей через кассира
+func (h *Handler) handle1CPaymentCallback(c *gin.Context) {
+	bodyBytes, err := io.ReadAll(c.Request.Body)
+    if err != nil {
+        log.Printf("Error reading request body: %v", err)
+        c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request body"})
+        return
+    }
+    
+    // Логируем тело запроса
+    log.Printf("Raw request body: %s", string(bodyBytes))
+
+	bodyBytes = bytes.TrimPrefix(bodyBytes, []byte("\xef\xbb\xbf"))
+    
+    // ВАЖНО: Восстанавливаем body для дальнейшего использования
+    c.Request.Body = io.NopCloser(bytes.NewBuffer(bodyBytes))
+
+	var req models.CashierPaymentRequest
+
+	// Парсим JSON из тела запроса
+	if err := json.Unmarshal(bodyBytes, &req); err != nil {
+		log.Printf("Error parsing 1C payment request: %v", err)
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	// Логируем входящий запрос
+	log.Printf("Received 1C payment callback: ServiceType=%s, WithChemistry=%t, Amount=%d, RentalTimeMinutes=%d, CarNumber=%s",
+		req.ServiceType, req.WithChemistry, req.Amount, req.RentalTimeMinutes, req.CarNumber)
+
+	// Создаем сессию через кассира
+	session, err := h.service.CreateFromCashier(&req)
+	if err != nil {
+		log.Printf("Error creating session from cashier: %v", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	// Создаем платеж для кассира
+	payment, err := h.paymentService.CreateForCashier(session.ID, req.Amount)
+	if err != nil {
+		log.Printf("Error creating payment for cashier: %v", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	// Логируем успешное создание
+	log.Printf("Successfully processed 1C payment: SessionID=%s, PaymentID=%s, Amount=%d",
+		session.ID, payment.ID, req.Amount)
+
+	// Возвращаем успешный ответ
+	response := models.CashierPaymentResponse{
+		Success:   true,
+		SessionID: session.ID.String(),
+		PaymentID: payment.ID.String(),
+		Message:   "Payment processed successfully",
+	}
+
+	c.JSON(http.StatusOK, response)
+}
+
+// cashierListSessions обработчик для получения списка сессий кассира
+func (h *Handler) cashierListSessions(c *gin.Context) {
+	// Получаем время начала смены из query параметра
+	shiftStartedAtStr := c.Query("shift_started_at")
+	if shiftStartedAtStr == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Не указано время начала смены"})
+		return
+	}
+
+	shiftStartedAt, err := time.Parse(time.RFC3339, shiftStartedAtStr)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Некорректный формат времени"})
+		return
+	}
+
+	// Получаем параметры пагинации
+	limitStr := c.DefaultQuery("limit", "50")
+	offsetStr := c.DefaultQuery("offset", "0")
+
+	limit, err := strconv.Atoi(limitStr)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Некорректный параметр limit"})
+		return
+	}
+
+	offset, err := strconv.Atoi(offsetStr)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Некорректный параметр offset"})
+		return
+	}
+
+	// Создаем запрос
+	req := &models.CashierSessionsRequest{
+		ShiftStartedAt: shiftStartedAt,
+		Limit:          limit,
+		Offset:         offset,
+	}
+
+	// Получаем список сессий
+	response, err := h.service.CashierListSessions(req)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	// Логируем мета-параметры
+	c.Set("meta", gin.H{
+		"shift_started_at": shiftStartedAt,
+		"limit":            limit,
+		"offset":           offset,
+		"total_sessions":   response.Total,
+	})
+
+	// Возвращаем результат
+	c.JSON(http.StatusOK, response)
+}
+
+// cashierGetActiveSessions обработчик для получения активных сессий кассира
+func (h *Handler) cashierGetActiveSessions(c *gin.Context) {
+	// Получаем параметры пагинации
+	limitStr := c.DefaultQuery("limit", "50")
+	offsetStr := c.DefaultQuery("offset", "0")
+
+	limit, err := strconv.Atoi(limitStr)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Некорректный параметр limit"})
+		return
+	}
+
+	offset, err := strconv.Atoi(offsetStr)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Некорректный параметр offset"})
+		return
+	}
+
+	// Создаем запрос
+	req := &models.CashierActiveSessionsRequest{
+		Limit:  limit,
+		Offset: offset,
+	}
+
+	// Получаем активные сессии
+	response, err := h.service.CashierGetActiveSessions(req)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	// Логируем мета-параметры
+	c.Set("meta", gin.H{
+		"limit":          limit,
+		"offset":         offset,
+		"total_sessions": response.Total,
+	})
+
+	// Возвращаем результат
+	c.JSON(http.StatusOK, response)
+}
+
+// cashierStartSession обработчик для запуска сессии кассиром
+func (h *Handler) cashierStartSession(c *gin.Context) {
+	var req models.CashierStartSessionRequest
+
+	// Парсим JSON из тела запроса
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	// Логируем мета-параметр для поиска
+	log.Printf("Запрос на запуск сессии кассиром: SessionID=%s", req.SessionID)
+
+	// Запускаем сессию
+	session, err := h.service.CashierStartSession(&req)
+	if err != nil {
+		log.Printf("Ошибка запуска сессии кассиром: %v", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	log.Printf("Успешно запущена сессия кассиром: SessionID=%s", req.SessionID)
+	c.JSON(http.StatusOK, models.CashierStartSessionResponse{Session: *session})
+}
+
+// cashierCompleteSession обработчик для завершения сессии кассиром
+func (h *Handler) cashierCompleteSession(c *gin.Context) {
+	var req models.CashierCompleteSessionRequest
+
+	// Парсим JSON из тела запроса
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	// Логируем мета-параметр для поиска
+	log.Printf("Запрос на завершение сессии кассиром: SessionID=%s", req.SessionID)
+
+	// Завершаем сессию
+	session, err := h.service.CashierCompleteSession(&req)
+	if err != nil {
+		log.Printf("Ошибка завершения сессии кассиром: %v", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	log.Printf("Успешно завершена сессия кассиром: SessionID=%s", req.SessionID)
+	c.JSON(http.StatusOK, models.CashierCompleteSessionResponse{Session: *session})
+}
+
+// cashierCancelSession обработчик для отмены сессии кассиром
+func (h *Handler) cashierCancelSession(c *gin.Context) {
+	var req models.CashierCancelSessionRequest
+
+	// Парсим JSON из тела запроса
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	// Логируем мета-параметр для поиска
+	log.Printf("Запрос на отмену сессии кассиром: SessionID=%s", req.SessionID)
+
+	// Отменяем сессию
+	session, err := h.service.CashierCancelSession(&req)
+	if err != nil {
+		log.Printf("Ошибка отмены сессии кассиром: %v", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	log.Printf("Успешно отменена сессия кассиром: SessionID=%s", req.SessionID)
+	c.JSON(http.StatusOK, models.CashierCancelSessionResponse{Session: *session})
+}
+
+// cashierMiddleware middleware для проверки авторизации кассира
+func (h *Handler) cashierMiddleware() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		// Получаем токен из заголовка
+		token := c.GetHeader("Authorization")
+		token = strings.TrimPrefix(token, "Bearer ")
+
+		if token == "" {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "Токен не предоставлен"})
+			c.Abort()
+			return
+		}
+
+		// Проверяем токен через auth service
+		claims, err := h.authService.ValidateToken(token)
+		if err != nil {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "Недействительный токен"})
+			c.Abort()
+			return
+		}
+
+		// Проверяем, что это кассир, а не администратор
+		if claims.IsAdmin {
+			c.JSON(http.StatusForbidden, gin.H{"error": "Доступ запрещен"})
+			c.Abort()
+			return
+		}
+
+		// Устанавливаем ID кассира в контекст
+		c.Set("cashier_id", claims.ID)
+		c.Next()
+	}
+}
+
+// enableChemistry обработчик для включения химии
+func (h *Handler) enableChemistry(c *gin.Context) {
+	var req models.EnableChemistryRequest
+
+	// Парсим JSON из тела запроса
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	// Логируем мета-параметр для поиска
+	log.Printf("Запрос на включение химии: SessionID=%s", req.SessionID)
+
+	// Включаем химию
+	response, err := h.service.EnableChemistry(&req)
+	if err != nil {
+		log.Printf("Ошибка включения химии: %v", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	log.Printf("Успешно включена химия: SessionID=%s", req.SessionID)
+	c.JSON(http.StatusOK, response)
+}
+
+// cashierEnableChemistry обработчик для включения химии кассиром
+func (h *Handler) cashierEnableChemistry(c *gin.Context) {
+	var req models.EnableChemistryRequest
+
+	// Парсим JSON из тела запроса
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	// Логируем мета-параметр для поиска
+	log.Printf("Запрос на включение химии кассиром: SessionID=%s", req.SessionID)
+
+	// Включаем химию
+	response, err := h.service.EnableChemistry(&req)
+	if err != nil {
+		log.Printf("Ошибка включения химии кассиром: %v", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	log.Printf("Успешно включена химия кассиром: SessionID=%s", req.SessionID)
+	c.JSON(http.StatusOK, response)
+}
+
+// getChemistryStats обработчик для получения статистики химии
+func (h *Handler) getChemistryStats(c *gin.Context) {
+	// Парсим параметры запроса
+	dateFromStr := c.Query("date_from")
+	dateToStr := c.Query("date_to")
+
+	var dateFrom, dateTo *time.Time
+
+	// Парсим дату начала периода
+	if dateFromStr != "" {
+		parsedDateFrom, err := time.Parse("2006-01-02", dateFromStr)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Неверный формат даты начала периода"})
+			return
+		}
+		dateFrom = &parsedDateFrom
+	}
+
+	// Парсим дату окончания периода
+	if dateToStr != "" {
+		parsedDateTo, err := time.Parse("2006-01-02", dateToStr)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Неверный формат даты окончания периода"})
+			return
+		}
+		// Устанавливаем время на конец дня
+		parsedDateTo = parsedDateTo.Add(23*time.Hour + 59*time.Minute + 59*time.Second)
+		dateTo = &parsedDateTo
+	}
+
+	req := &models.GetChemistryStatsRequest{
+		DateFrom: dateFrom,
+		DateTo:   dateTo,
+	}
+
+	// Логируем запрос
+	log.Printf("Запрос статистики химии: DateFrom=%v, DateTo=%v", dateFrom, dateTo)
+
+	// Получаем статистику
+	response, err := h.service.GetChemistryStats(req)
+	if err != nil {
+		log.Printf("Ошибка получения статистики химии: %v", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	log.Printf("Успешно получена статистика химии")
+	c.JSON(http.StatusOK, response)
 }

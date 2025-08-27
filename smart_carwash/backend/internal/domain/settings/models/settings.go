@@ -77,3 +77,26 @@ type AdminUpdateRentalTimesResponse struct {
 	Success bool   `json:"success"`
 	Message string `json:"message"`
 }
+
+// AdminGetChemistryTimeoutRequest запрос на получение времени доступности кнопки химии
+type AdminGetChemistryTimeoutRequest struct {
+	ServiceType string `json:"service_type" binding:"required"`
+}
+
+// AdminGetChemistryTimeoutResponse ответ на получение времени доступности кнопки химии
+type AdminGetChemistryTimeoutResponse struct {
+	ServiceType              string `json:"service_type"`
+	ChemistryEnableTimeoutMinutes int    `json:"chemistry_enable_timeout_minutes"`
+}
+
+// AdminUpdateChemistryTimeoutRequest запрос на обновление времени доступности кнопки химии
+type AdminUpdateChemistryTimeoutRequest struct {
+	ServiceType              string `json:"service_type" binding:"required"`
+	ChemistryEnableTimeoutMinutes int    `json:"chemistry_enable_timeout_minutes" binding:"required"`
+}
+
+// AdminUpdateChemistryTimeoutResponse ответ на обновление времени доступности кнопки химии
+type AdminUpdateChemistryTimeoutResponse struct {
+	Success bool   `json:"success"`
+	Message string `json:"message"`
+}

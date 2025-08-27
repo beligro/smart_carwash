@@ -30,6 +30,10 @@ type Config struct {
 	TinkoffSecretKey   string
 	TinkoffSuccessURL  string
 	TinkoffFailURL     string
+
+	// Настройки 1C интеграции
+	APIKey1C       string
+	CashierUserID  string
 }
 
 // LoadConfig загружает конфигурацию из переменных окружения
@@ -69,6 +73,10 @@ func LoadConfig() (*Config, error) {
 		TinkoffSecretKey:   getEnv("TINKOFF_SECRET_KEY", ""),
 		TinkoffSuccessURL:  getEnv("TINKOFF_SUCCESS_URL", "https://t.me/your_bot?startapp=payment_success"),
 		TinkoffFailURL:     getEnv("TINKOFF_FAIL_URL", "https://t.me/your_bot?startapp=payment_fail"),
+
+		// Настройки 1C интеграции
+		APIKey1C:      getEnv("API_KEY_1C", ""),
+		CashierUserID: getEnv("CASHIER_USER_ID", ""),
 	}, nil
 }
 

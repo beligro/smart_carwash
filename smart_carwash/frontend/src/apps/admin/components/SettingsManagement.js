@@ -223,6 +223,7 @@ const SettingsManagement = () => {
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const [newRentalTime, setNewRentalTime] = useState('');
+  const [chemistryTimeout, setChemistryTimeout] = useState(10);
 
   const serviceOptions = [
     { value: 'wash', label: 'Мойка' },
@@ -241,6 +242,15 @@ const SettingsManagement = () => {
         chemistry_price_per_minute: response.chemistry_price_per_minute || 0,
         available_rental_times: response.available_rental_times || []
       });
+
+      // Загружаем настройки химии
+      try {
+        const chemistryResponse = await ApiService.getChemistryTimeout(selectedService);
+        setChemistryTimeout(chemistryResponse.chemistry_enable_timeout_minutes || 10);
+      } catch (chemistryErr) {
+        console.warn('Не удалось загрузить настройки химии:', chemistryErr);
+        setChemistryTimeout(10); // Значение по умолчанию
+      }
     } catch (err) {
       setError('Ошибка при загрузке настроек: ' + (err.message || 'Неизвестная ошибка'));
     } finally {
@@ -315,6 +325,21 @@ const SettingsManagement = () => {
       setSuccess('Время аренды успешно обновлено');
     } catch (err) {
       setError('Ошибка при обновлении времени аренды: ' + (err.message || 'Неизвестная ошибка'));
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleSaveChemistryTimeout = async () => {
+    setSaving(true);
+    setError('');
+    setSuccess('');
+
+    try {
+      await ApiService.updateChemistryTimeout(selectedService, parseInt(chemistryTimeout));
+      setSuccess('Настройки химии успешно обновлены');
+    } catch (err) {
+      setError('Ошибка при обновлении настроек химии: ' + (err.message || 'Неизвестная ошибка'));
     } finally {
       setSaving(false);
     }
@@ -431,6 +456,34 @@ const SettingsManagement = () => {
             <ButtonGroup>
               <Button theme={theme} onClick={handleSaveRentalTimes} disabled={saving}>
                 {saving ? 'Сохранение...' : 'Сохранить время аренды'}
+              </Button>
+            </ButtonGroup>
+          </SettingsContainer>
+
+          <SettingsContainer theme={theme}>
+            <SettingsTitle theme={theme}>Настройки химии</SettingsTitle>
+            
+            <FormGrid>
+              <FormGroup>
+                <FormLabel theme={theme}>Время доступности кнопки химии (в минутах)</FormLabel>
+                <FormInput
+                  theme={theme}
+                  type="number"
+                  value={chemistryTimeout}
+                  onChange={(e) => setChemistryTimeout(e.target.value)}
+                  placeholder="Например: 10"
+                  min="1"
+                  max="60"
+                />
+                <small style={{ color: theme.textColor, opacity: 0.7 }}>
+                  Время, в течение которого пользователь может включить химию после старта мойки
+                </small>
+              </FormGroup>
+            </FormGrid>
+
+            <ButtonGroup>
+              <Button theme={theme} onClick={handleSaveChemistryTimeout} disabled={saving}>
+                {saving ? 'Сохранение...' : 'Сохранить настройки химии'}
               </Button>
             </ButtonGroup>
           </SettingsContainer>

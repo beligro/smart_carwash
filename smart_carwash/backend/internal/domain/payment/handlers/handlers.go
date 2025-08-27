@@ -3,10 +3,12 @@ package handlers
 import (
 	"carwash_backend/internal/domain/payment/models"
 	"carwash_backend/internal/domain/payment/service"
+	authService "carwash_backend/internal/domain/auth/service"
 	"net/http"
 	"strconv"
 	"log"
 	"time"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -14,13 +16,15 @@ import (
 
 // Handler структура для обработчиков HTTP запросов платежей
 type Handler struct {
-	service service.Service
+	service     service.Service
+	authService authService.Service
 }
 
 // NewHandler создает новый экземпляр Handler
-func NewHandler(service service.Service) *Handler {
+func NewHandler(service service.Service, authService authService.Service) *Handler {
 	return &Handler{
-		service: service,
+		service:     service,
+		authService: authService,
 	}
 }
 
@@ -43,6 +47,18 @@ func (h *Handler) RegisterRoutes(router *gin.RouterGroup) {
 		adminRoutes.GET("", h.adminListPayments)
 		adminRoutes.GET("/statistics", h.adminGetPaymentStatistics)
 		adminRoutes.POST("/refund", h.adminRefundPayment)
+	}
+
+	// Маршруты для кассира
+	cashierRoutes := router.Group("/cashier/payments", h.cashierMiddleware())
+	{
+		cashierRoutes.GET("", h.cashierListPayments)
+	}
+
+	// Маршруты для статистики кассира
+	cashierStatsRoutes := router.Group("/cashier/statistics", h.cashierMiddleware())
+	{
+		cashierStatsRoutes.GET("/last-shift", h.cashierGetLastShiftStatistics)
 	}
 }
 
@@ -194,6 +210,10 @@ func (h *Handler) adminListPayments(c *gin.Context) {
 		req.PaymentType = &paymentType
 	}
 
+	if paymentMethod := c.Query("payment_method"); paymentMethod != "" {
+		req.PaymentMethod = &paymentMethod
+	}
+
 	if dateFromStr := c.Query("date_from"); dateFromStr != "" {
 		if dateFrom, err := time.Parse("2006-01-02", dateFromStr); err == nil {
 			req.DateFrom = &dateFrom
@@ -219,8 +239,8 @@ func (h *Handler) adminListPayments(c *gin.Context) {
 	}
 
 	// Логируем запрос с мета-параметрами
-	log.Printf("Запрос списка платежей (админка): PaymentID=%v, SessionID=%v, UserID=%v, Status=%v, PaymentType=%v, Limit=%v, Offset=%v", 
-		req.PaymentID, req.SessionID, req.UserID, req.Status, req.PaymentType, req.Limit, req.Offset)
+	log.Printf("Запрос списка платежей (админка): PaymentID=%v, SessionID=%v, UserID=%v, Status=%v, PaymentType=%v, PaymentMethod=%v, Limit=%v, Offset=%v", 
+		req.PaymentID, req.SessionID, req.UserID, req.Status, req.PaymentType, req.PaymentMethod, req.Limit, req.Offset)
 
 	response, err := h.service.ListPayments(&req)
 	if err != nil {
@@ -343,5 +363,140 @@ func (h *Handler) adminGetPaymentStatistics(c *gin.Context) {
 		return
 	}
 
+	c.JSON(http.StatusOK, response)
+} 
+
+// cashierListPayments обработчик для получения списка платежей кассира
+func (h *Handler) cashierListPayments(c *gin.Context) {
+	// Получаем время начала смены из query параметра
+	shiftStartedAtStr := c.Query("shift_started_at")
+	if shiftStartedAtStr == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Не указано время начала смены"})
+		return
+	}
+
+	shiftStartedAt, err := time.Parse(time.RFC3339, shiftStartedAtStr)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Некорректный формат времени"})
+		return
+	}
+
+	// Получаем параметры пагинации
+	limitStr := c.DefaultQuery("limit", "50")
+	offsetStr := c.DefaultQuery("offset", "0")
+
+	limit, err := strconv.Atoi(limitStr)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Некорректный параметр limit"})
+		return
+	}
+
+	offset, err := strconv.Atoi(offsetStr)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Некорректный параметр offset"})
+		return
+	}
+
+	// Создаем запрос
+	req := &models.CashierPaymentsRequest{
+		ShiftStartedAt: shiftStartedAt,
+		Limit:          &limit,
+		Offset:         &offset,
+	}
+
+	// Получаем список платежей
+	response, err := h.service.CashierListPayments(req)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	// Логируем мета-параметры
+	c.Set("meta", gin.H{
+		"shift_started_at": shiftStartedAt,
+		"limit":            limit,
+		"offset":           offset,
+		"total_payments":   response.Total,
+	})
+
+	// Возвращаем результат
+	c.JSON(http.StatusOK, response)
+} 
+
+// cashierMiddleware middleware для проверки авторизации кассира
+func (h *Handler) cashierMiddleware() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		// Получаем токен из заголовка
+		token := c.GetHeader("Authorization")
+		token = strings.TrimPrefix(token, "Bearer ")
+
+		if token == "" {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "Токен не предоставлен"})
+			c.Abort()
+			return
+		}
+
+		// Проверяем токен через auth service
+		claims, err := h.authService.ValidateToken(token)
+		if err != nil {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "Недействительный токен"})
+			c.Abort()
+			return
+		}
+
+		// Проверяем, что это кассир, а не администратор
+		if claims.IsAdmin {
+			c.JSON(http.StatusForbidden, gin.H{"error": "Доступ запрещен"})
+			c.Abort()
+			return
+		}
+
+		// Устанавливаем ID кассира в контекст
+		c.Set("cashier_id", claims.ID)
+		c.Next()
+	}
+}
+
+// cashierGetLastShiftStatistics обработчик для получения статистики последней смены кассира
+func (h *Handler) cashierGetLastShiftStatistics(c *gin.Context) {
+	// Получаем ID кассира из контекста (установлен в middleware)
+	cashierIDInterface, exists := c.Get("cashier_id")
+	if !exists {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Не авторизован"})
+		return
+	}
+
+	cashierID, ok := cashierIDInterface.(uuid.UUID)
+	if !ok {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Некорректный ID кассира в контексте"})
+		return
+	}
+
+	// Создаем запрос
+	req := &models.CashierLastShiftStatisticsRequest{
+		CashierID: cashierID,
+	}
+
+	// Логируем запрос
+	log.Printf("Cashier last shift statistics request: CashierID=%s", cashierID)
+
+	// Получаем статистику
+	response, err := h.service.GetCashierLastShiftStatistics(req)
+	if err != nil {
+		log.Printf("Error getting cashier last shift statistics: %v", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	// Логируем результат
+	if response.HasShift {
+		log.Printf("Successfully retrieved cashier last shift statistics: CashierID=%s, HasShift=%t, Message=%s",
+			cashierID, response.HasShift, response.Message)
+	} else {
+		log.Printf("No completed shifts found for cashier: CashierID=%s, Message=%s",
+			cashierID, response.Message)
+	}
+
+	// Возвращаем результат
 	c.JSON(http.StatusOK, response)
 } 
