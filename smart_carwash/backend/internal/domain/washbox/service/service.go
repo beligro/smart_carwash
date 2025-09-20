@@ -152,6 +152,14 @@ func (s *ServiceImpl) AdminUpdateWashBox(req *models.AdminUpdateWashBoxRequest) 
 		existingBox.ChemistryEnabled = *req.ChemistryEnabled
 	}
 
+	if req.LightCoilRegister != nil {
+		existingBox.LightCoilRegister = req.LightCoilRegister
+	}
+
+	if req.ChemistryCoilRegister != nil {
+		existingBox.ChemistryCoilRegister = req.ChemistryCoilRegister
+	}
+
 	// Сохраняем изменения
 	updatedBox, err := s.repo.UpdateWashBox(existingBox)
 	if err != nil {

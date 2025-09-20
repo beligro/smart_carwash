@@ -55,6 +55,8 @@ services:
       - frontend
     volumes:
       - ./nginx/ssl:/etc/nginx/ssl
+      - /var/log/ssl_auto_renew.log:/var/log/ssl_auto_renew.log:ro
+      - /var/log/ssl_check.log:/var/log/ssl_check.log:ro
     networks:
       - carwash_network
 
