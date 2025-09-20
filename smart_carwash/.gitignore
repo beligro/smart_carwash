@@ -13,6 +13,8 @@
 
 /backups
 
+/certbot
+
 # Разное
 .DS_Store
 .env.local
