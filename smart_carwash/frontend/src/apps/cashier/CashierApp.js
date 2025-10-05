@@ -6,6 +6,7 @@ import AuthService from '../../shared/services/AuthService';
 import ApiService from '../../shared/services/ApiService';
 import ActiveSessions from './components/ActiveSessions';
 import LastShiftStatistics from './components/LastShiftStatistics';
+import BoxManagement from './components/BoxManagement';
 
 const CashierContainer = styled.div`
   display: flex;
@@ -180,6 +181,30 @@ const ChemistryIcon = styled.span`
   font-size: 1rem;
 `;
 
+const ActionButton = styled.button`
+  padding: 8px 16px;
+  border: none;
+  border-radius: 4px;
+  font-size: 0.9rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s;
+
+  &:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+
+  &.complete {
+    background-color: #dc3545;
+    color: white;
+    
+    &:hover:not(:disabled) {
+      background-color: #c82333;
+    }
+  }
+`;
+
 const LoadingSpinner = styled.div`
   display: flex;
   justify-content: center;
@@ -217,6 +242,7 @@ const CashierApp = () => {
   const [loadingData, setLoadingData] = useState(false);
   const [error, setError] = useState(null);
   const [showLastShiftStatistics, setShowLastShiftStatistics] = useState(false);
+  const [actionLoading, setActionLoading] = useState({});
 
   useEffect(() => {
     // Проверяем авторизацию при загрузке компонента
@@ -309,8 +335,8 @@ const CashierApp = () => {
       return;
     }
     
-    // Не загружаем данные для вкладки активных сессий - компонент сам загружает
-    if (activeTab === 'active_sessions') {
+    // Не загружаем данные для вкладок активных сессий и боксов - компоненты сами загружают
+    if (activeTab === 'active_sessions' || activeTab === 'boxes') {
       return;
     }
     
@@ -371,6 +397,25 @@ const CashierApp = () => {
       return { text: 'Химия включена', icon: '🧪✅', color: '#28a745' };
     }
     return { text: 'Химия оплачена', icon: '🧪', color: '#ffc107' };
+  };
+
+  // Обработчик завершения сессии из таблицы сессий
+  const handleCompleteSessionFromTable = async (sessionId) => {
+    if (!window.confirm('Вы уверены, что хотите завершить эту сессию?')) {
+      return;
+    }
+
+    setActionLoading(prev => ({ ...prev, [sessionId]: true }));
+    
+    try {
+      await ApiService.completeCashierSession(sessionId);
+      await loadData(); // Перезагружаем данные
+    } catch (error) {
+      console.error('Ошибка завершения сессии:', error);
+      setError('Ошибка завершения сессии');
+    } finally {
+      setActionLoading(prev => ({ ...prev, [sessionId]: false }));
+    }
   };
 
   // Обработчик выхода из системы
@@ -491,6 +536,13 @@ const CashierApp = () => {
               >
                 Платежи
               </Tab>
+              <Tab 
+                active={activeTab === 'boxes'} 
+                onClick={() => handleTabChange('boxes')}
+                theme={theme}
+              >
+                Боксы
+              </Tab>
             </TabContainer>
 
             <Card theme={theme}>
@@ -515,6 +567,7 @@ const CashierApp = () => {
                           <Th theme={theme}>Химия</Th>
                           <Th theme={theme}>Время аренды</Th>
                           <Th theme={theme}>Создана</Th>
+                          <Th theme={theme}>Действия</Th>
                         </tr>
                       </thead>
                       <tbody>
@@ -539,6 +592,18 @@ const CashierApp = () => {
                               </Td>
                               <Td theme={theme}>{session.rental_time_minutes} мин</Td>
                               <Td theme={theme}>{formatDateTime(session.created_at)}</Td>
+                              <Td theme={theme}>
+                                {session.status === 'active' && (
+                                  <ActionButton
+                                    className="complete"
+                                    onClick={() => handleCompleteSessionFromTable(session.id)}
+                                    disabled={actionLoading[session.id]}
+                                    style={{ padding: '4px 8px', fontSize: '0.8rem' }}
+                                  >
+                                    {actionLoading[session.id] ? 'Завершаем...' : 'Завершить'}
+                                  </ActionButton>
+                                )}
+                              </Td>
                             </tr>
                           );
                         })}
@@ -582,6 +647,8 @@ const CashierApp = () => {
                     </Table>
                   )}
                 </div>
+              ) : activeTab === 'boxes' ? (
+                <BoxManagement />
               ) : null}
             </Card>
           </>
