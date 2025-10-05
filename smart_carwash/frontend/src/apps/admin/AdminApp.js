@@ -11,6 +11,7 @@ import QueueStatus from './components/QueueStatus';
 import UserManagement from './components/UserManagement';
 import PaymentManagement from './components/PaymentManagement';
 import SettingsManagement from './components/SettingsManagement';
+import ModbusDashboard from './components/ModbusDashboard';
 
 
 const AdminContainer = styled.div`
@@ -67,10 +68,10 @@ const NavLink = styled(Link)`
     color: ${props => props.theme.primaryColor};
   }
   
-  &.active {
-    color: ${props => props.theme.primaryColor};
-    border-bottom: 2px solid ${props => props.theme.primaryColor};
-  }
+  ${props => props.isActive && `
+    color: ${props.theme.primaryColor};
+    border-bottom: 2px solid ${props.theme.primaryColor};
+  `}
 `;
 
 const LogoutButton = styled.button`
@@ -169,46 +170,50 @@ const AdminApp = () => {
       <Navigation theme={theme}>
         <NavList>
           <NavItem>
-            <NavLink to="/admin" theme={theme}>
+            <NavLink to="/admin" theme={theme} isActive={location.pathname === '/admin'}>
               Панель управления
             </NavLink>
           </NavItem>
           <NavItem>
-            <NavLink to="/admin/washboxes" theme={theme}>
+            <NavLink to="/admin/washboxes" theme={theme} isActive={location.pathname === '/admin/washboxes'}>
               Боксы мойки
             </NavLink>
           </NavItem>
           <NavItem>
-            <NavLink to="/admin/sessions" theme={theme}>
+            <NavLink to="/admin/sessions" theme={theme} isActive={location.pathname === '/admin/sessions'}>
               Сессии мойки
             </NavLink>
           </NavItem>
           <NavItem>
-            <NavLink to="/admin/queue" theme={theme}>
+            <NavLink to="/admin/queue" theme={theme} isActive={location.pathname === '/admin/queue'}>
               Очередь
             </NavLink>
           </NavItem>
           <NavItem>
-            <NavLink to="/admin/users" theme={theme}>
+            <NavLink to="/admin/users" theme={theme} isActive={location.pathname === '/admin/users'}>
               Пользователи
             </NavLink>
           </NavItem>
           <NavItem>
-            <NavLink to="/admin/cashiers" theme={theme}>
+            <NavLink to="/admin/cashiers" theme={theme} isActive={location.pathname === '/admin/cashiers'}>
               Управление кассирами
             </NavLink>
           </NavItem>
           <NavItem>
-            <NavLink to="/admin/payments" theme={theme}>
+            <NavLink to="/admin/payments" theme={theme} isActive={location.pathname === '/admin/payments'}>
               Платежи
             </NavLink>
           </NavItem>
           <NavItem>
-            <NavLink to="/admin/settings" theme={theme}>
+            <NavLink to="/admin/settings" theme={theme} isActive={location.pathname === '/admin/settings'}>
               Настройки
             </NavLink>
           </NavItem>
-          
+          <NavItem>
+            <NavLink to="/admin/modbus-dashboard" theme={theme} isActive={location.pathname === '/admin/modbus-dashboard'}>
+              Modbus мониторинг
+            </NavLink>
+          </NavItem>
         </NavList>
       </Navigation>
       
@@ -222,7 +227,7 @@ const AdminApp = () => {
           <Route path="/cashiers" element={<CashierManagement />} />
           <Route path="/payments" element={<PaymentManagement />} />
           <Route path="/settings" element={<SettingsManagement />} />
-  
+          <Route path="/modbus-dashboard" element={<ModbusDashboard />} />
         </Routes>
       </Content>
     </AdminContainer>

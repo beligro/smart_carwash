@@ -28,7 +28,7 @@ mkdir -p nginx/ssl
 
 # Останавливаем nginx, если он запущен, чтобы освободить 80 порт для certbot
 echo "Останавливаем nginx для освобождения 80 порта..."
-docker-compose stop nginx || true
+docker compose stop nginx || true
 
 # Получаем сертификат с помощью certbot и Let's Encrypt
 echo "Запускаем certbot для получения сертификата..."
@@ -66,7 +66,7 @@ if sudo test -d "/etc/letsencrypt/live/$DOMAIN"; then
     sed -i "s/https:\/\/$SERVER_IP/https:\/\/$DOMAIN/g" frontend/src/services/ApiService.js
     
     echo "Готово! Теперь вы можете запустить проект с доверенным SSL сертификатом:"
-    echo "make restart"
+    echo "docker compose up -d"
     
     echo "Ваше приложение будет доступно по адресу: https://$DOMAIN"
     echo "Все URL в проекте были обновлены для использования доменного имени вместо IP-адреса."
