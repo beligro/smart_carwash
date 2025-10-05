@@ -358,8 +358,13 @@ func boolToUint16(value bool) uint16 {
 	return 0x0000 // Modbus OFF
 }
 
-// extendSessionTime продлевает время сессии
+// extendSessionTime продлевает время сессии (приватный метод)
 func (s *ModbusService) extendSessionTime(sessionID uuid.UUID, duration time.Duration) error {
+	return s.ExtendSessionTime(sessionID, duration)
+}
+
+// ExtendSessionTime продлевает время сессии (публичный метод для интерфейса)
+func (s *ModbusService) ExtendSessionTime(sessionID uuid.UUID, duration time.Duration) error {
 	var session sessionModels.Session
 	if err := s.db.Where("id = ?", sessionID).First(&session).Error; err != nil {
 		return fmt.Errorf("не удалось найти сессию: %v", err)

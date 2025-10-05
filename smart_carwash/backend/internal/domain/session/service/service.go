@@ -1,7 +1,7 @@
 package service
 
 import (
-	modbusService "carwash_backend/internal/domain/modbus/service"
+	"carwash_backend/internal/domain/modbus"
 	paymentModels "carwash_backend/internal/domain/payment/models"
 	paymentService "carwash_backend/internal/domain/payment/service"
 	"carwash_backend/internal/domain/session/models"
@@ -64,12 +64,12 @@ type ServiceImpl struct {
 	userService    userService.Service
 	telegramBot    telegram.NotificationService
 	paymentService paymentService.Service
-	modbusService  *modbusService.ModbusService
+	modbusService  modbus.ModbusServiceInterface
 	cashierUserID  string
 }
 
 // NewService создает новый экземпляр Service
-func NewService(repo repository.Repository, washboxService washboxService.Service, userService userService.Service, telegramBot telegram.NotificationService, paymentService paymentService.Service, modbusService *modbusService.ModbusService, cashierUserID string) *ServiceImpl {
+func NewService(repo repository.Repository, washboxService washboxService.Service, userService userService.Service, telegramBot telegram.NotificationService, paymentService paymentService.Service, modbusService modbus.ModbusServiceInterface, cashierUserID string) *ServiceImpl {
 	return &ServiceImpl{
 		repo:           repo,
 		washboxService: washboxService,

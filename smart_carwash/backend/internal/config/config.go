@@ -39,6 +39,10 @@ type Config struct {
 	ModbusEnabled bool
 	ModbusHost    string
 	ModbusPort    int
+
+	// Настройки Modbus HTTP сервера
+	ModbusServerHost string
+	ModbusServerPort int
 }
 
 // LoadConfig загружает конфигурацию из переменных окружения
@@ -60,6 +64,11 @@ func LoadConfig() (*Config, error) {
 	modbusPort, err := strconv.Atoi(getEnv("MODBUS_PORT", "502"))
 	if err != nil {
 		return nil, fmt.Errorf("неверный формат MODBUS_PORT: %v", err)
+	}
+
+	modbusServerPort, err := strconv.Atoi(getEnv("MODBUS_SERVER_PORT", "8081"))
+	if err != nil {
+		return nil, fmt.Errorf("неверный формат MODBUS_SERVER_PORT: %v", err)
 	}
 
 	modbusEnabled := getEnv("MODBUS_ENABLED", "false") == "true"
@@ -94,6 +103,10 @@ func LoadConfig() (*Config, error) {
 		ModbusEnabled: modbusEnabled,
 		ModbusHost:    getEnv("MODBUS_HOST", ""),
 		ModbusPort:    modbusPort,
+
+		// Настройки Modbus HTTP сервера
+		ModbusServerHost: getEnv("MODBUS_SERVER_HOST", "localhost"),
+		ModbusServerPort: modbusServerPort,
 	}, nil
 }
 

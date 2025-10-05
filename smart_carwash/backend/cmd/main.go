@@ -16,8 +16,7 @@ import (
 	authHandlers "carwash_backend/internal/domain/auth/handlers"
 	authRepo "carwash_backend/internal/domain/auth/repository"
 	authService "carwash_backend/internal/domain/auth/service"
-	modbusHandlers "carwash_backend/internal/domain/modbus/handlers"
-	modbusService "carwash_backend/internal/domain/modbus/service"
+	modbusAdapter "carwash_backend/internal/domain/modbus/adapter"
 	paymentHandlers "carwash_backend/internal/domain/payment/handlers"
 	paymentRepo "carwash_backend/internal/domain/payment/repository"
 	paymentService "carwash_backend/internal/domain/payment/service"
@@ -94,8 +93,8 @@ func main() {
 	settingsSvc := settingsService.NewService(settingsRepository)
 	authSvc := authService.NewService(authRepository, cfg)
 	
-	// Создаем Modbus сервис
-	modbusSvc := modbusService.NewModbusService(db, cfg)
+	// Создаем Modbus HTTP адаптер
+	modbusAdapter := modbusAdapter.NewModbusAdapter(cfg, db)
 
 	// Создаем фоновые задачи для кассиров
 	backgroundTasks := authService.NewBackgroundTasks(authRepository)
@@ -107,13 +106,13 @@ func main() {
 	}
 
 	// Создаем сервис сессий с зависимостями
-	sessionSvc := sessionService.NewService(sessionRepository, washboxSvc, userSvc, bot, nil, modbusSvc, cfg.CashierUserID) // paymentSvc будет nil пока
+	sessionSvc := sessionService.NewService(sessionRepository, washboxSvc, userSvc, bot, nil, modbusAdapter, cfg.CashierUserID) // paymentSvc будет nil пока
 
 	// Создаем сервис платежей с зависимостью от sessionSvc как SessionStatusUpdater и SessionExtensionUpdater
 	paymentSvc := paymentService.NewService(paymentRepository, settingsRepository, sessionSvc, sessionSvc, tinkoffClient, cfg.TinkoffTerminalKey, cfg.TinkoffSecretKey)
 
 	// Обновляем sessionSvc с правильным paymentSvc
-	sessionSvc = sessionService.NewService(sessionRepository, washboxSvc, userSvc, bot, paymentSvc, modbusSvc, cfg.CashierUserID)
+	sessionSvc = sessionService.NewService(sessionRepository, washboxSvc, userSvc, bot, paymentSvc, modbusAdapter, cfg.CashierUserID)
 
 	// Создаем сервис очереди, который зависит от сервисов сессий, боксов и пользователей
 	queueSvc := queueService.NewService(sessionSvc, washboxSvc, userSvc)
@@ -131,7 +130,6 @@ func main() {
 	settingsHandler := settingsHandlers.NewHandler(settingsSvc)
 	authHandler := authHandlers.NewHandler(authSvc)
 	paymentHandler := paymentHandlers.NewHandler(paymentSvc, authSvc)
-	modbusHandler := modbusHandlers.NewHandler(modbusSvc)
 
 	// Создаем роутер
 	router := gin.Default()
@@ -157,7 +155,6 @@ func main() {
 		settingsHandler.RegisterRoutes(api)
 		authHandler.RegisterRoutes(api)
 		paymentHandler.RegisterRoutes(api)
-		modbusHandler.RegisterRoutes(api)
 
 		// Вебхук для Telegram бота
 		api.POST("/webhook", func(c *gin.Context) {
