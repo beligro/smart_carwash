@@ -32,8 +32,13 @@ type Config struct {
 	TinkoffFailURL     string
 
 	// Настройки 1C интеграции
-	APIKey1C       string
-	CashierUserID  string
+	APIKey1C      string
+	CashierUserID string
+
+	// Настройки Modbus
+	ModbusEnabled bool
+	ModbusHost    string
+	ModbusPort    int
 }
 
 // LoadConfig загружает конфигурацию из переменных окружения
@@ -51,6 +56,13 @@ func LoadConfig() (*Config, error) {
 	if err != nil {
 		return nil, fmt.Errorf("неверный формат BACKEND_PORT: %v", err)
 	}
+
+	modbusPort, err := strconv.Atoi(getEnv("MODBUS_PORT", "502"))
+	if err != nil {
+		return nil, fmt.Errorf("неверный формат MODBUS_PORT: %v", err)
+	}
+
+	modbusEnabled := getEnv("MODBUS_ENABLED", "false") == "true"
 
 	return &Config{
 		PostgresUser:     getEnv("POSTGRES_USER", "postgres"),
@@ -77,6 +89,11 @@ func LoadConfig() (*Config, error) {
 		// Настройки 1C интеграции
 		APIKey1C:      getEnv("API_KEY_1C", ""),
 		CashierUserID: getEnv("CASHIER_USER_ID", ""),
+
+		// Настройки Modbus
+		ModbusEnabled: modbusEnabled,
+		ModbusHost:    getEnv("MODBUS_HOST", ""),
+		ModbusPort:    modbusPort,
 	}, nil
 }
 

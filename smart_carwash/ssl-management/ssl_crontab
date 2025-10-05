@@ -1,0 +1,14 @@
+# SSL Auto-renewal crontab for Smart Carwash
+# Автоматическое обновление SSL сертификатов Let's Encrypt
+
+# Проверка SSL сертификата каждый день в 2:00 утра
+0 2 * * * /home/artem/smart_carwash/smart_carwash/ssl-management/ssl_renew_simple.sh >> /home/artem/smart_carwash/smart_carwash/logs/ssl_auto_renew.log 2>&1
+
+# Дополнительная проверка каждые 6 часов (на случай проблем)
+0 */6 * * * /home/artem/smart_carwash/smart_carwash/ssl-management/ssl_check.sh >> /home/artem/smart_carwash/smart_carwash/logs/ssl_check.log 2>&1
+
+# Еженедельная проверка статуса (воскресенье в 3:00 утра)
+0 3 * * 0 /home/artem/smart_carwash/smart_carwash/ssl-management/ssl_check.sh
+
+# Очистка старых логов (каждый месяц)
+0 4 1 * * find /home/artem/smart_carwash/smart_carwash/logs -name "ssl_*.log" -mtime +30 -delete

@@ -3,6 +3,25 @@ import styled from 'styled-components';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { getTheme } from '../../../shared/styles/theme';
 import ApiService from '../../../shared/services/ApiService';
+import axios from 'axios';
+
+// API клиент для Modbus тестирования
+const modbusApi = axios.create({
+  baseURL: process.env.REACT_APP_API_URL ? process.env.REACT_APP_API_URL.replace('/v1', '') : '/api',
+  timeout: 10000,
+  headers: {
+    'Content-Type': 'application/json',
+  },
+});
+
+// Добавляем токен авторизации
+modbusApi.interceptors.request.use((config) => {
+  const token = localStorage.getItem('token');
+  if (token) {
+    config.headers['Authorization'] = `Bearer ${token}`;
+  }
+  return config;
+});
 
 const Container = styled.div`
   padding: 20px;
@@ -241,6 +260,62 @@ const SuccessMessage = styled.div`
   font-size: 14px;
 `;
 
+const TestButtonGroup = styled.div`
+  display: flex;
+  gap: 8px;
+  margin-top: 8px;
+`;
+
+const TestButton = styled.button`
+  background: #FF9800;
+  color: white;
+  border: none;
+  padding: 6px 12px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 500;
+  
+  &:hover {
+    opacity: 0.9;
+  }
+  
+  &:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+  
+  &.success {
+    background: #4CAF50;
+  }
+  
+  &.error {
+    background: #F44336;
+  }
+`;
+
+const TestResult = styled.div`
+  margin-top: 8px;
+  padding: 8px 12px;
+  border-radius: 4px;
+  font-size: 12px;
+  
+  &.success {
+    background: #E8F5E8;
+    color: #2E7D32;
+  }
+  
+  &.error {
+    background: #FFEBEE;
+    color: #C62828;
+  }
+  
+  &.testing {
+    background: #E3F2FD;
+    color: #1565C0;
+  }
+`;
+
 const LoadingMessage = styled.div`
   color: ${props => props.theme.textColor};
   text-align: center;
@@ -265,11 +340,17 @@ const WashBoxManagement = () => {
     number: '',
     status: 'free',
     serviceType: 'wash',
-    chemistryEnabled: true
+    chemistryEnabled: true,
+    lightCoilRegister: '',
+    chemistryCoilRegister: ''
   });
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const highlightedBoxNumber = searchParams.get('highlight');
+  
+  // Состояния для тестирования Modbus
+  const [testingBox, setTestingBox] = useState(null);
+  const [testResults, setTestResults] = useState({});
 
   // Загрузка боксов
   const fetchWashBoxes = async () => {
@@ -303,6 +384,44 @@ const WashBoxManagement = () => {
     }
   }, [highlightedBoxNumber, washBoxes]);
 
+  // Функции тестирования Modbus
+  const testCoil = async (boxId, register, value) => {
+    try {
+      setTestingBox(boxId);
+      setTestResults(prev => ({ 
+        ...prev, 
+        [`${boxId}_${register}`]: { 
+          status: 'testing', 
+          message: `Тестирование ${register}...` 
+        } 
+      }));
+      
+      const response = await modbusApi.post('/admin/modbus/test-coil', { 
+        box_id: boxId, 
+        register, 
+        value 
+      });
+      
+      setTestResults(prev => ({ 
+        ...prev, 
+        [`${boxId}_${register}`]: { 
+          status: response.data.success ? 'success' : 'error', 
+          message: response.data.message 
+        } 
+      }));
+    } catch (err) {
+      setTestResults(prev => ({ 
+        ...prev, 
+        [`${boxId}_${register}`]: { 
+          status: 'error', 
+          message: err.response?.data?.error || err.message 
+        } 
+      }));
+    } finally {
+      setTestingBox(null);
+    }
+  };
+
   // Создание бокса
   const handleCreate = async (e) => {
     e.preventDefault();
@@ -321,13 +440,15 @@ const WashBoxManagement = () => {
         number: parseInt(formData.number, 10),
         status: formData.status,
         service_type: formData.serviceType,
-        chemistry_enabled: formData.chemistryEnabled
+        chemistry_enabled: formData.chemistryEnabled,
+        light_coil_register: formData.lightCoilRegister || null,
+        chemistry_coil_register: formData.chemistryCoilRegister || null
       };
       
       await ApiService.createWashBox(washBoxData);
       setSuccess('Бокс успешно создан');
       setShowCreateModal(false);
-      setFormData({ number: '', status: 'free', serviceType: 'wash', chemistryEnabled: true });
+      setFormData({ number: '', status: 'free', serviceType: 'wash', chemistryEnabled: true, lightCoilRegister: '', chemistryCoilRegister: '' });
       fetchWashBoxes();
     } catch (err) {
       if (err.response?.data?.error) {
@@ -353,14 +474,16 @@ const WashBoxManagement = () => {
         number: parseInt(formData.number, 10),
         status: formData.status,
         service_type: formData.serviceType,
-        chemistry_enabled: formData.chemistryEnabled
+        chemistry_enabled: formData.chemistryEnabled,
+        light_coil_register: formData.lightCoilRegister || null,
+        chemistry_coil_register: formData.chemistryCoilRegister || null
       };
       
       await ApiService.updateWashBox(editingWashBox.id, washBoxData);
       setSuccess('Бокс успешно обновлен');
       setShowEditModal(false);
       setEditingWashBox(null);
-      setFormData({ number: '', status: 'free', serviceType: 'wash', chemistryEnabled: true });
+      setFormData({ number: '', status: 'free', serviceType: 'wash', chemistryEnabled: true, lightCoilRegister: '', chemistryCoilRegister: '' });
       fetchWashBoxes();
     } catch (err) {
       if (err.response?.data?.error) {
@@ -404,7 +527,9 @@ const WashBoxManagement = () => {
       number: washBox.number.toString(),
       status: washBox.status,
       serviceType: washBox.service_type,
-      chemistryEnabled: washBox.chemistry_enabled
+      chemistryEnabled: washBox.chemistry_enabled,
+      lightCoilRegister: washBox.light_coil_register || '',
+      chemistryCoilRegister: washBox.chemistry_coil_register || ''
     });
     setShowEditModal(true);
   };
@@ -445,9 +570,28 @@ const WashBoxManagement = () => {
     <Container>
       <Header>
         <Title theme={theme}>Управление боксами мойки</Title>
-        <Button theme={theme} onClick={() => setShowCreateModal(true)}>
-          Добавить бокс
-        </Button>
+        <div style={{ display: 'flex', gap: '10px' }}>
+          <Button theme={theme} onClick={() => setShowCreateModal(true)}>
+            Добавить бокс
+          </Button>
+          <Button 
+            theme={theme} 
+            style={{ backgroundColor: '#28a745' }}
+            onClick={async () => {
+              try {
+                const config = await ApiService.getModbusConfig();
+                const status = config.enabled ? 'Включен' : 'Отключен';
+                const host = config.host || 'Не задан';
+                const port = config.port || 'Не задан';
+                alert(`Modbus статус: ${status}\nХост: ${host}\nПорт: ${port}`);
+              } catch (error) {
+                alert('Ошибка получения статуса Modbus: ' + error.message);
+              }
+            }}
+          >
+            Статус Modbus
+          </Button>
+        </div>
       </Header>
 
       {error && <ErrorMessage>{error}</ErrorMessage>}
@@ -484,6 +628,8 @@ const WashBoxManagement = () => {
             <Th theme={theme}>Статус</Th>
             <Th theme={theme}>Тип услуги</Th>
             <Th theme={theme}>Химия</Th>
+            <Th theme={theme}>Регистр света</Th>
+            <Th theme={theme}>Регистр химии</Th>
             <Th theme={theme}>Дата создания</Th>
             <Th theme={theme}>Действия</Th>
           </tr>
@@ -512,6 +658,20 @@ const WashBoxManagement = () => {
                     <ChemistryBadge className={washBox.chemistry_enabled ? 'enabled' : 'disabled'}>
                       {washBox.chemistry_enabled ? 'Включена' : 'Отключена'}
                     </ChemistryBadge>
+                  ) : (
+                    <span style={{ color: '#999' }}>Недоступна</span>
+                  )}
+                </Td>
+                <Td>
+                  {washBox.light_coil_register || (
+                    <span style={{ color: '#999' }}>Не задан</span>
+                  )}
+                </Td>
+                <Td>
+                  {washBox.service_type === 'wash' ? (
+                    washBox.chemistry_coil_register || (
+                      <span style={{ color: '#999' }}>Не задан</span>
+                    )
                   ) : (
                     <span style={{ color: '#999' }}>Недоступна</span>
                   )}
@@ -603,6 +763,36 @@ const WashBoxManagement = () => {
                 </FormGroup>
               )}
               
+              <FormGroup>
+                <Label theme={theme}>Регистр света (0x0001)</Label>
+                <Input
+                  type="text"
+                  value={formData.lightCoilRegister}
+                  onChange={(e) => setFormData({ ...formData, lightCoilRegister: e.target.value })}
+                  placeholder="0x00001"
+                  pattern="0x[0-9a-fA-F]{1,4}"
+                />
+                <small style={{ color: '#666', fontSize: '12px' }}>
+                  Hex формат регистра для управления светом
+                </small>
+              </FormGroup>
+              
+              {formData.serviceType === 'wash' && (
+                <FormGroup>
+                  <Label theme={theme}>Регистр химии (0x0002)</Label>
+                  <Input
+                    type="text"
+                    value={formData.chemistryCoilRegister}
+                    onChange={(e) => setFormData({ ...formData, chemistryCoilRegister: e.target.value })}
+                    placeholder="0x00002"
+                    pattern="0x[0-9a-fA-F]{1,4}"
+                  />
+                  <small style={{ color: '#666', fontSize: '12px' }}>
+                    Hex формат регистра для управления химией (только для мойки)
+                  </small>
+                </FormGroup>
+              )}
+              
               <ButtonGroup>
                 <Button theme={theme} type="button" onClick={closeModals}>
                   Отмена
@@ -671,6 +861,82 @@ const WashBoxManagement = () => {
                     />
                     Химия включена
                   </Label>
+                </FormGroup>
+              )}
+              
+              <FormGroup>
+                <Label theme={theme}>Регистр света (0x0001)</Label>
+                <Input
+                  type="text"
+                  value={formData.lightCoilRegister}
+                  onChange={(e) => setFormData({ ...formData, lightCoilRegister: e.target.value })}
+                  placeholder="0x00001"
+                  pattern="0x[0-9a-fA-F]{1,4}"
+                />
+                <small style={{ color: '#666', fontSize: '12px' }}>
+                  Hex формат регистра для управления светом
+                </small>
+                {formData.lightCoilRegister && editingWashBox && (
+                  <TestButtonGroup>
+                    <TestButton
+                      type="button"
+                      onClick={() => testCoil(editingWashBox.id, formData.lightCoilRegister, true)}
+                      disabled={testingBox === editingWashBox.id}
+                    >
+                      Тест ВКЛ
+                    </TestButton>
+                    <TestButton
+                      type="button"
+                      onClick={() => testCoil(editingWashBox.id, formData.lightCoilRegister, false)}
+                      disabled={testingBox === editingWashBox.id}
+                    >
+                      Тест ВЫКЛ
+                    </TestButton>
+                  </TestButtonGroup>
+                )}
+                {testResults[`${editingWashBox?.id}_${formData.lightCoilRegister}`] && (
+                  <TestResult className={testResults[`${editingWashBox?.id}_${formData.lightCoilRegister}`].status}>
+                    {testResults[`${editingWashBox?.id}_${formData.lightCoilRegister}`].message}
+                  </TestResult>
+                )}
+              </FormGroup>
+              
+              {formData.serviceType === 'wash' && (
+                <FormGroup>
+                  <Label theme={theme}>Регистр химии (0x0002)</Label>
+                  <Input
+                    type="text"
+                    value={formData.chemistryCoilRegister}
+                    onChange={(e) => setFormData({ ...formData, chemistryCoilRegister: e.target.value })}
+                    placeholder="0x00002"
+                    pattern="0x[0-9a-fA-F]{1,4}"
+                  />
+                  <small style={{ color: '#666', fontSize: '12px' }}>
+                    Hex формат регистра для управления химией (только для мойки)
+                  </small>
+                  {formData.chemistryCoilRegister && editingWashBox && (
+                    <TestButtonGroup>
+                      <TestButton
+                        type="button"
+                        onClick={() => testCoil(editingWashBox.id, formData.chemistryCoilRegister, true)}
+                        disabled={testingBox === editingWashBox.id}
+                      >
+                        Тест ВКЛ
+                      </TestButton>
+                      <TestButton
+                        type="button"
+                        onClick={() => testCoil(editingWashBox.id, formData.chemistryCoilRegister, false)}
+                        disabled={testingBox === editingWashBox.id}
+                      >
+                        Тест ВЫКЛ
+                      </TestButton>
+                    </TestButtonGroup>
+                  )}
+                  {testResults[`${editingWashBox?.id}_${formData.chemistryCoilRegister}`] && (
+                    <TestResult className={testResults[`${editingWashBox?.id}_${formData.chemistryCoilRegister}`].status}>
+                      {testResults[`${editingWashBox?.id}_${formData.chemistryCoilRegister}`].message}
+                    </TestResult>
+                  )}
                 </FormGroup>
               )}
               
