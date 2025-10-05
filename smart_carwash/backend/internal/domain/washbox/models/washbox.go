@@ -109,3 +109,30 @@ type AdminListWashBoxesResponse struct {
 type AdminDeleteWashBoxResponse struct {
 	Message string `json:"message"`
 }
+
+// CashierListWashBoxesRequest запрос на получение списка боксов мойки для кассира
+type CashierListWashBoxesRequest struct {
+	Status      *string `json:"status" binding:"omitempty,oneof=free reserved busy maintenance"`
+	ServiceType *string `json:"service_type" binding:"omitempty,oneof=wash air_dry vacuum"`
+	Limit       *int    `json:"limit"`
+	Offset      *int    `json:"offset"`
+}
+
+// CashierListWashBoxesResponse ответ на получение списка боксов мойки для кассира
+type CashierListWashBoxesResponse struct {
+	WashBoxes []WashBox `json:"wash_boxes"`
+	Total     int       `json:"total"`
+	Limit     int       `json:"limit"`
+	Offset    int       `json:"offset"`
+}
+
+// CashierSetMaintenanceRequest запрос на перевод бокса в режим обслуживания
+type CashierSetMaintenanceRequest struct {
+	ID uuid.UUID `json:"id" binding:"required"`
+}
+
+// CashierSetMaintenanceResponse ответ на перевод бокса в режим обслуживания
+type CashierSetMaintenanceResponse struct {
+	WashBox WashBox `json:"wash_box"`
+	Message string  `json:"message"`
+}

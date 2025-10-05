@@ -3,17 +3,17 @@ package service
 import (
 	"carwash_backend/internal/domain/session/models"
 	"carwash_backend/internal/domain/session/repository"
-	washboxService "carwash_backend/internal/domain/washbox/service"
-	washboxModels "carwash_backend/internal/domain/washbox/models"
-	userService "carwash_backend/internal/domain/user/service"
 	"carwash_backend/internal/domain/telegram"
 	paymentService "carwash_backend/internal/domain/payment/service"
 	paymentModels "carwash_backend/internal/domain/payment/models"
 	modbusService "carwash_backend/internal/domain/modbus/service"
+	userService "carwash_backend/internal/domain/user/service"
+	washboxModels "carwash_backend/internal/domain/washbox/models"
+	washboxService "carwash_backend/internal/domain/washbox/service"
 	"fmt"
-	"time"
 	"log"
 	"sort"
+	"time"
 
 	"github.com/google/uuid"
 )
@@ -51,7 +51,7 @@ type Service interface {
 	CashierStartSession(req *models.CashierStartSessionRequest) (*models.Session, error)
 	CashierCompleteSession(req *models.CashierCompleteSessionRequest) (*models.Session, error)
 	CashierCancelSession(req *models.CashierCancelSessionRequest) (*models.Session, error)
-	
+
 	// Методы для химии
 	EnableChemistry(req *models.EnableChemistryRequest) (*models.EnableChemistryResponse, error)
 	GetChemistryStats(req *models.GetChemistryStatsRequest) (*models.GetChemistryStatsResponse, error)
@@ -416,14 +416,14 @@ func (s *ServiceImpl) CompleteSession(req *models.CompleteSessionRequest) (*mode
 
 	// Рассчитываем возврат по всем платежам сессии
 	refundReq := &paymentModels.CalculateSessionRefundRequest{
-		SessionID:         session.ID,
-		ServiceType:       session.ServiceType,
-		RentalTimeMinutes: session.RentalTimeMinutes,
+		SessionID:            session.ID,
+		ServiceType:          session.ServiceType,
+		RentalTimeMinutes:    session.RentalTimeMinutes,
 		ExtensionTimeMinutes: session.ExtensionTimeMinutes,
-		UsedTimeSeconds:   usedTimeSeconds,
+		UsedTimeSeconds:      usedTimeSeconds,
 	}
 
-	log.Printf("Завершение сессии: SessionID=%s, RentalTime=%dmin, ExtensionTime=%dmin, UsedTime=%ds", 
+	log.Printf("Завершение сессии: SessionID=%s, RentalTime=%dmin, ExtensionTime=%dmin, UsedTime=%ds",
 		session.ID, session.RentalTimeMinutes, session.ExtensionTimeMinutes, usedTimeSeconds)
 
 	refundCalcResp, err := s.paymentService.CalculateSessionRefund(refundReq)
@@ -442,13 +442,13 @@ func (s *ServiceImpl) CompleteSession(req *models.CompleteSessionRequest) (*mode
 				if err != nil {
 					log.Printf("Ошибка выполнения возврата для платежа %s: %v", refund.PaymentID, err)
 				} else {
-					log.Printf("Успешно выполнен возврат для платежа %s: Amount=%d", 
+					log.Printf("Успешно выполнен возврат для платежа %s: Amount=%d",
 						refund.PaymentID, refund.RefundAmount)
 				}
 			}
 		}
 
-		log.Printf("Успешно выполнен возврат по сессии: SessionID=%s, TotalRefundAmount=%d", 
+		log.Printf("Успешно выполнен возврат по сессии: SessionID=%s, TotalRefundAmount=%d",
 			session.ID, refundCalcResp.TotalRefundAmount)
 	}
 
@@ -1146,7 +1146,7 @@ func (s *ServiceImpl) GetUserSessionHistory(req *models.GetUserSessionHistoryReq
 				// Для обратной совместимости оставляем Payment
 				sessions[i].Payment = sessions[i].MainPayment
 			}
-			
+
 			// Платежи продления
 			if len(paymentsResp.ExtensionPayments) > 0 {
 				sessions[i].ExtensionPayments = make([]models.Payment, len(paymentsResp.ExtensionPayments))
@@ -1338,54 +1338,54 @@ func (s *ServiceImpl) CashierListSessions(req *models.CashierSessionsRequest) (*
 		return nil, err
 	}
 
-			// Загружаем платежи для каждой сессии
-		for i := range sessions {
-			payments, err := s.paymentService.GetPaymentsBySessionID(sessions[i].ID)
-			if err != nil {
-				// Логируем ошибку, но продолжаем работу
-				continue
-			}
+	// Загружаем платежи для каждой сессии
+	for i := range sessions {
+		payments, err := s.paymentService.GetPaymentsBySessionID(sessions[i].ID)
+		if err != nil {
+			// Логируем ошибку, но продолжаем работу
+			continue
+		}
 
-			// Устанавливаем основной платеж
-			if payments.MainPayment != nil {
-				sessions[i].MainPayment = &models.Payment{
-					ID:             payments.MainPayment.ID,
-					SessionID:      payments.MainPayment.SessionID,
-					Amount:         payments.MainPayment.Amount,
-					RefundedAmount: payments.MainPayment.RefundedAmount,
-					Currency:       payments.MainPayment.Currency,
-					Status:         payments.MainPayment.Status,
-					PaymentType:    payments.MainPayment.PaymentType,
-					PaymentURL:     payments.MainPayment.PaymentURL,
-					TinkoffID:      payments.MainPayment.TinkoffID,
-					ExpiresAt:      payments.MainPayment.ExpiresAt,
-					RefundedAt:     payments.MainPayment.RefundedAt,
-					CreatedAt:      payments.MainPayment.CreatedAt,
-					UpdatedAt:      payments.MainPayment.UpdatedAt,
+		// Устанавливаем основной платеж
+		if payments.MainPayment != nil {
+			sessions[i].MainPayment = &models.Payment{
+				ID:             payments.MainPayment.ID,
+				SessionID:      payments.MainPayment.SessionID,
+				Amount:         payments.MainPayment.Amount,
+				RefundedAmount: payments.MainPayment.RefundedAmount,
+				Currency:       payments.MainPayment.Currency,
+				Status:         payments.MainPayment.Status,
+				PaymentType:    payments.MainPayment.PaymentType,
+				PaymentURL:     payments.MainPayment.PaymentURL,
+				TinkoffID:      payments.MainPayment.TinkoffID,
+				ExpiresAt:      payments.MainPayment.ExpiresAt,
+				RefundedAt:     payments.MainPayment.RefundedAt,
+				CreatedAt:      payments.MainPayment.CreatedAt,
+				UpdatedAt:      payments.MainPayment.UpdatedAt,
+			}
+		}
+
+		// Устанавливаем платежи продления
+		if len(payments.ExtensionPayments) > 0 {
+			sessions[i].ExtensionPayments = make([]models.Payment, len(payments.ExtensionPayments))
+			for j, payment := range payments.ExtensionPayments {
+				sessions[i].ExtensionPayments[j] = models.Payment{
+					ID:             payment.ID,
+					SessionID:      payment.SessionID,
+					Amount:         payment.Amount,
+					RefundedAmount: payment.RefundedAmount,
+					Currency:       payment.Currency,
+					Status:         payment.Status,
+					PaymentType:    payment.PaymentType,
+					PaymentURL:     payment.PaymentURL,
+					TinkoffID:      payment.TinkoffID,
+					ExpiresAt:      payment.ExpiresAt,
+					RefundedAt:     payment.RefundedAt,
+					CreatedAt:      payment.CreatedAt,
+					UpdatedAt:      payment.UpdatedAt,
 				}
 			}
-
-			// Устанавливаем платежи продления
-			if len(payments.ExtensionPayments) > 0 {
-				sessions[i].ExtensionPayments = make([]models.Payment, len(payments.ExtensionPayments))
-				for j, payment := range payments.ExtensionPayments {
-					sessions[i].ExtensionPayments[j] = models.Payment{
-						ID:             payment.ID,
-						SessionID:      payment.SessionID,
-						Amount:         payment.Amount,
-						RefundedAmount: payment.RefundedAmount,
-						Currency:       payment.Currency,
-						Status:         payment.Status,
-						PaymentType:    payment.PaymentType,
-						PaymentURL:     payment.PaymentURL,
-						TinkoffID:      payment.TinkoffID,
-						ExpiresAt:      payment.ExpiresAt,
-						RefundedAt:     payment.RefundedAt,
-						CreatedAt:      payment.CreatedAt,
-						UpdatedAt:      payment.UpdatedAt,
-					}
-				}
-			}
+		}
 	}
 
 	return &models.AdminListSessionsResponse{
@@ -1425,8 +1425,8 @@ func (s *ServiceImpl) CashierGetActiveSessions(req *models.CashierActiveSessions
 	// Фильтруем только активные сессии
 	var activeSessions []models.Session
 	for _, session := range sessions {
-		if session.Status == "created" || session.Status == "in_queue" || 
-		   session.Status == "assigned" || session.Status == "active" {
+		if session.Status == "created" || session.Status == "in_queue" ||
+			session.Status == "assigned" || session.Status == "active" {
 			activeSessions = append(activeSessions, session)
 		}
 	}
@@ -1537,15 +1537,7 @@ func (s *ServiceImpl) CashierCompleteSession(req *models.CashierCompleteSessionR
 		return nil, fmt.Errorf("сессия не найдена: %w", err)
 	}
 
-	// Проверяем, что это сессия кассира
-	cashierUserID, err := uuid.Parse(s.cashierUserID)
-	if err != nil {
-		return nil, fmt.Errorf("некорректный ID кассира: %w", err)
-	}
-
-	if session.UserID != cashierUserID {
-		return nil, fmt.Errorf("доступ запрещен: сессия не принадлежит кассиру")
-	}
+	// Кассир может завершать любые активные сессии
 
 	// Проверяем статус сессии
 	if session.Status != "active" {
@@ -1571,15 +1563,7 @@ func (s *ServiceImpl) CashierCancelSession(req *models.CashierCancelSessionReque
 		return nil, fmt.Errorf("сессия не найдена: %w", err)
 	}
 
-	// Проверяем, что это сессия кассира
-	cashierUserID, err := uuid.Parse(s.cashierUserID)
-	if err != nil {
-		return nil, fmt.Errorf("некорректный ID кассира: %w", err)
-	}
-
-	if session.UserID != cashierUserID {
-		return nil, fmt.Errorf("доступ запрещен: сессия не принадлежит кассиру")
-	}
+	// Кассир может отменять любые сессии в статусе in_queue или assigned
 
 	// Проверяем статус сессии
 	if session.Status != "in_queue" && session.Status != "assigned" {
@@ -1588,8 +1572,8 @@ func (s *ServiceImpl) CashierCancelSession(req *models.CashierCancelSessionReque
 
 	// Отменяем сессию
 	response, err := s.CancelSession(&models.CancelSessionRequest{
-		SessionID: req.SessionID,
-		UserID:    cashierUserID,
+		SessionID:  req.SessionID,
+		UserID:     session.UserID, // Используем ID владельца сессии
 		SkipRefund: req.SkipRefund, // Передаем признак пропуска возврата
 	})
 	if err != nil {
@@ -1625,10 +1609,10 @@ func (s *ServiceImpl) EnableChemistry(req *models.EnableChemistryRequest) (*mode
 	// Проверяем время доступности кнопки химии
 	// TODO: Получить настройку времени из settings service
 	chemistryTimeoutMinutes := 10 // По умолчанию 10 минут
-	
+
 	// Вычисляем время, когда истекет возможность включения химии
 	chemistryDeadline := session.StatusUpdatedAt.Add(time.Duration(chemistryTimeoutMinutes) * time.Minute)
-	
+
 	if time.Now().After(chemistryDeadline) {
 		return nil, fmt.Errorf("время для включения химии истекло (доступно в первые %d минут после старта)", chemistryTimeoutMinutes)
 	}

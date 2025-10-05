@@ -25,6 +25,10 @@ type Service interface {
 	AdminGetWashBox(req *models.AdminGetWashBoxRequest) (*models.AdminGetWashBoxResponse, error)
 	AdminListWashBoxes(req *models.AdminListWashBoxesRequest) (*models.AdminListWashBoxesResponse, error)
 	RestoreWashBox(id uuid.UUID, status string, serviceType string) (*models.WashBox, error)
+
+	// Методы для кассира
+	CashierListWashBoxes(req *models.CashierListWashBoxesRequest) (*models.CashierListWashBoxesResponse, error)
+	CashierSetMaintenance(req *models.CashierSetMaintenanceRequest) (*models.CashierSetMaintenanceResponse, error)
 }
 
 // ServiceImpl реализация Service
@@ -243,4 +247,57 @@ func (s *ServiceImpl) RestoreWashBox(id uuid.UUID, status string, serviceType st
 	}
 
 	return restoredBox, nil
+}
+
+// CashierListWashBoxes возвращает список боксов для кассира
+func (s *ServiceImpl) CashierListWashBoxes(req *models.CashierListWashBoxesRequest) (*models.CashierListWashBoxesResponse, error) {
+	// Устанавливаем значения по умолчанию
+	limit := 50
+	offset := 0
+
+	if req.Limit != nil {
+		limit = *req.Limit
+	}
+	if req.Offset != nil {
+		offset = *req.Offset
+	}
+
+	// Получаем боксы с фильтрацией
+	boxes, total, err := s.repo.GetWashBoxesWithFilters(req.Status, req.ServiceType, limit, offset)
+	if err != nil {
+		return nil, err
+	}
+
+	return &models.CashierListWashBoxesResponse{
+		WashBoxes: boxes,
+		Total:     total,
+		Limit:     limit,
+		Offset:    offset,
+	}, nil
+}
+
+// CashierSetMaintenance переводит бокс в режим обслуживания (только свободные боксы)
+func (s *ServiceImpl) CashierSetMaintenance(req *models.CashierSetMaintenanceRequest) (*models.CashierSetMaintenanceResponse, error) {
+	// Получаем бокс по ID
+	washBox, err := s.repo.GetWashBoxByID(req.ID)
+	if err != nil {
+		return nil, errors.New("бокс не найден")
+	}
+
+	// Проверяем, что бокс свободен (только свободные боксы можно переводить в обслуживание)
+	if washBox.Status != models.StatusFree {
+		return nil, errors.New("в режим обслуживания можно переводить только свободные боксы")
+	}
+
+	// Обновляем статус бокса на maintenance
+	washBox.Status = models.StatusMaintenance
+	updatedBox, err := s.repo.UpdateWashBox(washBox)
+	if err != nil {
+		return nil, err
+	}
+
+	return &models.CashierSetMaintenanceResponse{
+		WashBox: *updatedBox,
+		Message: "Бокс переведен в режим обслуживания",
+	}, nil
 }

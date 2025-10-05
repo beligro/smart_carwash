@@ -37,6 +37,13 @@ func (h *Handler) RegisterRoutes(router *gin.RouterGroup) {
 		adminRoutes.DELETE("", h.adminDeleteWashBox)
 		adminRoutes.GET("/by-id", h.adminGetWashBox)
 	}
+
+	// Маршруты для кассира
+	cashierRoutes := router.Group("/cashier/washboxes")
+	{
+		cashierRoutes.GET("", h.cashierListWashBoxes)
+		cashierRoutes.POST("/maintenance", h.cashierSetMaintenance)
+	}
 }
 
 // adminListWashBoxes обработчик для получения списка боксов мойки

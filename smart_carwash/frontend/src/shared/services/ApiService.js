@@ -599,6 +599,31 @@ const ApiService = {
     }
   },
 
+  // === МЕТОДЫ ДЛЯ РАБОТЫ С БОКСАМИ КАССИРА ===
+
+  // Получить список боксов для кассира
+  getCashierWashBoxes: async (filters = {}) => {
+    try {
+      const queryString = toSnakeCaseQuery(filters);
+      const response = await api.get(`/cashier/washboxes?${queryString}`);
+      return response.data;
+    } catch (error) {
+      console.error('Ошибка получения боксов для кассира:', error);
+      throw error;
+    }
+  },
+
+  // Перевести бокс в режим обслуживания
+  setCashierMaintenance: async (boxId) => {
+    try {
+      const response = await api.post('/cashier/washboxes/maintenance', { id: boxId });
+      return response.data;
+    } catch (error) {
+      console.error('Ошибка перевода бокса в обслуживание:', error);
+      throw error;
+    }
+  },
+
 
 
   // === МЕТОДЫ ДЛЯ УПРАВЛЕНИЯ НАСТРОЙКАМИ ХИМИИ ===
