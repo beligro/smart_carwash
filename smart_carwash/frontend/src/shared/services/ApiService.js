@@ -701,7 +701,73 @@ const ApiService = {
       console.error('Ошибка получения конфигурации Modbus:', error);
       throw error;
     }
-  }
+  },
+
+  // === МЕТОДЫ ДЛЯ РАБОТЫ С УБОРКОЙ ===
+
+  // Получение списка боксов для уборщика
+  getCleanerWashBoxes: async () => {
+    try {
+      const response = await api.get('/cleaner/washboxes');
+      return response.data;
+    } catch (error) {
+      console.error('Ошибка при получении списка боксов для уборщика:', error);
+      throw error;
+    }
+  },
+
+  // Резервирование уборки
+  reserveCleaning: async (washBoxId) => {
+    try {
+      const response = await api.post('/cleaner/washboxes/reserve-cleaning', {
+        wash_box_id: washBoxId,
+      });
+      return response.data;
+    } catch (error) {
+      console.error('Ошибка при резервировании уборки:', error);
+      throw error;
+    }
+  },
+
+  // Начало уборки
+  startCleaning: async (washBoxId) => {
+    try {
+      const response = await api.post('/cleaner/washboxes/start-cleaning', {
+        wash_box_id: washBoxId,
+      });
+      return response.data;
+    } catch (error) {
+      console.error('Ошибка при начале уборки:', error);
+      throw error;
+    }
+  },
+
+  // Отмена уборки
+  cancelCleaning: async (washBoxId) => {
+    try {
+      const response = await api.post('/cleaner/washboxes/cancel-cleaning', {
+        wash_box_id: washBoxId,
+      });
+      return response.data;
+    } catch (error) {
+      console.error('Ошибка при отмене уборки:', error);
+      throw error;
+    }
+  },
+
+  // Завершение уборки
+  completeCleaning: async (washBoxId) => {
+    try {
+      const response = await api.post('/cleaner/washboxes/complete-cleaning', {
+        wash_box_id: washBoxId,
+      });
+      return response.data;
+    } catch (error) {
+      console.error('Ошибка при завершении уборки:', error);
+      throw error;
+    }
+  },
+
 };
 
 // Добавляем перехватчик для обработки ошибок

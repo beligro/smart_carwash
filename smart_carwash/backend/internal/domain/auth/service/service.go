@@ -25,6 +25,12 @@ var (
 	// ErrAnotherCashierActive возвращается, когда другой кассир уже активен
 	ErrAnotherCashierActive = errors.New("другой кассир уже активен в системе")
 
+	// ErrCleanerInactive возвращается, когда уборщик неактивен
+	ErrCleanerInactive = errors.New("уборщик неактивен")
+
+	// ErrAnotherCleanerActive возвращается, когда другой уборщик уже активен
+	ErrAnotherCleanerActive = errors.New("другой уборщик уже активен в системе")
+
 	// ErrAdminAlreadyExists возвращается при попытке создать второго администратора
 	ErrAdminAlreadyExists = errors.New("администратор уже существует")
 )
@@ -34,7 +40,9 @@ type Service interface {
 	// Методы для авторизации
 	LoginAdmin(username, password string) (*models.LoginResponse, error)
 	LoginCashier(username, password string) (*models.LoginResponse, error)
+	LoginCleaner(username, password string) (*models.LoginResponse, error)
 	ValidateToken(token string) (*models.TokenClaims, error)
+	ValidateCleanerToken(token string) (*models.TokenClaims, error)
 	Logout(token string) error
 
 	// Методы для управления кассирами
@@ -48,6 +56,13 @@ type Service interface {
 	StartShift(req *models.StartShiftRequest) (*models.StartShiftResponse, error)
 	EndShift(req *models.EndShiftRequest) (*models.EndShiftResponse, error)
 	GetShiftStatus(cashierID uuid.UUID) (*models.ShiftStatusResponse, error)
+
+	// Методы для управления уборщиками
+	CreateCleaner(req *models.CreateCleanerRequest) (*models.CreateCleanerResponse, error)
+	UpdateCleaner(req *models.UpdateCleanerRequest) (*models.UpdateCleanerResponse, error)
+	DeleteCleaner(id uuid.UUID) error
+	GetCleaners() (*models.GetCleanersResponse, error)
+	GetCleanerByID(id uuid.UUID) (*models.Cleaner, error)
 
 	// Методы для двухфакторной аутентификации (заглушки для будущей реализации)
 	EnableTwoFactorAuth(userID uuid.UUID) (string, error)
@@ -228,6 +243,66 @@ func (s *ServiceImpl) ValidateToken(tokenString string) (*models.TokenClaims, er
 		ID:       id,
 		Username: username,
 		IsAdmin:  isAdmin,
+	}, nil
+}
+
+// ValidateCleanerToken проверяет токен уборщика и возвращает данные из него
+func (s *ServiceImpl) ValidateCleanerToken(tokenString string) (*models.TokenClaims, error) {
+	// Парсим токен
+	token, err := jwt.Parse(tokenString, func(token *jwt.Token) (interface{}, error) {
+		// Проверяем метод подписи
+		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
+			return nil, fmt.Errorf("неожиданный метод подписи: %v", token.Header["alg"])
+		}
+		return []byte(s.config.JWTSecret), nil
+	})
+
+	// Проверяем валидность токена
+	if !token.Valid {
+		return nil, errors.New("недействительный токен")
+	}
+
+	// Получаем данные из токена
+	claims, ok := token.Claims.(jwt.MapClaims)
+	if !ok {
+		return nil, errors.New("недействительные данные токена")
+	}
+
+	// Проверяем, не истек ли токен
+	if exp, ok := claims["exp"].(float64); ok {
+		if time.Now().Unix() > int64(exp) {
+			return nil, errors.New("токен истек")
+		}
+	}
+
+	// Проверяем, что это токен уборщика (не администратора)
+	isAdmin, _ := claims["is_admin"].(bool)
+	if isAdmin {
+		return nil, errors.New("этот токен не для уборщика")
+	}
+
+	// Получаем сессию уборщика по токену
+	session, err := s.repo.GetCleanerSessionByToken(tokenString)
+	if err != nil {
+		return nil, err
+	}
+	if session == nil {
+		return nil, errors.New("сессия уборщика не найдена или истекла")
+	}
+
+	// Преобразуем данные в структуру TokenClaims
+	idStr, _ := claims["id"].(string)
+	id, err := uuid.Parse(idStr)
+	if err != nil {
+		return nil, err
+	}
+
+	username, _ := claims["username"].(string)
+
+	return &models.TokenClaims{
+		ID:       id,
+		Username: username,
+		IsAdmin:  false, // Уборщик никогда не администратор
 	}, nil
 }
 
@@ -562,4 +637,163 @@ func (s *ServiceImpl) generateToken(claims models.TokenClaims) (string, time.Tim
 	}
 
 	return tokenString, expiresAt, nil
+}
+
+// LoginCleaner авторизует уборщика
+func (s *ServiceImpl) LoginCleaner(username, password string) (*models.LoginResponse, error) {
+	log.Printf("Попытка входа уборщика: username=%s", username)
+	
+	// Получаем уборщика по имени пользователя
+	cleaner, err := s.repo.GetCleanerByUsername(username)
+	if err != nil {
+		log.Printf("Ошибка получения уборщика: %v", err)
+		if errors.Is(err, repository.ErrCleanerNotFound) {
+			return nil, ErrInvalidCredentials
+		}
+		return nil, err
+	}
+
+	log.Printf("Уборщик найден: ID=%s, Username=%s, IsActive=%t", cleaner.ID, cleaner.Username, cleaner.IsActive)
+
+	// Проверяем, активен ли уборщик
+	if !cleaner.IsActive {
+		log.Printf("Уборщик неактивен: ID=%s", cleaner.ID)
+		return nil, ErrCleanerInactive
+	}
+
+	// Проверяем пароль
+	log.Printf("Проверка пароля для уборщика: ID=%s", cleaner.ID)
+	if err := bcrypt.CompareHashAndPassword([]byte(cleaner.PasswordHash), []byte(password)); err != nil {
+		log.Printf("Неверный пароль для уборщика: ID=%s, error=%v", cleaner.ID, err)
+		return nil, ErrInvalidCredentials
+	}
+
+	log.Printf("Пароль верный для уборщика: ID=%s", cleaner.ID)
+
+	// Создаем JWT токен для уборщика
+	claims := models.TokenClaims{
+		ID:       cleaner.ID,
+		Username: cleaner.Username,
+		IsAdmin:  false,
+	}
+
+	// Генерируем токен
+	token, expiresAt, err := s.generateToken(claims)
+	if err != nil {
+		return nil, err
+	}
+
+	// Создаем сессию уборщика
+	session := &models.CleanerSession{
+		CleanerID: cleaner.ID,
+		Token:     token,
+		ExpiresAt: expiresAt,
+	}
+
+	// Сохраняем сессию в базе данных
+	if err := s.repo.CreateCleanerSession(session); err != nil {
+		return nil, err
+	}
+
+	// Обновляем время последнего входа уборщика
+	now := time.Now()
+	cleaner.LastLogin = &now
+	if err := s.repo.UpdateCleaner(cleaner); err != nil {
+		log.Printf("Ошибка обновления времени последнего входа уборщика: %v", err)
+		// Не возвращаем ошибку, так как авторизация прошла успешно
+	}
+
+	log.Printf("Успешная авторизация уборщика: ID=%s, Username=%s", cleaner.ID, cleaner.Username)
+
+	return &models.LoginResponse{
+		Token:     token,
+		ExpiresAt: expiresAt,
+		IsAdmin:   false,
+	}, nil
+}
+
+// CreateCleaner создает нового уборщика
+func (s *ServiceImpl) CreateCleaner(req *models.CreateCleanerRequest) (*models.CreateCleanerResponse, error) {
+	// Хешируем пароль
+	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(req.Password), bcrypt.DefaultCost)
+	if err != nil {
+		return nil, err
+	}
+
+	// Создаем уборщика
+	cleaner := &models.Cleaner{
+		ID:           uuid.New(),
+		Username:     req.Username,
+		PasswordHash: string(hashedPassword),
+		IsActive:     true,
+	}
+
+	// Сохраняем уборщика в базе данных
+	err = s.repo.CreateCleaner(cleaner)
+	if err != nil {
+		return nil, err
+	}
+
+	return &models.CreateCleanerResponse{
+		ID:        cleaner.ID,
+		Username:  cleaner.Username,
+		CreatedAt: cleaner.CreatedAt,
+	}, nil
+}
+
+// UpdateCleaner обновляет уборщика
+func (s *ServiceImpl) UpdateCleaner(req *models.UpdateCleanerRequest) (*models.UpdateCleanerResponse, error) {
+	// Получаем существующего уборщика
+	cleaner, err := s.repo.GetCleanerByID(req.ID)
+	if err != nil {
+		return nil, err
+	}
+
+	// Обновляем поля
+	cleaner.Username = req.Username
+	cleaner.IsActive = req.IsActive
+
+	// Если передан новый пароль, хешируем его
+	if req.Password != "" {
+		hashedPassword, err := bcrypt.GenerateFromPassword([]byte(req.Password), bcrypt.DefaultCost)
+		if err != nil {
+			return nil, err
+		}
+		cleaner.PasswordHash = string(hashedPassword)
+	}
+
+	// Сохраняем изменения
+	err = s.repo.UpdateCleaner(cleaner)
+	if err != nil {
+		return nil, err
+	}
+
+	return &models.UpdateCleanerResponse{
+		ID:        cleaner.ID,
+		Username:  cleaner.Username,
+		IsActive:  cleaner.IsActive,
+		UpdatedAt: cleaner.UpdatedAt,
+	}, nil
+}
+
+// DeleteCleaner удаляет уборщика
+func (s *ServiceImpl) DeleteCleaner(id uuid.UUID) error {
+	return s.repo.DeleteCleaner(id)
+}
+
+// GetCleaners получает список всех уборщиков
+func (s *ServiceImpl) GetCleaners() (*models.GetCleanersResponse, error) {
+	cleaners, err := s.repo.ListCleaners()
+	if err != nil {
+		return nil, err
+	}
+
+	return &models.GetCleanersResponse{
+		Cleaners: cleaners,
+	}, nil
+}
+
+// GetCleanerByID получает уборщика по ID
+func (s *ServiceImpl) GetCleanerByID(id uuid.UUID) (*models.Cleaner, error) {
+	return s.repo.GetCleanerByID(id)
 }

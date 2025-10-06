@@ -25,6 +25,15 @@ var (
 
 	// ErrNoActiveShift возвращается, когда нет активной смены
 	ErrNoActiveShift = errors.New("нет активной смены")
+
+	// ErrCleanerNotFound возвращается, когда уборщик не найден
+	ErrCleanerNotFound = errors.New("уборщик не найден")
+
+	// ErrCleanerAlreadyExists возвращается, когда уборщик с таким именем уже существует
+	ErrCleanerAlreadyExists = errors.New("уборщик с таким именем уже существует")
+
+	// ErrActiveCleanerSessionExists возвращается, когда уже есть активная сессия уборщика
+	ErrActiveCleanerSessionExists = errors.New("уже есть активная сессия уборщика")
 )
 
 // Repository интерфейс для работы с авторизацией в базе данных
@@ -54,6 +63,21 @@ type Repository interface {
 	GetActiveCashierShifts() ([]models.CashierShift, error)
 	UpdateCashierShift(shift *models.CashierShift) error
 	DeleteCashierShift(id uuid.UUID) error
+
+	// Методы для работы с уборщиками
+	CreateCleaner(cleaner *models.Cleaner) error
+	GetCleanerByID(id uuid.UUID) (*models.Cleaner, error)
+	GetCleanerByUsername(username string) (*models.Cleaner, error)
+	UpdateCleaner(cleaner *models.Cleaner) error
+	DeleteCleaner(id uuid.UUID) error
+	ListCleaners() ([]models.Cleaner, error)
+
+	// Методы для работы с сессиями уборщиков
+	CreateCleanerSession(session *models.CleanerSession) error
+	GetActiveCleanerSessions() ([]models.CleanerSession, error)
+	GetCleanerSessionByToken(token string) (*models.CleanerSession, error)
+	DeleteCleanerSession(id uuid.UUID) error
+	DeleteExpiredCleanerSessions() error
 }
 
 // PostgresRepository реализация Repository для PostgreSQL
@@ -257,4 +281,96 @@ func (r *PostgresRepository) UpdateCashierShift(shift *models.CashierShift) erro
 // DeleteCashierShift удаляет смену
 func (r *PostgresRepository) DeleteCashierShift(id uuid.UUID) error {
 	return r.db.Delete(&models.CashierShift{}, id).Error
+}
+
+// CreateCleaner создает нового уборщика
+func (r *PostgresRepository) CreateCleaner(cleaner *models.Cleaner) error {
+	// Проверяем, существует ли уже уборщик с таким именем
+	existing, err := r.GetCleanerByUsername(cleaner.Username)
+	if err == nil && existing != nil {
+		return ErrCleanerAlreadyExists
+	}
+
+	// Создаем уборщика
+	return r.db.Create(cleaner).Error
+}
+
+// GetCleanerByID получает уборщика по ID
+func (r *PostgresRepository) GetCleanerByID(id uuid.UUID) (*models.Cleaner, error) {
+	var cleaner models.Cleaner
+	err := r.db.First(&cleaner, id).Error
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, ErrCleanerNotFound
+		}
+		return nil, err
+	}
+	return &cleaner, nil
+}
+
+// GetCleanerByUsername получает уборщика по имени пользователя
+func (r *PostgresRepository) GetCleanerByUsername(username string) (*models.Cleaner, error) {
+	var cleaner models.Cleaner
+	err := r.db.Where("username = ?", username).First(&cleaner).Error
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, ErrCleanerNotFound
+		}
+		return nil, err
+	}
+	return &cleaner, nil
+}
+
+// UpdateCleaner обновляет уборщика
+func (r *PostgresRepository) UpdateCleaner(cleaner *models.Cleaner) error {
+	return r.db.Save(cleaner).Error
+}
+
+// DeleteCleaner удаляет уборщика
+func (r *PostgresRepository) DeleteCleaner(id uuid.UUID) error {
+	return r.db.Delete(&models.Cleaner{}, id).Error
+}
+
+// ListCleaners получает список всех уборщиков
+func (r *PostgresRepository) ListCleaners() ([]models.Cleaner, error) {
+	var cleaners []models.Cleaner
+	err := r.db.Find(&cleaners).Error
+	return cleaners, err
+}
+
+// CreateCleanerSession создает новую сессию уборщика
+func (r *PostgresRepository) CreateCleanerSession(session *models.CleanerSession) error {
+	// Уборщики могут иметь множественные сессии, поэтому не проверяем существующие
+	// Просто создаем новую сессию
+	return r.db.Create(session).Error
+}
+
+// GetActiveCleanerSessions получает все активные сессии уборщиков
+func (r *PostgresRepository) GetActiveCleanerSessions() ([]models.CleanerSession, error) {
+	var sessions []models.CleanerSession
+	err := r.db.Where("expires_at > ?", time.Now()).Find(&sessions).Error
+	return sessions, err
+}
+
+// GetCleanerSessionByToken получает сессию уборщика по токену
+func (r *PostgresRepository) GetCleanerSessionByToken(token string) (*models.CleanerSession, error) {
+	var session models.CleanerSession
+	err := r.db.Where("token = ? AND expires_at > ?", token, time.Now()).First(&session).Error
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, ErrCleanerNotFound
+		}
+		return nil, err
+	}
+	return &session, nil
+}
+
+// DeleteCleanerSession удаляет сессию уборщика
+func (r *PostgresRepository) DeleteCleanerSession(id uuid.UUID) error {
+	return r.db.Delete(&models.CleanerSession{}, id).Error
+}
+
+// DeleteExpiredCleanerSessions удаляет истекшие сессии уборщиков
+func (r *PostgresRepository) DeleteExpiredCleanerSessions() error {
+	return r.db.Where("expires_at < ?", time.Now()).Delete(&models.CleanerSession{}).Error
 }

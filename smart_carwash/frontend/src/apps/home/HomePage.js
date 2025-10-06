@@ -99,6 +99,10 @@ const HomePage = () => {
         <StyledLink to="/admin/login">
           Интерфейс администратора
         </StyledLink>
+
+        <StyledLink to="/cleaner/login">
+          Интерфейс уборщика
+        </StyledLink>
       </ButtonContainer>
     </HomeContainer>
   );

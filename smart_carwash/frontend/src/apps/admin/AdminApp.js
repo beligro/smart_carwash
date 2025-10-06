@@ -4,6 +4,7 @@ import { Routes, Route, Link, useNavigate, useLocation } from 'react-router-dom'
 import { getTheme } from '../../shared/styles/theme';
 import AuthService from '../../shared/services/AuthService';
 import CashierManagement from './components/CashierManagement';
+import CleanerManagement from './components/CleanerManagement';
 import Dashboard from './components/Dashboard';
 import WashBoxManagement from './components/WashBoxManagement';
 import SessionManagement from './components/SessionManagement';
@@ -200,6 +201,11 @@ const AdminApp = () => {
             </NavLink>
           </NavItem>
           <NavItem>
+            <NavLink to="/admin/cleaners" theme={theme} isActive={location.pathname === '/admin/cleaners'}>
+              Управление уборщиками
+            </NavLink>
+          </NavItem>
+          <NavItem>
             <NavLink to="/admin/payments" theme={theme} isActive={location.pathname === '/admin/payments'}>
               Платежи
             </NavLink>
@@ -225,6 +231,7 @@ const AdminApp = () => {
           <Route path="/queue" element={<QueueStatus />} />
           <Route path="/users" element={<UserManagement />} />
           <Route path="/cashiers" element={<CashierManagement />} />
+          <Route path="/cleaners" element={<CleanerManagement />} />
           <Route path="/payments" element={<PaymentManagement />} />
           <Route path="/settings" element={<SettingsManagement />} />
           <Route path="/modbus-dashboard" element={<ModbusDashboard />} />

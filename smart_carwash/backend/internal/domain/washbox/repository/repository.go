@@ -2,6 +2,7 @@ package repository
 
 import (
 	"carwash_backend/internal/domain/washbox/models"
+	"time"
 
 	"github.com/google/uuid"
 	"gorm.io/gorm"
@@ -25,6 +26,15 @@ type Repository interface {
 	DeleteWashBox(id uuid.UUID) error
 	GetWashBoxesWithFilters(status *string, serviceType *string, limit int, offset int) ([]models.WashBox, int, error)
 	RestoreWashBox(id uuid.UUID, status string, serviceType string) (*models.WashBox, error)
+
+	// Методы для уборщиков
+	GetWashBoxesForCleaner(limit int, offset int) ([]models.WashBox, int, error)
+	ReserveCleaning(washBoxID uuid.UUID, cleanerID uuid.UUID) error
+	StartCleaning(washBoxID uuid.UUID) error
+	CancelCleaning(washBoxID uuid.UUID) error
+	CompleteCleaning(washBoxID uuid.UUID) error
+	GetCleaningBoxes() ([]models.WashBox, error)
+	UpdateCleaningStartedAt(washBoxID uuid.UUID, startedAt time.Time) error
 }
 
 // PostgresRepository реализация Repository для PostgreSQL
@@ -181,4 +191,83 @@ func (r *PostgresRepository) RestoreWashBox(id uuid.UUID, status string, service
 	}
 
 	return updatedBox, nil
+}
+
+// GetWashBoxesForCleaner получает список боксов для уборщика
+func (r *PostgresRepository) GetWashBoxesForCleaner(limit int, offset int) ([]models.WashBox, int, error) {
+	var boxes []models.WashBox
+	var total int64
+
+	// Подсчитываем общее количество
+	err := r.db.Model(&models.WashBox{}).Count(&total).Error
+	if err != nil {
+		return nil, 0, err
+	}
+
+	// Получаем боксы с пагинацией
+	query := r.db.Order("number ASC")
+	if limit > 0 {
+		query = query.Limit(limit)
+	}
+	if offset > 0 {
+		query = query.Offset(offset)
+	}
+
+	err = query.Find(&boxes).Error
+	if err != nil {
+		return nil, 0, err
+	}
+
+	return boxes, int(total), nil
+}
+
+// ReserveCleaning резервирует уборку для бокса
+func (r *PostgresRepository) ReserveCleaning(washBoxID uuid.UUID, cleanerID uuid.UUID) error {
+	return r.db.Model(&models.WashBox{}).
+		Where("id = ?", washBoxID).
+		Update("cleaning_reserved_by", cleanerID).Error
+}
+
+// StartCleaning начинает уборку бокса
+func (r *PostgresRepository) StartCleaning(washBoxID uuid.UUID) error {
+	now := time.Now()
+	return r.db.Model(&models.WashBox{}).
+		Where("id = ?", washBoxID).
+		Updates(map[string]interface{}{
+			"status":                models.StatusCleaning,
+			"cleaning_started_at":   now,
+			"cleaning_reserved_by":  nil,
+		}).Error
+}
+
+// CancelCleaning отменяет резервирование уборки
+func (r *PostgresRepository) CancelCleaning(washBoxID uuid.UUID) error {
+	return r.db.Model(&models.WashBox{}).
+		Where("id = ?", washBoxID).
+		Update("cleaning_reserved_by", nil).Error
+}
+
+// CompleteCleaning завершает уборку бокса
+func (r *PostgresRepository) CompleteCleaning(washBoxID uuid.UUID) error {
+	return r.db.Model(&models.WashBox{}).
+		Where("id = ?", washBoxID).
+		Updates(map[string]interface{}{
+			"status":              models.StatusFree,
+			"cleaning_started_at": nil,
+			"cleaning_reserved_by": nil,
+		}).Error
+}
+
+// GetCleaningBoxes получает все боксы в статусе уборки
+func (r *PostgresRepository) GetCleaningBoxes() ([]models.WashBox, error) {
+	var boxes []models.WashBox
+	err := r.db.Where("status = ?", models.StatusCleaning).Find(&boxes).Error
+	return boxes, err
+}
+
+// UpdateCleaningStartedAt обновляет время начала уборки
+func (r *PostgresRepository) UpdateCleaningStartedAt(washBoxID uuid.UUID, startedAt time.Time) error {
+	return r.db.Model(&models.WashBox{}).
+		Where("id = ?", washBoxID).
+		Update("cleaning_started_at", startedAt).Error
 }
