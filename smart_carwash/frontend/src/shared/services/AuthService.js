@@ -217,6 +217,65 @@ const AuthService = {
       throw error;
     }
   },
+
+  // Методы для работы с уборщиками
+  loginCleaner: async (username, password) => {
+    try {
+      const response = await api.post('/auth/cleaner/login', { username, password });
+      const { token, expires_at, is_admin } = response.data;
+      
+      // Сохраняем данные в localStorage
+      localStorage.setItem('token', token);
+      localStorage.setItem('expiresAt', expires_at);
+      localStorage.setItem('isAdmin', is_admin);
+      localStorage.setItem('user', JSON.stringify({ username, is_admin }));
+      
+      return response.data;
+    } catch (error) {
+      console.error('Ошибка при авторизации уборщика:', error);
+      throw error;
+    }
+  },
+
+  createCleaner: async (cleanerData) => {
+    try {
+      const response = await api.post('/auth/cleaners', cleanerData);
+      return response.data;
+    } catch (error) {
+      console.error('Ошибка при создании уборщика:', error);
+      throw error;
+    }
+  },
+
+  getCleaners: async () => {
+    try {
+      const response = await api.get('/auth/cleaners');
+      return response.data;
+    } catch (error) {
+      console.error('Ошибка при получении списка уборщиков:', error);
+      throw error;
+    }
+  },
+
+  updateCleaner: async (cleanerData) => {
+    try {
+      const response = await api.put('/auth/cleaners', cleanerData);
+      return response.data;
+    } catch (error) {
+      console.error('Ошибка при обновлении уборщика:', error);
+      throw error;
+    }
+  },
+
+  deleteCleaner: async (cleanerId) => {
+    try {
+      const response = await api.delete('/auth/cleaners', { data: { id: cleanerId } });
+      return response.data;
+    } catch (error) {
+      console.error('Ошибка при удалении уборщика:', error);
+      throw error;
+    }
+  },
 };
 
 export default AuthService;

@@ -151,7 +151,7 @@ func main() {
 	{
 		// Регистрируем маршруты для каждого домена
 		userHandler.RegisterRoutes(api)
-		washboxHandler.RegisterRoutes(api)
+		washboxHandler.RegisterRoutes(api, authHandler.GetCleanerMiddleware())
 		sessionHandler.RegisterRoutes(api)
 		queueHandler.RegisterRoutes(api)
 		settingsHandler.RegisterRoutes(api)

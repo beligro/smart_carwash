@@ -30,6 +30,29 @@ type CashierSession struct {
 	DeletedAt gorm.DeletedAt `json:"-" gorm:"index"`
 }
 
+// Cleaner представляет модель уборщика
+type Cleaner struct {
+	ID           uuid.UUID      `json:"id" gorm:"primaryKey;type:uuid;default:gen_random_uuid()"`
+	Username     string         `json:"username" gorm:"uniqueIndex"`
+	PasswordHash string         `json:"-" gorm:"column:password_hash"`
+	IsActive     bool           `json:"is_active" gorm:"default:true"`
+	LastLogin    *time.Time     `json:"last_login"`
+	CreatedAt    time.Time      `json:"created_at"`
+	UpdatedAt    time.Time      `json:"updated_at"`
+	DeletedAt    gorm.DeletedAt `json:"-" gorm:"index"`
+}
+
+// CleanerSession представляет активную сессию уборщика
+type CleanerSession struct {
+	ID        uuid.UUID      `json:"id" gorm:"primaryKey;type:uuid;default:gen_random_uuid()"`
+	CleanerID uuid.UUID      `json:"cleaner_id" gorm:"type:uuid;index"`
+	Token     string         `json:"-"`
+	ExpiresAt time.Time      `json:"expires_at"`
+	CreatedAt time.Time      `json:"created_at"`
+	UpdatedAt time.Time      `json:"updated_at"`
+	DeletedAt gorm.DeletedAt `json:"-" gorm:"index"`
+}
+
 // LoginRequest представляет запрос на авторизацию
 type LoginRequest struct {
 	Username string `json:"username" binding:"required"`
@@ -56,6 +79,19 @@ type CreateCashierResponse struct {
 	CreatedAt time.Time `json:"created_at"`
 }
 
+// CreateCleanerRequest представляет запрос на создание уборщика
+type CreateCleanerRequest struct {
+	Username string `json:"username" binding:"required"`
+	Password string `json:"password" binding:"required"`
+}
+
+// CreateCleanerResponse представляет ответ на создание уборщика
+type CreateCleanerResponse struct {
+	ID        uuid.UUID `json:"id"`
+	Username  string    `json:"username"`
+	CreatedAt time.Time `json:"created_at"`
+}
+
 // UpdateCashierRequest представляет запрос на обновление кассира
 type UpdateCashierRequest struct {
 	ID       uuid.UUID `json:"id" binding:"required"`
@@ -77,8 +113,34 @@ type GetCashiersResponse struct {
 	Cashiers []Cashier `json:"cashiers"`
 }
 
+// UpdateCleanerRequest представляет запрос на обновление уборщика
+type UpdateCleanerRequest struct {
+	ID       uuid.UUID `json:"id" binding:"required"`
+	Username string    `json:"username"`
+	Password string    `json:"password"`
+	IsActive bool      `json:"is_active"`
+}
+
+// UpdateCleanerResponse представляет ответ на обновление уборщика
+type UpdateCleanerResponse struct {
+	ID        uuid.UUID `json:"id"`
+	Username  string    `json:"username"`
+	IsActive  bool      `json:"is_active"`
+	UpdatedAt time.Time `json:"updated_at"`
+}
+
+// GetCleanersResponse представляет ответ на получение списка уборщиков
+type GetCleanersResponse struct {
+	Cleaners []Cleaner `json:"cleaners"`
+}
+
 // DeleteCashierRequest представляет запрос на удаление кассира
 type DeleteCashierRequest struct {
+	ID uuid.UUID `json:"id" binding:"required"`
+}
+
+// DeleteCleanerRequest представляет запрос на удаление уборщика
+type DeleteCleanerRequest struct {
 	ID uuid.UUID `json:"id" binding:"required"`
 }
 

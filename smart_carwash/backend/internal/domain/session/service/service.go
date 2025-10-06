@@ -1,12 +1,12 @@
 package service
 
 import (
+	modbusService "carwash_backend/internal/domain/modbus/service"
+	paymentModels "carwash_backend/internal/domain/payment/models"
+	paymentService "carwash_backend/internal/domain/payment/service"
 	"carwash_backend/internal/domain/session/models"
 	"carwash_backend/internal/domain/session/repository"
 	"carwash_backend/internal/domain/telegram"
-	paymentService "carwash_backend/internal/domain/payment/service"
-	paymentModels "carwash_backend/internal/domain/payment/models"
-	modbusService "carwash_backend/internal/domain/modbus/service"
 	userService "carwash_backend/internal/domain/user/service"
 	washboxModels "carwash_backend/internal/domain/washbox/models"
 	washboxService "carwash_backend/internal/domain/washbox/service"
@@ -378,10 +378,35 @@ func (s *ServiceImpl) CompleteSession(req *models.CompleteSessionRequest) (*mode
 		return &models.CompleteSessionResponse{Session: session}, nil
 	}
 
-	// Обновляем статус бокса на free
-	err = s.washboxService.UpdateWashBoxStatus(*session.BoxID, washboxModels.StatusFree)
+	// Проверяем, есть ли резерв уборки для этого бокса
+	box, err := s.washboxService.GetWashBoxByID(*session.BoxID)
 	if err != nil {
 		return nil, err
+	}
+
+	// Если есть резерв уборки, переводим бокс в статус cleaning
+	if box.CleaningReservedBy != nil {
+		err = s.washboxService.UpdateWashBoxStatus(*session.BoxID, washboxModels.StatusCleaning)
+		if err != nil {
+			return nil, err
+		}
+		// Устанавливаем время начала уборки
+		now := time.Now()
+		err = s.washboxService.UpdateCleaningStartedAt(*session.BoxID, now)
+		if err != nil {
+			return nil, err
+		}
+		// Очищаем резерв
+		err = s.washboxService.ClearCleaningReservation(*session.BoxID)
+		if err != nil {
+			return nil, err
+		}
+	} else {
+		// Если нет резерва уборки, переводим в статус free
+		err = s.washboxService.UpdateWashBoxStatus(*session.BoxID, washboxModels.StatusFree)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	// Рассчитываем использованное время сессии в секундах
@@ -726,23 +751,30 @@ func (s *ServiceImpl) CancelSession(req *models.CancelSessionRequest) (*models.C
 		return nil, fmt.Errorf("ошибка обновления статуса сессии: %w", err)
 	}
 
+	if session.BoxID == nil {
+		// Обновляем сессию в ответе
+		response.Session = *session
+
+		return response, nil
+	}
+
 	// Обновляем статус бокса на free
 	s.washboxService.UpdateWashBoxStatus(*session.BoxID, washboxModels.StatusFree)
 
 	// Выключаем все койлы через Modbus при отмене сессии
-	if session.BoxID != nil && s.modbusService != nil {
+	if s.modbusService != nil {
 		log.Printf("Выключение всех койлов для отмененной сессии - session_id: %s, box_id: %s", session.ID, *session.BoxID)
-		
+
 		// Выключаем свет
 		if err := s.modbusService.WriteLightCoil(*session.BoxID, false); err != nil {
-			log.Printf("Ошибка выключения света при отмене сессии - session_id: %s, box_id: %s, error: %v", 
+			log.Printf("Ошибка выключения света при отмене сессии - session_id: %s, box_id: %s, error: %v",
 				session.ID, *session.BoxID, err)
 		}
-		
+
 		// Выключаем химию (если была включена)
 		if session.WasChemistryOn {
 			if err := s.modbusService.WriteChemistryCoil(*session.BoxID, false); err != nil {
-				log.Printf("Ошибка выключения химии при отмене сессии - session_id: %s, box_id: %s, error: %v", 
+				log.Printf("Ошибка выключения химии при отмене сессии - session_id: %s, box_id: %s, error: %v",
 					session.ID, *session.BoxID, err)
 			}
 		}
@@ -798,17 +830,17 @@ func (s *ServiceImpl) CheckAndCompleteExpiredSessions() error {
 			// Выключаем все койлы через Modbus при истечении сессии
 			if session.BoxID != nil && s.modbusService != nil {
 				log.Printf("Выключение всех койлов для истекшей сессии - session_id: %s, box_id: %s", session.ID, *session.BoxID)
-				
+
 				// Выключаем свет
 				if err := s.modbusService.WriteLightCoil(*session.BoxID, false); err != nil {
-					log.Printf("Ошибка выключения света при истечении сессии - session_id: %s, box_id: %s, error: %v", 
+					log.Printf("Ошибка выключения света при истечении сессии - session_id: %s, box_id: %s, error: %v",
 						session.ID, *session.BoxID, err)
 				}
-				
+
 				// Выключаем химию (если была включена)
 				if session.WasChemistryOn {
 					if err := s.modbusService.WriteChemistryCoil(*session.BoxID, false); err != nil {
-						log.Printf("Ошибка выключения химии при истечении сессии - session_id: %s, box_id: %s, error: %v", 
+						log.Printf("Ошибка выключения химии при истечении сессии - session_id: %s, box_id: %s, error: %v",
 							session.ID, *session.BoxID, err)
 					}
 				}
@@ -944,17 +976,17 @@ func (s *ServiceImpl) CheckAndExpireReservedSessions() error {
 			// Выключаем все койлы через Modbus при истечении резервирования
 			if session.BoxID != nil && s.modbusService != nil {
 				log.Printf("Выключение всех койлов для истекшего резервирования - session_id: %s, box_id: %s", session.ID, *session.BoxID)
-				
+
 				// Выключаем свет
 				if err := s.modbusService.WriteLightCoil(*session.BoxID, false); err != nil {
-					log.Printf("Ошибка выключения света при истечении резервирования - session_id: %s, box_id: %s, error: %v", 
+					log.Printf("Ошибка выключения света при истечении резервирования - session_id: %s, box_id: %s, error: %v",
 						session.ID, *session.BoxID, err)
 				}
-				
+
 				// Выключаем химию (если была включена)
 				if session.WasChemistryOn {
 					if err := s.modbusService.WriteChemistryCoil(*session.BoxID, false); err != nil {
-						log.Printf("Ошибка выключения химии при истечении резервирования - session_id: %s, box_id: %s, error: %v", 
+						log.Printf("Ошибка выключения химии при истечении резервирования - session_id: %s, box_id: %s, error: %v",
 							session.ID, *session.BoxID, err)
 					}
 				}

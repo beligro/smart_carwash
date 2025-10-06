@@ -13,6 +13,7 @@ const (
 	StatusReserved    = "reserved"    // Зарезервирован (назначен на пользователя, но сессия не запущена)
 	StatusBusy        = "busy"        // Занят (сессия активна)
 	StatusMaintenance = "maintenance" // На обслуживании
+	StatusCleaning    = "cleaning"    // На уборке
 )
 
 // Типы услуг
@@ -31,6 +32,8 @@ type WashBox struct {
 	ChemistryEnabled      bool           `json:"chemistry_enabled" gorm:"default:true"`
 	LightCoilRegister     *string        `json:"light_coil_register"`
 	ChemistryCoilRegister *string        `json:"chemistry_coil_register"`
+	CleaningReservedBy    *uuid.UUID     `json:"cleaning_reserved_by" gorm:"type:uuid;index"`
+	CleaningStartedAt     *time.Time     `json:"cleaning_started_at"`
 	CreatedAt             time.Time      `json:"created_at"`
 	UpdatedAt             time.Time      `json:"updated_at"`
 	DeletedAt             gorm.DeletedAt `json:"-" gorm:"index"`
@@ -46,7 +49,7 @@ type GetQueueStatusResponse struct {
 // AdminCreateWashBoxRequest запрос на создание бокса мойки
 type AdminCreateWashBoxRequest struct {
 	Number                int     `json:"number" binding:"required"`
-	Status                string  `json:"status" binding:"required,oneof=free reserved busy maintenance"`
+	Status                string  `json:"status" binding:"required,oneof=free reserved busy maintenance cleaning"`
 	ServiceType           string  `json:"service_type" binding:"required,oneof=wash air_dry vacuum"`
 	ChemistryEnabled      *bool   `json:"chemistry_enabled"`
 	LightCoilRegister     *string `json:"light_coil_register"`
@@ -57,7 +60,7 @@ type AdminCreateWashBoxRequest struct {
 type AdminUpdateWashBoxRequest struct {
 	ID                    uuid.UUID `json:"id" binding:"required"`
 	Number                *int      `json:"number"`
-	Status                *string   `json:"status" binding:"omitempty,oneof=free reserved busy maintenance"`
+	Status                *string   `json:"status" binding:"omitempty,oneof=free reserved busy maintenance cleaning"`
 	ServiceType           *string   `json:"service_type" binding:"omitempty,oneof=wash air_dry vacuum"`
 	ChemistryEnabled      *bool     `json:"chemistry_enabled"`
 	LightCoilRegister     *string   `json:"light_coil_register"`
@@ -76,7 +79,7 @@ type AdminGetWashBoxRequest struct {
 
 // AdminListWashBoxesRequest запрос на получение списка боксов мойки
 type AdminListWashBoxesRequest struct {
-	Status      *string `json:"status" binding:"omitempty,oneof=free reserved busy maintenance"`
+	Status      *string `json:"status" binding:"omitempty,oneof=free reserved busy maintenance cleaning"`
 	ServiceType *string `json:"service_type" binding:"omitempty,oneof=wash air_dry vacuum"`
 	Limit       *int    `json:"limit"`
 	Offset      *int    `json:"offset"`
@@ -85,6 +88,58 @@ type AdminListWashBoxesRequest struct {
 // AdminCreateWashBoxResponse ответ на создание бокса мойки
 type AdminCreateWashBoxResponse struct {
 	WashBox WashBox `json:"wash_box"`
+}
+
+// CleanerListWashBoxesRequest запрос на получение списка боксов для уборщика
+type CleanerListWashBoxesRequest struct {
+	Limit  *int `json:"limit"`
+	Offset *int `json:"offset"`
+}
+
+// CleanerListWashBoxesResponse ответ на получение списка боксов для уборщика
+type CleanerListWashBoxesResponse struct {
+	WashBoxes []WashBox `json:"wash_boxes"`
+	Total     int       `json:"total"`
+}
+
+// CleanerReserveCleaningRequest запрос на резервирование уборки
+type CleanerReserveCleaningRequest struct {
+	WashBoxID uuid.UUID `json:"wash_box_id" binding:"required"`
+}
+
+// CleanerReserveCleaningResponse ответ на резервирование уборки
+type CleanerReserveCleaningResponse struct {
+	Success bool `json:"success"`
+}
+
+// CleanerStartCleaningRequest запрос на начало уборки
+type CleanerStartCleaningRequest struct {
+	WashBoxID uuid.UUID `json:"wash_box_id" binding:"required"`
+}
+
+// CleanerStartCleaningResponse ответ на начало уборки
+type CleanerStartCleaningResponse struct {
+	Success bool `json:"success"`
+}
+
+// CleanerCancelCleaningRequest запрос на отмену уборки
+type CleanerCancelCleaningRequest struct {
+	WashBoxID uuid.UUID `json:"wash_box_id" binding:"required"`
+}
+
+// CleanerCancelCleaningResponse ответ на отмену уборки
+type CleanerCancelCleaningResponse struct {
+	Success bool `json:"success"`
+}
+
+// CleanerCompleteCleaningRequest запрос на завершение уборки
+type CleanerCompleteCleaningRequest struct {
+	WashBoxID uuid.UUID `json:"wash_box_id" binding:"required"`
+}
+
+// CleanerCompleteCleaningResponse ответ на завершение уборки
+type CleanerCompleteCleaningResponse struct {
+	Success bool `json:"success"`
 }
 
 // AdminUpdateWashBoxResponse ответ на обновление бокса мойки

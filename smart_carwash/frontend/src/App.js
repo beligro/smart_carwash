@@ -9,6 +9,8 @@ import AdminApp from './apps/admin/AdminApp';
 import CashierApp from './apps/cashier/CashierApp';
 import AdminLoginPage from './apps/admin/AdminLoginPage';
 import CashierLoginPage from './apps/cashier/CashierLoginPage';
+import CleanerLoginPage from './apps/cleaner/CleanerLoginPage';
+import CleanerApp from './apps/cleaner/CleanerApp';
 
 // Импорт компонентов
 import ProtectedRoute from './shared/components/ProtectedRoute';
@@ -46,6 +48,17 @@ function App() {
           element={
             <ProtectedRoute requireAdmin={false}>
               <CashierApp />
+            </ProtectedRoute>
+          } 
+        />
+        
+        {/* Маршруты для интерфейса уборщика */}
+        <Route path="/cleaner/login" element={<CleanerLoginPage />} />
+        <Route 
+          path="/cleaner/*" 
+          element={
+            <ProtectedRoute requireAdmin={false}>
+              <CleanerApp />
             </ProtectedRoute>
           } 
         />

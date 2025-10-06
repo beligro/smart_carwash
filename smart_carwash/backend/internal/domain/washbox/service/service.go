@@ -4,6 +4,7 @@ import (
 	"carwash_backend/internal/domain/washbox/models"
 	"carwash_backend/internal/domain/washbox/repository"
 	"errors"
+	"time"
 
 	"github.com/google/uuid"
 )
@@ -29,6 +30,17 @@ type Service interface {
 	// Методы для кассира
 	CashierListWashBoxes(req *models.CashierListWashBoxesRequest) (*models.CashierListWashBoxesResponse, error)
 	CashierSetMaintenance(req *models.CashierSetMaintenanceRequest) (*models.CashierSetMaintenanceResponse, error)
+
+	// Методы для уборщиков
+	CleanerListWashBoxes(req *models.CleanerListWashBoxesRequest) (*models.CleanerListWashBoxesResponse, error)
+	CleanerReserveCleaning(req *models.CleanerReserveCleaningRequest, cleanerID uuid.UUID) (*models.CleanerReserveCleaningResponse, error)
+	CleanerStartCleaning(req *models.CleanerStartCleaningRequest, cleanerID uuid.UUID) (*models.CleanerStartCleaningResponse, error)
+	CleanerCancelCleaning(req *models.CleanerCancelCleaningRequest, cleanerID uuid.UUID) (*models.CleanerCancelCleaningResponse, error)
+	CleanerCompleteCleaning(req *models.CleanerCompleteCleaningRequest, cleanerID uuid.UUID) (*models.CleanerCompleteCleaningResponse, error)
+	GetCleaningBoxes() ([]models.WashBox, error)
+	AutoCompleteExpiredCleanings() error
+	UpdateCleaningStartedAt(washBoxID uuid.UUID, startedAt time.Time) error
+	ClearCleaningReservation(washBoxID uuid.UUID) error
 }
 
 // ServiceImpl реализация Service
@@ -300,4 +312,168 @@ func (s *ServiceImpl) CashierSetMaintenance(req *models.CashierSetMaintenanceReq
 		WashBox: *updatedBox,
 		Message: "Бокс переведен в режим обслуживания",
 	}, nil
+}
+
+// CleanerListWashBoxes получает список боксов для уборщика
+func (s *ServiceImpl) CleanerListWashBoxes(req *models.CleanerListWashBoxesRequest) (*models.CleanerListWashBoxesResponse, error) {
+	limit := 100 // По умолчанию
+	offset := 0
+
+	if req.Limit != nil {
+		limit = *req.Limit
+	}
+	if req.Offset != nil {
+		offset = *req.Offset
+	}
+
+	boxes, total, err := s.repo.GetWashBoxesForCleaner(limit, offset)
+	if err != nil {
+		return nil, err
+	}
+
+	return &models.CleanerListWashBoxesResponse{
+		WashBoxes: boxes,
+		Total:     total,
+	}, nil
+}
+
+// CleanerReserveCleaning резервирует уборку для бокса
+func (s *ServiceImpl) CleanerReserveCleaning(req *models.CleanerReserveCleaningRequest, cleanerID uuid.UUID) (*models.CleanerReserveCleaningResponse, error) {
+	// Проверяем, что бокс существует
+	washBox, err := s.repo.GetWashBoxByID(req.WashBoxID)
+	if err != nil {
+		return nil, err
+	}
+
+	// Проверяем, что бокс не в статусе cleaning
+	if washBox.Status == models.StatusCleaning {
+		return nil, errors.New("бокс уже на уборке")
+	}
+
+	// Резервируем уборку
+	err = s.repo.ReserveCleaning(req.WashBoxID, cleanerID)
+	if err != nil {
+		return nil, err
+	}
+
+	return &models.CleanerReserveCleaningResponse{
+		Success: true,
+	}, nil
+}
+
+// CleanerStartCleaning начинает уборку бокса
+func (s *ServiceImpl) CleanerStartCleaning(req *models.CleanerStartCleaningRequest, cleanerID uuid.UUID) (*models.CleanerStartCleaningResponse, error) {
+	// Проверяем, что бокс существует
+	washBox, err := s.repo.GetWashBoxByID(req.WashBoxID)
+	if err != nil {
+		return nil, err
+	}
+
+	// Проверяем, что бокс свободен или зарезервирован этим уборщиком
+	if washBox.Status != models.StatusFree && 
+		(washBox.CleaningReservedBy == nil || *washBox.CleaningReservedBy != cleanerID) {
+		return nil, errors.New("бокс недоступен для уборки")
+	}
+
+	// Начинаем уборку
+	err = s.repo.StartCleaning(req.WashBoxID)
+	if err != nil {
+		return nil, err
+	}
+
+	return &models.CleanerStartCleaningResponse{
+		Success: true,
+	}, nil
+}
+
+// CleanerCancelCleaning отменяет резервирование уборки
+func (s *ServiceImpl) CleanerCancelCleaning(req *models.CleanerCancelCleaningRequest, cleanerID uuid.UUID) (*models.CleanerCancelCleaningResponse, error) {
+	// Проверяем, что бокс существует
+	washBox, err := s.repo.GetWashBoxByID(req.WashBoxID)
+	if err != nil {
+		return nil, err
+	}
+
+	// Проверяем, что уборка зарезервирована этим уборщиком
+	if washBox.CleaningReservedBy == nil || *washBox.CleaningReservedBy != cleanerID {
+		return nil, errors.New("уборка не зарезервирована этим уборщиком")
+	}
+
+	// Отменяем резервирование
+	err = s.repo.CancelCleaning(req.WashBoxID)
+	if err != nil {
+		return nil, err
+	}
+
+	return &models.CleanerCancelCleaningResponse{
+		Success: true,
+	}, nil
+}
+
+// CleanerCompleteCleaning завершает уборку бокса
+func (s *ServiceImpl) CleanerCompleteCleaning(req *models.CleanerCompleteCleaningRequest, cleanerID uuid.UUID) (*models.CleanerCompleteCleaningResponse, error) {
+	// Проверяем, что бокс существует и в статусе cleaning
+	washBox, err := s.repo.GetWashBoxByID(req.WashBoxID)
+	if err != nil {
+		return nil, err
+	}
+
+	if washBox.Status != models.StatusCleaning {
+		return nil, errors.New("бокс не на уборке")
+	}
+
+	// Завершаем уборку
+	err = s.repo.CompleteCleaning(req.WashBoxID)
+	if err != nil {
+		return nil, err
+	}
+
+	return &models.CleanerCompleteCleaningResponse{
+		Success: true,
+	}, nil
+}
+
+// GetCleaningBoxes получает все боксы в статусе уборки
+func (s *ServiceImpl) GetCleaningBoxes() ([]models.WashBox, error) {
+	return s.repo.GetCleaningBoxes()
+}
+
+// AutoCompleteExpiredCleanings автоматически завершает истекшие уборки
+func (s *ServiceImpl) AutoCompleteExpiredCleanings() error {
+	// Получаем все боксы в статусе уборки
+	cleaningBoxes, err := s.repo.GetCleaningBoxes()
+	if err != nil {
+		return err
+	}
+
+	// TODO: Получить настройку времени уборки из settings service
+	// Пока используем фиксированное значение 30 минут
+	timeoutMinutes := 30
+
+	for _, box := range cleaningBoxes {
+		if box.CleaningStartedAt != nil {
+			// Проверяем, истекло ли время уборки
+			timeSinceStart := time.Since(*box.CleaningStartedAt)
+			if timeSinceStart.Minutes() >= float64(timeoutMinutes) {
+				// Завершаем уборку
+				err = s.repo.CompleteCleaning(box.ID)
+				if err != nil {
+					// Логируем ошибку, но продолжаем обработку других боксов
+					continue
+				}
+			}
+		}
+	}
+
+	return nil
+}
+
+// UpdateCleaningStartedAt обновляет время начала уборки
+func (s *ServiceImpl) UpdateCleaningStartedAt(washBoxID uuid.UUID, startedAt time.Time) error {
+	return s.repo.UpdateCleaningStartedAt(washBoxID, startedAt)
+}
+
+// ClearCleaningReservation очищает резерв уборки
+func (s *ServiceImpl) ClearCleaningReservation(washBoxID uuid.UUID) error {
+	return s.repo.CancelCleaning(washBoxID)
 }

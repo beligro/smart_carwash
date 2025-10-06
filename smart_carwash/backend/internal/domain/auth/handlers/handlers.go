@@ -30,6 +30,7 @@ func (h *Handler) RegisterRoutes(router *gin.RouterGroup) {
 		// Маршруты для авторизации
 		authRoutes.POST("/admin/login", h.loginAdmin)
 		authRoutes.POST("/cashier/login", h.loginCashier)
+		authRoutes.POST("/cleaner/login", h.loginCleaner)
 		authRoutes.POST("/logout", h.authMiddleware(), h.logout)
 
 		// Маршруты для управления кассирами (только для администратора)
@@ -40,6 +41,16 @@ func (h *Handler) RegisterRoutes(router *gin.RouterGroup) {
 			cashierRoutes.GET("/by-id", h.getCashierByID)
 			cashierRoutes.PUT("", h.updateCashier)
 			cashierRoutes.DELETE("", h.deleteCashier)
+		}
+
+		// Маршруты для управления уборщиками (только для администратора)
+		cleanerRoutes := authRoutes.Group("/cleaners", h.adminMiddleware())
+		{
+			cleanerRoutes.POST("", h.createCleaner)
+			cleanerRoutes.GET("", h.getCleaners)
+			cleanerRoutes.GET("/by-id", h.getCleanerByID)
+			cleanerRoutes.PUT("", h.updateCleaner)
+			cleanerRoutes.DELETE("", h.deleteCleaner)
 		}
 
 		// Маршруты для кассира (требуют авторизации кассира)
@@ -278,6 +289,42 @@ func (h *Handler) adminMiddleware() gin.HandlerFunc {
 	}
 }
 
+// cleanerMiddleware middleware для проверки авторизации уборщика
+func (h *Handler) cleanerMiddleware() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		// Получаем токен из заголовка
+		token := c.GetHeader("Authorization")
+		if token == "" {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "Требуется авторизация"})
+			c.Abort()
+			return
+		}
+
+		// Удаляем префикс "Bearer "
+		token = strings.TrimPrefix(token, "Bearer ")
+
+		// Проверяем токен уборщика
+		claims, err := h.service.ValidateCleanerToken(token)
+		if err != nil {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": err.Error()})
+			c.Abort()
+			return
+		}
+
+		// Сохраняем данные уборщика в контексте
+		c.Set("cleaner_id", claims.ID)
+		c.Set("username", claims.Username)
+		c.Set("is_admin", false) // Уборщик не администратор
+
+		c.Next()
+	}
+}
+
+// GetCleanerMiddleware возвращает middleware для уборщиков
+func (h *Handler) GetCleanerMiddleware() gin.HandlerFunc {
+	return h.cleanerMiddleware()
+}
+
 // startShift обработчик для начала смены кассира
 func (h *Handler) startShift(c *gin.Context) {
 	// Получаем ID кассира из контекста (установлен middleware)
@@ -398,4 +445,128 @@ func (h *Handler) cashierMiddleware() gin.HandlerFunc {
 		c.Set("cashier_id", claims.ID)
 		c.Next()
 	}
+}
+
+// loginCleaner обработчик для авторизации уборщика
+func (h *Handler) loginCleaner(c *gin.Context) {
+	var req models.LoginRequest
+
+	// Парсим JSON из тела запроса
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	// Авторизуем уборщика
+	resp, err := h.service.LoginCleaner(req.Username, req.Password)
+	if err != nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": err.Error()})
+		return
+	}
+
+	// Возвращаем токен
+	c.JSON(http.StatusOK, resp)
+}
+
+// createCleaner обработчик для создания уборщика
+func (h *Handler) createCleaner(c *gin.Context) {
+	var req models.CreateCleanerRequest
+
+	// Парсим JSON из тела запроса
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	// Создаем уборщика
+	resp, err := h.service.CreateCleaner(&req)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	// Возвращаем результат
+	c.JSON(http.StatusCreated, resp)
+}
+
+// getCleaners обработчик для получения списка уборщиков
+func (h *Handler) getCleaners(c *gin.Context) {
+	// Получаем список уборщиков
+	resp, err := h.service.GetCleaners()
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	// Возвращаем результат
+	c.JSON(http.StatusOK, resp)
+}
+
+// getCleanerByID обработчик для получения уборщика по ID
+func (h *Handler) getCleanerByID(c *gin.Context) {
+	// Получаем ID из query параметра
+	idStr := c.Query("id")
+	if idStr == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "ID обязателен"})
+		return
+	}
+
+	// Парсим UUID
+	id, err := uuid.Parse(idStr)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Неверный формат ID"})
+		return
+	}
+
+	// Получаем уборщика
+	cleaner, err := h.service.GetCleanerByID(id)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
+		return
+	}
+
+	// Возвращаем результат
+	c.JSON(http.StatusOK, cleaner)
+}
+
+// updateCleaner обработчик для обновления уборщика
+func (h *Handler) updateCleaner(c *gin.Context) {
+	var req models.UpdateCleanerRequest
+
+	// Парсим JSON из тела запроса
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	// Обновляем уборщика
+	resp, err := h.service.UpdateCleaner(&req)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	// Возвращаем результат
+	c.JSON(http.StatusOK, resp)
+}
+
+// deleteCleaner обработчик для удаления уборщика
+func (h *Handler) deleteCleaner(c *gin.Context) {
+	var req models.DeleteCleanerRequest
+
+	// Парсим JSON из тела запроса
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	// Удаляем уборщика
+	err := h.service.DeleteCleaner(req.ID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	// Возвращаем результат
+	c.JSON(http.StatusOK, gin.H{"message": "Уборщик удален успешно"})
 }
