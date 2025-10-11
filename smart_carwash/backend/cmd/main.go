@@ -17,6 +17,8 @@ import (
 	authRepo "carwash_backend/internal/domain/auth/repository"
 	authService "carwash_backend/internal/domain/auth/service"
 	modbusAdapter "carwash_backend/internal/domain/modbus/adapter"
+	modbusHandlers "carwash_backend/internal/domain/modbus/handlers"
+	modbusService "carwash_backend/internal/domain/modbus/service"
 	paymentHandlers "carwash_backend/internal/domain/payment/handlers"
 	paymentRepo "carwash_backend/internal/domain/payment/repository"
 	paymentService "carwash_backend/internal/domain/payment/service"
@@ -96,6 +98,9 @@ func main() {
 	// Создаем Modbus HTTP адаптер
 	modbusAdapter := modbusAdapter.NewModbusAdapter(cfg, db)
 
+	// Создаем Modbus service для админских операций
+	modbusSvc := modbusService.NewModbusService(db, cfg)
+
 	// Создаем фоновые задачи для кассиров
 	backgroundTasks := authService.NewBackgroundTasks(authRepository)
 
@@ -130,6 +135,7 @@ func main() {
 	settingsHandler := settingsHandlers.NewHandler(settingsSvc)
 	authHandler := authHandlers.NewHandler(authSvc)
 	paymentHandler := paymentHandlers.NewHandler(paymentSvc, authSvc)
+	modbusHandler := modbusHandlers.NewHandler(modbusSvc)
 
 	// Создаем роутер
 	router := gin.Default()
@@ -155,6 +161,7 @@ func main() {
 		settingsHandler.RegisterRoutes(api)
 		authHandler.RegisterRoutes(api)
 		paymentHandler.RegisterRoutes(api)
+		modbusHandler.RegisterRoutes(api)
 
 		// Вебхук для Telegram бота
 		api.POST("/webhook", func(c *gin.Context) {

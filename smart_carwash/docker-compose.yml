@@ -6,7 +6,7 @@ services:
     container_name: carwash_postgres
     restart: always
     ports:
-      - "5432:5432"
+      - "127.0.0.1:5432:5432"  # Только локальный доступ
     environment:
       - POSTGRES_HOST=${POSTGRES_HOST}
       - POSTGRES_USER=${POSTGRES_USER}
@@ -14,8 +14,15 @@ services:
       - POSTGRES_DB=${POSTGRES_DB}
     volumes:
       - postgres_data:/var/lib/postgresql/data
+      - ./postgres_security.conf:/etc/postgresql/postgresql.conf:ro
     networks:
       - carwash_network
+    security_opt:
+      - no-new-privileges:true
+    read_only: true
+    tmpfs:
+      - /tmp
+      - /var/run/postgresql
 
   backend:
     build:
@@ -29,6 +36,11 @@ services:
       - .env
     networks:
       - carwash_network
+    security_opt:
+      - no-new-privileges:true
+    read_only: true
+    tmpfs:
+      - /tmp
 
   frontend:
     build:
