@@ -45,6 +45,7 @@ func (h *Handler) RegisterRoutes(router *gin.RouterGroup) {
 		sessionRoutes.POST("", h.createSession)
 		sessionRoutes.POST("/with-payment", h.createSessionWithPayment) // создание сессии с платежом
 		sessionRoutes.GET("", h.getUserSession)                // user_id в query параметре
+		sessionRoutes.GET("/for-payment", h.getUserSessionForPayment) // user_id в query параметре, включает payment_failed
 		sessionRoutes.GET("/by-id", h.getSessionByID)          // session_id в query параметре
 		sessionRoutes.POST("/start", h.startSession)           // session_id в теле запроса
 		sessionRoutes.POST("/complete", h.completeSession)     // session_id в теле запроса
@@ -151,6 +152,37 @@ func (h *Handler) getUserSession(c *gin.Context) {
 	})
 	if err != nil {
 		log.Printf("API Error - getUserSession: сессия не найдена для user_id: %s, error: %v", userID.String(), err)
+		c.JSON(http.StatusNotFound, gin.H{"error": "Сессия не найдена"})
+		return
+	}
+
+	// Возвращаем сессию пользователя
+	c.JSON(http.StatusOK, response)
+}
+
+// getUserSessionForPayment обработчик для получения сессии пользователя для PaymentPage (включая payment_failed)
+func (h *Handler) getUserSessionForPayment(c *gin.Context) {
+	// Получаем ID пользователя из query параметра
+	userIDStr := c.Query("user_id")
+	if userIDStr == "" {
+		log.Printf("API Error - getUserSessionForPayment: не указан ID пользователя")
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Не указан ID пользователя"})
+		return
+	}
+
+	userID, err := uuid.Parse(userIDStr)
+	if err != nil {
+		log.Printf("API Error - getUserSessionForPayment: некорректный ID пользователя '%s', error: %v", userIDStr, err)
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Некорректный ID пользователя"})
+		return
+	}
+
+	// Получаем сессию пользователя для PaymentPage
+	response, err := h.service.GetUserSessionForPayment(&models.GetUserSessionRequest{
+		UserID: userID,
+	})
+	if err != nil {
+		log.Printf("API Error - getUserSessionForPayment: сессия не найдена для user_id: %s, error: %v", userID.String(), err)
 		c.JSON(http.StatusNotFound, gin.H{"error": "Сессия не найдена"})
 		return
 	}

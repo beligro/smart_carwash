@@ -564,30 +564,6 @@ const SessionDetails = ({ theme = 'light', user }) => {
                 </div>
               </div>
             )}
-            
-
-            
-            {/* Кнопка повторной оплаты для неудачных платежей */}
-            {payment.status === 'failed' && (
-              <Button 
-                theme={theme} 
-                onClick={() => {
-                  navigate('/telegram/payment', {
-                    state: {
-                      session: session,
-                      payment: payment
-                    }
-                  });
-                }}
-                style={{ 
-                  marginTop: '12px',
-                  backgroundColor: '#F44336',
-                  color: 'white'
-                }}
-              >
-                🔄 Повторить оплату
-              </Button>
-            )}
           </>
         )}
         

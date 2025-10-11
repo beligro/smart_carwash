@@ -36,7 +36,6 @@ func (h *Handler) RegisterRoutes(router *gin.RouterGroup) {
 		paymentRoutes.POST("/calculate-extension-price", h.calculateExtensionPrice)
 		paymentRoutes.POST("/create", h.createPayment)
 		paymentRoutes.GET("/status", h.getPaymentStatus)
-		paymentRoutes.POST("/retry", h.retryPayment)
 		paymentRoutes.POST("/webhook", h.handleWebhook)
 		paymentRoutes.POST("/calculate-session-refund", h.calculateSessionRefund)
 	}
@@ -150,25 +149,6 @@ func (h *Handler) getPaymentStatus(c *gin.Context) {
 	c.JSON(http.StatusOK, response)
 }
 
-// retryPayment обработчик для повторной попытки оплаты
-func (h *Handler) retryPayment(c *gin.Context) {
-	var req models.RetryPaymentRequest
-
-	if err := c.ShouldBindJSON(&req); err != nil {
-		log.Printf("API Error - retryPayment: ошибка парсинга JSON, error: %v", err)
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-		return
-	}
-
-	response, err := h.service.RetryPayment(&req)
-	if err != nil {
-		log.Printf("API Error - retryPayment: ошибка повторной оплаты, session_id: %s, error: %v", req.SessionID.String(), err)
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-		return
-	}
-
-	c.JSON(http.StatusOK, response)
-}
 
 // handleWebhook обработчик для webhook от Tinkoff
 func (h *Handler) handleWebhook(c *gin.Context) {

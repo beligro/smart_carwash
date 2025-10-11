@@ -72,7 +72,6 @@ type Service interface {
 	GetMainPaymentBySessionID(sessionID uuid.UUID) (*models.Payment, error)
 	GetPaymentsBySessionID(sessionID uuid.UUID) (*models.GetPaymentsBySessionResponse, error)
 	GetPaymentStatus(req *models.GetPaymentStatusRequest) (*models.GetPaymentStatusResponse, error)
-	RetryPayment(req *models.RetryPaymentRequest) (*models.RetryPaymentResponse, error)
 	HandleWebhook(req *models.WebhookRequest) error
 	ListPayments(req *models.AdminListPaymentsRequest) (*models.AdminListPaymentsResponse, error)
 	RefundPayment(req *models.RefundPaymentRequest) (*models.RefundPaymentResponse, error)
@@ -369,30 +368,6 @@ func (s *service) GetPaymentsBySessionID(sessionID uuid.UUID) (*models.GetPaymen
 	}, nil
 }
 
-// RetryPayment создает новый платеж для существующей сессии
-func (s *service) RetryPayment(req *models.RetryPaymentRequest) (*models.RetryPaymentResponse, error) {
-	// Получаем существующий платеж
-	existingPayment, err := s.repository.GetPaymentBySessionID(req.SessionID)
-	if err != nil {
-		return nil, fmt.Errorf("платеж для сессии не найден: %w", err)
-	}
-
-	// Создаем новый платеж с той же суммой
-	retryReq := &models.CreatePaymentRequest{
-		SessionID: req.SessionID,
-		Amount:    existingPayment.Amount,
-		Currency:  existingPayment.Currency,
-	}
-
-	createResp, err := s.CreatePayment(retryReq)
-	if err != nil {
-		return nil, err
-	}
-
-	return &models.RetryPaymentResponse{
-		Payment: createResp.Payment,
-	}, nil
-}
 
 // HandleWebhook обрабатывает webhook от Tinkoff
 func (s *service) HandleWebhook(req *models.WebhookRequest) error {

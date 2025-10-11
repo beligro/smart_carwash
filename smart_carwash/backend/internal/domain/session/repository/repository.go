@@ -14,6 +14,7 @@ type Repository interface {
 	CreateSession(session *models.Session) error
 	GetSessionByID(id uuid.UUID) (*models.Session, error)
 	GetActiveSessionByUserID(userID uuid.UUID) (*models.Session, error)
+	GetUserSessionForPayment(userID uuid.UUID) (*models.Session, error)
 	GetSessionByIdempotencyKey(key string) (*models.Session, error)
 	UpdateSession(session *models.Session) error
 	GetSessionsByStatus(status string) ([]models.Session, error)
@@ -71,6 +72,34 @@ func (r *PostgresRepository) GetActiveSessionByUserID(userID uuid.UUID) (*models
 		models.SessionStatusInQueue,
 		models.SessionStatusAssigned,
 		models.SessionStatusActive).
+		Order("created_at DESC").
+		First(&session).Error
+	if err != nil {
+		return nil, err
+	}
+
+	// Если у сессии есть BoxID, получаем номер бокса
+	if session.BoxID != nil {
+		var boxNumber int
+		err = r.db.Table("wash_boxes").Where("id = ?", *session.BoxID).Select("number").Scan(&boxNumber).Error
+		if err == nil {
+			session.BoxNumber = &boxNumber
+		}
+	}
+
+	return &session, nil
+}
+
+// GetUserSessionForPayment получает сессию пользователя для PaymentPage (включая payment_failed)
+func (r *PostgresRepository) GetUserSessionForPayment(userID uuid.UUID) (*models.Session, error) {
+	var session models.Session
+	err := r.db.Where("user_id = ? AND status IN (?, ?, ?, ?, ?)",
+		userID,
+		models.SessionStatusCreated,
+		models.SessionStatusInQueue,
+		models.SessionStatusAssigned,
+		models.SessionStatusActive,
+		models.SessionStatusPaymentFailed).
 		Order("created_at DESC").
 		First(&session).Error
 	if err != nil {

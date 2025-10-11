@@ -108,15 +108,6 @@ type GetPaymentStatusResponse struct {
 	Payment Payment `json:"payment"`
 }
 
-// RetryPaymentRequest представляет запрос на повторную попытку оплаты
-type RetryPaymentRequest struct {
-	SessionID uuid.UUID `json:"session_id" binding:"required"`
-}
-
-// RetryPaymentResponse представляет ответ на повторную попытку оплаты
-type RetryPaymentResponse struct {
-	Payment Payment `json:"payment"`
-}
 
 // WebhookRequest представляет запрос webhook от Tinkoff
 type WebhookRequest struct {

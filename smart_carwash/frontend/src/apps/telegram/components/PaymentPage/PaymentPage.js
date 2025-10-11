@@ -63,7 +63,7 @@ const PaymentPage = ({ session, payment, onPaymentComplete, onPaymentFailed, onB
     // Проверяем статус каждые 2 секунды
     const checkInterval = setInterval(async () => {
       try {
-        const updatedSession = await ApiService.getUserSession(session.user_id);
+        const updatedSession = await ApiService.getUserSessionForPayment(session.user_id);
         
         if (paymentType === 'extension') {
           // Для продления проверяем, что requested_extension_time_minutes стал 0
@@ -106,24 +106,6 @@ const PaymentPage = ({ session, payment, onPaymentComplete, onPaymentFailed, onB
     }, 600000);
   };
 
-  // Повторная попытка оплаты
-  const handleRetryPayment = async () => {
-    setLoading(true);
-    setError(null);
-    
-    try {
-      const response = await ApiService.retryPayment(session.id);
-      
-      if (response.payment && response.payment.payment_url) {
-        window.open(response.payment.payment_url, '_blank');
-        startPaymentStatusCheck();
-      }
-    } catch (err) {
-      console.error('Ошибка повторной оплаты:', err);
-      setError('Не удалось создать новый платеж');
-      setLoading(false);
-    }
-  };
 
   if (!session || !payment) {
     return (
@@ -203,16 +185,6 @@ const PaymentPage = ({ session, payment, onPaymentComplete, onPaymentFailed, onB
               >
                 Перейти к оплате
               </Button>
-              
-              {session.status === 'payment_failed' && (
-                <Button 
-                  onClick={handleRetryPayment}
-                  variant="secondary"
-                  className={styles.retryButton}
-                >
-                  Повторить оплату
-                </Button>
-              )}
               
             </>
           )}

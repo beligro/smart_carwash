@@ -25,6 +25,7 @@ type Service interface {
 	CreateSession(req *models.CreateSessionRequest) (*models.Session, error)
 	CreateSessionWithPayment(req *models.CreateSessionWithPaymentRequest) (*models.CreateSessionWithPaymentResponse, error)
 	GetUserSession(req *models.GetUserSessionRequest) (*models.GetUserSessionResponse, error)
+	GetUserSessionForPayment(req *models.GetUserSessionRequest) (*models.GetUserSessionResponse, error)
 	GetSession(req *models.GetSessionRequest) (*models.GetSessionResponse, error)
 	StartSession(req *models.StartSessionRequest) (*models.Session, error)
 	CompleteSession(req *models.CompleteSessionRequest) (*models.CompleteSessionResponse, error)
@@ -214,6 +215,42 @@ func (s *ServiceImpl) CreateSessionWithPayment(req *models.CreateSessionWithPaym
 // GetUserSession получает активную сессию пользователя
 func (s *ServiceImpl) GetUserSession(req *models.GetUserSessionRequest) (*models.GetUserSessionResponse, error) {
 	session, err := s.repo.GetActiveSessionByUserID(req.UserID)
+	if err != nil {
+		return nil, err
+	}
+
+	// Получаем основной платеж сессии, если сессия существует
+	var payment *models.Payment
+	if session != nil {
+		paymentResp, err := s.paymentService.GetMainPaymentBySessionID(session.ID)
+		if err == nil && paymentResp != nil {
+			payment = &models.Payment{
+				ID:             paymentResp.ID,
+				SessionID:      paymentResp.SessionID,
+				Amount:         paymentResp.Amount,
+				RefundedAmount: paymentResp.RefundedAmount,
+				Currency:       paymentResp.Currency,
+				Status:         paymentResp.Status,
+				PaymentType:    paymentResp.PaymentType,
+				PaymentURL:     paymentResp.PaymentURL,
+				TinkoffID:      paymentResp.TinkoffID,
+				ExpiresAt:      paymentResp.ExpiresAt,
+				RefundedAt:     paymentResp.RefundedAt,
+				CreatedAt:      paymentResp.CreatedAt,
+				UpdatedAt:      paymentResp.UpdatedAt,
+			}
+		}
+	}
+
+	return &models.GetUserSessionResponse{
+		Session: session,
+		Payment: payment,
+	}, nil
+}
+
+// GetUserSessionForPayment получает сессию пользователя для PaymentPage (включая payment_failed)
+func (s *ServiceImpl) GetUserSessionForPayment(req *models.GetUserSessionRequest) (*models.GetUserSessionResponse, error) {
+	session, err := s.repo.GetUserSessionForPayment(req.UserID)
 	if err != nil {
 		return nil, err
 	}

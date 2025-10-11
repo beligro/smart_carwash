@@ -411,26 +411,6 @@ const WashInfo = ({ washInfo, theme = 'light', onCreateSession, onViewHistory, o
                       )}
                     </div>
                   )}
-                  
-                  {/* Кнопка повторной оплаты */}
-                  <Button 
-                    theme={theme} 
-                    onClick={() => {
-                      navigate('/telegram/payment', {
-                        state: {
-                          session: userSession,
-                          payment: payment || null
-                        }
-                      });
-                    }}
-                    style={{ 
-                      marginTop: '8px',
-                      backgroundColor: '#F44336',
-                      color: 'white'
-                    }}
-                  >
-                    🔄 Повторить оплату
-                  </Button>
                 </div>
               )}
               
