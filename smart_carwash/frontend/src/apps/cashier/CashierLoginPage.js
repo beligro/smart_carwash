@@ -49,7 +49,7 @@ const CashierLoginPage = () => {
   return (
     <LoginContainer theme={theme}>
       <Header theme={theme}>
-        <Title>Умная автомойка - Вход для кассира</Title>
+        <Title>Автомойка H2O - Вход для кассира</Title>
       </Header>
       <Content>
         <LoginForm 

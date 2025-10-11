@@ -3,7 +3,6 @@ import WebApp from '@twa-dev/sdk';
 import { Routes, Route, Navigate, useNavigate, useLocation } from 'react-router-dom';
 import styled from 'styled-components';
 import Header from './components/Header';
-import WelcomeMessage from './components/WelcomeMessage/WelcomeMessage';
 import WashInfo from './components/WashInfo/WashInfo';
 import PaymentPage from './components/PaymentPage';
 import ApiService from '../../shared/services/ApiService';
@@ -12,6 +11,7 @@ import { getTheme } from '../../shared/styles/theme';
 // Ленивая загрузка компонентов
 const SessionDetails = lazy(() => import('./components/SessionDetails'));
 const SessionHistory = lazy(() => import('./components/SessionHistory'));
+const BookingPage = lazy(() => import('./components/BookingPage'));
 
 // Стилизованные компоненты
 const AppContainer = styled.div`
@@ -591,16 +591,18 @@ const TelegramApp = () => {
     return <div>Ошибка загрузки приложения</div>;
   }
 
+  // Определяем, нужно ли показывать стрелку назад
+  const showBackButton = location.pathname !== '/telegram/' && location.pathname !== '/telegram';
+
   return (
     <AppContainer theme={themeObject}>
-      <Header theme={theme} />
+      <Header theme={theme} onBack={showBackButton ? handleBackToHome : undefined} />
         <ContentContainer>
           <Routes>
             <Route 
               path="/" 
               element={
                 <>
-                  <WelcomeMessage theme={theme} />
                   {loading ? (
                     <p>Загрузка информации о мойке...</p>
                   ) : error ? (
@@ -638,13 +640,12 @@ const TelegramApp = () => {
                   <SessionHistory 
                     theme={theme} 
                     user={user}
-                    onBack={handleBackToHome}
                   />
                 </Suspense>
               } 
             />
             <Route 
-              path="/payment" 
+              path="/payment"
               element={
                 <Suspense fallback={<div>Загрузка страницы оплаты...</div>}>
                   <PaymentPage 
@@ -655,6 +656,18 @@ const TelegramApp = () => {
                     onBack={handlePaymentBack}
                     theme={theme}
                     paymentType={location?.state?.paymentType || 'main'}
+                  />
+                </Suspense>
+              } 
+            />
+            <Route 
+              path="/booking"
+              element={
+                <Suspense fallback={<div>Загрузка страницы записи...</div>}>
+                  <BookingPage 
+                    theme={theme}
+                    user={user}
+                    onCreateSession={handleCreateSessionWithPayment}
                   />
                 </Suspense>
               } 

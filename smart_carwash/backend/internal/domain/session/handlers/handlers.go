@@ -88,6 +88,7 @@ func (h *Handler) createSession(c *gin.Context) {
 
 	// Парсим JSON из тела запроса
 	if err := c.ShouldBindJSON(&req); err != nil {
+		log.Printf("API Error - createSession: ошибка парсинга JSON, error: %v", err)
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
@@ -95,6 +96,7 @@ func (h *Handler) createSession(c *gin.Context) {
 	// Создаем сессию
 	session, err := h.service.CreateSession(&req)
 	if err != nil {
+		log.Printf("API Error - createSession: ошибка создания сессии, user_id: %s, service_type: %s, error: %v", req.UserID.String(), req.ServiceType, err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
@@ -109,6 +111,7 @@ func (h *Handler) createSessionWithPayment(c *gin.Context) {
 
 	// Парсим JSON из тела запроса
 	if err := c.ShouldBindJSON(&req); err != nil {
+		log.Printf("API Error - createSessionWithPayment: ошибка парсинга JSON, error: %v", err)
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
@@ -116,6 +119,7 @@ func (h *Handler) createSessionWithPayment(c *gin.Context) {
 	// Создаем сессию с платежом
 	response, err := h.service.CreateSessionWithPayment(&req)
 	if err != nil {
+		log.Printf("API Error - createSessionWithPayment: ошибка создания сессии с платежом, user_id: %s, service_type: %s, error: %v", req.UserID.String(), req.ServiceType, err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
@@ -129,12 +133,14 @@ func (h *Handler) getUserSession(c *gin.Context) {
 	// Получаем ID пользователя из query параметра
 	userIDStr := c.Query("user_id")
 	if userIDStr == "" {
+		log.Printf("API Error - getUserSession: не указан ID пользователя")
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Не указан ID пользователя"})
 		return
 	}
 
 	userID, err := uuid.Parse(userIDStr)
 	if err != nil {
+		log.Printf("API Error - getUserSession: некорректный ID пользователя '%s', error: %v", userIDStr, err)
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Некорректный ID пользователя"})
 		return
 	}
@@ -144,6 +150,7 @@ func (h *Handler) getUserSession(c *gin.Context) {
 		UserID: userID,
 	})
 	if err != nil {
+		log.Printf("API Error - getUserSession: сессия не найдена для user_id: %s, error: %v", userID.String(), err)
 		c.JSON(http.StatusNotFound, gin.H{"error": "Сессия не найдена"})
 		return
 	}
@@ -330,6 +337,7 @@ func (h *Handler) getUserSessionHistory(c *gin.Context) {
 	// Получаем user_id из query параметра
 	userIDStr := c.Query("user_id")
 	if userIDStr == "" {
+		log.Printf("API Error - getUserSessionHistory: не указан User ID")
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Не указан User ID"})
 		return
 	}
@@ -337,6 +345,7 @@ func (h *Handler) getUserSessionHistory(c *gin.Context) {
 	// Преобразуем строку в uuid.UUID
 	userID, err := uuid.Parse(userIDStr)
 	if err != nil {
+		log.Printf("API Error - getUserSessionHistory: некорректный User ID '%s', error: %v", userIDStr, err)
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Некорректный User ID"})
 		return
 	}

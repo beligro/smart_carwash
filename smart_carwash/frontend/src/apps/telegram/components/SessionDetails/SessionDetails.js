@@ -408,8 +408,6 @@ const SessionDetails = ({ theme = 'light', user }) => {
       // Обновляем информацию о сессии
       setSession(response.session);
       setPayment(response.payment);
-      
-      alert('Сессия успешно отменена' + (refundInfo.hasRefund ? '. Деньги будут возвращены на карту.' : ''));
     } catch (error) {
       alert('Ошибка при отмене сессии: ' + error.message);
     } finally {
@@ -422,7 +420,6 @@ const SessionDetails = ({ theme = 'light', user }) => {
   if (loading) {
     return (
       <div className={styles.container}>
-        <button className={`${styles.backButton} ${themeClass}`} onClick={handleBack}>← Назад</button>
         <Card theme={theme}>
           <p>Загрузка информации о сессии...</p>
         </Card>
@@ -433,7 +430,6 @@ const SessionDetails = ({ theme = 'light', user }) => {
   if (error) {
     return (
       <div className={styles.container}>
-        <button className={`${styles.backButton} ${themeClass}`} onClick={handleBack}>← Назад</button>
         <Card theme={theme}>
           <div className={`${styles.errorMessage} ${themeClass}`}>{error}</div>
           <Button theme={theme} onClick={handleBack}>Вернуться на главную</Button>
@@ -445,7 +441,6 @@ const SessionDetails = ({ theme = 'light', user }) => {
   if (!session) {
     return (
       <div className={styles.container}>
-        <button className={`${styles.backButton} ${themeClass}`} onClick={handleBack}>← Назад</button>
         <Card theme={theme}>
           <p>Сессия не найдена</p>
           <Button theme={theme} onClick={handleBack}>Вернуться на главную</Button>
@@ -456,8 +451,6 @@ const SessionDetails = ({ theme = 'light', user }) => {
   
   return (
     <div className={styles.container}>
-      <button className={`${styles.backButton} ${themeClass}`} onClick={handleBack}>← Назад</button>
-      
       <Card theme={theme}>
         <h2 className={`${styles.title} ${themeClass}`}>Информация о сессии</h2>
         <StatusBadge status={session.status} theme={theme} />

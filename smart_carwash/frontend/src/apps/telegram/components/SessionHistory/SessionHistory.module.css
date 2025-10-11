@@ -5,33 +5,6 @@
   width: 100%;
 }
 
-.header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 16px;
-}
-
-.title {
-  font-size: 1.5rem;
-  font-weight: 600;
-  margin: 0;
-}
-
-.title.light {
-  color: #333;
-}
-
-.title.dark {
-  color: #fff;
-}
-
-.backButton {
-  min-width: auto;
-  padding: 8px 16px;
-  font-size: 0.9rem;
-}
-
 .sessionsList {
   display: flex;
   flex-direction: column;
@@ -190,7 +163,4 @@
     gap: 12px;
   }
   
-  .backButton {
-    width: 100%;
-  }
 }

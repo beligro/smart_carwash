@@ -49,7 +49,7 @@ const AdminLoginPage = () => {
   return (
     <LoginContainer theme={theme}>
       <Header theme={theme}>
-        <Title>Умная автомойка - Вход для администратора</Title>
+        <Title>Автомойка H2O - Вход для администратора</Title>
       </Header>
       <Content>
         <LoginForm 

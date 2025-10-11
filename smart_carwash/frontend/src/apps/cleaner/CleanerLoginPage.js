@@ -49,7 +49,7 @@ const CleanerLoginPage = () => {
   return (
     <LoginContainer theme={theme}>
       <Header theme={theme}>
-        <Title>Умная автомойка - Вход для уборщика</Title>
+        <Title>Автомойка H2O - Вход для уборщика</Title>
       </Header>
       <Content>
         <LoginForm 

@@ -132,7 +132,6 @@ const PaymentPage = ({ session, payment, onPaymentComplete, onPaymentFailed, onB
           <div className={styles.error}>
             <h3>Ошибка</h3>
             <p>Данные платежа не найдены</p>
-            <Button onClick={onBack}>Назад</Button>
           </div>
         </Card>
       </div>
@@ -215,13 +214,6 @@ const PaymentPage = ({ session, payment, onPaymentComplete, onPaymentFailed, onB
                 </Button>
               )}
               
-              <Button 
-                onClick={onBack}
-                variant="outline"
-                className={styles.backButton}
-              >
-                Назад
-              </Button>
             </>
           )}
         </div>

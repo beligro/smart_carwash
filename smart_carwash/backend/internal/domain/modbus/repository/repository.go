@@ -58,6 +58,19 @@ func (r *ModbusRepository) GetModbusOperations(boxID *uuid.UUID, limit, offset i
 	return operations, err
 }
 
+// GetModbusOperationsCount получает общее количество операций Modbus
+func (r *ModbusRepository) GetModbusOperationsCount(boxID *uuid.UUID) (int64, error) {
+	var count int64
+	query := r.db.Model(&models.ModbusOperation{})
+	
+	if boxID != nil {
+		query = query.Where("box_id = ?", *boxID)
+	}
+	
+	err := query.Count(&count).Error
+	return count, err
+}
+
 // GetModbusStats получает статистику по операциям Modbus
 func (r *ModbusRepository) GetModbusStats(boxID *uuid.UUID, since time.Time) (*models.ModbusStats, error) {
 	var stats models.ModbusStats

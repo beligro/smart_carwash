@@ -117,9 +117,12 @@ func NewService(repository repository.Repository, settingsRepo settingsRepo.Repo
 
 // CalculatePrice рассчитывает цену для услуги
 func (s *service) CalculatePrice(req *models.CalculatePriceRequest) (*models.CalculatePriceResponse, error) {
+	log.Printf("Payment Service - CalculatePrice: начало расчета цены, service_type: %s, rental_time: %d, with_chemistry: %t", req.ServiceType, req.RentalTimeMinutes, req.WithChemistry)
+	
 	// Получаем базовую цену за минуту
 	basePriceSetting, err := s.settingsRepo.GetServiceSetting(req.ServiceType, "price_per_minute")
 	if err != nil {
+		log.Printf("Payment Service - CalculatePrice: ошибка получения базовой цены, service_type: %s, error: %v", req.ServiceType, err)
 		return nil, fmt.Errorf("не удалось получить базовую цену: %w", err)
 	}
 

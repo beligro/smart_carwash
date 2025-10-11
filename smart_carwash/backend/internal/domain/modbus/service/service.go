@@ -274,12 +274,39 @@ func (s *ModbusService) GetHistory(req *models.GetModbusHistoryRequest) (*models
 		return nil, fmt.Errorf("ошибка получения истории операций: %v", err)
 	}
 
-	// TODO: Добавить фильтрацию по операции, успешности и времени
-	// Пока возвращаем базовый результат
+	// Получаем общее количество операций для пагинации
+	totalCount, err := s.repository.GetModbusOperationsCount(req.BoxID)
+	if err != nil {
+		log.Printf("Ошибка получения общего количества операций: %v", err)
+		// Используем количество полученных операций как fallback
+		totalCount = int64(len(operations))
+	}
+
+	// Применяем фильтрацию по операции, успешности и времени (если указаны)
+	filteredOperations := operations
+	if req.Operation != nil && *req.Operation != "" {
+		var filtered []models.ModbusOperation
+		for _, op := range operations {
+			if op.Operation == *req.Operation {
+				filtered = append(filtered, op)
+			}
+		}
+		filteredOperations = filtered
+	}
+	
+	if req.Success != nil {
+		var filtered []models.ModbusOperation
+		for _, op := range filteredOperations {
+			if op.Success == *req.Success {
+				filtered = append(filtered, op)
+			}
+		}
+		filteredOperations = filtered
+	}
 
 	response := &models.GetModbusHistoryResponse{
-		Operations: operations,
-		Total:      int64(len(operations)), // TODO: получать реальный count
+		Operations: filteredOperations,
+		Total:      totalCount,
 		Limit:      req.Limit,
 		Offset:     req.Offset,
 	}
