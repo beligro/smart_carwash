@@ -36,7 +36,6 @@ func (h *Handler) RegisterRoutes(router *gin.RouterGroup) {
 		paymentRoutes.POST("/calculate-extension-price", h.calculateExtensionPrice)
 		paymentRoutes.POST("/create", h.createPayment)
 		paymentRoutes.GET("/status", h.getPaymentStatus)
-		paymentRoutes.POST("/retry", h.retryPayment)
 		paymentRoutes.POST("/webhook", h.handleWebhook)
 		paymentRoutes.POST("/calculate-session-refund", h.calculateSessionRefund)
 	}
@@ -67,12 +66,14 @@ func (h *Handler) calculatePrice(c *gin.Context) {
 	var req models.CalculatePriceRequest
 
 	if err := c.ShouldBindJSON(&req); err != nil {
+		log.Printf("API Error - calculatePrice: ошибка парсинга JSON, error: %v", err)
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
 
 	response, err := h.service.CalculatePrice(&req)
 	if err != nil {
+		log.Printf("API Error - calculatePrice: ошибка расчета цены, service_type: %s, rental_time: %d, with_chemistry: %t, error: %v", req.ServiceType, req.RentalTimeMinutes, req.WithChemistry, err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
@@ -85,12 +86,14 @@ func (h *Handler) calculateExtensionPrice(c *gin.Context) {
 	var req models.CalculateExtensionPriceRequest
 
 	if err := c.ShouldBindJSON(&req); err != nil {
+		log.Printf("API Error - calculateExtensionPrice: ошибка парсинга JSON, error: %v", err)
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
 
 	response, err := h.service.CalculateExtensionPrice(&req)
 	if err != nil {
+		log.Printf("API Error - calculateExtensionPrice: ошибка расчета цены продления, service_type: %s, extension_minutes: %d, error: %v", req.ServiceType, req.ExtensionTimeMinutes, err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
@@ -103,12 +106,14 @@ func (h *Handler) createPayment(c *gin.Context) {
 	var req models.CreatePaymentRequest
 
 	if err := c.ShouldBindJSON(&req); err != nil {
+		log.Printf("API Error - createPayment: ошибка парсинга JSON, error: %v", err)
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
 
 	response, err := h.service.CreatePayment(&req)
 	if err != nil {
+		log.Printf("API Error - createPayment: ошибка создания платежа, session_id: %s, amount: %d, error: %v", req.SessionID.String(), req.Amount, err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
@@ -120,12 +125,14 @@ func (h *Handler) createPayment(c *gin.Context) {
 func (h *Handler) getPaymentStatus(c *gin.Context) {
 	paymentIDStr := c.Query("payment_id")
 	if paymentIDStr == "" {
+		log.Printf("API Error - getPaymentStatus: не указан ID платежа")
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Не указан ID платежа"})
 		return
 	}
 
 	paymentID, err := uuid.Parse(paymentIDStr)
 	if err != nil {
+		log.Printf("API Error - getPaymentStatus: некорректный ID платежа '%s', error: %v", paymentIDStr, err)
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Некорректный ID платежа"})
 		return
 	}
@@ -134,6 +141,7 @@ func (h *Handler) getPaymentStatus(c *gin.Context) {
 		PaymentID: paymentID,
 	})
 	if err != nil {
+		log.Printf("API Error - getPaymentStatus: платеж не найден, payment_id: %s, error: %v", paymentID.String(), err)
 		c.JSON(http.StatusNotFound, gin.H{"error": "Платеж не найден"})
 		return
 	}
@@ -141,36 +149,20 @@ func (h *Handler) getPaymentStatus(c *gin.Context) {
 	c.JSON(http.StatusOK, response)
 }
 
-// retryPayment обработчик для повторной попытки оплаты
-func (h *Handler) retryPayment(c *gin.Context) {
-	var req models.RetryPaymentRequest
-
-	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-		return
-	}
-
-	response, err := h.service.RetryPayment(&req)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-		return
-	}
-
-	c.JSON(http.StatusOK, response)
-}
 
 // handleWebhook обработчик для webhook от Tinkoff
 func (h *Handler) handleWebhook(c *gin.Context) {
 	// Парсим webhook
 	var webhookReq models.WebhookRequest
 	if err := c.ShouldBindJSON(&webhookReq); err != nil {
-		log.Printf("Ошибка привязки JSON: %v", err)
+		log.Printf("API Error - handleWebhook: ошибка привязки JSON, error: %v", err)
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Неверный формат webhook"})
 		return
 	}
 
 	// Обрабатываем webhook
 	if err := h.service.HandleWebhook(&webhookReq); err != nil {
+		log.Printf("API Error - handleWebhook: ошибка обработки webhook, terminal_key: %s, order_id: %s, error: %v", webhookReq.TerminalKey, webhookReq.OrderId, err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}

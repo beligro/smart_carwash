@@ -1,0 +1,22 @@
+version: '3.8'
+
+services:
+  modbus-server:
+    build: .
+    ports:
+      - "8081:8081"
+    environment:
+      - SERVER_PORT=8081
+      - MODBUS_ENABLED=true
+      - MODBUS_HOST=192.168.1.100
+      - MODBUS_PORT=502
+      - LOG_LEVEL=info
+    volumes:
+      - ./config.env:/root/config.env
+    restart: unless-stopped
+    networks:
+      - modbus-network
+
+networks:
+  modbus-network:
+    driver: bridge

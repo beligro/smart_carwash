@@ -253,16 +253,6 @@ const ApiService = {
     }
   },
 
-  // Повторная попытка оплаты
-  retryPayment: async (sessionId) => {
-    try {
-      const response = await api.post('/payments/retry', { session_id: sessionId });
-      return response.data;
-    } catch (error) {
-      console.error('Ошибка при повторной оплате:', error);
-      throw error;
-    }
-  },
 
   // Получение статуса платежа
   getPaymentStatus: async (paymentId) => {
@@ -300,6 +290,17 @@ const ApiService = {
       return response.data;
     } catch (error) {
       console.error('Ошибка при получении сессии пользователя:', error);
+      return { session: null };
+    }
+  },
+
+  // Получение сессии пользователя для PaymentPage (включая payment_failed)
+  getUserSessionForPayment: async (userId) => {
+    try {
+      const response = await api.get(`/sessions/for-payment?user_id=${userId}`);
+      return response.data;
+    } catch (error) {
+      console.error('Ошибка при получении сессии пользователя для PaymentPage:', error);
       return { session: null };
     }
   },
@@ -681,27 +682,6 @@ const ApiService = {
     }
   },
 
-  // Получение статуса Modbus устройства
-  getModbusStatus: async (boxId) => {
-    try {
-      const response = await api.get(`/admin/modbus/status?box_id=${boxId}`);
-      return response.data;
-    } catch (error) {
-      console.error('Ошибка получения статуса Modbus:', error);
-      throw error;
-    }
-  },
-
-  // Получение конфигурации Modbus
-  getModbusConfig: async () => {
-    try {
-      const response = await api.get('/admin/modbus/config');
-      return response.data;
-    } catch (error) {
-      console.error('Ошибка получения конфигурации Modbus:', error);
-      throw error;
-    }
-  },
 
   // === МЕТОДЫ ДЛЯ РАБОТЫ С УБОРКОЙ ===
 

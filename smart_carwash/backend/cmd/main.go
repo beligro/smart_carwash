@@ -16,6 +16,7 @@ import (
 	authHandlers "carwash_backend/internal/domain/auth/handlers"
 	authRepo "carwash_backend/internal/domain/auth/repository"
 	authService "carwash_backend/internal/domain/auth/service"
+	modbusAdapter "carwash_backend/internal/domain/modbus/adapter"
 	modbusHandlers "carwash_backend/internal/domain/modbus/handlers"
 	modbusService "carwash_backend/internal/domain/modbus/service"
 	paymentHandlers "carwash_backend/internal/domain/payment/handlers"
@@ -90,11 +91,14 @@ func main() {
 
 	// Создаем сервисы
 	userSvc := userService.NewService(userRepository)
-	washboxSvc := washboxService.NewService(washboxRepository)
 	settingsSvc := settingsService.NewService(settingsRepository)
+	washboxSvc := washboxService.NewService(washboxRepository, settingsSvc)
 	authSvc := authService.NewService(authRepository, cfg)
 	
-	// Создаем Modbus сервис
+	// Создаем Modbus HTTP адаптер
+	modbusAdapter := modbusAdapter.NewModbusAdapter(cfg, db)
+
+	// Создаем Modbus service для админских операций
 	modbusSvc := modbusService.NewModbusService(db, cfg)
 
 	// Создаем фоновые задачи для кассиров
@@ -107,13 +111,13 @@ func main() {
 	}
 
 	// Создаем сервис сессий с зависимостями
-	sessionSvc := sessionService.NewService(sessionRepository, washboxSvc, userSvc, bot, nil, modbusSvc, cfg.CashierUserID) // paymentSvc будет nil пока
+	sessionSvc := sessionService.NewService(sessionRepository, washboxSvc, userSvc, bot, nil, modbusAdapter, settingsSvc, cfg.CashierUserID) // paymentSvc будет nil пока
 
 	// Создаем сервис платежей с зависимостью от sessionSvc как SessionStatusUpdater и SessionExtensionUpdater
 	paymentSvc := paymentService.NewService(paymentRepository, settingsRepository, sessionSvc, sessionSvc, tinkoffClient, cfg.TinkoffTerminalKey, cfg.TinkoffSecretKey)
 
 	// Обновляем sessionSvc с правильным paymentSvc
-	sessionSvc = sessionService.NewService(sessionRepository, washboxSvc, userSvc, bot, paymentSvc, modbusSvc, cfg.CashierUserID)
+	sessionSvc = sessionService.NewService(sessionRepository, washboxSvc, userSvc, bot, paymentSvc, modbusAdapter, settingsSvc, cfg.CashierUserID)
 
 	// Создаем сервис очереди, который зависит от сервисов сессий, боксов и пользователей
 	queueSvc := queueService.NewService(sessionSvc, washboxSvc, userSvc)

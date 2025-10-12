@@ -2,7 +2,6 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import styles from './WashInfo.module.css';
 import { Card, Button, StatusBadge, Timer } from '../../../../shared/components/UI';
-import ServiceSelector from '../ServiceSelector';
 import { formatDate } from '../../../../shared/utils/formatters';
 import { getSessionStatusDescription, getServiceTypeDescription, formatRefundInfo, formatAmount, formatAmountWithRefund, getPaymentStatusText, getPaymentStatusColor, formatSessionTotalCost, formatSessionDetailedCost } from '../../../../shared/utils/statusHelpers';
 import useTimer from '../../../../shared/hooks/useTimer';
@@ -101,7 +100,6 @@ const ChemistryEnableButton = ({ session, theme, onChemistryEnabled }) => {
  */
 const WashInfo = ({ washInfo, theme = 'light', onCreateSession, onViewHistory, onCancelSession, onChemistryEnabled, user }) => {
   const navigate = useNavigate();
-  const [showServiceSelector, setShowServiceSelector] = useState(false);
   const [isCanceling, setIsCanceling] = useState(false);
   const [sessionPayments, setSessionPayments] = useState(null);
   const [loadingPayments, setLoadingPayments] = useState(false);
@@ -161,22 +159,12 @@ const WashInfo = ({ washInfo, theme = 'light', onCreateSession, onViewHistory, o
   // Обработчик нажатия на кнопку "Записаться на мойку"
   const handleCreateSessionClick = () => {
     try {
-      setShowServiceSelector(true);
+      navigate('/telegram/booking');
     } catch (error) {
-      alert('Ошибка при открытии выбора услуг: ' + error.message);
+      alert('Ошибка при переходе на страницу записи: ' + error.message);
     }
   };
 
-  // Обработчик выбора услуги
-  const handleServiceSelect = (serviceData) => {
-    try {
-      setShowServiceSelector(false);
-      // Используем новый метод создания сессии с платежом
-      onCreateSession(serviceData);
-    } catch (error) {
-      alert('Ошибка при выборе услуги: ' + error.message);
-    }
-  };
 
   // Обработчик отмены сессии
   const handleCancelSession = async () => {
@@ -191,7 +179,6 @@ const WashInfo = ({ washInfo, theme = 'light', onCreateSession, onViewHistory, o
     try {
       setIsCanceling(true);
       await onCancelSession(userSession.id, user.id);
-      alert('Сессия успешно отменена' + (refundInfo.hasRefund ? '. Деньги будут возвращены на карту.' : ''));
     } catch (error) {
       alert('Ошибка при отмене сессии: ' + error.message);
     } finally {
@@ -200,28 +187,6 @@ const WashInfo = ({ washInfo, theme = 'light', onCreateSession, onViewHistory, o
   };
 
   const themeClass = theme === 'dark' ? styles.dark : styles.light;
-
-  // Если открыт выбор услуг, показываем только его
-  if (showServiceSelector) {
-    return (
-      <div className={styles.container}>
-        <ServiceSelector 
-          onSelect={handleServiceSelect} 
-          theme={theme} 
-          user={user}
-        />
-        <div className={styles.buttonContainer}>
-          <Button 
-            theme={theme} 
-            onClick={() => setShowServiceSelector(false)}
-            className={styles.cancelButton}
-          >
-            Отмена
-          </Button>
-        </div>
-      </div>
-    );
-  }
 
   return (
     <div className={styles.container}>
@@ -256,20 +221,6 @@ const WashInfo = ({ washInfo, theme = 'light', onCreateSession, onViewHistory, o
               />
             </div>
           </div>
-        </Card>
-      </section>
-
-      {/* Кнопка для просмотра истории сессий */}
-      <section className={styles.section}>
-        <h2 className={`${styles.title} ${themeClass}`}>История моек</h2>
-        <Card theme={theme}>
-          <Button 
-            theme={theme} 
-            onClick={onViewHistory}
-            className={styles.historyButton}
-          >
-            Посмотреть историю моек
-          </Button>
         </Card>
       </section>
 
@@ -416,56 +367,6 @@ const WashInfo = ({ washInfo, theme = 'light', onCreateSession, onViewHistory, o
                 </div>
               )}
               
-              {/* Показываем информацию для сессии в очереди */}
-              {userSession.status === 'in_queue' && (
-                <div className={`${styles.sessionInfo} ${themeClass}`} style={{ 
-                  marginTop: '12px',
-                  padding: '12px',
-                  backgroundColor: '#E8F5E8',
-                  borderRadius: '8px',
-                  border: '1px solid #81C784'
-                }}>
-                  <p style={{ margin: '0 0 4px 0', color: '#2E7D32', fontWeight: 'bold' }}>
-                    💰 Стоимость: {loadingPayments ? 'Загрузка...' : sessionPayments ? formatSessionTotalCost(sessionPayments) : formatAmountWithRefund(payment)}
-                  </p>
-                  <p style={{ margin: '0 0 8px 0', fontWeight: 'bold', color: '#2E7D32' }}>
-                    ✅ Оплачено, в очереди
-                  </p>
-                  <p style={{ margin: '0 0 12px 0', fontSize: '14px' }}>
-                    Сессия оплачена и добавлена в очередь. 
-                    Ожидайте назначения свободного бокса.
-                  </p>
-                  
-                  {/* Показываем информацию о платеже, если есть */}
-                  {payment && (
-                    <div style={{ 
-                      marginTop: '8px',
-                      padding: '8px',
-                      backgroundColor: '#F1F8E9',
-                      borderRadius: '4px',
-                      fontSize: '12px'
-                    }}>
-                      <p style={{ margin: '0 0 4px 0', color: '#2E7D32', fontWeight: 'bold' }}>
-                        💰 Стоимость: {loadingPayments ? 'Загрузка...' : sessionPayments ? formatSessionTotalCost(sessionPayments) : formatAmountWithRefund(payment)}
-                      </p>
-                      {refundInfo.hasRefund && (
-                        <p style={{ margin: '0 0 4px 0', color: '#1976D2', fontWeight: 'bold' }}>
-                          💸 Возвращено: {formatAmount(refundInfo.refundedAmount)}
-                        </p>
-                      )}
-                      <p style={{ margin: '0', color: '#2E7D32' }}>
-                        ✅ Статус: {getPaymentStatusText(payment.status)}
-                      </p>
-                      {refundInfo.hasRefund && (
-                        <p style={{ margin: '4px 0 0 0', color: '#1976D2', fontWeight: 'bold' }}>
-                          💰 Итого: {formatAmount(refundInfo.finalAmount)}
-                        </p>
-                      )}
-                    </div>
-                  )}
-                </div>
-              )}
-              
               {/* Показываем информацию для сессии с ошибкой оплаты */}
               {userSession.status === 'payment_failed' && (
                 <div className={`${styles.sessionInfo} ${themeClass}`} style={{ 
@@ -510,26 +411,6 @@ const WashInfo = ({ washInfo, theme = 'light', onCreateSession, onViewHistory, o
                       )}
                     </div>
                   )}
-                  
-                  {/* Кнопка повторной оплаты */}
-                  <Button 
-                    theme={theme} 
-                    onClick={() => {
-                      navigate('/telegram/payment', {
-                        state: {
-                          session: userSession,
-                          payment: payment || null
-                        }
-                      });
-                    }}
-                    style={{ 
-                      marginTop: '8px',
-                      backgroundColor: '#F44336',
-                      color: 'white'
-                    }}
-                  >
-                    🔄 Повторить оплату
-                  </Button>
                 </div>
               )}
               
@@ -578,6 +459,20 @@ const WashInfo = ({ washInfo, theme = 'light', onCreateSession, onViewHistory, o
               </Button>
             </>
           )}
+        </Card>
+      </section>
+
+      {/* Кнопка для просмотра истории сессий */}
+      <section className={styles.section}>
+        <h2 className={`${styles.title} ${themeClass}`}>История моек</h2>
+        <Card theme={theme}>
+          <Button 
+            theme={theme} 
+            onClick={onViewHistory}
+            className={styles.historyButton}
+          >
+            Посмотреть историю моек
+          </Button>
         </Card>
       </section>
     </div>

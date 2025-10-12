@@ -11,9 +11,8 @@ import ApiService from '../../../../shared/services/ApiService';
  * @param {Object} props - Свойства компонента
  * @param {Object} props.user - Информация о пользователе
  * @param {string} props.theme - Тема оформления ('light' или 'dark')
- * @param {Function} props.onBack - Функция для возврата на главную страницу
  */
-const SessionHistory = ({ user, theme = 'light', onBack }) => {
+const SessionHistory = ({ user, theme = 'light' }) => {
   const navigate = useNavigate();
   const [sessions, setSessions] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -72,12 +71,6 @@ const SessionHistory = ({ user, theme = 'light', onBack }) => {
 
   return (
     <div className={styles.container}>
-      <div className={styles.header}>
-        <h2 className={`${styles.title} ${themeClass}`}>История моек</h2>
-        <Button theme={theme} onClick={onBack} className={styles.backButton}>
-          Вернуться на главную
-        </Button>
-      </div>
 
       {loading && page === 0 ? (
         <p className={`${styles.message} ${themeClass}`}>Загрузка истории сессий...</p>

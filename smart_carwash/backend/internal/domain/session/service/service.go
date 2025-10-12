@@ -1,11 +1,13 @@
 package service
 
 import (
-	modbusService "carwash_backend/internal/domain/modbus/service"
+	"carwash_backend/internal/domain/modbus"
 	paymentModels "carwash_backend/internal/domain/payment/models"
 	paymentService "carwash_backend/internal/domain/payment/service"
 	"carwash_backend/internal/domain/session/models"
 	"carwash_backend/internal/domain/session/repository"
+	settingsModels "carwash_backend/internal/domain/settings/models"
+	settingsService "carwash_backend/internal/domain/settings/service"
 	"carwash_backend/internal/domain/telegram"
 	userService "carwash_backend/internal/domain/user/service"
 	washboxModels "carwash_backend/internal/domain/washbox/models"
@@ -23,6 +25,7 @@ type Service interface {
 	CreateSession(req *models.CreateSessionRequest) (*models.Session, error)
 	CreateSessionWithPayment(req *models.CreateSessionWithPaymentRequest) (*models.CreateSessionWithPaymentResponse, error)
 	GetUserSession(req *models.GetUserSessionRequest) (*models.GetUserSessionResponse, error)
+	GetUserSessionForPayment(req *models.GetUserSessionRequest) (*models.GetUserSessionResponse, error)
 	GetSession(req *models.GetSessionRequest) (*models.GetSessionResponse, error)
 	StartSession(req *models.StartSessionRequest) (*models.Session, error)
 	CompleteSession(req *models.CompleteSessionRequest) (*models.CompleteSessionResponse, error)
@@ -59,38 +62,45 @@ type Service interface {
 
 // ServiceImpl реализация Service
 type ServiceImpl struct {
-	repo           repository.Repository
-	washboxService washboxService.Service
-	userService    userService.Service
-	telegramBot    telegram.NotificationService
-	paymentService paymentService.Service
-	modbusService  *modbusService.ModbusService
-	cashierUserID  string
+	repo            repository.Repository
+	washboxService  washboxService.Service
+	userService     userService.Service
+	telegramBot     telegram.NotificationService
+	paymentService  paymentService.Service
+	modbusService   modbus.ModbusServiceInterface
+	settingsService settingsService.Service
+	cashierUserID   string
 }
 
 // NewService создает новый экземпляр Service
-func NewService(repo repository.Repository, washboxService washboxService.Service, userService userService.Service, telegramBot telegram.NotificationService, paymentService paymentService.Service, modbusService *modbusService.ModbusService, cashierUserID string) *ServiceImpl {
+func NewService(repo repository.Repository, washboxService washboxService.Service, userService userService.Service, telegramBot telegram.NotificationService, paymentService paymentService.Service, modbusService modbus.ModbusServiceInterface, settingsService settingsService.Service, cashierUserID string) *ServiceImpl {
 	return &ServiceImpl{
-		repo:           repo,
-		washboxService: washboxService,
-		userService:    userService,
-		telegramBot:    telegramBot,
-		paymentService: paymentService,
-		modbusService:  modbusService,
-		cashierUserID:  cashierUserID,
+		repo:            repo,
+		washboxService:  washboxService,
+		userService:     userService,
+		telegramBot:     telegramBot,
+		paymentService:  paymentService,
+		modbusService:   modbusService,
+		settingsService: settingsService,
+		cashierUserID:   cashierUserID,
 	}
 }
 
 // CreateSession создает новую сессию
 func (s *ServiceImpl) CreateSession(req *models.CreateSessionRequest) (*models.Session, error) {
+	log.Printf("Service - CreateSession: начало создания сессии, user_id: %s, service_type: %s, with_chemistry: %t", req.UserID.String(), req.ServiceType, req.WithChemistry)
+	
 	// Валидация химии
 	if req.WithChemistry {
 		switch req.ServiceType {
 		case "wash":
 			// Химия разрешена для мойки
+			log.Printf("Service - CreateSession: химия разрешена для мойки, user_id: %s", req.UserID.String())
 		case "air_dry", "vacuum":
+			log.Printf("Service - CreateSession: химия не разрешена для типа услуги '%s', user_id: %s", req.ServiceType, req.UserID.String())
 			return nil, fmt.Errorf("chemistry is not available for service type: %s", req.ServiceType)
 		default:
+			log.Printf("Service - CreateSession: неверный тип услуги '%s', user_id: %s", req.ServiceType, req.UserID.String())
 			return nil, fmt.Errorf("invalid service type: %s", req.ServiceType)
 		}
 	}
@@ -99,6 +109,7 @@ func (s *ServiceImpl) CreateSession(req *models.CreateSessionRequest) (*models.S
 	existingSessionByKey, err := s.repo.GetSessionByIdempotencyKey(req.IdempotencyKey)
 	if err == nil && existingSessionByKey != nil {
 		// Сессия с таким ключом идемпотентности уже существует
+		log.Printf("Service - CreateSession: найдена существующая сессия по ключу идемпотентности, session_id: %s, user_id: %s", existingSessionByKey.ID.String(), req.UserID.String())
 		return existingSessionByKey, nil
 	}
 
@@ -106,6 +117,7 @@ func (s *ServiceImpl) CreateSession(req *models.CreateSessionRequest) (*models.S
 	existingSession, err := s.repo.GetActiveSessionByUserID(req.UserID)
 	if err == nil && existingSession != nil {
 		// У пользователя уже есть активная сессия
+		log.Printf("Service - CreateSession: у пользователя уже есть активная сессия, session_id: %s, user_id: %s", existingSession.ID.String(), req.UserID.String())
 		return existingSession, nil
 	}
 
@@ -125,14 +137,18 @@ func (s *ServiceImpl) CreateSession(req *models.CreateSessionRequest) (*models.S
 	// Сохраняем сессию в базе данных
 	err = s.repo.CreateSession(session)
 	if err != nil {
+		log.Printf("Service - CreateSession: ошибка сохранения сессии в БД, user_id: %s, error: %v", req.UserID.String(), err)
 		return nil, err
 	}
 
+	log.Printf("Service - CreateSession: сессия успешно создана, session_id: %s, user_id: %s, service_type: %s", session.ID.String(), req.UserID.String(), req.ServiceType)
 	return session, nil
 }
 
 // CreateSessionWithPayment создает сессию с платежом
 func (s *ServiceImpl) CreateSessionWithPayment(req *models.CreateSessionWithPaymentRequest) (*models.CreateSessionWithPaymentResponse, error) {
+	log.Printf("Service - CreateSessionWithPayment: начало создания сессии с платежом, user_id: %s, service_type: %s", req.UserID.String(), req.ServiceType)
+	
 	// 1. Создаем сессию
 	session, err := s.CreateSession(&models.CreateSessionRequest{
 		UserID:            req.UserID,
@@ -143,6 +159,7 @@ func (s *ServiceImpl) CreateSessionWithPayment(req *models.CreateSessionWithPaym
 		IdempotencyKey:    req.IdempotencyKey,
 	})
 	if err != nil {
+		log.Printf("Service - CreateSessionWithPayment: ошибка создания сессии, user_id: %s, error: %v", req.UserID.String(), err)
 		return nil, fmt.Errorf("ошибка создания сессии: %w", err)
 	}
 
@@ -153,8 +170,11 @@ func (s *ServiceImpl) CreateSessionWithPayment(req *models.CreateSessionWithPaym
 		RentalTimeMinutes: req.RentalTimeMinutes,
 	})
 	if err != nil {
+		log.Printf("Service - CreateSessionWithPayment: ошибка расчета цены, session_id: %s, error: %v", session.ID.String(), err)
 		return nil, fmt.Errorf("ошибка расчета цены: %w", err)
 	}
+	
+	log.Printf("Service - CreateSessionWithPayment: цена рассчитана, session_id: %s, price: %d %s", session.ID.String(), priceResp.Price, priceResp.Currency)
 
 	// 3. Создаем платеж через Payment Service
 	paymentResp, err := s.paymentService.CreatePayment(&paymentModels.CreatePaymentRequest{
@@ -195,6 +215,42 @@ func (s *ServiceImpl) CreateSessionWithPayment(req *models.CreateSessionWithPaym
 // GetUserSession получает активную сессию пользователя
 func (s *ServiceImpl) GetUserSession(req *models.GetUserSessionRequest) (*models.GetUserSessionResponse, error) {
 	session, err := s.repo.GetActiveSessionByUserID(req.UserID)
+	if err != nil {
+		return nil, err
+	}
+
+	// Получаем основной платеж сессии, если сессия существует
+	var payment *models.Payment
+	if session != nil {
+		paymentResp, err := s.paymentService.GetMainPaymentBySessionID(session.ID)
+		if err == nil && paymentResp != nil {
+			payment = &models.Payment{
+				ID:             paymentResp.ID,
+				SessionID:      paymentResp.SessionID,
+				Amount:         paymentResp.Amount,
+				RefundedAmount: paymentResp.RefundedAmount,
+				Currency:       paymentResp.Currency,
+				Status:         paymentResp.Status,
+				PaymentType:    paymentResp.PaymentType,
+				PaymentURL:     paymentResp.PaymentURL,
+				TinkoffID:      paymentResp.TinkoffID,
+				ExpiresAt:      paymentResp.ExpiresAt,
+				RefundedAt:     paymentResp.RefundedAt,
+				CreatedAt:      paymentResp.CreatedAt,
+				UpdatedAt:      paymentResp.UpdatedAt,
+			}
+		}
+	}
+
+	return &models.GetUserSessionResponse{
+		Session: session,
+		Payment: payment,
+	}, nil
+}
+
+// GetUserSessionForPayment получает сессию пользователя для PaymentPage (включая payment_failed)
+func (s *ServiceImpl) GetUserSessionForPayment(req *models.GetUserSessionRequest) (*models.GetUserSessionResponse, error) {
+	session, err := s.repo.GetUserSessionForPayment(req.UserID)
 	if err != nil {
 		return nil, err
 	}
@@ -1638,9 +1694,18 @@ func (s *ServiceImpl) EnableChemistry(req *models.EnableChemistryRequest) (*mode
 		return nil, fmt.Errorf("химию можно включить только в активной сессии")
 	}
 
-	// Проверяем время доступности кнопки химии
-	// TODO: Получить настройку времени из settings service
-	chemistryTimeoutMinutes := 10 // По умолчанию 10 минут
+	// Получаем настройку времени доступности кнопки химии из settings service
+	chemistryTimeoutReq := &settingsModels.AdminGetChemistryTimeoutRequest{
+		ServiceType: session.ServiceType,
+	}
+	chemistryTimeoutResp, err := s.settingsService.GetChemistryTimeout(chemistryTimeoutReq)
+	var chemistryTimeoutMinutes int
+	if err != nil {
+		log.Printf("Ошибка получения настройки времени химии, используем значение по умолчанию: %v", err)
+		chemistryTimeoutMinutes = 10 // По умолчанию 10 минут
+	} else {
+		chemistryTimeoutMinutes = chemistryTimeoutResp.ChemistryEnableTimeoutMinutes
+	}
 
 	// Вычисляем время, когда истекет возможность включения химии
 	chemistryDeadline := session.StatusUpdatedAt.Add(time.Duration(chemistryTimeoutMinutes) * time.Minute)

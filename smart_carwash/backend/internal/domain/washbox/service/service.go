@@ -1,6 +1,7 @@
 package service
 
 import (
+	"carwash_backend/internal/domain/settings/service"
 	"carwash_backend/internal/domain/washbox/models"
 	"carwash_backend/internal/domain/washbox/repository"
 	"errors"
@@ -45,13 +46,15 @@ type Service interface {
 
 // ServiceImpl реализация Service
 type ServiceImpl struct {
-	repo repository.Repository
+	repo            repository.Repository
+	settingsService service.Service
 }
 
 // NewService создает новый экземпляр Service
-func NewService(repo repository.Repository) *ServiceImpl {
+func NewService(repo repository.Repository, settingsService service.Service) *ServiceImpl {
 	return &ServiceImpl{
-		repo: repo,
+		repo:            repo,
+		settingsService: settingsService,
 	}
 }
 
@@ -446,8 +449,8 @@ func (s *ServiceImpl) AutoCompleteExpiredCleanings() error {
 		return err
 	}
 
-	// TODO: Получить настройку времени уборки из settings service
-	// Пока используем фиксированное значение 30 минут
+	// Получаем настройку времени уборки из settings service
+	// Пока используем фиксированное значение 30 минут, так как настройка времени уборки не реализована в settings
 	timeoutMinutes := 30
 
 	for _, box := range cleaningBoxes {

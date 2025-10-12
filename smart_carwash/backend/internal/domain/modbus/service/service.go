@@ -3,212 +3,36 @@ package service
 import (
 	"fmt"
 	"log"
-	"strconv"
-	"strings"
 	"time"
 
-	"github.com/goburrow/modbus"
 	"github.com/google/uuid"
 	"gorm.io/gorm"
 
 	"carwash_backend/internal/config"
+	"carwash_backend/internal/domain/modbus/client"
 	"carwash_backend/internal/domain/modbus/models"
 	"carwash_backend/internal/domain/modbus/repository"
-	sessionModels "carwash_backend/internal/domain/session/models"
 )
 
-// ModbusService предоставляет методы для работы с Modbus устройствами
+// ModbusService предоставляет методы для работы с Modbus через HTTP клиент и БД
 type ModbusService struct {
-	db         *gorm.DB
-	config     *config.Config
+	httpClient *client.ModbusHTTPClient
 	repository *repository.ModbusRepository
+	config     *config.Config
 }
 
 // NewModbusService создает новый экземпляр ModbusService
 func NewModbusService(db *gorm.DB, config *config.Config) *ModbusService {
 	return &ModbusService{
-		db:         db,
-		config:     config,
+		httpClient: client.NewModbusHTTPClient(config),
 		repository: repository.NewModbusRepository(db),
+		config:     config,
 	}
 }
 
-// WriteCoil записывает значение в coil Modbus устройства
-func (s *ModbusService) WriteCoil(boxID uuid.UUID, register string, value bool) error {
-	operation := &models.ModbusOperation{
-		ID:        uuid.New(),
-		BoxID:     boxID,
-		Operation: fmt.Sprintf("write_coil_%s", register),
-		Register:  register,
-		Value:     value,
-		CreatedAt: time.Now(),
-	}
-
-	// Проверяем, включен ли Modbus
-	if !s.config.ModbusEnabled {
-		log.Printf("Modbus отключен, пропускаем запись в регистр %s - box_id: %s, register: %s, value: %v",
-			register, boxID, register, value)
-
-		// Сохраняем операцию как успешную (так как Modbus отключен намеренно)
-		operation.Success = true
-		operation.Error = "Modbus отключен в конфигурации"
-		s.repository.SaveModbusOperation(operation)
-		return nil
-	}
-
-	// Получаем конфигурацию бокса
-	_, err := s.repository.GetWashBoxByID(boxID)
-	if err != nil {
-		operation.Success = false
-		operation.Error = fmt.Sprintf("не удалось найти бокс: %v", err)
-		s.repository.SaveModbusOperation(operation)
-		log.Printf("Ошибка поиска бокса - box_id: %s, error: %v", boxID, err)
-		return fmt.Errorf("не удалось найти бокс: %v", err)
-	}
-
-	// Проверяем, что регистр задан
-	if register == "" {
-		operation.Success = false
-		operation.Error = fmt.Sprintf("регистр не задан для бокса %s", boxID)
-		s.repository.SaveModbusOperation(operation)
-		log.Printf("Регистр не задан - box_id: %s", boxID)
-		return fmt.Errorf("регистр не задан для бокса %s", boxID)
-	}
-
-	// Проверяем формат регистра (hex)
-	if !s.isValidHexRegister(register) {
-		operation.Success = false
-		operation.Error = fmt.Sprintf("неверный формат регистра: %s", register)
-		s.repository.SaveModbusOperation(operation)
-		log.Printf("Неверный формат регистра - box_id: %s, register: %s", boxID, register)
-		return fmt.Errorf("неверный формат регистра: %s", register)
-	}
-
-	// Создаем Modbus клиент
-	client, handler, err := s.createModbusClient()
-	if err != nil {
-		operation.Success = false
-		operation.Error = fmt.Sprintf("не удалось создать Modbus клиент: %v", err)
-		s.repository.SaveModbusOperation(operation)
-		s.repository.UpdateModbusConnectionStatus(boxID, false, err.Error())
-		log.Printf("Ошибка создания Modbus клиента - box_id: %s, error: %v", boxID, err)
-		return fmt.Errorf("не удалось создать Modbus клиент: %v", err)
-	}
-	defer handler.Close()
-
-	// Конвертируем hex регистр в uint16
-	address, err := s.hexToUint16(register)
-	if err != nil {
-		operation.Success = false
-		operation.Error = fmt.Sprintf("неверный формат регистра: %v", err)
-		s.repository.SaveModbusOperation(operation)
-		log.Printf("Ошибка конвертации регистра - box_id: %s, register: %s, error: %v", boxID, register, err)
-		return fmt.Errorf("неверный формат регистра: %v", err)
-	}
-
-	// Выполняем запись с retry механизмом
-	var lastError error
-	for attempt := 1; attempt <= 3; attempt++ {
-		// Записываем значение в coil
-		_, err := client.WriteSingleCoil(address, uint16(boolToUint16(value)))
-		if err == nil {
-			operation.Success = true
-			s.repository.SaveModbusOperation(operation)
-			s.repository.UpdateModbusConnectionStatus(boxID, true, "")
-			log.Printf("Modbus: успешно записано значение %v в регистр %s - box_id: %s, register: %s, value: %v",
-				value, register, boxID, register, value)
-			return nil
-		}
-
-		lastError = err
-		log.Printf("Modbus: попытка %d неудачна - box_id: %s, register: %s, attempt: %d, error: %v",
-			boxID, register, attempt, err)
-
-		if attempt < 3 {
-			time.Sleep(2 * time.Second)
-		}
-	}
-
-	operation.Success = false
-	operation.Error = fmt.Sprintf("не удалось записать в Modbus после 3 попыток: %v", lastError)
-	s.repository.SaveModbusOperation(operation)
-	s.repository.UpdateModbusConnectionStatus(boxID, false, lastError.Error())
-	log.Printf("Modbus: все попытки неудачны - box_id: %s, register: %s, error: %v", boxID, register, lastError)
-	return fmt.Errorf("не удалось записать в Modbus после 3 попыток: %v", lastError)
-}
-
-// WriteLightCoil включает или выключает свет для бокса
-func (s *ModbusService) WriteLightCoil(boxID uuid.UUID, value bool) error {
-	washbox, err := s.repository.GetWashBoxByID(boxID)
-	if err != nil {
-		log.Printf("Ошибка поиска бокса для света - box_id: %s, error: %v", boxID, err)
-		return fmt.Errorf("не удалось найти бокс: %v", err)
-	}
-
-	if washbox.LightCoilRegister == nil || *washbox.LightCoilRegister == "" {
-		log.Printf("Регистр света не настроен - box_id: %s", boxID)
-		return fmt.Errorf("регистр света не задан для бокса %s", boxID)
-	}
-
-	log.Printf("Управление светом - box_id: %s, register: %s, value: %v", boxID, *washbox.LightCoilRegister, value)
-	return s.WriteCoil(boxID, *washbox.LightCoilRegister, value)
-}
-
-// WriteChemistryCoil включает или выключает химию для бокса
-func (s *ModbusService) WriteChemistryCoil(boxID uuid.UUID, value bool) error {
-	washbox, err := s.repository.GetWashBoxByID(boxID)
-	if err != nil {
-		log.Printf("Ошибка поиска бокса для химии - box_id: %s, error: %v", boxID, err)
-		return fmt.Errorf("не удалось найти бокс: %v", err)
-	}
-
-	if washbox.ChemistryCoilRegister == nil || *washbox.ChemistryCoilRegister == "" {
-		log.Printf("Регистр химии не настроен - box_id: %s", boxID)
-		return fmt.Errorf("регистр химии не задан для бокса %s", boxID)
-	}
-
-	log.Printf("Управление химией - box_id: %s, register: %s, value: %v", boxID, *washbox.ChemistryCoilRegister, value)
-	return s.WriteCoil(boxID, *washbox.ChemistryCoilRegister, value)
-}
-
-// HandleModbusError обрабатывает ошибку Modbus и продлевает время сессии
-func (s *ModbusService) HandleModbusError(boxID uuid.UUID, operation string, sessionID uuid.UUID, err error) error {
-	log.Printf("Modbus error handler - box_id: %s, operation: %s, session_id: %s, error: %v",
-		boxID, operation, sessionID, err)
-
-	// Проверяем, не связана ли ошибка с отключенным Modbus
-	if err != nil && (err.Error() == "Modbus протокол отключен в конфигурации" ||
-		err.Error() == "Modbus отключен, пропускаем запись в регистр") {
-		// Если Modbus отключен, не продлеваем время сессии
-		log.Printf("Modbus отключен, не продлеваем время сессии - session_id: %s", sessionID)
-		return err
-	}
-
-	// Продлеваем время сессии на 5 минут только для реальных ошибок Modbus
-	if err := s.extendSessionTime(sessionID, 5*time.Minute); err != nil {
-		log.Printf("Не удалось продлить время сессии - session_id: %s, error: %v", sessionID, err)
-	}
-
-	// Обновляем статус подключения
-	if err != nil {
-		s.repository.UpdateModbusConnectionStatus(boxID, false, err.Error())
-	}
-
-	return err
-}
-
-// TestConnection тестирует соединение с Modbus устройством
+// TestConnection тестирует соединение с Modbus устройством через HTTP клиент
 func (s *ModbusService) TestConnection(boxID uuid.UUID) (*models.TestModbusConnectionResponse, error) {
-	log.Printf("Тест подключения Modbus - box_id: %s", boxID)
-
-	// Проверяем, включен ли Modbus
-	if !s.config.ModbusEnabled {
-		log.Printf("Modbus отключен в конфигурации - box_id: %s", boxID)
-		return &models.TestModbusConnectionResponse{
-			Success: false,
-			Message: "Modbus протокол отключен в конфигурации",
-		}, nil
-	}
+	log.Printf("Тест подключения Modbus через HTTP клиент - box_id: %s", boxID)
 
 	// Проверяем, что бокс существует
 	_, err := s.repository.GetWashBoxByID(boxID)
@@ -217,171 +41,62 @@ func (s *ModbusService) TestConnection(boxID uuid.UUID) (*models.TestModbusConne
 		return nil, fmt.Errorf("не удалось найти бокс: %v", err)
 	}
 
-	// Создаем Modbus клиент
-	client, handler, err := s.createModbusClient()
+	// Используем HTTP клиент для тестирования
+	resp, err := s.httpClient.TestConnection(boxID)
 	if err != nil {
-		log.Printf("Ошибка создания Modbus клиента для теста - box_id: %s, error: %v", boxID, err)
+		log.Printf("Ошибка HTTP клиента для теста - box_id: %s, error: %v", boxID, err)
 		s.repository.UpdateModbusConnectionStatus(boxID, false, err.Error())
 		return &models.TestModbusConnectionResponse{
 			Success: false,
-			Message: fmt.Sprintf("Не удалось создать Modbus клиент: %v", err),
-		}, nil
-	}
-	defer handler.Close()
-
-	// Пытаемся прочитать регистр для проверки соединения
-	_, err = client.ReadCoils(1, 1)
-	if err != nil {
-		log.Printf("Ошибка чтения coil для теста - box_id: %s, error: %v", boxID, err)
-		s.repository.UpdateModbusConnectionStatus(boxID, false, err.Error())
-		return &models.TestModbusConnectionResponse{
-			Success: false,
-			Message: fmt.Sprintf("Не удалось подключиться к Modbus устройству: %v", err),
+			Message: fmt.Sprintf("Ошибка HTTP клиента: %v", err),
 		}, nil
 	}
 
-	log.Printf("Тест подключения Modbus успешен - box_id: %s", boxID)
-	s.repository.UpdateModbusConnectionStatus(boxID, true, "")
+	// Обновляем статус подключения в БД
+	if resp.Success {
+		s.repository.UpdateModbusConnectionStatus(boxID, true, "")
+	} else {
+		s.repository.UpdateModbusConnectionStatus(boxID, false, resp.Message)
+	}
+
+	log.Printf("Тест подключения Modbus через HTTP клиент завершен - box_id: %s, success: %v", boxID, resp.Success)
 	return &models.TestModbusConnectionResponse{
-		Success: true,
-		Message: "Соединение с Modbus устройством установлено успешно",
+		Success: resp.Success,
+		Message: resp.Message,
 	}, nil
 }
 
-// TestCoil тестирует запись в конкретный регистр
+// TestCoil тестирует запись в конкретный регистр через HTTP клиент
 func (s *ModbusService) TestCoil(boxID uuid.UUID, register string, value bool) (*models.TestModbusCoilResponse, error) {
-	log.Printf("Тест записи coil - box_id: %s, register: %s, value: %v", boxID, register, value)
+	log.Printf("Тест записи coil через HTTP клиент - box_id: %s, register: %s, value: %v", boxID, register, value)
 
-	// Проверяем, включен ли Modbus
-	if !s.config.ModbusEnabled {
-		log.Printf("Modbus отключен для теста coil - box_id: %s, register: %s", boxID, register)
-		return &models.TestModbusCoilResponse{
-			Success: false,
-			Message: "Modbus протокол отключен в конфигурации",
-		}, nil
-	}
-
-	// Проверяем формат регистра
-	if !s.isValidHexRegister(register) {
-		log.Printf("Неверный формат регистра для теста - box_id: %s, register: %s", boxID, register)
-		return &models.TestModbusCoilResponse{
-			Success: false,
-			Message: fmt.Sprintf("Неверный формат регистра: %s", register),
-		}, nil
-	}
-
-	// Тестируем запись
-	err := s.WriteCoil(boxID, register, value)
+	// Проверяем, что бокс существует
+	_, err := s.repository.GetWashBoxByID(boxID)
 	if err != nil {
-		log.Printf("Ошибка теста записи coil - box_id: %s, register: %s, value: %v, error: %v",
-			boxID, register, value, err)
+		log.Printf("Бокс не найден для теста coil - box_id: %s, error: %v", boxID, err)
+		return nil, fmt.Errorf("не удалось найти бокс: %v", err)
+	}
+
+	// Используем HTTP клиент для тестирования
+	resp, err := s.httpClient.TestCoil(boxID, register, value)
+	if err != nil {
+		log.Printf("Ошибка HTTP клиента для теста coil - box_id: %s, error: %v", boxID, err)
 		return &models.TestModbusCoilResponse{
 			Success: false,
-			Message: fmt.Sprintf("Ошибка записи в регистр: %v", err),
+			Message: fmt.Sprintf("Ошибка HTTP клиента: %v", err),
 		}, nil
 	}
 
-	log.Printf("Тест записи coil успешен - box_id: %s, register: %s, value: %v", boxID, register, value)
+	log.Printf("Тест записи coil через HTTP клиент завершен - box_id: %s, success: %v", boxID, resp.Success)
 	return &models.TestModbusCoilResponse{
-		Success: true,
-		Message: fmt.Sprintf("Успешно записано значение %v в регистр %s", value, register),
+		Success: resp.Success,
+		Message: resp.Message,
 	}, nil
 }
 
-// createModbusClient создает Modbus TCP клиент
-func (s *ModbusService) createModbusClient() (modbus.Client, *modbus.TCPClientHandler, error) {
-	// Проверяем, включен ли Modbus
-	if !s.config.ModbusEnabled {
-		return nil, nil, fmt.Errorf("Modbus протокол отключен в конфигурации")
-	}
-
-	if s.config.ModbusHost == "" {
-		return nil, nil, fmt.Errorf("MODBUS_HOST не задан в конфигурации")
-	}
-
-	// Для локального тестирования используем HTTP API вместо прямого Modbus TCP
-	if s.config.ModbusHost == "localhost" || s.config.ModbusHost == "127.0.0.1" {
-		return nil, nil, fmt.Errorf("Локальное тестирование через HTTP API (порт 5001)")
-	}
-
-	// Создаем TCP клиент с таймаутами для реального ПЛК
-	handler := modbus.NewTCPClientHandler(fmt.Sprintf("%s:%d", s.config.ModbusHost, s.config.ModbusPort))
-	handler.Timeout = 10 * time.Second
-	handler.SlaveId = 1
-
-	client := modbus.NewClient(handler)
-	return client, handler, nil
-}
-
-// isValidHexRegister проверяет, что регистр в правильном hex формате
-func (s *ModbusService) isValidHexRegister(register string) bool {
-	register = strings.ToLower(register)
-	if !strings.HasPrefix(register, "0x") {
-		return false
-	}
-
-	// Проверяем, что после 0x идут только hex символы
-	hexPart := register[2:]
-	if len(hexPart) == 0 || len(hexPart) > 4 {
-		return false
-	}
-
-	for _, char := range hexPart {
-		if !((char >= '0' && char <= '9') || (char >= 'a' && char <= 'f')) {
-			return false
-		}
-	}
-
-	return true
-}
-
-// hexToUint16 конвертирует hex строку в uint16
-func (s *ModbusService) hexToUint16(hexStr string) (uint16, error) {
-	hexStr = strings.ToLower(hexStr)
-	if strings.HasPrefix(hexStr, "0x") {
-		hexStr = hexStr[2:]
-	}
-
-	value, err := strconv.ParseUint(hexStr, 16, 16)
-	if err != nil {
-		return 0, err
-	}
-
-	return uint16(value), nil
-}
-
-// boolToUint16 конвертирует bool в uint16 для Modbus
-func boolToUint16(value bool) uint16 {
-	if value {
-		return 0xFF00 // Modbus ON
-	}
-	return 0x0000 // Modbus OFF
-}
-
-// extendSessionTime продлевает время сессии
-func (s *ModbusService) extendSessionTime(sessionID uuid.UUID, duration time.Duration) error {
-	var session sessionModels.Session
-	if err := s.db.Where("id = ?", sessionID).First(&session).Error; err != nil {
-		return fmt.Errorf("не удалось найти сессию: %v", err)
-	}
-
-	// Продлеваем время в зависимости от статуса сессии
-	if session.Status == "in_queue" {
-		// Для сессий в очереди продлеваем created_at
-		newCreatedAt := session.CreatedAt.Add(-duration)
-		return s.db.Model(&session).Update("created_at", newCreatedAt).Error
-	} else if session.Status == "active" {
-		// Для активных сессий продлеваем status_updated_at
-		newStatusUpdatedAt := session.StatusUpdatedAt.Add(-duration)
-		return s.db.Model(&session).Update("status_updated_at", newStatusUpdatedAt).Error
-	}
-
-	return nil
-}
-
-// GetStatus получает статус Modbus устройства для бокса
+// GetStatus получает статус Modbus устройства для бокса из БД
 func (s *ModbusService) GetStatus(boxID uuid.UUID) (*models.GetModbusStatusResponse, error) {
-	log.Printf("Получение статуса Modbus - box_id: %s", boxID)
+	log.Printf("Получение статуса Modbus из БД - box_id: %s", boxID)
 
 	// Получаем информацию о боксе
 	_, err := s.repository.GetWashBoxByID(boxID)
@@ -390,7 +105,7 @@ func (s *ModbusService) GetStatus(boxID uuid.UUID) (*models.GetModbusStatusRespo
 		return nil, fmt.Errorf("не удалось найти бокс: %v", err)
 	}
 
-	// Получаем статус подключения
+	// Получаем статус подключения из БД
 	connectionStatus, err := s.repository.GetModbusConnectionStatus(boxID)
 	if err != nil && err != gorm.ErrRecordNotFound {
 		log.Printf("Ошибка получения статуса подключения - box_id: %s, error: %v", boxID, err)
@@ -400,8 +115,8 @@ func (s *ModbusService) GetStatus(boxID uuid.UUID) (*models.GetModbusStatusRespo
 	// Формируем ответ
 	status := models.ModbusStatus{
 		BoxID: boxID,
-		Host:  s.config.ModbusHost,
-		Port:  s.config.ModbusPort,
+		Host:  s.config.ModbusServerHost,
+		Port:  s.config.ModbusServerPort,
 	}
 
 	if connectionStatus != nil {
@@ -413,15 +128,15 @@ func (s *ModbusService) GetStatus(boxID uuid.UUID) (*models.GetModbusStatusRespo
 		status.LastError = "Статус подключения не определен"
 	}
 
-	log.Printf("Статус Modbus получен - box_id: %s, connected: %v", boxID, status.Connected)
+	log.Printf("Статус Modbus получен из БД - box_id: %s, connected: %v", boxID, status.Connected)
 	return &models.GetModbusStatusResponse{
 		Status: status,
 	}, nil
 }
 
-// GetDashboard получает данные для дашборда мониторинга
+// GetDashboard получает данные для дашборда мониторинга из БД
 func (s *ModbusService) GetDashboard(timeRange string) (*models.GetModbusDashboardResponse, error) {
-	log.Printf("Получение данных дашборда Modbus - time_range: %s", timeRange)
+	log.Printf("Получение данных дашборда Modbus из БД - time_range: %s", timeRange)
 
 	// Определяем временной диапазон
 	var since time.Time
@@ -531,7 +246,7 @@ func (s *ModbusService) GetDashboard(timeRange string) (*models.GetModbusDashboa
 		ErrorStats:       errorStats,
 	}
 
-	log.Printf("Данные дашборда Modbus сформированы - boxes: %d, operations: %d",
+	log.Printf("Данные дашборда Modbus сформированы из БД - boxes: %d, operations: %d",
 		len(boxes), overview.OperationsLast24h)
 
 	return &models.GetModbusDashboardResponse{
@@ -539,9 +254,9 @@ func (s *ModbusService) GetDashboard(timeRange string) (*models.GetModbusDashboa
 	}, nil
 }
 
-// GetHistory получает историю операций Modbus
+// GetHistory получает историю операций Modbus из БД
 func (s *ModbusService) GetHistory(req *models.GetModbusHistoryRequest) (*models.GetModbusHistoryResponse, error) {
-	log.Printf("Получение истории Modbus - box_id: %v, limit: %d, offset: %d",
+	log.Printf("Получение истории Modbus из БД - box_id: %v, limit: %d, offset: %d",
 		req.BoxID, req.Limit, req.Offset)
 
 	// Устанавливаем значения по умолчанию
@@ -552,23 +267,50 @@ func (s *ModbusService) GetHistory(req *models.GetModbusHistoryRequest) (*models
 		req.Offset = 0
 	}
 
-	// Получаем операции
+	// Получаем операции из БД
 	operations, err := s.repository.GetModbusOperations(req.BoxID, req.Limit, req.Offset)
 	if err != nil {
 		log.Printf("Ошибка получения истории операций: %v", err)
 		return nil, fmt.Errorf("ошибка получения истории операций: %v", err)
 	}
 
-	// TODO: Добавить фильтрацию по операции, успешности и времени
-	// Пока возвращаем базовый результат
+	// Получаем общее количество операций для пагинации
+	totalCount, err := s.repository.GetModbusOperationsCount(req.BoxID)
+	if err != nil {
+		log.Printf("Ошибка получения общего количества операций: %v", err)
+		// Используем количество полученных операций как fallback
+		totalCount = int64(len(operations))
+	}
+
+	// Применяем фильтрацию по операции, успешности и времени (если указаны)
+	filteredOperations := operations
+	if req.Operation != nil && *req.Operation != "" {
+		var filtered []models.ModbusOperation
+		for _, op := range operations {
+			if op.Operation == *req.Operation {
+				filtered = append(filtered, op)
+			}
+		}
+		filteredOperations = filtered
+	}
+	
+	if req.Success != nil {
+		var filtered []models.ModbusOperation
+		for _, op := range filteredOperations {
+			if op.Success == *req.Success {
+				filtered = append(filtered, op)
+			}
+		}
+		filteredOperations = filtered
+	}
 
 	response := &models.GetModbusHistoryResponse{
-		Operations: operations,
-		Total:      int64(len(operations)), // TODO: получать реальный count
+		Operations: filteredOperations,
+		Total:      totalCount,
 		Limit:      req.Limit,
 		Offset:     req.Offset,
 	}
 
-	log.Printf("История Modbus получена - операций: %d", len(operations))
+	log.Printf("История Modbus получена из БД - операций: %d", len(operations))
 	return response, nil
 }

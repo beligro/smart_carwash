@@ -4,20 +4,6 @@
     margin: 0 auto;
   }
   
-  .backButton {
-    background: none;
-    border: none;
-    display: flex;
-    align-items: center;
-    font-size: 16px;
-    padding: 8px 0;
-    margin-bottom: 16px;
-    cursor: pointer;
-  }
-  
-  .backButton:hover {
-    opacity: 0.8;
-  }
   
   .title {
     font-size: 22px;
@@ -151,9 +137,6 @@
   color: #000000;
 }
   
-  .light .backButton {
-    color: var(--tg-theme-button-color, #2481cc);
-  }
   
   .light .infoRow {
     border-bottom: 1px solid #EEEEEE;
@@ -176,9 +159,6 @@
   color: #FFFFFF;
 }
   
-  .dark .backButton {
-    color: var(--tg-theme-button-color, #2481cc);
-  }
   
   .dark .infoRow {
     border-bottom: 1px solid #444444;
