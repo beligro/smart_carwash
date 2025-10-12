@@ -682,27 +682,6 @@ const ApiService = {
     }
   },
 
-  // Получение статуса Modbus устройства
-  getModbusStatus: async (boxId) => {
-    try {
-      const response = await api.get(`/admin/modbus/status?box_id=${boxId}`);
-      return response.data;
-    } catch (error) {
-      console.error('Ошибка получения статуса Modbus:', error);
-      throw error;
-    }
-  },
-
-  // Получение конфигурации Modbus
-  getModbusConfig: async () => {
-    try {
-      const response = await api.get('/admin/modbus/config');
-      return response.data;
-    } catch (error) {
-      console.error('Ошибка получения конфигурации Modbus:', error);
-      throw error;
-    }
-  },
 
   // === МЕТОДЫ ДЛЯ РАБОТЫ С УБОРКОЙ ===
 

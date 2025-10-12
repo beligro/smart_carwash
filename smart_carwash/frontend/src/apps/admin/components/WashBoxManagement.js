@@ -574,23 +574,6 @@ const WashBoxManagement = () => {
           <Button theme={theme} onClick={() => setShowCreateModal(true)}>
             Добавить бокс
           </Button>
-          <Button 
-            theme={theme} 
-            style={{ backgroundColor: '#28a745' }}
-            onClick={async () => {
-              try {
-                const config = await ApiService.getModbusConfig();
-                const status = config.enabled ? 'Включен' : 'Отключен';
-                const host = config.host || 'Не задан';
-                const port = config.port || 'Не задан';
-                alert(`Modbus статус: ${status}\nХост: ${host}\nПорт: ${port}`);
-              } catch (error) {
-                alert('Ошибка получения статуса Modbus: ' + error.message);
-              }
-            }}
-          >
-            Статус Modbus
-          </Button>
         </div>
       </Header>
 
@@ -769,7 +752,7 @@ const WashBoxManagement = () => {
                   type="text"
                   value={formData.lightCoilRegister}
                   onChange={(e) => setFormData({ ...formData, lightCoilRegister: e.target.value })}
-                  placeholder="0x00001"
+                  placeholder="0x0001"
                   pattern="0x[0-9a-fA-F]{1,4}"
                 />
                 <small style={{ color: '#666', fontSize: '12px' }}>
@@ -870,7 +853,7 @@ const WashBoxManagement = () => {
                   type="text"
                   value={formData.lightCoilRegister}
                   onChange={(e) => setFormData({ ...formData, lightCoilRegister: e.target.value })}
-                  placeholder="0x00001"
+                  placeholder="0x0001"
                   pattern="0x[0-9a-fA-F]{1,4}"
                 />
                 <small style={{ color: '#666', fontSize: '12px' }}>
