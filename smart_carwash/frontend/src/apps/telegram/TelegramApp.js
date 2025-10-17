@@ -56,20 +56,19 @@ const TelegramApp = () => {
         // Инициализация Telegram Mini App
         WebApp.ready();
         
-        // Установка темы в соответствии с темой Telegram
-        const colorScheme = WebApp.colorScheme || 'light';
-        setTheme(colorScheme);
+        // Фиксируем светлую тему (игнорируем тему Telegram)
+        setTheme('light');
         
-        // Настройка основного цвета
+        // Настройка основного цвета (светлая тема)
         document.documentElement.style.setProperty(
           '--tg-theme-button-color', 
-          (WebApp.themeParams && WebApp.themeParams.button_color) || '#2481cc'
+          '#2481cc'
         );
         
-        // Настройка цвета текста
+        // Настройка цвета текста (светлая тема)
         document.documentElement.style.setProperty(
           '--tg-theme-text-color', 
-          (WebApp.themeParams && WebApp.themeParams.text_color) || '#000000'
+          '#000000'
         );
         
         // Получаем данные пользователя из Telegram
