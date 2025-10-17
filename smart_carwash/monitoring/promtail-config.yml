@@ -1,0 +1,51 @@
+server:
+  http_listen_port: 9080
+  grpc_listen_port: 0
+
+positions:
+  filename: /tmp/positions.yaml
+
+clients:
+  - url: http://loki:3100/loki/api/v1/push
+
+scrape_configs:
+  # Backend logs из файла
+  - job_name: backend-file-logs
+    static_configs:
+      - targets:
+          - localhost
+        labels:
+          job: backend
+          service: backend
+          __path__: /var/log/backend/app.log
+    pipeline_stages:
+      # Парсим JSON логи
+      - json:
+          expressions:
+            level: level
+            message: message
+            timestamp: timestamp
+            service: service
+            trace_id: trace_id
+            span_id: span_id
+            handler: handler
+            method: method
+            path: path
+            status_code: status_code
+            user_id: user_id
+            session_id: session_id
+            error: error
+            duration: duration
+            ip: ip
+            user_agent: user_agent
+      # Добавляем метки
+      - labels:
+          level:
+          service:
+          trace_id:
+          span_id:
+          handler:
+          method:
+          status_code:
+          user_id:
+          session_id:

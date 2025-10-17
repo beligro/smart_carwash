@@ -1,7 +1,7 @@
 package handlers
 
 import (
-	"log"
+	"carwash_backend/internal/logger"
 	"io"
 	"bytes"
 	"encoding/json"
@@ -89,7 +89,7 @@ func (h *Handler) createSession(c *gin.Context) {
 
 	// Парсим JSON из тела запроса
 	if err := c.ShouldBindJSON(&req); err != nil {
-		log.Printf("API Error - createSession: ошибка парсинга JSON, error: %v", err)
+		logger.WithContext(c).Errorf("API Error - createSession: ошибка парсинга JSON, error: %v", err)
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
@@ -97,7 +97,7 @@ func (h *Handler) createSession(c *gin.Context) {
 	// Создаем сессию
 	session, err := h.service.CreateSession(&req)
 	if err != nil {
-		log.Printf("API Error - createSession: ошибка создания сессии, user_id: %s, service_type: %s, error: %v", req.UserID.String(), req.ServiceType, err)
+		logger.WithContext(c).Errorf("API Error - createSession: ошибка создания сессии, user_id: %s, service_type: %s, error: %v", req.UserID.String(), req.ServiceType, err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
@@ -112,7 +112,7 @@ func (h *Handler) createSessionWithPayment(c *gin.Context) {
 
 	// Парсим JSON из тела запроса
 	if err := c.ShouldBindJSON(&req); err != nil {
-		log.Printf("API Error - createSessionWithPayment: ошибка парсинга JSON, error: %v", err)
+		logger.WithContext(c).Errorf("API Error - createSessionWithPayment: ошибка парсинга JSON, error: %v", err)
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
@@ -120,7 +120,7 @@ func (h *Handler) createSessionWithPayment(c *gin.Context) {
 	// Создаем сессию с платежом
 	response, err := h.service.CreateSessionWithPayment(&req)
 	if err != nil {
-		log.Printf("API Error - createSessionWithPayment: ошибка создания сессии с платежом, user_id: %s, service_type: %s, error: %v", req.UserID.String(), req.ServiceType, err)
+		logger.WithContext(c).Errorf("API Error - createSessionWithPayment: ошибка создания сессии с платежом, user_id: %s, service_type: %s, error: %v", req.UserID.String(), req.ServiceType, err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
@@ -134,14 +134,14 @@ func (h *Handler) getUserSession(c *gin.Context) {
 	// Получаем ID пользователя из query параметра
 	userIDStr := c.Query("user_id")
 	if userIDStr == "" {
-		log.Printf("API Error - getUserSession: не указан ID пользователя")
+		logger.WithContext(c).Errorf("API Error - getUserSession: не указан ID пользователя")
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Не указан ID пользователя"})
 		return
 	}
 
 	userID, err := uuid.Parse(userIDStr)
 	if err != nil {
-		log.Printf("API Error - getUserSession: некорректный ID пользователя '%s', error: %v", userIDStr, err)
+		logger.WithContext(c).Errorf("API Error - getUserSession: некорректный ID пользователя '%s', error: %v", userIDStr, err)
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Некорректный ID пользователя"})
 		return
 	}
@@ -151,7 +151,7 @@ func (h *Handler) getUserSession(c *gin.Context) {
 		UserID: userID,
 	})
 	if err != nil {
-		log.Printf("API Error - getUserSession: сессия не найдена для user_id: %s, error: %v", userID.String(), err)
+		logger.WithContext(c).Errorf("API Error - getUserSession: сессия не найдена для user_id: %s, error: %v", userID.String(), err)
 		c.JSON(http.StatusNotFound, gin.H{"error": "Сессия не найдена"})
 		return
 	}
@@ -165,14 +165,14 @@ func (h *Handler) getUserSessionForPayment(c *gin.Context) {
 	// Получаем ID пользователя из query параметра
 	userIDStr := c.Query("user_id")
 	if userIDStr == "" {
-		log.Printf("API Error - getUserSessionForPayment: не указан ID пользователя")
+		logger.WithContext(c).Errorf("API Error - getUserSessionForPayment: не указан ID пользователя")
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Не указан ID пользователя"})
 		return
 	}
 
 	userID, err := uuid.Parse(userIDStr)
 	if err != nil {
-		log.Printf("API Error - getUserSessionForPayment: некорректный ID пользователя '%s', error: %v", userIDStr, err)
+		logger.WithContext(c).Errorf("API Error - getUserSessionForPayment: некорректный ID пользователя '%s', error: %v", userIDStr, err)
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Некорректный ID пользователя"})
 		return
 	}
@@ -182,7 +182,7 @@ func (h *Handler) getUserSessionForPayment(c *gin.Context) {
 		UserID: userID,
 	})
 	if err != nil {
-		log.Printf("API Error - getUserSessionForPayment: сессия не найдена для user_id: %s, error: %v", userID.String(), err)
+		logger.WithContext(c).Errorf("API Error - getUserSessionForPayment: сессия не найдена для user_id: %s, error: %v", userID.String(), err)
 		c.JSON(http.StatusNotFound, gin.H{"error": "Сессия не найдена"})
 		return
 	}
@@ -293,17 +293,17 @@ func (h *Handler) extendSessionWithPayment(c *gin.Context) {
 	}
 
 	// Логируем мета-параметр для поиска
-	log.Printf("Запрос на продление сессии с оплатой: SessionID=%s, ExtensionTime=%d", req.SessionID, req.ExtensionTimeMinutes)
+	logger.WithContext(c).Infof("Запрос на продление сессии с оплатой: SessionID=%s, ExtensionTime=%d", req.SessionID, req.ExtensionTimeMinutes)
 
 	// Продлеваем сессию с оплатой
 	response, err := h.service.ExtendSessionWithPayment(&req)
 	if err != nil {
-		log.Printf("Ошибка продления сессии с оплатой: %v", err)
+		logger.WithContext(c).Errorf("Ошибка продления сессии с оплатой: %v", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
 
-	log.Printf("Успешно создан платеж продления: SessionID=%s, ExtensionTime=%d", req.SessionID, req.ExtensionTimeMinutes)
+	logger.WithContext(c).Infof("Успешно создан платеж продления: SessionID=%s, ExtensionTime=%d", req.SessionID, req.ExtensionTimeMinutes)
 	c.JSON(http.StatusOK, response)
 }
 
@@ -323,19 +323,19 @@ func (h *Handler) getSessionPayments(c *gin.Context) {
 	}
 
 	// Логируем мета-параметр для поиска
-	log.Printf("Запрос на получение платежей сессии: SessionID=%s", sessionID)
+	logger.WithContext(c).Infof("Запрос на получение платежей сессии: SessionID=%s", sessionID)
 
 	// Получаем платежи сессии
 	response, err := h.service.GetSessionPayments(&models.GetSessionPaymentsRequest{
 		SessionID: sessionID,
 	})
 	if err != nil {
-		log.Printf("Ошибка получения платежей сессии: %v", err)
+		logger.WithContext(c).Errorf("Ошибка получения платежей сессии: %v", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
 
-	log.Printf("Успешно получены платежи сессии: SessionID=%s", sessionID)
+	logger.WithContext(c).Infof("Успешно получены платежи сессии: SessionID=%s", sessionID)
 	c.JSON(http.StatusOK, response)
 }
 
@@ -350,17 +350,17 @@ func (h *Handler) cancelSession(c *gin.Context) {
 	}
 
 	// Логируем мета-параметр для поиска
-	log.Printf("Запрос на отмену сессии: SessionID=%s, UserID=%s", req.SessionID, req.UserID)
+	logger.WithContext(c).Infof("Запрос на отмену сессии: SessionID=%s, UserID=%s", req.SessionID, req.UserID)
 
 	// Отменяем сессию
 	response, err := h.service.CancelSession(&req)
 	if err != nil {
-		log.Printf("Ошибка отмены сессии: %v", err)
+		logger.WithContext(c).Errorf("Ошибка отмены сессии: %v", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
 
-	log.Printf("Успешно отменена сессия: SessionID=%s, UserID=%s", req.SessionID, req.UserID)
+	logger.WithContext(c).Infof("Успешно отменена сессия: SessionID=%s, UserID=%s", req.SessionID, req.UserID)
 	c.JSON(http.StatusOK, response)
 }
 
@@ -369,7 +369,7 @@ func (h *Handler) getUserSessionHistory(c *gin.Context) {
 	// Получаем user_id из query параметра
 	userIDStr := c.Query("user_id")
 	if userIDStr == "" {
-		log.Printf("API Error - getUserSessionHistory: не указан User ID")
+		logger.WithContext(c).Errorf("API Error - getUserSessionHistory: не указан User ID")
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Не указан User ID"})
 		return
 	}
@@ -377,7 +377,7 @@ func (h *Handler) getUserSessionHistory(c *gin.Context) {
 	// Преобразуем строку в uuid.UUID
 	userID, err := uuid.Parse(userIDStr)
 	if err != nil {
-		log.Printf("API Error - getUserSessionHistory: некорректный User ID '%s', error: %v", userIDStr, err)
+		logger.WithContext(c).Errorf("API Error - getUserSessionHistory: некорректный User ID '%s', error: %v", userIDStr, err)
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Некорректный User ID"})
 		return
 	}
@@ -546,13 +546,13 @@ func (h *Handler) adminGetSession(c *gin.Context) {
 func (h *Handler) handle1CPaymentCallback(c *gin.Context) {
 	bodyBytes, err := io.ReadAll(c.Request.Body)
     if err != nil {
-        log.Printf("Error reading request body: %v", err)
+        logger.WithContext(c).Infof("Error reading request body: %v", err)
         c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request body"})
         return
     }
     
     // Логируем тело запроса
-    log.Printf("Raw request body: %s", string(bodyBytes))
+    logger.WithContext(c).Infof("Raw request body: %s", string(bodyBytes))
 
 	bodyBytes = bytes.TrimPrefix(bodyBytes, []byte("\xef\xbb\xbf"))
     
@@ -563,19 +563,19 @@ func (h *Handler) handle1CPaymentCallback(c *gin.Context) {
 
 	// Парсим JSON из тела запроса
 	if err := json.Unmarshal(bodyBytes, &req); err != nil {
-		log.Printf("Error parsing 1C payment request: %v", err)
+		logger.WithContext(c).Infof("Error parsing 1C payment request: %v", err)
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
 
 	// Логируем входящий запрос
-	log.Printf("Received 1C payment callback: ServiceType=%s, WithChemistry=%t, Amount=%d, RentalTimeMinutes=%d, CarNumber=%s",
+	logger.WithContext(c).Infof("Received 1C payment callback: ServiceType=%s, WithChemistry=%t, Amount=%d, RentalTimeMinutes=%d, CarNumber=%s",
 		req.ServiceType, req.WithChemistry, req.Amount, req.RentalTimeMinutes, req.CarNumber)
 
 	// Создаем сессию через кассира
 	session, err := h.service.CreateFromCashier(&req)
 	if err != nil {
-		log.Printf("Error creating session from cashier: %v", err)
+		logger.WithContext(c).Infof("Error creating session from cashier: %v", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
@@ -583,13 +583,13 @@ func (h *Handler) handle1CPaymentCallback(c *gin.Context) {
 	// Создаем платеж для кассира
 	payment, err := h.paymentService.CreateForCashier(session.ID, req.Amount)
 	if err != nil {
-		log.Printf("Error creating payment for cashier: %v", err)
+		logger.WithContext(c).Infof("Error creating payment for cashier: %v", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
 
 	// Логируем успешное создание
-	log.Printf("Successfully processed 1C payment: SessionID=%s, PaymentID=%s, Amount=%d",
+	logger.WithContext(c).Infof("Successfully processed 1C payment: SessionID=%s, PaymentID=%s, Amount=%d",
 		session.ID, payment.ID, req.Amount)
 
 	// Возвращаем успешный ответ
@@ -713,17 +713,17 @@ func (h *Handler) cashierStartSession(c *gin.Context) {
 	}
 
 	// Логируем мета-параметр для поиска
-	log.Printf("Запрос на запуск сессии кассиром: SessionID=%s", req.SessionID)
+	logger.WithContext(c).Infof("Запрос на запуск сессии кассиром: SessionID=%s", req.SessionID)
 
 	// Запускаем сессию
 	session, err := h.service.CashierStartSession(&req)
 	if err != nil {
-		log.Printf("Ошибка запуска сессии кассиром: %v", err)
+		logger.WithContext(c).Errorf("Ошибка запуска сессии кассиром: %v", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
 
-	log.Printf("Успешно запущена сессия кассиром: SessionID=%s", req.SessionID)
+	logger.WithContext(c).Infof("Успешно запущена сессия кассиром: SessionID=%s", req.SessionID)
 	c.JSON(http.StatusOK, models.CashierStartSessionResponse{Session: *session})
 }
 
@@ -738,17 +738,17 @@ func (h *Handler) cashierCompleteSession(c *gin.Context) {
 	}
 
 	// Логируем мета-параметр для поиска
-	log.Printf("Запрос на завершение сессии кассиром: SessionID=%s", req.SessionID)
+	logger.WithContext(c).Infof("Запрос на завершение сессии кассиром: SessionID=%s", req.SessionID)
 
 	// Завершаем сессию
 	session, err := h.service.CashierCompleteSession(&req)
 	if err != nil {
-		log.Printf("Ошибка завершения сессии кассиром: %v", err)
+		logger.WithContext(c).Errorf("Ошибка завершения сессии кассиром: %v", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
 
-	log.Printf("Успешно завершена сессия кассиром: SessionID=%s", req.SessionID)
+	logger.WithContext(c).Infof("Успешно завершена сессия кассиром: SessionID=%s", req.SessionID)
 	c.JSON(http.StatusOK, models.CashierCompleteSessionResponse{Session: *session})
 }
 
@@ -763,17 +763,17 @@ func (h *Handler) cashierCancelSession(c *gin.Context) {
 	}
 
 	// Логируем мета-параметр для поиска
-	log.Printf("Запрос на отмену сессии кассиром: SessionID=%s", req.SessionID)
+	logger.WithContext(c).Infof("Запрос на отмену сессии кассиром: SessionID=%s", req.SessionID)
 
 	// Отменяем сессию
 	session, err := h.service.CashierCancelSession(&req)
 	if err != nil {
-		log.Printf("Ошибка отмены сессии кассиром: %v", err)
+		logger.WithContext(c).Errorf("Ошибка отмены сессии кассиром: %v", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
 
-	log.Printf("Успешно отменена сессия кассиром: SessionID=%s", req.SessionID)
+	logger.WithContext(c).Infof("Успешно отменена сессия кассиром: SessionID=%s", req.SessionID)
 	c.JSON(http.StatusOK, models.CashierCancelSessionResponse{Session: *session})
 }
 
@@ -822,17 +822,17 @@ func (h *Handler) enableChemistry(c *gin.Context) {
 	}
 
 	// Логируем мета-параметр для поиска
-	log.Printf("Запрос на включение химии: SessionID=%s", req.SessionID)
+	logger.WithContext(c).Infof("Запрос на включение химии: SessionID=%s", req.SessionID)
 
 	// Включаем химию
 	response, err := h.service.EnableChemistry(&req)
 	if err != nil {
-		log.Printf("Ошибка включения химии: %v", err)
+		logger.WithContext(c).Errorf("Ошибка включения химии: %v", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
 
-	log.Printf("Успешно включена химия: SessionID=%s", req.SessionID)
+	logger.WithContext(c).Infof("Успешно включена химия: SessionID=%s", req.SessionID)
 	c.JSON(http.StatusOK, response)
 }
 
@@ -847,17 +847,17 @@ func (h *Handler) cashierEnableChemistry(c *gin.Context) {
 	}
 
 	// Логируем мета-параметр для поиска
-	log.Printf("Запрос на включение химии кассиром: SessionID=%s", req.SessionID)
+	logger.WithContext(c).Infof("Запрос на включение химии кассиром: SessionID=%s", req.SessionID)
 
 	// Включаем химию
 	response, err := h.service.EnableChemistry(&req)
 	if err != nil {
-		log.Printf("Ошибка включения химии кассиром: %v", err)
+		logger.WithContext(c).Errorf("Ошибка включения химии кассиром: %v", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
 
-	log.Printf("Успешно включена химия кассиром: SessionID=%s", req.SessionID)
+	logger.WithContext(c).Infof("Успешно включена химия кассиром: SessionID=%s", req.SessionID)
 	c.JSON(http.StatusOK, response)
 }
 
@@ -897,16 +897,16 @@ func (h *Handler) getChemistryStats(c *gin.Context) {
 	}
 
 	// Логируем запрос
-	log.Printf("Запрос статистики химии: DateFrom=%v, DateTo=%v", dateFrom, dateTo)
+	logger.WithContext(c).Infof("Запрос статистики химии: DateFrom=%v, DateTo=%v", dateFrom, dateTo)
 
 	// Получаем статистику
 	response, err := h.service.GetChemistryStats(req)
 	if err != nil {
-		log.Printf("Ошибка получения статистики химии: %v", err)
+		logger.WithContext(c).Errorf("Ошибка получения статистики химии: %v", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
 
-	log.Printf("Успешно получена статистика химии")
+	logger.WithContext(c).Infof("Успешно получена статистика химии")
 	c.JSON(http.StatusOK, response)
 }

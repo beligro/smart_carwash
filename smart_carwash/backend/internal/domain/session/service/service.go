@@ -12,9 +12,11 @@ import (
 	userService "carwash_backend/internal/domain/user/service"
 	washboxModels "carwash_backend/internal/domain/washbox/models"
 	washboxService "carwash_backend/internal/domain/washbox/service"
+	"carwash_backend/internal/logger"
+	"carwash_backend/internal/metrics"
 	"fmt"
-	"log"
 	"sort"
+	"strconv"
 	"time"
 
 	"github.com/google/uuid"
@@ -70,10 +72,11 @@ type ServiceImpl struct {
 	modbusService   modbus.ModbusServiceInterface
 	settingsService settingsService.Service
 	cashierUserID   string
+	metrics         *metrics.Metrics
 }
 
 // NewService создает новый экземпляр Service
-func NewService(repo repository.Repository, washboxService washboxService.Service, userService userService.Service, telegramBot telegram.NotificationService, paymentService paymentService.Service, modbusService modbus.ModbusServiceInterface, settingsService settingsService.Service, cashierUserID string) *ServiceImpl {
+func NewService(repo repository.Repository, washboxService washboxService.Service, userService userService.Service, telegramBot telegram.NotificationService, paymentService paymentService.Service, modbusService modbus.ModbusServiceInterface, settingsService settingsService.Service, cashierUserID string, metrics *metrics.Metrics) *ServiceImpl {
 	return &ServiceImpl{
 		repo:            repo,
 		washboxService:  washboxService,
@@ -83,24 +86,25 @@ func NewService(repo repository.Repository, washboxService washboxService.Servic
 		modbusService:   modbusService,
 		settingsService: settingsService,
 		cashierUserID:   cashierUserID,
+		metrics:         metrics,
 	}
 }
 
 // CreateSession создает новую сессию
 func (s *ServiceImpl) CreateSession(req *models.CreateSessionRequest) (*models.Session, error) {
-	log.Printf("Service - CreateSession: начало создания сессии, user_id: %s, service_type: %s, with_chemistry: %t", req.UserID.String(), req.ServiceType, req.WithChemistry)
+	logger.Printf("Service - CreateSession: начало создания сессии, user_id: %s, service_type: %s, with_chemistry: %t", req.UserID.String(), req.ServiceType, req.WithChemistry)
 	
 	// Валидация химии
 	if req.WithChemistry {
 		switch req.ServiceType {
 		case "wash":
 			// Химия разрешена для мойки
-			log.Printf("Service - CreateSession: химия разрешена для мойки, user_id: %s", req.UserID.String())
+			logger.Printf("Service - CreateSession: химия разрешена для мойки, user_id: %s", req.UserID.String())
 		case "air_dry", "vacuum":
-			log.Printf("Service - CreateSession: химия не разрешена для типа услуги '%s', user_id: %s", req.ServiceType, req.UserID.String())
+			logger.Printf("Service - CreateSession: химия не разрешена для типа услуги '%s', user_id: %s", req.ServiceType, req.UserID.String())
 			return nil, fmt.Errorf("chemistry is not available for service type: %s", req.ServiceType)
 		default:
-			log.Printf("Service - CreateSession: неверный тип услуги '%s', user_id: %s", req.ServiceType, req.UserID.String())
+			logger.Printf("Service - CreateSession: неверный тип услуги '%s', user_id: %s", req.ServiceType, req.UserID.String())
 			return nil, fmt.Errorf("invalid service type: %s", req.ServiceType)
 		}
 	}
@@ -109,7 +113,7 @@ func (s *ServiceImpl) CreateSession(req *models.CreateSessionRequest) (*models.S
 	existingSessionByKey, err := s.repo.GetSessionByIdempotencyKey(req.IdempotencyKey)
 	if err == nil && existingSessionByKey != nil {
 		// Сессия с таким ключом идемпотентности уже существует
-		log.Printf("Service - CreateSession: найдена существующая сессия по ключу идемпотентности, session_id: %s, user_id: %s", existingSessionByKey.ID.String(), req.UserID.String())
+		logger.Printf("Service - CreateSession: найдена существующая сессия по ключу идемпотентности, session_id: %s, user_id: %s", existingSessionByKey.ID.String(), req.UserID.String())
 		return existingSessionByKey, nil
 	}
 
@@ -117,7 +121,7 @@ func (s *ServiceImpl) CreateSession(req *models.CreateSessionRequest) (*models.S
 	existingSession, err := s.repo.GetActiveSessionByUserID(req.UserID)
 	if err == nil && existingSession != nil {
 		// У пользователя уже есть активная сессия
-		log.Printf("Service - CreateSession: у пользователя уже есть активная сессия, session_id: %s, user_id: %s", existingSession.ID.String(), req.UserID.String())
+		logger.Printf("Service - CreateSession: у пользователя уже есть активная сессия, session_id: %s, user_id: %s", existingSession.ID.String(), req.UserID.String())
 		return existingSession, nil
 	}
 
@@ -137,17 +141,23 @@ func (s *ServiceImpl) CreateSession(req *models.CreateSessionRequest) (*models.S
 	// Сохраняем сессию в базе данных
 	err = s.repo.CreateSession(session)
 	if err != nil {
-		log.Printf("Service - CreateSession: ошибка сохранения сессии в БД, user_id: %s, error: %v", req.UserID.String(), err)
+		logger.Printf("Service - CreateSession: ошибка сохранения сессии в БД, user_id: %s, error: %v", req.UserID.String(), err)
 		return nil, err
 	}
 
-	log.Printf("Service - CreateSession: сессия успешно создана, session_id: %s, user_id: %s, service_type: %s", session.ID.String(), req.UserID.String(), req.ServiceType)
+	logger.Printf("Service - CreateSession: сессия успешно создана, session_id: %s, user_id: %s, service_type: %s", session.ID.String(), req.UserID.String(), req.ServiceType)
+	
+	// Записываем метрику создания сессии
+	if s.metrics != nil {
+		s.metrics.RecordSession("created", req.ServiceType, strconv.FormatBool(req.WithChemistry))
+	}
+	
 	return session, nil
 }
 
 // CreateSessionWithPayment создает сессию с платежом
 func (s *ServiceImpl) CreateSessionWithPayment(req *models.CreateSessionWithPaymentRequest) (*models.CreateSessionWithPaymentResponse, error) {
-	log.Printf("Service - CreateSessionWithPayment: начало создания сессии с платежом, user_id: %s, service_type: %s", req.UserID.String(), req.ServiceType)
+	logger.Printf("Service - CreateSessionWithPayment: начало создания сессии с платежом, user_id: %s, service_type: %s", req.UserID.String(), req.ServiceType)
 	
 	// 1. Создаем сессию
 	session, err := s.CreateSession(&models.CreateSessionRequest{
@@ -159,7 +169,7 @@ func (s *ServiceImpl) CreateSessionWithPayment(req *models.CreateSessionWithPaym
 		IdempotencyKey:    req.IdempotencyKey,
 	})
 	if err != nil {
-		log.Printf("Service - CreateSessionWithPayment: ошибка создания сессии, user_id: %s, error: %v", req.UserID.String(), err)
+		logger.Printf("Service - CreateSessionWithPayment: ошибка создания сессии, user_id: %s, error: %v", req.UserID.String(), err)
 		return nil, fmt.Errorf("ошибка создания сессии: %w", err)
 	}
 
@@ -170,11 +180,11 @@ func (s *ServiceImpl) CreateSessionWithPayment(req *models.CreateSessionWithPaym
 		RentalTimeMinutes: req.RentalTimeMinutes,
 	})
 	if err != nil {
-		log.Printf("Service - CreateSessionWithPayment: ошибка расчета цены, session_id: %s, error: %v", session.ID.String(), err)
+		logger.Printf("Service - CreateSessionWithPayment: ошибка расчета цены, session_id: %s, error: %v", session.ID.String(), err)
 		return nil, fmt.Errorf("ошибка расчета цены: %w", err)
 	}
 	
-	log.Printf("Service - CreateSessionWithPayment: цена рассчитана, session_id: %s, price: %d %s", session.ID.String(), priceResp.Price, priceResp.Currency)
+	logger.Printf("Service - CreateSessionWithPayment: цена рассчитана, session_id: %s, price: %d %s", session.ID.String(), priceResp.Price, priceResp.Currency)
 
 	// 3. Создаем платеж через Payment Service
 	paymentResp, err := s.paymentService.CreatePayment(&paymentModels.CreatePaymentRequest{
@@ -378,7 +388,7 @@ func (s *ServiceImpl) StartSession(req *models.StartSessionRequest) (*models.Ses
 		if err != nil {
 			// Обрабатываем ошибку Modbus и продлеваем время сессии
 			s.modbusService.HandleModbusError(*session.BoxID, "light_on", session.ID, err)
-			log.Printf("Ошибка включения света в боксе %s: %v", *session.BoxID, err)
+			logger.Printf("Ошибка включения света в боксе %s: %v", *session.BoxID, err)
 		}
 	}
 
@@ -483,7 +493,7 @@ func (s *ServiceImpl) CompleteSession(req *models.CompleteSessionRequest) (*mode
 	if s.modbusService != nil {
 		err = s.modbusService.WriteLightCoil(*session.BoxID, false)
 		if err != nil {
-			log.Printf("Ошибка выключения света в боксе %s: %v", *session.BoxID, err)
+			logger.Printf("Ошибка выключения света в боксе %s: %v", *session.BoxID, err)
 		}
 	}
 
@@ -491,7 +501,7 @@ func (s *ServiceImpl) CompleteSession(req *models.CompleteSessionRequest) (*mode
 	if s.modbusService != nil && session.WasChemistryOn {
 		err = s.modbusService.WriteChemistryCoil(*session.BoxID, false)
 		if err != nil {
-			log.Printf("Ошибка выключения химии в боксе %s: %v", *session.BoxID, err)
+			logger.Printf("Ошибка выключения химии в боксе %s: %v", *session.BoxID, err)
 		}
 	}
 
@@ -504,12 +514,12 @@ func (s *ServiceImpl) CompleteSession(req *models.CompleteSessionRequest) (*mode
 		UsedTimeSeconds:      usedTimeSeconds,
 	}
 
-	log.Printf("Завершение сессии: SessionID=%s, RentalTime=%dmin, ExtensionTime=%dmin, UsedTime=%ds",
+	logger.Printf("Завершение сессии: SessionID=%s, RentalTime=%dmin, ExtensionTime=%dmin, UsedTime=%ds",
 		session.ID, session.RentalTimeMinutes, session.ExtensionTimeMinutes, usedTimeSeconds)
 
 	refundCalcResp, err := s.paymentService.CalculateSessionRefund(refundReq)
 	if err != nil {
-		log.Printf("Ошибка расчета возврата по сессии: %v", err)
+		logger.Printf("Ошибка расчета возврата по сессии: %v", err)
 	} else if refundCalcResp.TotalRefundAmount > 0 {
 		// Выполняем возврат по каждому платежу
 		for _, refund := range refundCalcResp.Refunds {
@@ -521,15 +531,15 @@ func (s *ServiceImpl) CompleteSession(req *models.CompleteSessionRequest) (*mode
 
 				_, err := s.paymentService.RefundPayment(refundPaymentReq)
 				if err != nil {
-					log.Printf("Ошибка выполнения возврата для платежа %s: %v", refund.PaymentID, err)
+					logger.Printf("Ошибка выполнения возврата для платежа %s: %v", refund.PaymentID, err)
 				} else {
-					log.Printf("Успешно выполнен возврат для платежа %s: Amount=%d",
+					logger.Printf("Успешно выполнен возврат для платежа %s: Amount=%d",
 						refund.PaymentID, refund.RefundAmount)
 				}
 			}
 		}
 
-		log.Printf("Успешно выполнен возврат по сессии: SessionID=%s, TotalRefundAmount=%d",
+		logger.Printf("Успешно выполнен возврат по сессии: SessionID=%s, TotalRefundAmount=%d",
 			session.ID, refundCalcResp.TotalRefundAmount)
 	}
 
@@ -554,6 +564,11 @@ func (s *ServiceImpl) CompleteSession(req *models.CompleteSessionRequest) (*mode
 				UpdatedAt:      paymentsResp.MainPayment.UpdatedAt,
 			}
 		}
+	}
+
+	// Записываем метрику завершения сессии
+	if s.metrics != nil {
+		s.metrics.RecordSession("completed", session.ServiceType, strconv.FormatBool(session.WithChemistry))
 	}
 
 	return &models.CompleteSessionResponse{
@@ -819,18 +834,18 @@ func (s *ServiceImpl) CancelSession(req *models.CancelSessionRequest) (*models.C
 
 	// Выключаем все койлы через Modbus при отмене сессии
 	if s.modbusService != nil {
-		log.Printf("Выключение всех койлов для отмененной сессии - session_id: %s, box_id: %s", session.ID, *session.BoxID)
+		logger.Printf("Выключение всех койлов для отмененной сессии - session_id: %s, box_id: %s", session.ID, *session.BoxID)
 
 		// Выключаем свет
 		if err := s.modbusService.WriteLightCoil(*session.BoxID, false); err != nil {
-			log.Printf("Ошибка выключения света при отмене сессии - session_id: %s, box_id: %s, error: %v",
+			logger.Printf("Ошибка выключения света при отмене сессии - session_id: %s, box_id: %s, error: %v",
 				session.ID, *session.BoxID, err)
 		}
 
 		// Выключаем химию (если была включена)
 		if session.WasChemistryOn {
 			if err := s.modbusService.WriteChemistryCoil(*session.BoxID, false); err != nil {
-				log.Printf("Ошибка выключения химии при отмене сессии - session_id: %s, box_id: %s, error: %v",
+				logger.Printf("Ошибка выключения химии при отмене сессии - session_id: %s, box_id: %s, error: %v",
 					session.ID, *session.BoxID, err)
 			}
 		}
@@ -885,18 +900,18 @@ func (s *ServiceImpl) CheckAndCompleteExpiredSessions() error {
 
 			// Выключаем все койлы через Modbus при истечении сессии
 			if session.BoxID != nil && s.modbusService != nil {
-				log.Printf("Выключение всех койлов для истекшей сессии - session_id: %s, box_id: %s", session.ID, *session.BoxID)
+				logger.Printf("Выключение всех койлов для истекшей сессии - session_id: %s, box_id: %s", session.ID, *session.BoxID)
 
 				// Выключаем свет
 				if err := s.modbusService.WriteLightCoil(*session.BoxID, false); err != nil {
-					log.Printf("Ошибка выключения света при истечении сессии - session_id: %s, box_id: %s, error: %v",
+					logger.Printf("Ошибка выключения света при истечении сессии - session_id: %s, box_id: %s, error: %v",
 						session.ID, *session.BoxID, err)
 				}
 
 				// Выключаем химию (если была включена)
 				if session.WasChemistryOn {
 					if err := s.modbusService.WriteChemistryCoil(*session.BoxID, false); err != nil {
-						log.Printf("Ошибка выключения химии при истечении сессии - session_id: %s, box_id: %s, error: %v",
+						logger.Printf("Ошибка выключения химии при истечении сессии - session_id: %s, box_id: %s, error: %v",
 							session.ID, *session.BoxID, err)
 					}
 				}
@@ -1031,18 +1046,18 @@ func (s *ServiceImpl) CheckAndExpireReservedSessions() error {
 
 			// Выключаем все койлы через Modbus при истечении резервирования
 			if session.BoxID != nil && s.modbusService != nil {
-				log.Printf("Выключение всех койлов для истекшего резервирования - session_id: %s, box_id: %s", session.ID, *session.BoxID)
+				logger.Printf("Выключение всех койлов для истекшего резервирования - session_id: %s, box_id: %s", session.ID, *session.BoxID)
 
 				// Выключаем свет
 				if err := s.modbusService.WriteLightCoil(*session.BoxID, false); err != nil {
-					log.Printf("Ошибка выключения света при истечении резервирования - session_id: %s, box_id: %s, error: %v",
+					logger.Printf("Ошибка выключения света при истечении резервирования - session_id: %s, box_id: %s, error: %v",
 						session.ID, *session.BoxID, err)
 				}
 
 				// Выключаем химию (если была включена)
 				if session.WasChemistryOn {
 					if err := s.modbusService.WriteChemistryCoil(*session.BoxID, false); err != nil {
-						log.Printf("Ошибка выключения химии при истечении резервирования - session_id: %s, box_id: %s, error: %v",
+						logger.Printf("Ошибка выключения химии при истечении резервирования - session_id: %s, box_id: %s, error: %v",
 							session.ID, *session.BoxID, err)
 					}
 				}
@@ -1365,7 +1380,7 @@ func (s *ServiceImpl) UpdateSessionStatus(sessionID uuid.UUID, status string) er
 	}
 
 	if status == models.SessionStatusInQueue && session.Status != models.SessionStatusCreated {
-		log.Println("сессия не может быть переведена в очередь, так как находится не в статусе created")
+		logger.Printf("сессия не может быть переведена в очередь, так как находится не в статусе created")
 		return nil
 	}
 
@@ -1701,7 +1716,7 @@ func (s *ServiceImpl) EnableChemistry(req *models.EnableChemistryRequest) (*mode
 	chemistryTimeoutResp, err := s.settingsService.GetChemistryTimeout(chemistryTimeoutReq)
 	var chemistryTimeoutMinutes int
 	if err != nil {
-		log.Printf("Ошибка получения настройки времени химии, используем значение по умолчанию: %v", err)
+		logger.Printf("Ошибка получения настройки времени химии, используем значение по умолчанию: %v", err)
 		chemistryTimeoutMinutes = 10 // По умолчанию 10 минут
 	} else {
 		chemistryTimeoutMinutes = chemistryTimeoutResp.ChemistryEnableTimeoutMinutes
@@ -1730,11 +1745,11 @@ func (s *ServiceImpl) EnableChemistry(req *models.EnableChemistryRequest) (*mode
 		if err != nil {
 			// Обрабатываем ошибку Modbus и продлеваем время сессии
 			s.modbusService.HandleModbusError(*session.BoxID, "chemistry_on", session.ID, err)
-			log.Printf("Ошибка включения химии в боксе %s: %v", *session.BoxID, err)
+			logger.Printf("Ошибка включения химии в боксе %s: %v", *session.BoxID, err)
 		}
 	}
 
-	log.Printf("Химия включена: SessionID=%s", session.ID)
+	logger.Printf("Химия включена: SessionID=%s", session.ID)
 
 	return &models.EnableChemistryResponse{
 		Session: *session,

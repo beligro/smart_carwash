@@ -22,6 +22,9 @@ FROM alpine:latest
 # Устанавливаем рабочую директорию
 WORKDIR /app
 
+# Создаем директорию для логов
+RUN mkdir -p /var/log/backend
+
 # Копируем бинарный файл из предыдущего этапа
 COPY --from=builder /app/main .
 
@@ -31,5 +34,5 @@ COPY --from=builder /app/migrations ./migrations
 # Открываем порт
 EXPOSE 8080
 
-# Запускаем приложение
+# Запускаем приложение с перенаправлением логов
 CMD ["./main"]

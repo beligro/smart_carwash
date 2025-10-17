@@ -8,6 +8,7 @@ import (
 	userService "carwash_backend/internal/domain/user/service"
 	washboxModels "carwash_backend/internal/domain/washbox/models"
 	washboxService "carwash_backend/internal/domain/washbox/service"
+	"carwash_backend/internal/metrics"
 )
 
 // Service интерфейс для бизнес-логики очереди
@@ -23,14 +24,16 @@ type ServiceImpl struct {
 	sessionService sessionService.Service
 	washboxService washboxService.Service
 	userService    userService.Service
+	metrics        *metrics.Metrics
 }
 
 // NewService создает новый экземпляр Service
-func NewService(sessionService sessionService.Service, washboxService washboxService.Service, userService userService.Service) *ServiceImpl {
+func NewService(sessionService sessionService.Service, washboxService washboxService.Service, userService userService.Service, metrics *metrics.Metrics) *ServiceImpl {
 	return &ServiceImpl{
 		sessionService: sessionService,
 		washboxService: washboxService,
 		userService:    userService,
+		metrics:        metrics,
 	}
 }
 
@@ -131,6 +134,13 @@ func (s *ServiceImpl) GetQueueStatus() (*models.QueueStatus, error) {
 
 	// Определяем, есть ли очередь хотя бы для одного типа услуги
 	hasAnyQueue := washQueueInfo.HasQueue || airDryQueueInfo.HasQueue || vacuumQueueInfo.HasQueue
+
+	// Обновляем метрики очереди
+	if s.metrics != nil {
+		s.metrics.UpdateQueueSize("wash", float64(washQueueInfo.QueueSize))
+		s.metrics.UpdateQueueSize("air_dry", float64(airDryQueueInfo.QueueSize))
+		s.metrics.UpdateQueueSize("vacuum", float64(vacuumQueueInfo.QueueSize))
+	}
 
 	// Формируем ответ
 	return &models.QueueStatus{

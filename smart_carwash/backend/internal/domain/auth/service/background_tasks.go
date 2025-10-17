@@ -1,7 +1,7 @@
 package service
 
 import (
-	"log"
+	"carwash_backend/internal/logger"
 	"time"
 
 	"carwash_backend/internal/domain/auth/repository"
@@ -21,12 +21,12 @@ func NewBackgroundTasks(repo repository.Repository) *BackgroundTasks {
 
 // DeactivateExpiredShifts деактивирует истекшие смены кассиров
 func (bt *BackgroundTasks) DeactivateExpiredShifts() error {
-	log.Println("Запуск задачи деактивации истекших смен кассиров")
+	logger.Info("Запуск задачи деактивации истекших смен кассиров")
 
 	// Получаем все активные смены
 	activeShifts, err := bt.repo.GetActiveCashierShifts()
 	if err != nil {
-		log.Printf("Ошибка получения активных смен: %v", err)
+		logger.Printf("Ошибка получения активных смен: %v", err)
 		return err
 	}
 
@@ -42,16 +42,16 @@ func (bt *BackgroundTasks) DeactivateExpiredShifts() error {
 			shift.EndedAt = &endedAt
 
 			if err := bt.repo.UpdateCashierShift(&shift); err != nil {
-				log.Printf("Ошибка деактивации смены %s: %v", shift.ID, err)
+				logger.Printf("Ошибка деактивации смены %s: %v", shift.ID, err)
 				continue
 			}
 
-			log.Printf("Смена %s деактивирована (истекла в %s)", shift.ID, shift.ExpiresAt.Format(time.RFC3339))
+			logger.Printf("Смена %s деактивирована (истекла в %s)", shift.ID, shift.ExpiresAt.Format(time.RFC3339))
 			deactivatedCount++
 		}
 	}
 
-	log.Printf("Задача деактивации завершена. Деактивировано смен: %d", deactivatedCount)
+	logger.Printf("Задача деактивации завершена. Деактивировано смен: %d", deactivatedCount)
 	return nil
 }
 
@@ -61,13 +61,13 @@ func (bt *BackgroundTasks) StartPeriodicTasks() {
 	ticker := time.NewTicker(5 * time.Minute)
 	defer ticker.Stop()
 
-	log.Println("Запуск периодических задач для кассиров")
+	logger.Info("Запуск периодических задач для кассиров")
 
 	for {
 		select {
 		case <-ticker.C:
 			if err := bt.DeactivateExpiredShifts(); err != nil {
-				log.Printf("Ошибка выполнения периодической задачи: %v", err)
+				logger.Printf("Ошибка выполнения периодической задачи: %v", err)
 			}
 		}
 	}

@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"log"
 	"net/http"
 	"os"
 	"os/signal"
@@ -16,6 +15,9 @@ import (
 	authHandlers "carwash_backend/internal/domain/auth/handlers"
 	authRepo "carwash_backend/internal/domain/auth/repository"
 	authService "carwash_backend/internal/domain/auth/service"
+	"carwash_backend/internal/logger"
+	"carwash_backend/internal/middleware"
+	"carwash_backend/internal/metrics"
 	modbusAdapter "carwash_backend/internal/domain/modbus/adapter"
 	modbusHandlers "carwash_backend/internal/domain/modbus/handlers"
 	modbusService "carwash_backend/internal/domain/modbus/service"
@@ -45,38 +47,53 @@ import (
 	"github.com/golang-migrate/migrate/v4"
 	_ "github.com/golang-migrate/migrate/v4/database/postgres"
 	_ "github.com/golang-migrate/migrate/v4/source/file"
+	"github.com/sirupsen/logrus"
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
 )
 
 func main() {
+	// Инициализируем структурированный логгер
+	logger.Init()
+	log := logger.GetLogger()
+	log.Info("Starting Smart Carwash Backend")
+
 	// Загружаем конфигурацию
 	cfg, err := config.LoadConfig()
 	if err != nil {
-		log.Fatalf("Ошибка загрузки конфигурации: %v", err)
+		logger.Fatal("Ошибка загрузки конфигурации", err)
 	}
+
+	// Инициализируем метрики
+	appMetrics := metrics.NewMetrics()
+	log.Info("Metrics initialized")
 
 	// Применяем миграции
 	if err := runMigrations(cfg); err != nil {
-		log.Printf("Ошибка применения миграций: %v", err)
+		log.WithField("error", err).Error("Ошибка применения миграций")
 	}
 
 	// Подключаемся к базе данных
 	db, err := gorm.Open(postgres.Open(cfg.GetDSN()), &gorm.Config{})
 	if err != nil {
-		log.Fatalf("Ошибка подключения к базе данных: %v", err)
+		log.WithField("error", err).Fatal("Ошибка подключения к базе данных")
 	}
 
 	// Получаем соединение с базой данных
 	sqlDB, err := db.DB()
 	if err != nil {
-		log.Fatalf("Ошибка получения соединения с базой данных: %v", err)
+		log.WithField("error", err).Fatal("Ошибка получения соединения с базой данных")
 	}
 
 	// Настраиваем пул соединений
 	sqlDB.SetMaxIdleConns(10)
 	sqlDB.SetMaxOpenConns(100)
 	sqlDB.SetConnMaxLifetime(time.Hour)
+
+	log.WithFields(logrus.Fields{
+		"max_idle_conns": 10,
+		"max_open_conns": 100,
+	}).Info("Database connected successfully")
 
 	// Создаем репозитории
 	userRepository := userRepo.NewPostgresRepository(db)
@@ -94,7 +111,7 @@ func main() {
 	settingsSvc := settingsService.NewService(settingsRepository)
 	washboxSvc := washboxService.NewService(washboxRepository, settingsSvc)
 	authSvc := authService.NewService(authRepository, cfg)
-	
+
 	// Создаем Modbus HTTP адаптер
 	modbusAdapter := modbusAdapter.NewModbusAdapter(cfg, db)
 
@@ -107,24 +124,24 @@ func main() {
 	// Создаем Telegram бота
 	bot, err := telegram.NewBot(userSvc, cfg)
 	if err != nil {
-		log.Fatalf("Ошибка создания Telegram бота: %v", err)
+		log.WithField("error", err).Fatal("Ошибка создания Telegram бота")
 	}
 
 	// Создаем сервис сессий с зависимостями
-	sessionSvc := sessionService.NewService(sessionRepository, washboxSvc, userSvc, bot, nil, modbusAdapter, settingsSvc, cfg.CashierUserID) // paymentSvc будет nil пока
+	sessionSvc := sessionService.NewService(sessionRepository, washboxSvc, userSvc, bot, nil, modbusAdapter, settingsSvc, cfg.CashierUserID, appMetrics) // paymentSvc будет nil пока
 
 	// Создаем сервис платежей с зависимостью от sessionSvc как SessionStatusUpdater и SessionExtensionUpdater
-	paymentSvc := paymentService.NewService(paymentRepository, settingsRepository, sessionSvc, sessionSvc, tinkoffClient, cfg.TinkoffTerminalKey, cfg.TinkoffSecretKey)
+	paymentSvc := paymentService.NewService(paymentRepository, settingsRepository, sessionSvc, sessionSvc, tinkoffClient, cfg.TinkoffTerminalKey, cfg.TinkoffSecretKey, appMetrics)
 
 	// Обновляем sessionSvc с правильным paymentSvc
-	sessionSvc = sessionService.NewService(sessionRepository, washboxSvc, userSvc, bot, paymentSvc, modbusAdapter, settingsSvc, cfg.CashierUserID)
+	sessionSvc = sessionService.NewService(sessionRepository, washboxSvc, userSvc, bot, paymentSvc, modbusAdapter, settingsSvc, cfg.CashierUserID, appMetrics)
 
 	// Создаем сервис очереди, который зависит от сервисов сессий, боксов и пользователей
-	queueSvc := queueService.NewService(sessionSvc, washboxSvc, userSvc)
+	queueSvc := queueService.NewService(sessionSvc, washboxSvc, userSvc, appMetrics)
 
 	// Устанавливаем вебхук для бота
 	if err := bot.SetWebhook(); err != nil {
-		log.Printf("Ошибка установки вебхука: %v", err)
+		log.WithField("error", err).Warn("Ошибка установки вебхука")
 	}
 
 	// Создаем обработчики
@@ -140,6 +157,12 @@ func main() {
 	// Создаем роутер
 	router := gin.Default()
 
+	// Добавляем middleware для логирования
+	router.Use(middleware.LoggingMiddleware())
+
+	// Добавляем middleware для метрик
+	router.Use(appMetrics.PrometheusMiddleware())
+
 	// Настраиваем CORS
 	router.Use(cors.New(cors.Config{
 		AllowOrigins:     []string{"*"},
@@ -149,6 +172,9 @@ func main() {
 		AllowCredentials: true,
 		MaxAge:           12 * time.Hour,
 	}))
+
+	// Добавляем endpoint для метрик
+	router.GET("/metrics", appMetrics.MetricsHandler())
 
 	// Инициализируем маршруты
 	api := router.Group("/")
@@ -197,13 +223,19 @@ func main() {
 
 	// Запускаем сервер в отдельной горутине
 	go func() {
+		logger.Info("Starting HTTP server", map[string]interface{}{
+			"port": os.Getenv("BACKEND_PORT"),
+		})
 		if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			log.Fatalf("Ошибка запуска сервера: %v", err)
+			logger.Fatal("Ошибка запуска сервера", err)
 		}
 	}()
 
 	// Запускаем бота в отдельной горутине
-	go bot.Start()
+	go func() {
+		logger.Info("Starting Telegram bot")
+		bot.Start()
+	}()
 
 	// Запускаем периодическую задачу для обработки очереди
 	go func() {
@@ -214,7 +246,7 @@ func main() {
 			select {
 			case <-ticker.C:
 				if err := sessionSvc.ProcessQueue(); err != nil {
-					log.Printf("Ошибка обработки очереди: %v", err)
+					log.WithField("error", err).Error("Ошибка обработки очереди")
 				}
 			case <-quit:
 				return
@@ -231,7 +263,7 @@ func main() {
 			select {
 			case <-ticker.C:
 				if err := sessionSvc.CheckAndCompleteExpiredSessions(); err != nil {
-					log.Printf("Ошибка проверки истекших сессий: %v", err)
+					log.WithField("error", err).Error("Ошибка проверки истекших сессий")
 				}
 			case <-quit:
 				return
@@ -248,7 +280,7 @@ func main() {
 			select {
 			case <-ticker.C:
 				if err := sessionSvc.CheckAndExpireReservedSessions(); err != nil {
-					log.Printf("Ошибка проверки зарезервированных сессий: %v", err)
+					log.WithField("error", err).Error("Ошибка проверки зарезервированных сессий")
 				}
 			case <-quit:
 				return
@@ -265,7 +297,7 @@ func main() {
 			select {
 			case <-ticker.C:
 				if err := sessionSvc.CheckAndNotifyExpiringReservedSessions(); err != nil {
-					log.Printf("Ошибка отправки уведомлений о скором истечении сессий: %v", err)
+					log.WithField("error", err).Error("Ошибка отправки уведомлений о скором истечении сессий")
 				}
 			case <-quit:
 				return
@@ -282,7 +314,7 @@ func main() {
 			select {
 			case <-ticker.C:
 				if err := sessionSvc.CheckAndNotifyCompletingSessions(); err != nil {
-					log.Printf("Ошибка отправки уведомлений о скором завершении сессий: %v", err)
+					log.WithField("error", err).Error("Ошибка отправки уведомлений о скором завершении сессий")
 				}
 			case <-quit:
 				return
@@ -299,7 +331,7 @@ func main() {
 			select {
 			case <-ticker.C:
 				if err := backgroundTasks.DeactivateExpiredShifts(); err != nil {
-					log.Printf("Ошибка деактивации истекших смен кассиров: %v", err)
+					log.WithField("error", err).Error("Ошибка деактивации истекших смен кассиров")
 				}
 			case <-quit:
 				return
@@ -316,15 +348,15 @@ func main() {
 
 	// Завершаем сервер
 	if err := server.Shutdown(ctx); err != nil {
-		log.Fatalf("Ошибка завершения сервера: %v", err)
+		logger.Fatal("Ошибка завершения сервера", err)
 	}
 
-	log.Println("Сервер остановлен")
+	logger.Info("Server stopped gracefully")
 }
 
 // runMigrations применяет миграции к базе данных
 func runMigrations(cfg *config.Config) error {
-	log.Println("Применение миграций...")
+	logger.Info("Applying database migrations...")
 
 	// Формируем DSN для миграций
 	dsn := fmt.Sprintf("postgres://%s:%s@%s:%d/%s?sslmode=disable",
@@ -348,7 +380,9 @@ func runMigrations(cfg *config.Config) error {
 		return fmt.Errorf("ошибка получения пути к миграциям: %v", err)
 	}
 
-	log.Printf("Путь к миграциям: %s", migrationsPath)
+	logger.Info("Migration path", map[string]interface{}{
+		"path": migrationsPath,
+	})
 
 	// Создаем URL для миграций
 	migrationsURL := fmt.Sprintf("file://%s", migrationsPath)
@@ -364,6 +398,6 @@ func runMigrations(cfg *config.Config) error {
 		return fmt.Errorf("ошибка применения миграций: %v", err)
 	}
 
-	log.Println("Миграции успешно применены")
+	logger.Info("Database migrations applied successfully")
 	return nil
 }

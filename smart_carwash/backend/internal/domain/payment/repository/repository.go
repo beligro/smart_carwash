@@ -3,7 +3,7 @@ package repository
 import (
 	"carwash_backend/internal/domain/payment/models"
 	"fmt"
-	"log"
+	"carwash_backend/internal/logger"
 	"sort"
 	"time"
 
@@ -269,7 +269,7 @@ func (r *repository) GetCashierLastShiftStatistics(req *models.CashierLastShiftS
 		EndedAt   time.Time `json:"ended_at"`
 	}
 
-	log.Printf("Searching for last shift for cashier: %s", req.CashierID)
+	logger.Printf("Searching for last shift for cashier: %s", req.CashierID)
 
 	err := r.db.Table("cashier_shifts").
 		Select("started_at, COALESCE(ended_at, expires_at) as ended_at").
@@ -280,18 +280,18 @@ func (r *repository) GetCashierLastShiftStatistics(req *models.CashierLastShiftS
 
 	if err != nil {
 		if err == gorm.ErrRecordNotFound {
-			log.Printf("No completed shifts found for cashier: %s", req.CashierID)
+			logger.Printf("No completed shifts found for cashier: %s", req.CashierID)
 			return &models.CashierLastShiftStatisticsResponse{
 				Statistics: nil,
 				Message:    "У кассира нет завершенных смен",
 				HasShift:   false,
 			}, nil
 		}
-		log.Printf("Error finding last shift: %v", err)
+		logger.Printf("Error finding last shift: %v", err)
 		return nil, err
 	}
 
-	log.Printf("Found last shift: StartedAt=%v, EndedAt=%v", lastShift.StartedAt, lastShift.EndedAt)
+	logger.Printf("Found last shift: StartedAt=%v, EndedAt=%v", lastShift.StartedAt, lastShift.EndedAt)
 
 	// Теперь получим статистику для этой смены
 	type StatResult struct {
@@ -305,7 +305,7 @@ func (r *repository) GetCashierLastShiftStatistics(req *models.CashierLastShiftS
 	var results []StatResult
 
 	// Запрос для получения статистики с группировкой по типу услуги, химии и методу платежа
-	log.Printf("Querying statistics for period: %v to %v", lastShift.StartedAt, lastShift.EndedAt)
+	logger.Printf("Querying statistics for period: %v to %v", lastShift.StartedAt, lastShift.EndedAt)
 	
 	query := r.db.Table("payments").
 		Select(`
@@ -321,11 +321,11 @@ func (r *repository) GetCashierLastShiftStatistics(req *models.CashierLastShiftS
 		Order("sessions.service_type, sessions.with_chemistry, payments.payment_method")
 
 	if err := query.Find(&results).Error; err != nil {
-		log.Printf("Error querying statistics: %v", err)
+		logger.Printf("Error querying statistics: %v", err)
 		return nil, err
 	}
 
-	log.Printf("Found %d statistics results", len(results))
+	logger.Printf("Found %d statistics results", len(results))
 
 	// Группируем результаты по методу платежа
 	cashierStats := make(map[string]models.ServiceTypeStatistics)

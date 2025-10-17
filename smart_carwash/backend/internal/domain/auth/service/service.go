@@ -3,7 +3,7 @@ package service
 import (
 	"errors"
 	"fmt"
-	"log"
+	"carwash_backend/internal/logger"
 	"time"
 
 	"carwash_backend/internal/config"
@@ -113,34 +113,34 @@ func (s *ServiceImpl) LoginAdmin(username, password string) (*models.LoginRespon
 
 // LoginCashier авторизует кассира
 func (s *ServiceImpl) LoginCashier(username, password string) (*models.LoginResponse, error) {
-	log.Printf("Попытка входа кассира: username=%s", username)
+	logger.Printf("Попытка входа кассира: username=%s", username)
 	
 	// Получаем кассира по имени пользователя
 	cashier, err := s.repo.GetCashierByUsername(username)
 	if err != nil {
-		log.Printf("Ошибка получения кассира: %v", err)
+		logger.Printf("Ошибка получения кассира: %v", err)
 		if errors.Is(err, repository.ErrCashierNotFound) {
 			return nil, ErrInvalidCredentials
 		}
 		return nil, err
 	}
 
-	log.Printf("Кассир найден: ID=%s, Username=%s, IsActive=%t", cashier.ID, cashier.Username, cashier.IsActive)
+	logger.Printf("Кассир найден: ID=%s, Username=%s, IsActive=%t", cashier.ID, cashier.Username, cashier.IsActive)
 
 	// Проверяем, активен ли кассир
 	if !cashier.IsActive {
-		log.Printf("Кассир неактивен: ID=%s", cashier.ID)
+		logger.Printf("Кассир неактивен: ID=%s", cashier.ID)
 		return nil, ErrCashierInactive
 	}
 
 	// Проверяем пароль
-	log.Printf("Проверка пароля для кассира: ID=%s", cashier.ID)
+	logger.Printf("Проверка пароля для кассира: ID=%s", cashier.ID)
 	if err := bcrypt.CompareHashAndPassword([]byte(cashier.PasswordHash), []byte(password)); err != nil {
-		log.Printf("Неверный пароль для кассира: ID=%s, error=%v", cashier.ID, err)
+		logger.Printf("Неверный пароль для кассира: ID=%s, error=%v", cashier.ID, err)
 		return nil, ErrInvalidCredentials
 	}
 
-	log.Printf("Пароль верный для кассира: ID=%s", cashier.ID)
+	logger.Printf("Пароль верный для кассира: ID=%s", cashier.ID)
 
 	// Создаем JWT токен для кассира
 	claims := models.TokenClaims{
@@ -641,34 +641,34 @@ func (s *ServiceImpl) generateToken(claims models.TokenClaims) (string, time.Tim
 
 // LoginCleaner авторизует уборщика
 func (s *ServiceImpl) LoginCleaner(username, password string) (*models.LoginResponse, error) {
-	log.Printf("Попытка входа уборщика: username=%s", username)
+	logger.Printf("Попытка входа уборщика: username=%s", username)
 	
 	// Получаем уборщика по имени пользователя
 	cleaner, err := s.repo.GetCleanerByUsername(username)
 	if err != nil {
-		log.Printf("Ошибка получения уборщика: %v", err)
+		logger.Printf("Ошибка получения уборщика: %v", err)
 		if errors.Is(err, repository.ErrCleanerNotFound) {
 			return nil, ErrInvalidCredentials
 		}
 		return nil, err
 	}
 
-	log.Printf("Уборщик найден: ID=%s, Username=%s, IsActive=%t", cleaner.ID, cleaner.Username, cleaner.IsActive)
+	logger.Printf("Уборщик найден: ID=%s, Username=%s, IsActive=%t", cleaner.ID, cleaner.Username, cleaner.IsActive)
 
 	// Проверяем, активен ли уборщик
 	if !cleaner.IsActive {
-		log.Printf("Уборщик неактивен: ID=%s", cleaner.ID)
+		logger.Printf("Уборщик неактивен: ID=%s", cleaner.ID)
 		return nil, ErrCleanerInactive
 	}
 
 	// Проверяем пароль
-	log.Printf("Проверка пароля для уборщика: ID=%s", cleaner.ID)
+	logger.Printf("Проверка пароля для уборщика: ID=%s", cleaner.ID)
 	if err := bcrypt.CompareHashAndPassword([]byte(cleaner.PasswordHash), []byte(password)); err != nil {
-		log.Printf("Неверный пароль для уборщика: ID=%s, error=%v", cleaner.ID, err)
+		logger.Printf("Неверный пароль для уборщика: ID=%s, error=%v", cleaner.ID, err)
 		return nil, ErrInvalidCredentials
 	}
 
-	log.Printf("Пароль верный для уборщика: ID=%s", cleaner.ID)
+	logger.Printf("Пароль верный для уборщика: ID=%s", cleaner.ID)
 
 	// Создаем JWT токен для уборщика
 	claims := models.TokenClaims{
@@ -699,11 +699,11 @@ func (s *ServiceImpl) LoginCleaner(username, password string) (*models.LoginResp
 	now := time.Now()
 	cleaner.LastLogin = &now
 	if err := s.repo.UpdateCleaner(cleaner); err != nil {
-		log.Printf("Ошибка обновления времени последнего входа уборщика: %v", err)
+		logger.Printf("Ошибка обновления времени последнего входа уборщика: %v", err)
 		// Не возвращаем ошибку, так как авторизация прошла успешно
 	}
 
-	log.Printf("Успешная авторизация уборщика: ID=%s, Username=%s", cleaner.ID, cleaner.Username)
+	logger.Printf("Успешная авторизация уборщика: ID=%s, Username=%s", cleaner.ID, cleaner.Username)
 
 	return &models.LoginResponse{
 		Token:     token,
