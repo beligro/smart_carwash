@@ -2,7 +2,7 @@ package adapter
 
 import (
 	"fmt"
-	"log"
+	"carwash_backend/internal/logger"
 	"time"
 
 	"github.com/google/uuid"
@@ -31,41 +31,41 @@ func NewModbusAdapter(config *config.Config, db *gorm.DB) *ModbusAdapter {
 
 // WriteCoil записывает значение в coil Modbus устройства
 func (a *ModbusAdapter) WriteCoil(boxID uuid.UUID, register string, value bool) error {
-	log.Printf("ModbusAdapter WriteCoil - box_id: %s, register: %s, value: %v", boxID, register, value)
+	logger.Printf("ModbusAdapter WriteCoil - box_id: %s, register: %s, value: %v", boxID, register, value)
 	return a.httpClient.WriteCoil(boxID, register, value)
 }
 
 // WriteLightCoil включает или выключает свет для бокса
 func (a *ModbusAdapter) WriteLightCoil(boxID uuid.UUID, value bool) error {
-	log.Printf("ModbusAdapter WriteLightCoil - box_id: %s, value: %v", boxID, value)
+	logger.Printf("ModbusAdapter WriteLightCoil - box_id: %s, value: %v", boxID, value)
 	return a.httpClient.WriteLightCoil(boxID, value)
 }
 
 // WriteChemistryCoil включает или выключает химию для бокса
 func (a *ModbusAdapter) WriteChemistryCoil(boxID uuid.UUID, value bool) error {
-	log.Printf("ModbusAdapter WriteChemistryCoil - box_id: %s, value: %v", boxID, value)
+	logger.Printf("ModbusAdapter WriteChemistryCoil - box_id: %s, value: %v", boxID, value)
 	return a.httpClient.WriteChemistryCoil(boxID, value)
 }
 
 // HandleModbusError обрабатывает ошибку Modbus и продлевает время сессии
 func (a *ModbusAdapter) HandleModbusError(boxID uuid.UUID, operation string, sessionID uuid.UUID, err error) error {
-	log.Printf("ModbusAdapter error handler - box_id: %s, operation: %s, session_id: %s, error: %v",
+	logger.Printf("ModbusAdapter error handler - box_id: %s, operation: %s, session_id: %s, error: %v",
 		boxID, operation, sessionID, err)
 
 	// Проверяем, не связана ли ошибка с отключенным Modbus
 	if err != nil && (err.Error() == "Modbus протокол отключен в конфигурации" ||
 		err.Error() == "Modbus отключен, пропускаем запись в регистр") {
 		// Если Modbus отключен, не продлеваем время сессии
-		log.Printf("Modbus отключен, не продлеваем время сессии - session_id: %s", sessionID)
+		logger.Printf("Modbus отключен, не продлеваем время сессии - session_id: %s", sessionID)
 		return err
 	}
 
 	// Продлеваем время сессии на 5 минут только для реальных ошибок Modbus
 	if err := a.ExtendSessionTime(sessionID, 5*time.Minute); err != nil {
-		log.Printf("Не удалось продлить время сессии - session_id: %s, error: %v", sessionID, err)
+		logger.Printf("Не удалось продлить время сессии - session_id: %s, error: %v", sessionID, err)
 	}
 
-	log.Printf("Modbus ошибка через HTTP клиент - session_id: %s, error: %v", sessionID, err)
+	logger.Printf("Modbus ошибка через HTTP клиент - session_id: %s, error: %v", sessionID, err)
 
 	return err
 }
@@ -93,7 +93,7 @@ func (a *ModbusAdapter) ExtendSessionTime(sessionID uuid.UUID, duration time.Dur
 
 // TestConnection тестирует соединение с Modbus устройством
 func (a *ModbusAdapter) TestConnection(boxID uuid.UUID) error {
-	log.Printf("ModbusAdapter TestConnection - box_id: %s", boxID)
+	logger.Printf("ModbusAdapter TestConnection - box_id: %s", boxID)
 	
 	resp, err := a.httpClient.TestConnection(boxID)
 	if err != nil {
@@ -109,7 +109,7 @@ func (a *ModbusAdapter) TestConnection(boxID uuid.UUID) error {
 
 // TestCoil тестирует запись в конкретный регистр
 func (a *ModbusAdapter) TestCoil(boxID uuid.UUID, register string, value bool) error {
-	log.Printf("ModbusAdapter TestCoil - box_id: %s, register: %s, value: %v", boxID, register, value)
+	logger.Printf("ModbusAdapter TestCoil - box_id: %s, register: %s, value: %v", boxID, register, value)
 	
 	resp, err := a.httpClient.TestCoil(boxID, register, value)
 	if err != nil {

@@ -12,7 +12,7 @@ import (
 	"sort"
 	"strings"
 	"time"
-	"log"
+	"carwash_backend/internal/logger"
 
 	"carwash_backend/internal/domain/payment/service"
 )
@@ -188,8 +188,8 @@ func (c *Client) generateToken(params map[string]interface{}) string {
         tokenParams[k] = v
     }
 
-	log.Println("tokenParams: ", tokenParams)
-	log.Println("c.secretKey: ", c.secretKey)
+	logger.Printf("tokenParams: %v", tokenParams)
+	logger.Printf("c.secretKey: %s", c.secretKey)
     
     // Добавляем пароль
     tokenParams["Password"] = c.secretKey
@@ -205,9 +205,9 @@ func (c *Client) generateToken(params map[string]interface{}) string {
     sort.Strings(keys)
     
     // ОТЛАДКА: выводим что участвует в токене
-    log.Printf("Token generation params (sorted):\n")
+    logger.Printf("Token generation params (sorted):\n")
     for _, key := range keys {
-        log.Printf("%s: %v\n", key, tokenParams[key])
+        logger.Printf("%s: %v\n", key, tokenParams[key])
     }
     
     // Конкатенируем значения
@@ -218,12 +218,12 @@ func (c *Client) generateToken(params map[string]interface{}) string {
     }
     
     concatenated := strings.Join(values, "")
-    log.Printf("Concatenated string: %s\n", concatenated)
+    logger.Printf("Concatenated string: %s\n", concatenated)
     
     hash := sha256.Sum256([]byte(concatenated))
     token := fmt.Sprintf("%x", hash)
     
-    log.Printf("Generated token: %s\n", token)
+    logger.Printf("Generated token: %s\n", token)
     return token
 }
 

@@ -4,9 +4,9 @@ import (
 	"carwash_backend/internal/domain/payment/models"
 	"carwash_backend/internal/domain/payment/service"
 	authService "carwash_backend/internal/domain/auth/service"
+	"carwash_backend/internal/logger"
 	"net/http"
 	"strconv"
-	"log"
 	"time"
 	"strings"
 
@@ -66,14 +66,14 @@ func (h *Handler) calculatePrice(c *gin.Context) {
 	var req models.CalculatePriceRequest
 
 	if err := c.ShouldBindJSON(&req); err != nil {
-		log.Printf("API Error - calculatePrice: ошибка парсинга JSON, error: %v", err)
+		logger.WithContext(c).Errorf("API Error - calculatePrice: ошибка парсинга JSON, error: %v", err)
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
 
 	response, err := h.service.CalculatePrice(&req)
 	if err != nil {
-		log.Printf("API Error - calculatePrice: ошибка расчета цены, service_type: %s, rental_time: %d, with_chemistry: %t, error: %v", req.ServiceType, req.RentalTimeMinutes, req.WithChemistry, err)
+		logger.WithContext(c).Errorf("API Error - calculatePrice: ошибка расчета цены, service_type: %s, rental_time: %d, with_chemistry: %t, error: %v", req.ServiceType, req.RentalTimeMinutes, req.WithChemistry, err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
@@ -86,14 +86,14 @@ func (h *Handler) calculateExtensionPrice(c *gin.Context) {
 	var req models.CalculateExtensionPriceRequest
 
 	if err := c.ShouldBindJSON(&req); err != nil {
-		log.Printf("API Error - calculateExtensionPrice: ошибка парсинга JSON, error: %v", err)
+		logger.WithContext(c).Errorf("API Error - calculateExtensionPrice: ошибка парсинга JSON, error: %v", err)
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
 
 	response, err := h.service.CalculateExtensionPrice(&req)
 	if err != nil {
-		log.Printf("API Error - calculateExtensionPrice: ошибка расчета цены продления, service_type: %s, extension_minutes: %d, error: %v", req.ServiceType, req.ExtensionTimeMinutes, err)
+		logger.WithContext(c).Errorf("API Error - calculateExtensionPrice: ошибка расчета цены продления, service_type: %s, extension_minutes: %d, error: %v", req.ServiceType, req.ExtensionTimeMinutes, err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
@@ -106,14 +106,14 @@ func (h *Handler) createPayment(c *gin.Context) {
 	var req models.CreatePaymentRequest
 
 	if err := c.ShouldBindJSON(&req); err != nil {
-		log.Printf("API Error - createPayment: ошибка парсинга JSON, error: %v", err)
+		logger.WithContext(c).Errorf("API Error - createPayment: ошибка парсинга JSON, error: %v", err)
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
 
 	response, err := h.service.CreatePayment(&req)
 	if err != nil {
-		log.Printf("API Error - createPayment: ошибка создания платежа, session_id: %s, amount: %d, error: %v", req.SessionID.String(), req.Amount, err)
+		logger.WithContext(c).Errorf("API Error - createPayment: ошибка создания платежа, session_id: %s, amount: %d, error: %v", req.SessionID.String(), req.Amount, err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
@@ -125,14 +125,14 @@ func (h *Handler) createPayment(c *gin.Context) {
 func (h *Handler) getPaymentStatus(c *gin.Context) {
 	paymentIDStr := c.Query("payment_id")
 	if paymentIDStr == "" {
-		log.Printf("API Error - getPaymentStatus: не указан ID платежа")
+		logger.WithContext(c).Errorf("API Error - getPaymentStatus: не указан ID платежа")
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Не указан ID платежа"})
 		return
 	}
 
 	paymentID, err := uuid.Parse(paymentIDStr)
 	if err != nil {
-		log.Printf("API Error - getPaymentStatus: некорректный ID платежа '%s', error: %v", paymentIDStr, err)
+		logger.WithContext(c).Errorf("API Error - getPaymentStatus: некорректный ID платежа '%s', error: %v", paymentIDStr, err)
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Некорректный ID платежа"})
 		return
 	}
@@ -141,7 +141,7 @@ func (h *Handler) getPaymentStatus(c *gin.Context) {
 		PaymentID: paymentID,
 	})
 	if err != nil {
-		log.Printf("API Error - getPaymentStatus: платеж не найден, payment_id: %s, error: %v", paymentID.String(), err)
+		logger.WithContext(c).Errorf("API Error - getPaymentStatus: платеж не найден, payment_id: %s, error: %v", paymentID.String(), err)
 		c.JSON(http.StatusNotFound, gin.H{"error": "Платеж не найден"})
 		return
 	}
@@ -155,14 +155,14 @@ func (h *Handler) handleWebhook(c *gin.Context) {
 	// Парсим webhook
 	var webhookReq models.WebhookRequest
 	if err := c.ShouldBindJSON(&webhookReq); err != nil {
-		log.Printf("API Error - handleWebhook: ошибка привязки JSON, error: %v", err)
+		logger.WithContext(c).Errorf("API Error - handleWebhook: ошибка привязки JSON, error: %v", err)
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Неверный формат webhook"})
 		return
 	}
 
 	// Обрабатываем webhook
 	if err := h.service.HandleWebhook(&webhookReq); err != nil {
-		log.Printf("API Error - handleWebhook: ошибка обработки webhook, terminal_key: %s, order_id: %s, error: %v", webhookReq.TerminalKey, webhookReq.OrderId, err)
+		logger.WithContext(c).Errorf("API Error - handleWebhook: ошибка обработки webhook, terminal_key: %s, order_id: %s, error: %v", webhookReq.TerminalKey, webhookReq.OrderId, err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
@@ -231,17 +231,17 @@ func (h *Handler) adminListPayments(c *gin.Context) {
 	}
 
 	// Логируем запрос с мета-параметрами
-	log.Printf("Запрос списка платежей (админка): PaymentID=%v, SessionID=%v, UserID=%v, Status=%v, PaymentType=%v, PaymentMethod=%v, Limit=%v, Offset=%v", 
+	logger.WithContext(c).Infof("Запрос списка платежей (админка): PaymentID=%v, SessionID=%v, UserID=%v, Status=%v, PaymentType=%v, PaymentMethod=%v, Limit=%v, Offset=%v", 
 		req.PaymentID, req.SessionID, req.UserID, req.Status, req.PaymentType, req.PaymentMethod, req.Limit, req.Offset)
 
 	response, err := h.service.ListPayments(&req)
 	if err != nil {
-		log.Printf("Ошибка получения списка платежей: %v", err)
+		logger.WithContext(c).Errorf("Ошибка получения списка платежей: %v", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
 
-	log.Printf("Получен список платежей: Total=%d, Limit=%d, Offset=%d", 
+	logger.WithContext(c).Infof("Получен список платежей: Total=%d, Limit=%d, Offset=%d", 
 		response.Total, response.Limit, response.Offset)
 
 	c.JSON(http.StatusOK, response)
@@ -257,7 +257,7 @@ func (h *Handler) adminRefundPayment(c *gin.Context) {
 	}
 
 	// Логируем запрос с мета-параметрами
-	log.Printf("Запрос на возврат платежа (админка): PaymentID=%s, Amount=%d", 
+	logger.WithContext(c).Infof("Запрос на возврат платежа (админка): PaymentID=%s, Amount=%d", 
 		req.PaymentID, req.Amount)
 
 	response, err := h.service.RefundPayment(&models.RefundPaymentRequest{
@@ -265,7 +265,7 @@ func (h *Handler) adminRefundPayment(c *gin.Context) {
 		Amount:    req.Amount,
 	})
 	if err != nil {
-		log.Printf("Ошибка возврата платежа: %v", err)
+		logger.WithContext(c).Errorf("Ошибка возврата платежа: %v", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
@@ -277,7 +277,7 @@ func (h *Handler) adminRefundPayment(c *gin.Context) {
 		Message: "Возврат выполнен успешно",
 	}
 
-	log.Printf("Успешно выполнен возврат платежа: PaymentID=%s, Amount=%d", 
+	logger.WithContext(c).Infof("Успешно выполнен возврат платежа: PaymentID=%s, Amount=%d", 
 		req.PaymentID, req.Amount)
 
 	c.JSON(http.StatusOK, adminResponse)
@@ -293,17 +293,17 @@ func (h *Handler) calculateSessionRefund(c *gin.Context) {
 	}
 
 	// Логируем запрос с мета-параметрами
-	log.Printf("Запрос на расчет возврата по сессии: SessionID=%s, ServiceType=%s, UsedTime=%ds", 
+	logger.WithContext(c).Infof("Запрос на расчет возврата по сессии: SessionID=%s, ServiceType=%s, UsedTime=%ds", 
 		req.SessionID, req.ServiceType, req.UsedTimeSeconds)
 
 	response, err := h.service.CalculateSessionRefund(&req)
 	if err != nil {
-		log.Printf("Ошибка расчета возврата по сессии: %v", err)
+		logger.WithContext(c).Errorf("Ошибка расчета возврата по сессии: %v", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
 
-	log.Printf("Рассчитан возврат по сессии: SessionID=%s, TotalRefundAmount=%d", 
+	logger.WithContext(c).Infof("Рассчитан возврат по сессии: SessionID=%s, TotalRefundAmount=%d", 
 		req.SessionID, response.TotalRefundAmount)
 
 	c.JSON(http.StatusOK, response)
@@ -345,12 +345,12 @@ func (h *Handler) adminGetPaymentStatistics(c *gin.Context) {
 		req.ServiceType = &serviceType
 	}
 
-	log.Printf("Admin payment statistics request: user_id=%v, date_from=%v, date_to=%v, service_type=%v",
+	logger.WithContext(c).Infof("Admin payment statistics request: user_id=%v, date_from=%v, date_to=%v, service_type=%v",
 		req.UserID, req.DateFrom, req.DateTo, req.ServiceType)
 
 	response, err := h.service.GetPaymentStatistics(&req)
 	if err != nil {
-		log.Printf("Error getting payment statistics: %v", err)
+		logger.WithContext(c).Infof("Error getting payment statistics: %v", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
@@ -470,22 +470,22 @@ func (h *Handler) cashierGetLastShiftStatistics(c *gin.Context) {
 	}
 
 	// Логируем запрос
-	log.Printf("Cashier last shift statistics request: CashierID=%s", cashierID)
+	logger.WithContext(c).Infof("Cashier last shift statistics request: CashierID=%s", cashierID)
 
 	// Получаем статистику
 	response, err := h.service.GetCashierLastShiftStatistics(req)
 	if err != nil {
-		log.Printf("Error getting cashier last shift statistics: %v", err)
+		logger.WithContext(c).Infof("Error getting cashier last shift statistics: %v", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
 
 	// Логируем результат
 	if response.HasShift {
-		log.Printf("Successfully retrieved cashier last shift statistics: CashierID=%s, HasShift=%t, Message=%s",
+		logger.WithContext(c).Infof("Successfully retrieved cashier last shift statistics: CashierID=%s, HasShift=%t, Message=%s",
 			cashierID, response.HasShift, response.Message)
 	} else {
-		log.Printf("No completed shifts found for cashier: CashierID=%s, Message=%s",
+		logger.WithContext(c).Infof("No completed shifts found for cashier: CashierID=%s, Message=%s",
 			cashierID, response.Message)
 	}
 

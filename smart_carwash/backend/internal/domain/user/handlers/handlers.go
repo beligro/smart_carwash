@@ -1,7 +1,7 @@
 package handlers
 
 import (
-	"log"
+	"carwash_backend/internal/logger"
 	"net/http"
 	"strconv"
 
@@ -46,7 +46,7 @@ func (h *Handler) getUserByTelegramID(c *gin.Context) {
 	// Получаем telegram_id из query параметра
 	telegramIDStr := c.Query("telegram_id")
 	if telegramIDStr == "" {
-		log.Printf("API Error - getUserByTelegramID: не указан Telegram ID")
+		logger.WithContext(c).Errorf("API Error - getUserByTelegramID: не указан Telegram ID")
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Не указан Telegram ID"})
 		return
 	}
@@ -54,7 +54,7 @@ func (h *Handler) getUserByTelegramID(c *gin.Context) {
 	// Преобразуем строку в int64
 	telegramID, err := strconv.ParseInt(telegramIDStr, 10, 64)
 	if err != nil {
-		log.Printf("API Error - getUserByTelegramID: некорректный Telegram ID '%s', error: %v", telegramIDStr, err)
+		logger.WithContext(c).Errorf("API Error - getUserByTelegramID: некорректный Telegram ID '%s', error: %v", telegramIDStr, err)
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Некорректный Telegram ID"})
 		return
 	}
@@ -62,7 +62,7 @@ func (h *Handler) getUserByTelegramID(c *gin.Context) {
 	// Получаем пользователя по telegram_id
 	user, err := h.service.GetUserByTelegramID(telegramID)
 	if err != nil {
-		log.Printf("API Error - getUserByTelegramID: пользователь не найден для telegram_id: %d, error: %v", telegramID, err)
+		logger.WithContext(c).Errorf("API Error - getUserByTelegramID: пользователь не найден для telegram_id: %d, error: %v", telegramID, err)
 		c.JSON(http.StatusNotFound, gin.H{"error": "Пользователь не найден. Возможно, вы не зарегистрированы в боте. Пожалуйста, нажмите /start в боте."})
 		return
 	}
@@ -77,7 +77,7 @@ func (h *Handler) createUser(c *gin.Context) {
 
 	// Парсим JSON из тела запроса
 	if err := c.ShouldBindJSON(&req); err != nil {
-		log.Printf("API Error - createUser: ошибка парсинга JSON, error: %v", err)
+		logger.WithContext(c).Errorf("API Error - createUser: ошибка парсинга JSON, error: %v", err)
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
@@ -85,7 +85,7 @@ func (h *Handler) createUser(c *gin.Context) {
 	// Создаем пользователя
 	user, err := h.service.CreateUser(&req)
 	if err != nil {
-		log.Printf("API Error - createUser: ошибка создания пользователя, telegram_id: %d, error: %v", req.TelegramID, err)
+		logger.WithContext(c).Errorf("API Error - createUser: ошибка создания пользователя, telegram_id: %d, error: %v", req.TelegramID, err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
@@ -100,7 +100,7 @@ func (h *Handler) updateCarNumber(c *gin.Context) {
 
 	// Парсим JSON из тела запроса
 	if err := c.ShouldBindJSON(&req); err != nil {
-		log.Printf("API Error - updateCarNumber: ошибка парсинга JSON, error: %v", err)
+		logger.WithContext(c).Errorf("API Error - updateCarNumber: ошибка парсинга JSON, error: %v", err)
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
@@ -114,7 +114,7 @@ func (h *Handler) updateCarNumber(c *gin.Context) {
 	// Обновляем номер машины
 	resp, err := h.service.UpdateCarNumber(&req)
 	if err != nil {
-		log.Printf("API Error - updateCarNumber: ошибка обновления номера машины, user_id: %s, car_number: %s, error: %v", req.UserID.String(), req.CarNumber, err)
+		logger.WithContext(c).Errorf("API Error - updateCarNumber: ошибка обновления номера машины, user_id: %s, car_number: %s, error: %v", req.UserID.String(), req.CarNumber, err)
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}

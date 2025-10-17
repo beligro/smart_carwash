@@ -2,7 +2,7 @@ package telegram
 
 import (
 	"fmt"
-	"log"
+	"carwash_backend/internal/logger"
 	"strings"
 
 	"carwash_backend/internal/config"
@@ -45,7 +45,7 @@ func NewBot(service service.Service, config *config.Config) (*Bot, error) {
 	// Устанавливаем режим отладки
 	bot.Debug = false
 
-	log.Printf("Авторизован как %s", bot.Self.UserName)
+	logger.Printf("Авторизован как %s", bot.Self.UserName)
 
 	return &Bot{
 		bot:     bot,
@@ -56,16 +56,16 @@ func NewBot(service service.Service, config *config.Config) (*Bot, error) {
 
 // Start запускает бота в режиме long polling
 func (b *Bot) Start() {
-	log.Println("Бот запущен в режиме long polling")
+	logger.Info("Бот запущен в режиме long polling")
 
 	// Удаляем вебхук перед использованием long polling
 	_, err := b.bot.Request(tgbotapi.DeleteWebhookConfig{})
 	if err != nil {
-		log.Printf("Ошибка удаления вебхука: %v", err)
+		logger.Printf("Ошибка удаления вебхука: %v", err)
 		return
 	}
 
-	log.Println("Вебхук удален, бот работает в режиме long polling")
+	logger.Info("Вебхук удален, бот работает в режиме long polling")
 
 	// Настраиваем обновления
 	u := tgbotapi.NewUpdate(0)
@@ -108,7 +108,7 @@ func (b *Bot) SetWebhook() error {
 		return fmt.Errorf("ошибка установки вебхука: %v", err)
 	}
 
-	log.Printf("Вебхук установлен на %s", webhookURL)
+	logger.Printf("Вебхук установлен на %s", webhookURL)
 	return nil
 }
 
@@ -135,7 +135,7 @@ func (b *Bot) handleStartCommand(message *tgbotapi.Message) {
 	})
 
 	if err != nil {
-		log.Printf("Ошибка создания пользователя: %v", err)
+		logger.Printf("Ошибка создания пользователя: %v", err)
 		b.sendErrorMessage(message.Chat.ID)
 		return
 	}
@@ -151,7 +151,7 @@ func (b *Bot) handleStartCommand(message *tgbotapi.Message) {
 
 	_, err = b.bot.Send(msg)
 	if err != nil {
-		log.Printf("Ошибка отправки сообщения: %v", err)
+		logger.Printf("Ошибка отправки сообщения: %v", err)
 	}
 }
 
@@ -168,7 +168,7 @@ func (b *Bot) sendHelpMessage(chatID int64) {
 
 	_, err := b.bot.Send(msg)
 	if err != nil {
-		log.Printf("Ошибка отправки сообщения: %v", err)
+		logger.Printf("Ошибка отправки сообщения: %v", err)
 	}
 }
 
@@ -178,7 +178,7 @@ func (b *Bot) sendErrorMessage(chatID int64) {
 	msg := tgbotapi.NewMessage(chatID, "Произошла ошибка. Пожалуйста, попробуйте позже.")
 	_, err := b.bot.Send(msg)
 	if err != nil {
-		log.Printf("Ошибка отправки сообщения: %v", err)
+		logger.Printf("Ошибка отправки сообщения: %v", err)
 	}
 }
 

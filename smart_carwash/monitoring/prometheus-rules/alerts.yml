@@ -1,0 +1,199 @@
+groups:
+  - name: smart_carwash_alerts
+    rules:
+      # Системные алерты
+      - alert: HighCPUUsage
+        expr: 100 - (avg by (instance) (irate(node_cpu_seconds_total{mode="idle"}[5m])) * 100) > 80
+        for: 5m
+        labels:
+          severity: warning
+          service: system
+        annotations:
+          summary: "High CPU usage detected"
+          description: "CPU usage is above 80% for more than 5 minutes on {{ $labels.instance }}"
+
+      - alert: HighMemoryUsage
+        expr: 100 * (1 - ((node_memory_MemAvailable_bytes or node_memory_MemFree_bytes) / node_memory_MemTotal_bytes)) > 85
+        for: 5m
+        labels:
+          severity: warning
+          service: system
+        annotations:
+          summary: "High memory usage detected"
+          description: "Memory usage is above 85% for more than 5 minutes on {{ $labels.instance }}"
+
+      - alert: HighDiskUsage
+        expr: 100 - ((node_filesystem_avail_bytes{mountpoint="/"} * 100) / node_filesystem_size_bytes{mountpoint="/"}) > 90
+        for: 5m
+        labels:
+          severity: critical
+          service: system
+        annotations:
+          summary: "High disk usage detected"
+          description: "Disk usage is above 90% for more than 5 minutes on {{ $labels.instance }}"
+
+      - alert: HighLoadAverage
+        expr: node_load1 > 4
+        for: 5m
+        labels:
+          severity: warning
+          service: system
+        annotations:
+          summary: "High load average detected"
+          description: "Load average is above 4 for more than 5 minutes on {{ $labels.instance }}"
+
+      # Алерты приложения
+      - alert: HighHTTPErrorRate
+        expr: sum(rate(http_requests_total{status=~"4..|5.."}[5m])) / sum(rate(http_requests_total[5m])) * 100 > 5
+        for: 5m
+        labels:
+          severity: warning
+          service: application
+        annotations:
+          summary: "High HTTP error rate detected"
+          description: "HTTP error rate is above 5% for more than 5 minutes"
+
+      - alert: HighHTTPResponseTime
+        expr: histogram_quantile(0.95, sum(rate(http_request_duration_seconds_bucket[5m])) by (le)) > 2
+        for: 5m
+        labels:
+          severity: warning
+          service: application
+        annotations:
+          summary: "High HTTP response time detected"
+          description: "95th percentile HTTP response time is above 2 seconds for more than 5 minutes"
+
+      - alert: TooManyActiveConnections
+        expr: active_connections > 100
+        for: 5m
+        labels:
+          severity: warning
+          service: application
+        annotations:
+          summary: "Too many active connections"
+          description: "Number of active connections is above 100 for more than 5 minutes"
+
+      # Алерты базы данных
+      - alert: HighDatabaseConnections
+        expr: pg_stat_database_numbackends > 80
+        for: 5m
+        labels:
+          severity: warning
+          service: database
+        annotations:
+          summary: "High database connections detected"
+          description: "Number of database connections is above 80 for more than 5 minutes"
+
+      - alert: DatabaseDown
+        expr: up{job="postgres-exporter"} == 0
+        for: 1m
+        labels:
+          severity: critical
+          service: database
+        annotations:
+          summary: "Database is down"
+          description: "PostgreSQL exporter is not responding"
+
+      # Алерты сервисов
+      - alert: BackendDown
+        expr: up{job="backend"} == 0
+        for: 1m
+        labels:
+          severity: critical
+          service: backend
+        annotations:
+          summary: "Backend service is down"
+          description: "Backend service is not responding"
+
+      - alert: FrontendDown
+        expr: up{job="frontend"} == 0
+        for: 1m
+        labels:
+          severity: critical
+          service: frontend
+        annotations:
+          summary: "Frontend service is down"
+          description: "Frontend service is not responding"
+
+      - alert: NginxDown
+        expr: up{job="nginx"} == 0
+        for: 1m
+        labels:
+          severity: critical
+          service: nginx
+        annotations:
+          summary: "Nginx service is down"
+          description: "Nginx service is not responding"
+
+      # Алерты мониторинга
+      - alert: PrometheusDown
+        expr: up{job="prometheus"} == 0
+        for: 1m
+        labels:
+          severity: critical
+          service: monitoring
+        annotations:
+          summary: "Prometheus is down"
+          description: "Prometheus is not responding"
+
+      - alert: LokiDown
+        expr: up{job="loki"} == 0
+        for: 1m
+        labels:
+          severity: critical
+          service: monitoring
+        annotations:
+          summary: "Loki is down"
+          description: "Loki is not responding"
+
+      - alert: GrafanaDown
+        expr: up{job="grafana"} == 0
+        for: 1m
+        labels:
+          severity: critical
+          service: monitoring
+        annotations:
+          summary: "Grafana is down"
+          description: "Grafana is not responding"
+
+      # Алерты бизнес-логики
+      - alert: HighQueueSize
+        expr: queue_size > 10
+        for: 5m
+        labels:
+          severity: warning
+          service: business
+        annotations:
+          summary: "High queue size detected"
+          description: "Queue size is above 10 for more than 5 minutes"
+
+      - alert: HighErrorRate
+        expr: sum(rate(errors_total[5m])) > 0.1
+        for: 5m
+        labels:
+          severity: warning
+          service: business
+        annotations:
+          summary: "High error rate detected"
+          description: "Application error rate is above 0.1 errors per second for more than 5 minutes"
+
+      - alert: NoSessionsCreated
+        expr: increase(sessions_total[1h]) == 0
+        for: 1h
+        labels:
+          severity: warning
+          service: business
+        annotations:
+          summary: "No sessions created in the last hour"
+          description: "No new sessions have been created in the last hour"
+
+      - alert: NoPaymentsProcessed
+        expr: increase(payments_total[1h]) == 0
+        for: 1h
+        labels:
+          severity: warning
+          service: business
+        annotations:
+          summary: "No payments processed in the last hour"
+          description: "No payments have been processed in the last hour"
+

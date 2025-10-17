@@ -4,15 +4,17 @@ import (
 	"carwash_backend/internal/domain/payment/models"
 	"carwash_backend/internal/domain/payment/repository"
 	settingsRepo "carwash_backend/internal/domain/settings/repository"
+	"carwash_backend/internal/logger"
+	"carwash_backend/internal/metrics"
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
-	"log"
 	"sort"
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/sirupsen/logrus"
 )
 
 // SessionStatusUpdater интерфейс для обновления статуса сессии
@@ -92,6 +94,7 @@ type service struct {
 	tinkoffClient        TinkoffClient
 	terminalKey          string
 	secretKey            string
+	metrics              *metrics.Metrics
 }
 
 // generateRandomString генерирует короткую случайную строку
@@ -102,7 +105,7 @@ func generateRandomString(length int) string {
 }
 
 // NewService создает новый экземпляр Service
-func NewService(repository repository.Repository, settingsRepo settingsRepo.Repository, sessionUpdater SessionStatusUpdater, sessionExtensionUpdater SessionExtensionUpdater, tinkoffClient TinkoffClient, terminalKey, secretKey string) Service {
+func NewService(repository repository.Repository, settingsRepo settingsRepo.Repository, sessionUpdater SessionStatusUpdater, sessionExtensionUpdater SessionExtensionUpdater, tinkoffClient TinkoffClient, terminalKey, secretKey string, metrics *metrics.Metrics) Service {
 	return &service{
 		repository:              repository,
 		settingsRepo:            settingsRepo,
@@ -111,17 +114,25 @@ func NewService(repository repository.Repository, settingsRepo settingsRepo.Repo
 		tinkoffClient:           tinkoffClient,
 		terminalKey:             terminalKey,
 		secretKey:               secretKey,
+		metrics:                 metrics,
 	}
 }
 
 // CalculatePrice рассчитывает цену для услуги
 func (s *service) CalculatePrice(req *models.CalculatePriceRequest) (*models.CalculatePriceResponse, error) {
-	log.Printf("Payment Service - CalculatePrice: начало расчета цены, service_type: %s, rental_time: %d, with_chemistry: %t", req.ServiceType, req.RentalTimeMinutes, req.WithChemistry)
+	logger.WithFields(logrus.Fields{
+		"service_type":         req.ServiceType,
+		"rental_time_minutes":  req.RentalTimeMinutes,
+		"with_chemistry":       req.WithChemistry,
+	}).Info("Payment Service - CalculatePrice: начало расчета цены")
 	
 	// Получаем базовую цену за минуту
 	basePriceSetting, err := s.settingsRepo.GetServiceSetting(req.ServiceType, "price_per_minute")
 	if err != nil {
-		log.Printf("Payment Service - CalculatePrice: ошибка получения базовой цены, service_type: %s, error: %v", req.ServiceType, err)
+		logger.WithFields(logrus.Fields{
+			"service_type": req.ServiceType,
+			"error":        err,
+		}).Error("Payment Service - CalculatePrice: ошибка получения базовой цены")
 		return nil, fmt.Errorf("не удалось получить базовую цену: %w", err)
 	}
 
@@ -264,8 +275,12 @@ func (s *service) CreatePayment(req *models.CreatePaymentRequest) (*models.Creat
 		return nil, fmt.Errorf("ошибка сохранения платежа: %w", err)
 	}
 
-	log.Printf("Создан платеж: ID=%s, SessionID=%s, Amount=%d, TinkoffID=%s", 
-		payment.ID, payment.SessionID, payment.Amount, payment.TinkoffID)
+	logger.WithFields(logrus.Fields{
+		"payment_id":  payment.ID,
+		"session_id":  payment.SessionID,
+		"amount":      payment.Amount,
+		"tinkoff_id":  payment.TinkoffID,
+	}).Info("Создан платеж")
 
 	return &models.CreatePaymentResponse{
 		Payment: *payment,
@@ -305,7 +320,7 @@ func (s *service) CreateExtensionPayment(req *models.CreateExtensionPaymentReque
 		return nil, fmt.Errorf("ошибка сохранения платежа продления: %w", err)
 	}
 
-	log.Printf("Создан платеж продления: ID=%s, SessionID=%s, Amount=%d, TinkoffID=%s", 
+	logger.Printf("Создан платеж продления: ID=%s, SessionID=%s, Amount=%d, TinkoffID=%s", 
 		payment.ID, payment.SessionID, payment.Amount, payment.TinkoffID)
 
 	return &models.CreateExtensionPaymentResponse{
@@ -371,7 +386,7 @@ func (s *service) GetPaymentsBySessionID(sessionID uuid.UUID) (*models.GetPaymen
 
 // HandleWebhook обрабатывает webhook от Tinkoff
 func (s *service) HandleWebhook(req *models.WebhookRequest) error {
-	log.Printf("Получен webhook от Tinkoff: PaymentId=%d, Status=%s, Success=%v", 
+	logger.Printf("Получен webhook от Tinkoff: PaymentId=%d, Status=%s, Success=%v", 
 		req.PaymentId, req.Status, req.Success)
 
 	// Получаем платеж по Tinkoff ID
@@ -385,17 +400,27 @@ func (s *service) HandleWebhook(req *models.WebhookRequest) error {
 	// Успешные платежи
 	case "CONFIRMED", "AUTHORIZED":
 		payment.Status = models.PaymentStatusSucceeded
-		log.Printf("Платеж подтвержден: ID=%s, Status=%s", payment.ID, payment.Status)
+		logger.Printf("Платеж подтвержден: ID=%s, Status=%s", payment.ID, payment.Status)
+		
+		// Записываем метрику успешного платежа
+		if s.metrics != nil {
+			s.metrics.RecordPayment("succeeded", "tinkoff", "unknown") // service_type будет получен из сессии
+		}
 		
 	// Неудачные платежи
 	case "CANCELED", "REJECTED", "AUTH_FAIL", "DEADLINE_EXPIRED", "ATTEMPTS_EXPIRED":
 		payment.Status = models.PaymentStatusFailed
-		log.Printf("Платеж неудачен (%s): ID=%s, Status=%s", req.Status, payment.ID, payment.Status)
+		logger.Printf("Платеж неудачен (%s): ID=%s, Status=%s", req.Status, payment.ID, payment.Status)
+		
+		// Записываем метрику неудачного платежа
+		if s.metrics != nil {
+			s.metrics.RecordPayment("failed", "tinkoff", "unknown") // service_type будет получен из сессии
+		}
 		
 	// Возвраты
 	case "REFUNDING", "ASYNC_REFUNDING":
 		// Возврат в процессе - не меняем статус платежа, но логируем
-		log.Printf("Возврат в процессе (%s): ID=%s, PaymentID=%d", req.Status, payment.ID, req.PaymentId)
+		logger.Printf("Возврат в процессе (%s): ID=%s, PaymentID=%d", req.Status, payment.ID, req.PaymentId)
 		
 	case "PARTIAL_REFUNDED":
 		// Частичный возврат завершен
@@ -403,7 +428,7 @@ func (s *service) HandleWebhook(req *models.WebhookRequest) error {
 		now := time.Now()
 		payment.RefundedAt = &now
 		// Не меняем статус платежа на refunded, так как это частичный возврат
-		log.Printf("Частичный возврат завершен: ID=%s, RefundedAmount=%d", 
+		logger.Printf("Частичный возврат завершен: ID=%s, RefundedAmount=%d", 
 			payment.ID, payment.RefundedAmount)
 		
 	case "REFUNDED":
@@ -412,12 +437,12 @@ func (s *service) HandleWebhook(req *models.WebhookRequest) error {
 		payment.RefundedAmount = req.Amount // сумма возврата в копейках
 		now := time.Now()
 		payment.RefundedAt = &now
-		log.Printf("Полный возврат завершен: ID=%s, Status=%s, RefundedAmount=%d", 
+		logger.Printf("Полный возврат завершен: ID=%s, Status=%s, RefundedAmount=%d", 
 			payment.ID, payment.Status, payment.RefundedAmount)
 		
 	// Промежуточные статусы - не меняем статус платежа
 	case "NEW", "FORM_SHOWED", "AUTHORIZING", "CONFIRMING":
-		log.Printf("Промежуточный статус (%s): ID=%s, PaymentID=%d", req.Status, payment.ID, req.PaymentId)
+		logger.Printf("Промежуточный статус (%s): ID=%s, PaymentID=%d", req.Status, payment.ID, req.PaymentId)
 		return nil // Не обновляем платеж для промежуточных статусов
 		
 	default:
@@ -427,7 +452,7 @@ func (s *service) HandleWebhook(req *models.WebhookRequest) error {
 		} else {
 			payment.Status = models.PaymentStatusFailed
 		}
-		log.Printf("Неизвестный статус (%s): ID=%s, Status=%s", req.Status, payment.ID, payment.Status)
+		logger.Printf("Неизвестный статус (%s): ID=%s, Status=%s", req.Status, payment.ID, payment.Status)
 	}
 
 	// Обновляем платеж только если статус изменился
@@ -435,18 +460,18 @@ func (s *service) HandleWebhook(req *models.WebhookRequest) error {
 		return fmt.Errorf("ошибка обновления статуса платежа: %w", err)
 	}
 
-	log.Printf("Обновлен статус платежа: ID=%s, Status=%s", payment.ID, payment.Status)
+	logger.Printf("Обновлен статус платежа: ID=%s, Status=%s", payment.ID, payment.Status)
 
 	// Обновляем статус связанной сессии (только для успешных/неудачных платежей, не для возвратов)
 	if payment.Status != models.PaymentStatusRefunded {
 		if err := s.updateSessionStatus(payment); err != nil {
-			log.Printf("Ошибка обновления статуса сессии: %v", err)
+			logger.Printf("Ошибка обновления статуса сессии: %v", err)
 		}
 		
 		// Если платеж успешен и это платеж продления, обновляем время продления сессии
 		if payment.Status == models.PaymentStatusSucceeded && payment.PaymentType == models.PaymentTypeExtension {
 			if err := s.updateSessionExtension(payment); err != nil {
-				log.Printf("Ошибка обновления времени продления сессии: %v", err)
+				logger.Printf("Ошибка обновления времени продления сессии: %v", err)
 			}
 		}
 	}
@@ -461,13 +486,13 @@ func (s *service) updateSessionStatus(payment *models.Payment) error {
 	
 	if payment.Status == models.PaymentStatusSucceeded {
 		newSessionStatus = "in_queue"
-		log.Printf("Платеж успешен, обновляем сессию %s в статус 'in_queue'", payment.SessionID)
+		logger.Printf("Платеж успешен, обновляем сессию %s в статус 'in_queue'", payment.SessionID)
 	} else if payment.Status == models.PaymentStatusFailed {
 		newSessionStatus = "payment_failed"
-		log.Printf("Платеж неудачен, обновляем сессию %s в статус 'payment_failed'", payment.SessionID)
+		logger.Printf("Платеж неудачен, обновляем сессию %s в статус 'payment_failed'", payment.SessionID)
 	} else {
 		// Для других статусов платежа не меняем статус сессии
-		log.Printf("Статус платежа %s, статус сессии не изменяется", payment.Status)
+		logger.Printf("Статус платежа %s, статус сессии не изменяется", payment.Status)
 		return nil
 	}
 	
@@ -477,7 +502,7 @@ func (s *service) updateSessionStatus(payment *models.Payment) error {
 		return fmt.Errorf("ошибка обновления статуса сессии: %w", err)
 	}
 	
-	log.Printf("Статус сессии %s успешно обновлен на '%s'", payment.SessionID, newSessionStatus)
+	logger.Printf("Статус сессии %s успешно обновлен на '%s'", payment.SessionID, newSessionStatus)
 	return nil
 }
 
@@ -489,7 +514,7 @@ func (s *service) updateSessionExtension(payment *models.Payment) error {
 		return fmt.Errorf("ошибка обновления времени продления сессии: %w", err)
 	}
 	
-	log.Printf("Время продления сессии %s успешно обновлено", payment.SessionID)
+	logger.Printf("Время продления сессии %s успешно обновлено", payment.SessionID)
 	return nil
 }
 
@@ -575,7 +600,7 @@ func (s *service) RefundPayment(req *models.RefundPaymentRequest) (*models.Refun
 		CreatedAt: now,
 	}
 
-	log.Printf("Успешно выполнен возврат: PaymentID=%s, Amount=%d, TotalRefunded=%d", 
+	logger.Printf("Успешно выполнен возврат: PaymentID=%s, Amount=%d, TotalRefunded=%d", 
 		payment.ID, req.Amount, payment.RefundedAmount)
 
 	return &models.RefundPaymentResponse{
@@ -657,7 +682,7 @@ func (s *service) CalculatePartialRefund(req *models.CalculatePartialRefundReque
 		refundAmount = remainingAmount
 	}
 
-	log.Printf("Рассчитан частичный возврат: PaymentID=%s, UsedTime=%ds, UnusedTime=%ds, RefundAmount=%d", 
+	logger.Printf("Рассчитан частичный возврат: PaymentID=%s, UsedTime=%ds, UnusedTime=%ds, RefundAmount=%d", 
 		payment.ID, usedTimeSeconds, unusedTimeSeconds, refundAmount)
 
 	return &models.CalculatePartialRefundResponse{
@@ -728,7 +753,7 @@ func (s *service) CalculateSessionRefund(req *models.CalculateSessionRefundReque
 	// Платежи продления покрывают ExtensionTimeMinutes
 	mainPaymentTimeSeconds := req.RentalTimeMinutes * 60
 
-	log.Printf("Расчет времени платежей: RentalTime=%dmin, ExtensionTime=%dmin, ExtensionPayments=%d", 
+	logger.Printf("Расчет времени платежей: RentalTime=%dmin, ExtensionTime=%dmin, ExtensionPayments=%d", 
 		req.RentalTimeMinutes, req.ExtensionTimeMinutes, len(paymentsResp.ExtensionPayments))
 
 	for _, payment := range allPayments {
@@ -750,7 +775,7 @@ func (s *service) CalculateSessionRefund(req *models.CalculateSessionRefundReque
 		totalSessionSeconds = append(totalSessionSeconds, paymentTimeSeconds)
 		totalTimeSeconds += paymentTimeSeconds
 		
-		log.Printf("  Платеж %s: Type=%s, Amount=%d, Time=%ds", 
+		logger.Printf("  Платеж %s: Type=%s, Amount=%d, Time=%ds", 
 			payment.ID, payment.PaymentType, payment.Amount, paymentTimeSeconds)
 	}
 
@@ -759,7 +784,7 @@ func (s *service) CalculateSessionRefund(req *models.CalculateSessionRefundReque
 	totalRefundAmount := 0
 	remainingUsedTime := req.UsedTimeSeconds
 	
-	log.Printf("Расчет возврата: UsedTime=%ds, RemainingUsedTime=%ds", req.UsedTimeSeconds, remainingUsedTime)
+	logger.Printf("Расчет возврата: UsedTime=%ds, RemainingUsedTime=%ds", req.UsedTimeSeconds, remainingUsedTime)
 
 	for i, payment := range allPayments {
 		paymentTimeSeconds := totalSessionSeconds[i]
@@ -779,7 +804,7 @@ func (s *service) CalculateSessionRefund(req *models.CalculateSessionRefundReque
 			usedTimeForPayment = 0
 		}
 		
-		log.Printf("  Платеж %d: PaymentTime=%ds, Used=%ds, RemainingUsedTime=%ds", 
+		logger.Printf("  Платеж %d: PaymentTime=%ds, Used=%ds, RemainingUsedTime=%ds", 
 			i+1, paymentTimeSeconds, usedTimeForPayment, remainingUsedTime)
 		
 		// Рассчитываем неиспользованное время для этого платежа
@@ -830,19 +855,19 @@ func (s *service) CalculateSessionRefund(req *models.CalculateSessionRefundReque
 		totalRefundAmount += refundAmountForPayment
 	}
 
-	log.Printf("Рассчитан возврат по сессии: SessionID=%s, TotalRefundAmount=%d, UsedTime=%ds, Payments=%d", 
+	logger.Printf("Рассчитан возврат по сессии: SessionID=%s, TotalRefundAmount=%d, UsedTime=%ds, Payments=%d", 
 		req.SessionID, totalRefundAmount, req.UsedTimeSeconds, len(allPayments))
 	
 	// Детальное логирование для отладки
-	log.Printf("Детали расчета:")
+	logger.Printf("Детали расчета:")
 	for i, refund := range refunds {
-		log.Printf("  Платеж %d: ID=%s, Type=%s, Original=%d, Refund=%d, Used=%ds, Unused=%ds", 
+		logger.Printf("  Платеж %d: ID=%s, Type=%s, Original=%d, Refund=%d, Used=%ds, Unused=%ds", 
 			i+1, refund.PaymentID, refund.PaymentType, refund.OriginalAmount, refund.RefundAmount, 
 			refund.UsedTimeSeconds, refund.UnusedTimeSeconds)
 	}
 	
 	// Логируем общее время сессии
-	log.Printf("Общее время сессии: %d секунд (%d минут)", totalTimeSeconds, totalTimeSeconds/60)
+	logger.Printf("Общее время сессии: %d секунд (%d минут)", totalTimeSeconds, totalTimeSeconds/60)
 
 	return &models.CalculateSessionRefundResponse{
 		TotalRefundAmount: totalRefundAmount,
@@ -852,16 +877,16 @@ func (s *service) CalculateSessionRefund(req *models.CalculateSessionRefundReque
 
 // GetPaymentStatistics получает статистику платежей
 func (s *service) GetPaymentStatistics(req *models.PaymentStatisticsRequest) (*models.PaymentStatisticsResponse, error) {
-	log.Printf("Getting payment statistics with filters: user_id=%v, date_from=%v, date_to=%v, service_type=%v",
+	logger.Printf("Getting payment statistics with filters: user_id=%v, date_from=%v, date_to=%v, service_type=%v",
 		req.UserID, req.DateFrom, req.DateTo, req.ServiceType)
 
 	statistics, err := s.repository.GetPaymentStatistics(req)
 	if err != nil {
-		log.Printf("Error getting payment statistics: %v", err)
+		logger.Printf("Error getting payment statistics: %v", err)
 		return nil, fmt.Errorf("failed to get payment statistics: %w", err)
 	}
 
-	log.Printf("Successfully retrieved payment statistics (with refunds): %d service types, total sessions: %d, total amount: %d",
+	logger.Printf("Successfully retrieved payment statistics (with refunds): %d service types, total sessions: %d, total amount: %d",
 		len(statistics.Statistics), statistics.Total.SessionCount, statistics.Total.TotalAmount)
 
 	return statistics, nil
@@ -869,7 +894,7 @@ func (s *service) GetPaymentStatistics(req *models.PaymentStatisticsRequest) (*m
 
 // CreateForCashier создает платеж для кассира
 func (s *service) CreateForCashier(sessionID uuid.UUID, amount int) (*models.Payment, error) {
-	log.Printf("Creating payment for cashier: SessionID=%s, Amount=%d", sessionID, amount)
+	logger.Printf("Creating payment for cashier: SessionID=%s, Amount=%d", sessionID, amount)
 
 	// Создаем платеж
 	payment := &models.Payment{
@@ -885,11 +910,11 @@ func (s *service) CreateForCashier(sessionID uuid.UUID, amount int) (*models.Pay
 	// Сохраняем платеж в базе данных
 	err := s.repository.CreatePayment(payment)
 	if err != nil {
-		log.Printf("Error creating payment for cashier: %v", err)
+		logger.Printf("Error creating payment for cashier: %v", err)
 		return nil, fmt.Errorf("failed to create payment for cashier: %w", err)
 	}
 
-	log.Printf("Successfully created payment for cashier: PaymentID=%s, SessionID=%s, Amount=%d", 
+	logger.Printf("Successfully created payment for cashier: PaymentID=%s, SessionID=%s, Amount=%d", 
 		payment.ID, sessionID, amount)
 
 	return payment, nil
@@ -921,20 +946,20 @@ func (s *service) CashierListPayments(req *models.CashierPaymentsRequest) (*mode
 
 // GetCashierLastShiftStatistics получает статистику последней смены кассира
 func (s *service) GetCashierLastShiftStatistics(req *models.CashierLastShiftStatisticsRequest) (*models.CashierLastShiftStatisticsResponse, error) {
-	log.Printf("Getting cashier last shift statistics: CashierID=%s", req.CashierID)
+	logger.Printf("Getting cashier last shift statistics: CashierID=%s", req.CashierID)
 
 	statistics, err := s.repository.GetCashierLastShiftStatistics(req)
 	if err != nil {
-		log.Printf("Error getting cashier last shift statistics: %v", err)
+		logger.Printf("Error getting cashier last shift statistics: %v", err)
 		return nil, fmt.Errorf("failed to get cashier last shift statistics: %w", err)
 	}
 
 	if statistics.HasShift {
-		log.Printf("Successfully retrieved cashier last shift statistics: ShiftStartedAt=%v, ShiftEndedAt=%v, CashierSessions=%d, MiniAppSessions=%d, TotalSessions=%d",
+		logger.Printf("Successfully retrieved cashier last shift statistics: ShiftStartedAt=%v, ShiftEndedAt=%v, CashierSessions=%d, MiniAppSessions=%d, TotalSessions=%d",
 			statistics.Statistics.ShiftStartedAt, statistics.Statistics.ShiftEndedAt,
 			len(statistics.Statistics.CashierSessions), len(statistics.Statistics.MiniAppSessions), len(statistics.Statistics.TotalSessions))
 	} else {
-		log.Printf("No completed shifts found for cashier: CashierID=%s", req.CashierID)
+		logger.Printf("No completed shifts found for cashier: CashierID=%s", req.CashierID)
 	}
 
 	return statistics, nil
