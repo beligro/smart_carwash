@@ -427,13 +427,13 @@ const PaymentManagement = () => {
           </FilterGroup>
 
           <FilterGroup>
-            <FilterLabel theme={theme}>ID пользователя</FilterLabel>
+            <FilterLabel theme={theme}>ID клиента</FilterLabel>
             <FilterInput
               theme={theme}
               type="text"
               value={filters.user_id}
               onChange={(e) => handleFilterChange('user_id', e.target.value)}
-              placeholder="UUID пользователя"
+              placeholder="UUID клиента"
             />
           </FilterGroup>
 

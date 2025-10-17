@@ -47,17 +47,17 @@ type AdminGetSettingsRequest struct {
 
 // AdminGetSettingsResponse ответ на получение всех настроек сервиса (админка)
 type AdminGetSettingsResponse struct {
-	ServiceType           string `json:"service_type"`
-	PricePerMinute       int    `json:"price_per_minute"`
-	ChemistryPricePerMinute int `json:"chemistry_price_per_minute"`
-	AvailableRentalTimes []int `json:"available_rental_times"`
+	ServiceType             string `json:"service_type"`
+	PricePerMinute          int    `json:"price_per_minute"`
+	ChemistryPricePerMinute int    `json:"chemistry_price_per_minute"`
+	AvailableRentalTimes    []int  `json:"available_rental_times"`
 }
 
 // AdminUpdatePricesRequest запрос на обновление цен (админка)
 type AdminUpdatePricesRequest struct {
-	ServiceType           string `json:"service_type" binding:"required"`
-	PricePerMinute       int    `json:"price_per_minute" binding:"required"`
-	ChemistryPricePerMinute int `json:"chemistry_price_per_minute" binding:"required"`
+	ServiceType             string `json:"service_type" binding:"required"`
+	PricePerMinute          int    `json:"price_per_minute" binding:"required"`
+	ChemistryPricePerMinute *int   `json:"chemistry_price_per_minute"`
 }
 
 // AdminUpdatePricesResponse ответ на обновление цен (админка)
@@ -68,8 +68,8 @@ type AdminUpdatePricesResponse struct {
 
 // AdminUpdateRentalTimesRequest запрос на обновление времени аренды (админка)
 type AdminUpdateRentalTimesRequest struct {
-	ServiceType        string `json:"service_type" binding:"required"`
-	AvailableRentalTimes []int `json:"available_rental_times" binding:"required"`
+	ServiceType          string `json:"service_type" binding:"required"`
+	AvailableRentalTimes []int  `json:"available_rental_times" binding:"required"`
 }
 
 // AdminUpdateRentalTimesResponse ответ на обновление времени аренды (админка)
@@ -85,13 +85,13 @@ type AdminGetChemistryTimeoutRequest struct {
 
 // AdminGetChemistryTimeoutResponse ответ на получение времени доступности кнопки химии
 type AdminGetChemistryTimeoutResponse struct {
-	ServiceType              string `json:"service_type"`
+	ServiceType                   string `json:"service_type"`
 	ChemistryEnableTimeoutMinutes int    `json:"chemistry_enable_timeout_minutes"`
 }
 
 // AdminUpdateChemistryTimeoutRequest запрос на обновление времени доступности кнопки химии
 type AdminUpdateChemistryTimeoutRequest struct {
-	ServiceType              string `json:"service_type" binding:"required"`
+	ServiceType                   string `json:"service_type" binding:"required"`
 	ChemistryEnableTimeoutMinutes int    `json:"chemistry_enable_timeout_minutes" binding:"required"`
 }
 

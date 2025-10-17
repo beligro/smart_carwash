@@ -460,33 +460,35 @@ const SettingsManagement = () => {
             </ButtonGroup>
           </SettingsContainer>
 
-          <SettingsContainer theme={theme}>
-            <SettingsTitle theme={theme}>Настройки химии</SettingsTitle>
-            
-            <FormGrid>
-              <FormGroup>
-                <FormLabel theme={theme}>Время доступности кнопки химии (в минутах)</FormLabel>
-                <FormInput
-                  theme={theme}
-                  type="number"
-                  value={chemistryTimeout}
-                  onChange={(e) => setChemistryTimeout(e.target.value)}
-                  placeholder="Например: 10"
-                  min="1"
-                  max="60"
-                />
-                <small style={{ color: theme.textColor, opacity: 0.7 }}>
-                  Время, в течение которого пользователь может включить химию после старта мойки
-                </small>
-              </FormGroup>
-            </FormGrid>
+          {selectedService === 'wash' && (
+            <SettingsContainer theme={theme}>
+              <SettingsTitle theme={theme}>Настройки химии</SettingsTitle>
+              
+              <FormGrid>
+                <FormGroup>
+                  <FormLabel theme={theme}>Время доступности кнопки химии (в минутах)</FormLabel>
+                  <FormInput
+                    theme={theme}
+                    type="number"
+                    value={chemistryTimeout}
+                    onChange={(e) => setChemistryTimeout(e.target.value)}
+                    placeholder="Например: 10"
+                    min="1"
+                    max="60"
+                  />
+                  <small style={{ color: theme.textColor, opacity: 0.7 }}>
+                    Время, в течение которого пользователь может включить химию после старта мойки
+                  </small>
+                </FormGroup>
+              </FormGrid>
 
-            <ButtonGroup>
-              <Button theme={theme} onClick={handleSaveChemistryTimeout} disabled={saving}>
-                {saving ? 'Сохранение...' : 'Сохранить настройки химии'}
-              </Button>
-            </ButtonGroup>
-          </SettingsContainer>
+              <ButtonGroup>
+                <Button theme={theme} onClick={handleSaveChemistryTimeout} disabled={saving}>
+                  {saving ? 'Сохранение...' : 'Сохранить настройки химии'}
+                </Button>
+              </ButtonGroup>
+            </SettingsContainer>
+          )}
         </>
       )}
     </Container>

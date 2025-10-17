@@ -318,7 +318,7 @@ const QueueStatus = () => {
 
         {queue_status.wash_queue.users_in_queue && queue_status.wash_queue.users_in_queue.length > 0 && (
           <UsersList>
-            <h4 style={{ margin: '0 0 10px 0', color: theme.textColor }}>Пользователи в очереди:</h4>
+            <h4 style={{ margin: '0 0 10px 0', color: theme.textColor }}>Клиенты в очереди:</h4>
             {queue_status.wash_queue.users_in_queue.map((user, index) => (
               <UserItem key={user.user_id}>
                 <UserInfo theme={theme}>
@@ -332,7 +332,7 @@ const QueueStatus = () => {
                       } else if (user.last_name) {
                         displayName = user.last_name;
                       } else {
-                        displayName = `Пользователь ${user.user_id.substring(0, 8)}`;
+                        displayName = `Клиент ${user.user_id.substring(0, 8)}`;
                       }
                       
                       const username = user.username ? ` (${user.username})` : '';
@@ -394,7 +394,7 @@ const QueueStatus = () => {
 
         {queue_status.air_dry_queue.users_in_queue && queue_status.air_dry_queue.users_in_queue.length > 0 && (
           <UsersList>
-            <h4 style={{ margin: '0 0 10px 0', color: theme.textColor }}>Пользователи в очереди:</h4>
+            <h4 style={{ margin: '0 0 10px 0', color: theme.textColor }}>Клиенты в очереди:</h4>
             {queue_status.air_dry_queue.users_in_queue.map((user, index) => (
               <UserItem key={user.user_id}>
                 <UserInfo theme={theme}>
@@ -408,7 +408,7 @@ const QueueStatus = () => {
                       } else if (user.last_name) {
                         displayName = user.last_name;
                       } else {
-                        displayName = `Пользователь ${user.user_id.substring(0, 8)}`;
+                        displayName = `Клиент ${user.user_id.substring(0, 8)}`;
                       }
                       
                       const username = user.username ? ` (${user.username})` : '';
@@ -470,7 +470,7 @@ const QueueStatus = () => {
 
         {queue_status.vacuum_queue.users_in_queue && queue_status.vacuum_queue.users_in_queue.length > 0 && (
           <UsersList>
-            <h4 style={{ margin: '0 0 10px 0', color: theme.textColor }}>Пользователи в очереди:</h4>
+            <h4 style={{ margin: '0 0 10px 0', color: theme.textColor }}>Клиенты в очереди:</h4>
             {queue_status.vacuum_queue.users_in_queue.map((user, index) => (
               <UserItem key={user.user_id}>
                 <UserInfo theme={theme}>
@@ -484,7 +484,7 @@ const QueueStatus = () => {
                       } else if (user.last_name) {
                         displayName = user.last_name;
                       } else {
-                        displayName = `Пользователь ${user.user_id.substring(0, 8)}`;
+                        displayName = `Клиент ${user.user_id.substring(0, 8)}`;
                       }
                       
                       const username = user.username ? ` (${user.username})` : '';

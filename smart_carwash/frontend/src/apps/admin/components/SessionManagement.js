@@ -472,7 +472,7 @@ const SessionManagement = () => {
           type="text"
           value={filters.userId}
           onChange={(e) => setFilters({ ...filters, userId: e.target.value })}
-          placeholder="ID пользователя"
+          placeholder="ID клиента"
         />
 
         <FilterInput
@@ -501,7 +501,7 @@ const SessionManagement = () => {
         <thead>
           <tr>
             <Th theme={theme}>ID</Th>
-            <Th theme={theme}>Пользователь</Th>
+            <Th theme={theme}>Клиент</Th>
             <Th theme={theme}>Бокс</Th>
             <Th theme={theme}>Статус</Th>
             <Th theme={theme}>Тип услуги</Th>
@@ -625,7 +625,7 @@ const SessionManagement = () => {
                   </DetailGroup>
                   
                   <DetailGroup>
-                    <DetailLabel theme={theme}>ID пользователя:</DetailLabel>
+                    <DetailLabel theme={theme}>ID клиента:</DetailLabel>
                     <DetailValue theme={theme}>{sessionDetails.user_id}</DetailValue>
                   </DetailGroup>
                   
@@ -709,7 +709,7 @@ const SessionManagement = () => {
                       closeSessionModal();
                       navigate(`/admin/users?highlight=${sessionDetails.user_id}`);
                     }}>
-                      Посмотреть пользователя
+                      Посмотреть клиента
                     </LinkButton>
                     {sessionDetails.box_number && (
                       <LinkButton theme={theme} onClick={() => {
@@ -728,7 +728,7 @@ const SessionManagement = () => {
                         } 
                       });
                     }}>
-                      Все сессии пользователя
+                      Все сессии клиента
                     </LinkButton>
                   </div>
                 </div>

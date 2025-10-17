@@ -362,7 +362,7 @@ const UserManagement = () => {
                   {user.is_admin ? (
                     <AdminBadge>Администратор</AdminBadge>
                   ) : (
-                    'Пользователь'
+                    'Клиент'
                   )}
                 </Td>
                 <Td>{formatDate(user.created_at)}</Td>
@@ -386,7 +386,7 @@ const UserManagement = () => {
 
       {users.length === 0 && !loading && (
         <div style={{ textAlign: 'center', padding: '20px', color: theme.textColor }}>
-          Пользователи не найдены
+          Клиенты не найдены
         </div>
       )}
 
@@ -479,7 +479,7 @@ const UserManagement = () => {
                         } else if (userDetails.last_name) {
                           displayName = userDetails.last_name;
                         } else {
-                          displayName = `Пользователь ${userDetails.id.substring(0, 8)}`;
+                          displayName = `Клиент ${userDetails.id.substring(0, 8)}`;
                         }
                         
                         const username = userDetails.username ? ` (${userDetails.username})` : '';
@@ -494,7 +494,7 @@ const UserManagement = () => {
                       {userDetails.is_admin ? (
                         <AdminBadge>Администратор</AdminBadge>
                       ) : (
-                        'Пользователь'
+                        'Клиент'
                       )}
                     </DetailValue>
                   </DetailGroup>

@@ -192,7 +192,7 @@ const AdminApp = () => {
           </NavItem>
           <NavItem>
             <NavLink to="/admin/users" theme={theme} isActive={location.pathname === '/admin/users'}>
-              Пользователи
+              Клиенты
             </NavLink>
           </NavItem>
           <NavItem>

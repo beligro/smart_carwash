@@ -13,7 +13,7 @@ type Service interface {
 	GetSettings(req *models.AdminGetSettingsRequest) (*models.AdminGetSettingsResponse, error)
 	UpdatePrices(req *models.AdminUpdatePricesRequest) (*models.AdminUpdatePricesResponse, error)
 	UpdateRentalTimes(req *models.AdminUpdateRentalTimesRequest) (*models.AdminUpdateRentalTimesResponse, error)
-	
+
 	// Методы для управления временем доступности химии
 	GetChemistryTimeout(req *models.AdminGetChemistryTimeoutRequest) (*models.AdminGetChemistryTimeoutResponse, error)
 	UpdateChemistryTimeout(req *models.AdminUpdateChemistryTimeoutRequest) (*models.AdminUpdateChemistryTimeoutResponse, error)
@@ -90,10 +90,10 @@ func (s *ServiceImpl) GetSettings(req *models.AdminGetSettingsRequest) (*models.
 	}
 
 	return &models.AdminGetSettingsResponse{
-		ServiceType:           req.ServiceType,
-		PricePerMinute:       pricePerMinute,
+		ServiceType:             req.ServiceType,
+		PricePerMinute:          pricePerMinute,
 		ChemistryPricePerMinute: chemistryPricePerMinute,
-		AvailableRentalTimes: availableTimes,
+		AvailableRentalTimes:    availableTimes,
 	}, nil
 }
 
@@ -105,8 +105,10 @@ func (s *ServiceImpl) UpdatePrices(req *models.AdminUpdatePricesRequest) (*model
 	}
 
 	// Обновляем цену химии за минуту
-	if err := s.repo.UpdateServiceSetting(req.ServiceType, "chemistry_price_per_minute", req.ChemistryPricePerMinute); err != nil {
-		return nil, err
+	if req.ChemistryPricePerMinute != nil {
+		if err := s.repo.UpdateServiceSetting(req.ServiceType, "chemistry_price_per_minute", *req.ChemistryPricePerMinute); err != nil {
+			return nil, err
+		}
 	}
 
 	return &models.AdminUpdatePricesResponse{
@@ -145,7 +147,7 @@ func (s *ServiceImpl) GetChemistryTimeout(req *models.AdminGetChemistryTimeoutRe
 	}
 
 	return &models.AdminGetChemistryTimeoutResponse{
-		ServiceType:              req.ServiceType,
+		ServiceType:                   req.ServiceType,
 		ChemistryEnableTimeoutMinutes: timeoutMinutes,
 	}, nil
 }
