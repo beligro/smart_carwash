@@ -37,6 +37,8 @@ func (h *Handler) RegisterRoutes(router gin.IRouter) {
 		adminSettingsGroup.PUT("/rental-times", h.AdminUpdateRentalTimes)
 		adminSettingsGroup.GET("/available-chemistry-times", h.AdminGetAvailableChemistryTimes)
 		adminSettingsGroup.PUT("/available-chemistry-times", h.AdminUpdateAvailableChemistryTimes)
+		adminSettingsGroup.GET("/cleaning-timeout", h.AdminGetCleaningTimeout)
+		adminSettingsGroup.PUT("/cleaning-timeout", h.AdminUpdateCleaningTimeout)
 	}
 }
 
@@ -220,6 +222,43 @@ func (h *Handler) AdminUpdateAvailableChemistryTimes(c *gin.Context) {
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
+	}
+
+	c.JSON(http.StatusOK, resp)
+}
+
+// AdminGetCleaningTimeout получает время уборки (админка)
+func (h *Handler) AdminGetCleaningTimeout(c *gin.Context) {
+	timeout, err := h.service.GetCleaningTimeout()
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	resp := &models.AdminGetCleaningTimeoutResponse{
+		TimeoutMinutes: timeout,
+	}
+
+	c.JSON(http.StatusOK, resp)
+}
+
+// AdminUpdateCleaningTimeout обновляет время уборки (админка)
+func (h *Handler) AdminUpdateCleaningTimeout(c *gin.Context) {
+	var req models.AdminUpdateCleaningTimeoutRequest
+
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	err := h.service.UpdateCleaningTimeout(req.TimeoutMinutes)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	resp := &models.AdminUpdateCleaningTimeoutResponse{
+		Success: true,
 	}
 
 	c.JSON(http.StatusOK, resp)

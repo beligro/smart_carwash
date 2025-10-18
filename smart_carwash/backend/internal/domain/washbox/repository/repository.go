@@ -35,6 +35,15 @@ type Repository interface {
 	CompleteCleaning(washBoxID uuid.UUID) error
 	GetCleaningBoxes() ([]models.WashBox, error)
 	UpdateCleaningStartedAt(washBoxID uuid.UUID, startedAt time.Time) error
+
+	// Методы для логов уборки
+	CreateCleaningLog(log *models.CleaningLog) error
+	UpdateCleaningLog(log *models.CleaningLog) error
+	GetCleaningLogs(req *models.AdminListCleaningLogsInternalRequest) ([]models.CleaningLogWithDetails, error)
+	GetCleaningLogsCount(req *models.AdminListCleaningLogsInternalRequest) (int64, error)
+	GetActiveCleaningLogByCleaner(cleanerID uuid.UUID) (*models.CleaningLog, error)
+	GetLastCleaningLogByBox(washBoxID uuid.UUID) (*models.CleaningLog, error)
+	GetExpiredCleaningLogs(timeoutMinutes int) ([]models.CleaningLog, error)
 }
 
 // PostgresRepository реализация Repository для PostgreSQL
@@ -234,9 +243,9 @@ func (r *PostgresRepository) StartCleaning(washBoxID uuid.UUID) error {
 	return r.db.Model(&models.WashBox{}).
 		Where("id = ?", washBoxID).
 		Updates(map[string]interface{}{
-			"status":                models.StatusCleaning,
-			"cleaning_started_at":   now,
-			"cleaning_reserved_by":  nil,
+			"status":               models.StatusCleaning,
+			"cleaning_started_at":  now,
+			"cleaning_reserved_by": nil,
 		}).Error
 }
 
@@ -252,8 +261,8 @@ func (r *PostgresRepository) CompleteCleaning(washBoxID uuid.UUID) error {
 	return r.db.Model(&models.WashBox{}).
 		Where("id = ?", washBoxID).
 		Updates(map[string]interface{}{
-			"status":              models.StatusFree,
-			"cleaning_started_at": nil,
+			"status":               models.StatusFree,
+			"cleaning_started_at":  nil,
 			"cleaning_reserved_by": nil,
 		}).Error
 }
@@ -270,4 +279,115 @@ func (r *PostgresRepository) UpdateCleaningStartedAt(washBoxID uuid.UUID, starte
 	return r.db.Model(&models.WashBox{}).
 		Where("id = ?", washBoxID).
 		Update("cleaning_started_at", startedAt).Error
+}
+
+// CreateCleaningLog создает новый лог уборки
+func (r *PostgresRepository) CreateCleaningLog(log *models.CleaningLog) error {
+	return r.db.Create(log).Error
+}
+
+// UpdateCleaningLog обновляет лог уборки
+func (r *PostgresRepository) UpdateCleaningLog(log *models.CleaningLog) error {
+	return r.db.Save(log).Error
+}
+
+// GetCleaningLogs получает логи уборки с фильтрами
+func (r *PostgresRepository) GetCleaningLogs(req *models.AdminListCleaningLogsInternalRequest) ([]models.CleaningLogWithDetails, error) {
+	var logs []models.CleaningLogWithDetails
+
+
+	query := r.db.Table("cleaning_logs cl").
+		Select(`
+			cl.*,
+			c.username as cleaner_username,
+			wb.number as wash_box_number,
+			wb.service_type as wash_box_type
+		`).
+		Joins("LEFT JOIN cleaners c ON cl.cleaner_id = c.id").
+		Joins("LEFT JOIN wash_boxes wb ON cl.wash_box_id = wb.id")
+
+	// Применяем фильтры
+	if req.Status != nil {
+		query = query.Where("cl.status = ?", *req.Status)
+	}
+
+	if req.DateFrom != nil {
+		query = query.Where("cl.started_at >= ?", *req.DateFrom)
+	}
+
+	if req.DateTo != nil {
+		query = query.Where("cl.started_at <= ?", *req.DateTo)
+	}
+
+	// Сортировка по времени начала (новые сначала)
+	query = query.Order("cl.started_at DESC")
+
+	// Пагинация
+	if req.Limit != nil && *req.Limit > 0 {
+		query = query.Limit(*req.Limit)
+	}
+
+	if req.Offset != nil && *req.Offset > 0 {
+		query = query.Offset(*req.Offset)
+	}
+
+	err := query.Scan(&logs).Error
+	return logs, err
+}
+
+// GetCleaningLogsCount получает общее количество логов уборки с фильтрами
+func (r *PostgresRepository) GetCleaningLogsCount(req *models.AdminListCleaningLogsInternalRequest) (int64, error) {
+	var count int64
+
+	query := r.db.Model(&models.CleaningLog{})
+
+	// Применяем те же фильтры
+	if req.Status != nil {
+		query = query.Where("status = ?", *req.Status)
+	}
+
+	if req.DateFrom != nil {
+		query = query.Where("started_at >= ?", *req.DateFrom)
+	}
+
+	if req.DateTo != nil {
+		query = query.Where("started_at <= ?", *req.DateTo)
+	}
+
+	err := query.Count(&count).Error
+	return count, err
+}
+
+// GetActiveCleaningLogByCleaner получает активный лог уборки для уборщика
+func (r *PostgresRepository) GetActiveCleaningLogByCleaner(cleanerID uuid.UUID) (*models.CleaningLog, error) {
+	var log models.CleaningLog
+	err := r.db.Where("cleaner_id = ? AND status = ?", cleanerID, models.CleaningLogStatusInProgress).
+		First(&log).Error
+	if err != nil {
+		return nil, err
+	}
+	return &log, nil
+}
+
+// GetLastCleaningLogByBox получает последний лог уборки для бокса
+func (r *PostgresRepository) GetLastCleaningLogByBox(washBoxID uuid.UUID) (*models.CleaningLog, error) {
+	var log models.CleaningLog
+	err := r.db.Where("wash_box_id = ?", washBoxID).
+		Order("started_at DESC").
+		First(&log).Error
+	if err != nil {
+		return nil, err
+	}
+	return &log, nil
+}
+
+// GetExpiredCleaningLogs получает логи уборки, которые нужно автоматически завершить
+func (r *PostgresRepository) GetExpiredCleaningLogs(timeoutMinutes int) ([]models.CleaningLog, error) {
+	var logs []models.CleaningLog
+	timeout := time.Now().Add(-time.Duration(timeoutMinutes) * time.Minute)
+
+	err := r.db.Where("status = ? AND started_at <= ?",
+		models.CleaningLogStatusInProgress, timeout).
+		Find(&logs).Error
+	return logs, err
 }

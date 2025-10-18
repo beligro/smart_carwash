@@ -38,6 +38,12 @@ func (h *Handler) RegisterRoutes(router *gin.RouterGroup, cleanerMiddleware gin.
 		adminRoutes.GET("/by-id", h.adminGetWashBox)
 	}
 
+	// Административные маршруты для логов уборки
+	adminCleaningRoutes := router.Group("/admin/cleaning-logs")
+	{
+		adminCleaningRoutes.POST("", h.AdminListCleaningLogs)
+	}
+
 	// Маршруты для кассира
 	cashierRoutes := router.Group("/cashier/washboxes")
 	{
@@ -102,6 +108,33 @@ func (h *Handler) adminListWashBoxes(c *gin.Context) {
 		},
 		"total": resp.Total,
 	})
+
+	c.JSON(http.StatusOK, resp)
+}
+
+// AdminListCleaningLogs получает логи уборки с фильтрами (админка)
+func (h *Handler) AdminListCleaningLogs(c *gin.Context) {
+	var req models.AdminListCleaningLogsRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	// Устанавливаем значения по умолчанию для пагинации
+	if req.Limit == nil {
+		limit := 20
+		req.Limit = &limit
+	}
+	if req.Offset == nil {
+		offset := 0
+		req.Offset = &offset
+	}
+
+	resp, err := h.service.AdminListCleaningLogs(&req)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
 
 	c.JSON(http.StatusOK, resp)
 }
@@ -183,6 +216,7 @@ func (h *Handler) adminDeleteWashBox(c *gin.Context) {
 	c.JSON(http.StatusOK, resp)
 }
 
+
 // adminGetWashBox обработчик для получения бокса мойки по ID
 func (h *Handler) adminGetWashBox(c *gin.Context) {
 	var req models.AdminGetWashBoxRequest
@@ -217,6 +251,7 @@ func (h *Handler) adminGetWashBox(c *gin.Context) {
 
 	c.JSON(http.StatusOK, resp)
 }
+
 // cleanerListWashBoxes обработчик для получения списка боксов для уборщика
 func (h *Handler) cleanerListWashBoxes(c *gin.Context) {
 	var req models.CleanerListWashBoxesRequest
@@ -243,6 +278,7 @@ func (h *Handler) cleanerListWashBoxes(c *gin.Context) {
 
 	c.JSON(http.StatusOK, resp)
 }
+
 
 // cleanerReserveCleaning обработчик для резервирования уборки
 func (h *Handler) cleanerReserveCleaning(c *gin.Context) {
@@ -283,6 +319,7 @@ func (h *Handler) cleanerReserveCleaning(c *gin.Context) {
 	c.JSON(http.StatusOK, resp)
 }
 
+
 // cleanerStartCleaning обработчик для начала уборки
 func (h *Handler) cleanerStartCleaning(c *gin.Context) {
 	var req models.CleanerStartCleaningRequest
@@ -321,6 +358,7 @@ func (h *Handler) cleanerStartCleaning(c *gin.Context) {
 
 	c.JSON(http.StatusOK, resp)
 }
+
 
 // cleanerCancelCleaning обработчик для отмены уборки
 func (h *Handler) cleanerCancelCleaning(c *gin.Context) {
@@ -361,6 +399,7 @@ func (h *Handler) cleanerCancelCleaning(c *gin.Context) {
 	c.JSON(http.StatusOK, resp)
 }
 
+
 // cleanerCompleteCleaning обработчик для завершения уборки
 func (h *Handler) cleanerCompleteCleaning(c *gin.Context) {
 	var req models.CleanerCompleteCleaningRequest
@@ -399,3 +438,4 @@ func (h *Handler) cleanerCompleteCleaning(c *gin.Context) {
 
 	c.JSON(http.StatusOK, resp)
 }
+

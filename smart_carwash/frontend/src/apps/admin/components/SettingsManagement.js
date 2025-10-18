@@ -90,6 +90,46 @@ const FormInput = styled.input`
   }
 `;
 
+const SettingsField = styled.div`
+  margin-bottom: 20px;
+`;
+
+const SettingsLabel = styled.label`
+  display: block;
+  margin-bottom: 8px;
+  color: ${props => props.theme.textColor};
+  font-weight: 500;
+  font-size: 0.9rem;
+`;
+
+const SettingsInput = styled.input`
+  padding: 10px 12px;
+  border: 1px solid ${props => props.theme.borderColor};
+  border-radius: 4px;
+  background-color: ${props => props.theme.inputBackground};
+  color: ${props => props.theme.textColor};
+  font-size: 1rem;
+  width: 100%;
+  max-width: 200px;
+
+  &:focus {
+    outline: none;
+    border-color: ${props => props.theme.primaryColor};
+  }
+
+  &:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+  }
+`;
+
+const SettingsDescription = styled.div`
+  margin-top: 5px;
+  color: ${props => props.theme.textColorSecondary};
+  font-size: 0.8rem;
+  line-height: 1.4;
+`;
+
 const RentalTimesContainer = styled.div`
   margin-top: 20px;
 `;
@@ -214,8 +254,8 @@ const SettingsManagement = () => {
   const theme = getTheme('light');
   const [selectedService, setSelectedService] = useState('wash');
   const [settings, setSettings] = useState({
-    price_per_minute: 0,
-    chemistry_price_per_minute: 0,
+    price_per_minute: '',
+    chemistry_price_per_minute: '',
     available_rental_times: [],
     available_chemistry_times: []
   });
@@ -225,6 +265,8 @@ const SettingsManagement = () => {
   const [success, setSuccess] = useState('');
   const [newRentalTime, setNewRentalTime] = useState('');
   const [newChemistryTime, setNewChemistryTime] = useState('');
+  const [cleaningTimeout, setCleaningTimeout] = useState('');
+  const [cleaningTimeoutLoading, setCleaningTimeoutLoading] = useState(false);
 
   const serviceOptions = [
     { value: 'wash', label: 'Мойка' },
@@ -239,8 +281,8 @@ const SettingsManagement = () => {
     try {
       const response = await ApiService.getSettings(selectedService);
       setSettings({
-        price_per_minute: response.price_per_minute || 0,
-        chemistry_price_per_minute: response.chemistry_price_per_minute || 0,
+        price_per_minute: response.price_per_minute?.toString() || '',
+        chemistry_price_per_minute: response.chemistry_price_per_minute?.toString() || '',
         available_rental_times: response.available_rental_times || [],
         available_chemistry_times: []
       });
@@ -270,7 +312,21 @@ const SettingsManagement = () => {
 
   useEffect(() => {
     loadSettings();
+    loadCleaningTimeout();
   }, [selectedService]);
+
+  const loadCleaningTimeout = async () => {
+    setCleaningTimeoutLoading(true);
+    try {
+      const response = await ApiService.getCleaningTimeout();
+      setCleaningTimeout(response.timeout_minutes?.toString() || '');
+    } catch (err) {
+      console.warn('Не удалось загрузить время уборки:', err);
+      setCleaningTimeout(''); // Значение по умолчанию
+    } finally {
+      setCleaningTimeoutLoading(false);
+    }
+  };
 
   const handleServiceChange = (serviceType) => {
     setSelectedService(serviceType);
@@ -278,10 +334,36 @@ const SettingsManagement = () => {
     setError('');
   };
 
+  const handleCleaningTimeoutSave = async () => {
+    // Проверяем, что поле не пустое
+    if (!cleaningTimeout || cleaningTimeout.trim() === '') {
+      setError('Время уборки не может быть пустым');
+      return;
+    }
+
+    const timeoutValue = parseInt(cleaningTimeout);
+    if (isNaN(timeoutValue) || timeoutValue < 1 || timeoutValue > 60) {
+      setError('Время уборки должно быть числом от 1 до 60 минут');
+      return;
+    }
+
+    setCleaningTimeoutLoading(true);
+    setError('');
+
+    try {
+      await ApiService.updateCleaningTimeout(timeoutValue);
+      setSuccess('Время уборки успешно обновлено');
+    } catch (err) {
+      setError('Ошибка при обновлении времени уборки: ' + (err.message || 'Неизвестная ошибка'));
+    } finally {
+      setCleaningTimeoutLoading(false);
+    }
+  };
+
   const handlePriceChange = (field, value) => {
     setSettings(prev => ({
       ...prev,
-      [field]: parseInt(value) || 0
+      [field]: value === '' ? '' : parseInt(value) || 0
     }));
   };
 
@@ -304,6 +386,20 @@ const SettingsManagement = () => {
   };
 
   const handleSavePrices = async () => {
+    // Проверяем, что поля не пустые
+    if (settings.price_per_minute === '' || settings.chemistry_price_per_minute === '') {
+      setError('Все поля должны быть заполнены');
+      return;
+    }
+
+    const pricePerMinute = parseInt(settings.price_per_minute);
+    const chemistryPricePerMinute = parseInt(settings.chemistry_price_per_minute);
+
+    if (isNaN(pricePerMinute) || isNaN(chemistryPricePerMinute) || pricePerMinute < 0 || chemistryPricePerMinute < 0) {
+      setError('Цены должны быть положительными числами');
+      return;
+    }
+
     setSaving(true);
     setError('');
     setSuccess('');
@@ -311,8 +407,8 @@ const SettingsManagement = () => {
     try {
       await ApiService.updatePrices({
         serviceType: selectedService,
-        pricePerMinute: settings.price_per_minute,
-        chemistryPricePerMinute: settings.chemistry_price_per_minute
+        pricePerMinute: pricePerMinute,
+        chemistryPricePerMinute: chemistryPricePerMinute
       });
       setSuccess('Цены успешно обновлены');
     } catch (err) {
@@ -539,6 +635,36 @@ const SettingsManagement = () => {
               </ButtonGroup>
             </SettingsContainer>
           )}
+
+          <SettingsContainer theme={theme}>
+            <SettingsTitle theme={theme}>Настройки уборки</SettingsTitle>
+            
+            <SettingsField>
+              <SettingsLabel theme={theme}>Время уборки (в минутах):</SettingsLabel>
+              <SettingsInput
+                theme={theme}
+                type="number"
+                value={cleaningTimeout}
+                onChange={(e) => setCleaningTimeout(e.target.value)}
+                min="1"
+                max="60"
+                disabled={cleaningTimeoutLoading}
+              />
+              <SettingsDescription theme={theme}>
+                Время, через которое уборка автоматически завершится (от 1 до 60 минут)
+              </SettingsDescription>
+            </SettingsField>
+
+            <ButtonGroup>
+              <Button 
+                theme={theme} 
+                onClick={handleCleaningTimeoutSave} 
+                disabled={cleaningTimeoutLoading}
+              >
+                {cleaningTimeoutLoading ? 'Сохранение...' : 'Сохранить время уборки'}
+              </Button>
+            </ButtonGroup>
+          </SettingsContainer>
         </>
       )}
     </Container>

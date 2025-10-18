@@ -110,3 +110,21 @@ type AdminUpdateAvailableChemistryTimesResponse struct {
 	Success bool   `json:"success"`
 	Message string `json:"message"`
 }
+
+// AdminGetCleaningTimeoutRequest запрос на получение времени уборки (админка)
+type AdminGetCleaningTimeoutRequest struct{}
+
+// AdminGetCleaningTimeoutResponse ответ на получение времени уборки (админка)
+type AdminGetCleaningTimeoutResponse struct {
+	TimeoutMinutes int `json:"timeout_minutes"`
+}
+
+// AdminUpdateCleaningTimeoutRequest запрос на обновление времени уборки (админка)
+type AdminUpdateCleaningTimeoutRequest struct {
+	TimeoutMinutes int `json:"timeout_minutes" binding:"required,min=1,max=60"`
+}
+
+// AdminUpdateCleaningTimeoutResponse ответ на обновление времени уборки (админка)
+type AdminUpdateCleaningTimeoutResponse struct {
+	Success bool `json:"success"`
+}

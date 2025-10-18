@@ -746,6 +746,41 @@ const ApiService = {
     }
   },
 
+  // Получение логов уборки (админка)
+  getCleaningLogs: async (filters = {}) => {
+    try {
+      const response = await api.post('/admin/cleaning-logs', toSnakeCase(filters));
+      return response.data;
+    } catch (error) {
+      console.error('Ошибка при получении логов уборки:', error);
+      throw error;
+    }
+  },
+
+  // Получение времени уборки (админка)
+  getCleaningTimeout: async () => {
+    try {
+      const response = await api.get('/admin/settings/cleaning-timeout');
+      return response.data;
+    } catch (error) {
+      console.error('Ошибка при получении времени уборки:', error);
+      throw error;
+    }
+  },
+
+  // Обновление времени уборки (админка)
+  updateCleaningTimeout: async (timeoutMinutes) => {
+    try {
+      const response = await api.put('/admin/settings/cleaning-timeout', {
+        timeout_minutes: timeoutMinutes,
+      });
+      return response.data;
+    } catch (error) {
+      console.error('Ошибка при обновлении времени уборки:', error);
+      throw error;
+    }
+  },
+
 };
 
 // Добавляем перехватчик для обработки ошибок

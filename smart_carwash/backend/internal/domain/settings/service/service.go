@@ -18,6 +18,10 @@ type Service interface {
 	GetAvailableChemistryTimes(req *models.GetAvailableChemistryTimesRequest) (*models.GetAvailableChemistryTimesResponse, error)
 	AdminGetAvailableChemistryTimes(req *models.AdminGetAvailableChemistryTimesRequest) (*models.AdminGetAvailableChemistryTimesResponse, error)
 	AdminUpdateAvailableChemistryTimes(req *models.AdminUpdateAvailableChemistryTimesRequest) (*models.AdminUpdateAvailableChemistryTimesResponse, error)
+
+	// Методы для управления временем уборки
+	GetCleaningTimeout() (int, error)
+	UpdateCleaningTimeout(timeoutMinutes int) error
 }
 
 // ServiceImpl реализация Service
@@ -96,6 +100,30 @@ func (s *ServiceImpl) GetSettings(req *models.AdminGetSettingsRequest) (*models.
 		ChemistryPricePerMinute: chemistryPricePerMinute,
 		AvailableRentalTimes:    availableTimes,
 	}, nil
+}
+
+// GetCleaningTimeout получает время уборки в минутах
+func (s *ServiceImpl) GetCleaningTimeout() (int, error) {
+	setting, err := s.repo.GetServiceSetting("cleaner", "cleaning_timeout_minutes")
+	if err != nil {
+		return 3, err // По умолчанию 3 минуты
+	}
+
+	if setting == nil {
+		return 3, nil // По умолчанию 3 минуты
+	}
+
+	var timeout int
+	if err := json.Unmarshal(setting.SettingValue, &timeout); err != nil {
+		return 3, err // По умолчанию 3 минуты
+	}
+
+	return timeout, nil
+}
+
+// UpdateCleaningTimeout обновляет время уборки в минутах
+func (s *ServiceImpl) UpdateCleaningTimeout(timeoutMinutes int) error {
+	return s.repo.UpdateServiceSetting("cleaner", "cleaning_timeout_minutes", timeoutMinutes)
 }
 
 // UpdatePrices обновляет цены сервиса (админка)

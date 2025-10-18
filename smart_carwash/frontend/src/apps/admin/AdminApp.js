@@ -13,6 +13,7 @@ import UserManagement from './components/UserManagement';
 import PaymentManagement from './components/PaymentManagement';
 import SettingsManagement from './components/SettingsManagement';
 import ModbusDashboard from './components/ModbusDashboard';
+import CleaningLogsManagement from './components/CleaningLogsManagement';
 
 
 const AdminContainer = styled.div`
@@ -206,6 +207,11 @@ const AdminApp = () => {
             </NavLink>
           </NavItem>
           <NavItem>
+            <NavLink to="/admin/cleaning-logs" theme={theme} isActive={location.pathname === '/admin/cleaning-logs'}>
+              Логи уборки
+            </NavLink>
+          </NavItem>
+          <NavItem>
             <NavLink to="/admin/payments" theme={theme} isActive={location.pathname === '/admin/payments'}>
               Платежи
             </NavLink>
@@ -232,6 +238,7 @@ const AdminApp = () => {
           <Route path="/users" element={<UserManagement />} />
           <Route path="/cashiers" element={<CashierManagement />} />
           <Route path="/cleaners" element={<CleanerManagement />} />
+          <Route path="/cleaning-logs" element={<CleaningLogsManagement />} />
           <Route path="/payments" element={<PaymentManagement />} />
           <Route path="/settings" element={<SettingsManagement />} />
           <Route path="/modbus-dashboard" element={<ModbusDashboard />} />
