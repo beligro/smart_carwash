@@ -5,7 +5,6 @@ import (
 	"carwash_backend/internal/domain/washbox/models"
 	"carwash_backend/internal/domain/washbox/repository"
 	"errors"
-	"log"
 	"time"
 
 	"github.com/google/uuid"
@@ -398,7 +397,7 @@ func (s *ServiceImpl) CleanerStartCleaning(req *models.CleanerStartCleaningReque
 	}
 
 	// Проверяем, что бокс свободен или зарезервирован этим уборщиком
-	if washBox.Status != models.StatusFree && 
+	if washBox.Status != models.StatusFree &&
 		(washBox.CleaningReservedBy == nil || *washBox.CleaningReservedBy != cleanerID) {
 		return nil, errors.New("бокс недоступен для уборки")
 	}
@@ -429,7 +428,7 @@ func (s *ServiceImpl) CleanerStartCleaning(req *models.CleanerStartCleaningReque
 		StartedAt: startedAt,
 		Status:    models.CleaningLogStatusInProgress,
 	}
-	
+
 	err = s.repo.CreateCleaningLog(cleaningLog)
 	if err != nil {
 		return nil, err
@@ -494,7 +493,7 @@ func (s *ServiceImpl) CleanerCompleteCleaning(req *models.CleanerCompleteCleanin
 	activeLog.CompletedAt = &completedAt
 	activeLog.DurationMinutes = &duration
 	activeLog.Status = models.CleaningLogStatusCompleted
-	
+
 	err = s.repo.UpdateCleaningLog(activeLog)
 	if err != nil {
 		return nil, err
@@ -536,7 +535,6 @@ func (s *ServiceImpl) AdminListCleaningLogs(req *models.AdminListCleaningLogsReq
 		}
 		convertedReq.DateTo = &dateTo
 	}
-
 
 	// Получаем логи
 	logs, err := s.repo.GetCleaningLogs(convertedReq)
@@ -599,7 +597,7 @@ func (s *ServiceImpl) AutoCompleteExpiredCleanings() error {
 		log.CompletedAt = &completedAt
 		log.DurationMinutes = &duration
 		log.Status = models.CleaningLogStatusCompleted
-		
+
 		err = s.repo.UpdateCleaningLog(&log)
 		if err != nil {
 			continue // Продолжаем с другими, если одна не удалась

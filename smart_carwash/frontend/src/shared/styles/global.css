@@ -78,6 +78,52 @@ a:hover {
     word-wrap: break-word;
     overflow-wrap: break-word;
   }
+  
+  /* Мобильная адаптация для таблиц */
+  .mobile-table {
+    display: none;
+  }
+  
+  .mobile-card {
+    display: block;
+  }
+  
+  /* Скрываем все таблицы на мобильных устройствах */
+  table {
+    display: none;
+  }
+  
+  /* Показываем мобильные карточки */
+  .mobile-card {
+    display: block;
+  }
+  
+  /* Скрываем горизонтальную навигацию на мобильных */
+  .desktop-nav {
+    display: none;
+  }
+  
+  .mobile-nav {
+    display: block;
+  }
+  
+  /* Адаптация модальных окон */
+  .modal-content {
+    width: 95% !important;
+    max-width: 95% !important;
+    margin: 10px !important;
+    max-height: 90vh !important;
+  }
+  
+  /* Адаптация фильтров */
+  .filters-container {
+    flex-direction: column !important;
+    gap: 10px !important;
+  }
+  
+  .filter-item {
+    width: 100% !important;
+  }
 }
 
 @media (max-width: 480px) {
@@ -96,6 +142,30 @@ a:hover {
       transform: none !important;
       box-shadow: none !important;
     }
+  }
+}
+
+/* Десктопные стили */
+@media (min-width: 769px) {
+  .mobile-table {
+    display: block;
+  }
+  
+  .mobile-card {
+    display: none;
+  }
+  
+  .desktop-nav {
+    display: block;
+  }
+  
+  .mobile-nav {
+    display: none;
+  }
+  
+  /* Показываем таблицы на десктопе */
+  table {
+    display: table;
   }
 }
 

@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import styled from 'styled-components';
 import { getTheme } from '../../../shared/styles/theme';
 import ApiService from '../../../shared/services/ApiService';
+import MobileTable from '../../../shared/components/MobileTable';
 
 const Container = styled.div`
   margin-top: 16px;
@@ -321,6 +322,7 @@ const WashBoxList = ({ onCleaningAction }) => {
     <Container>
       {error && <ErrorMessage>{error}</ErrorMessage>}
       
+      {/* Десктопная таблица */}
       <Table>
         <thead>
           <tr>
@@ -351,6 +353,33 @@ const WashBoxList = ({ onCleaningAction }) => {
           ))}
         </tbody>
       </Table>
+
+      {/* Мобильные карточки */}
+      <MobileTable
+        data={washBoxes}
+        columns={[
+          { key: 'number', label: 'Номер', accessor: (item) => item.number },
+          { key: 'service_type', label: 'Тип услуги', accessor: (item) => getServiceTypeText(item.service_type) },
+          { key: 'status', label: 'Статус', accessor: (item) => (
+            <StatusBadge status={item.status}>{getStatusText(item.status)}</StatusBadge>
+          )},
+          { key: 'chemistry', label: 'Химия', accessor: (item) => item.chemistry_enabled ? 'Доступна' : 'Недоступна' }
+        ]}
+        getBorderColor={(washBox) => {
+          switch (washBox.status) {
+            case 'free': return '#28a745';
+            case 'busy': return '#dc3545';
+            case 'reserved': return '#ffc107';
+            case 'maintenance': return '#6c757d';
+            case 'cleaning': return '#17a2b8';
+            default: return '#6c757d';
+          }
+        }}
+        renderActions={(washBox) => renderActions(washBox)}
+        theme={theme}
+        titleField="number"
+        statusField="status"
+      />
     </Container>
   );
 };

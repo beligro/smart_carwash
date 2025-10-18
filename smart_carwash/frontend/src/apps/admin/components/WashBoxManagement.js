@@ -3,6 +3,7 @@ import styled from 'styled-components';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { getTheme } from '../../../shared/styles/theme';
 import ApiService from '../../../shared/services/ApiService';
+import MobileTable from '../../../shared/components/MobileTable';
 import axios from 'axios';
 
 // API клиент для Modbus тестирования
@@ -705,6 +706,7 @@ const WashBoxManagement = () => {
         </FilterSelect>
       </Filters>
 
+      {/* Десктопная таблица */}
       <Table theme={theme}>
         <thead>
           <tr>
@@ -842,6 +844,65 @@ const WashBoxManagement = () => {
           })}
         </tbody>
       </Table>
+
+      {/* Мобильные карточки */}
+      <MobileTable
+        data={washBoxes}
+        columns={[
+          { key: 'id', label: 'ID', accessor: (item) => item.id },
+          { key: 'number', label: 'Номер', accessor: (item) => item.number },
+          { key: 'status', label: 'Статус', accessor: (item) => (
+            <StatusBadge className={item.status}>{getStatusText(item.status)}</StatusBadge>
+          )},
+          { key: 'service_type', label: 'Тип услуги', accessor: (item) => (
+            <ServiceTypeBadge className={item.service_type}>{getServiceTypeText(item.service_type)}</ServiceTypeBadge>
+          )},
+          { key: 'chemistry', label: 'Химия', accessor: (item) => (
+            item.service_type === 'wash' ? (
+              <ChemistryBadge className={item.chemistry_enabled ? 'enabled' : 'disabled'}>
+                {item.chemistry_enabled ? 'Включена' : 'Отключена'}
+              </ChemistryBadge>
+            ) : (
+              <span style={{ color: '#999' }}>Недоступна</span>
+            )
+          )},
+          { key: 'light_register', label: 'Регистр света', accessor: (item) => item.light_coil_register || 'Не задан' },
+          { key: 'chemistry_register', label: 'Регистр химии', accessor: (item) => 
+            item.service_type === 'wash' ? (item.chemistry_coil_register || 'Не задан') : 'Недоступна'
+          },
+          { key: 'created_at', label: 'Создан', accessor: (item) => new Date(item.created_at).toLocaleDateString('ru-RU') }
+        ]}
+        getBorderColor={(washBox) => {
+          switch (washBox.status) {
+            case 'free': return '#28a745';
+            case 'busy': return '#dc3545';
+            case 'reserved': return '#ffc107';
+            case 'maintenance': return '#17a2b8';
+            default: return '#6c757d';
+          }
+        }}
+        renderActions={(washBox) => [
+          <ActionButton key="edit" theme={theme} onClick={() => openEditModal(washBox)}>
+            Редактировать
+          </ActionButton>,
+          <ActionButton key="delete" theme={theme} className="delete" onClick={() => handleDelete(washBox.id)}>
+            Удалить
+          </ActionButton>,
+          <ActionButton key="sessions" theme={theme} onClick={() => {
+            navigate('/admin/sessions', { 
+              state: { 
+                filters: { boxNumber: washBox.number },
+                showBoxFilter: true 
+              } 
+            });
+          }}>
+            Сессии
+          </ActionButton>
+        ]}
+        theme={theme}
+        titleField="number"
+        statusField="status"
+      />
 
       {/* Модальное окно создания */}
       {showCreateModal && (
