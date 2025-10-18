@@ -7,10 +7,11 @@ import ApiService from '../../../../shared/services/ApiService';
  * @param {Object} props - Свойства компонента
  * @param {string} props.serviceType - Тип услуги
  * @param {boolean} props.withChemistry - Использование химии
+ * @param {number} props.chemistryTimeMinutes - Время химии в минутах
  * @param {number} props.rentalTimeMinutes - Время аренды в минутах
  * @param {string} props.theme - Тема оформления ('light' или 'dark')
  */
-const PriceCalculator = ({ serviceType, withChemistry, rentalTimeMinutes, theme = 'light' }) => {
+const PriceCalculator = ({ serviceType, withChemistry, chemistryTimeMinutes, rentalTimeMinutes, theme = 'light' }) => {
   const [price, setPrice] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
@@ -22,7 +23,7 @@ const PriceCalculator = ({ serviceType, withChemistry, rentalTimeMinutes, theme 
     if (serviceType && rentalTimeMinutes) {
       calculatePrice();
     }
-  }, [serviceType, withChemistry, rentalTimeMinutes]);
+  }, [serviceType, withChemistry, chemistryTimeMinutes, rentalTimeMinutes]);
 
   const calculatePrice = async () => {
     setLoading(true);
@@ -32,6 +33,7 @@ const PriceCalculator = ({ serviceType, withChemistry, rentalTimeMinutes, theme 
       const response = await ApiService.calculatePrice({
         service_type: serviceType,
         with_chemistry: withChemistry,
+        chemistry_time_minutes: chemistryTimeMinutes || 0,
         rental_time_minutes: rentalTimeMinutes
       });
       
@@ -105,7 +107,7 @@ const PriceCalculator = ({ serviceType, withChemistry, rentalTimeMinutes, theme 
           </div>
           {price.breakdown.chemistry_price > 0 && (
             <div className={styles.breakdownItem}>
-              <span>Химия:</span>
+              <span>Химия ({chemistryTimeMinutes} мин):</span>
               <span>{formatPrice(price.breakdown.chemistry_price)}</span>
             </div>
           )}

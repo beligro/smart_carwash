@@ -1,8 +1,6 @@
 package modbus
 
 import (
-	"time"
-
 	"github.com/google/uuid"
 )
 
@@ -14,5 +12,4 @@ type ModbusServiceInterface interface {
 	HandleModbusError(boxID uuid.UUID, operation string, sessionID uuid.UUID, err error) error
 	TestConnection(boxID uuid.UUID) error
 	TestCoil(boxID uuid.UUID, register string, value bool) error
-	ExtendSessionTime(sessionID uuid.UUID, duration time.Duration) error
 }

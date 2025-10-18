@@ -14,9 +14,10 @@ type Service interface {
 	UpdatePrices(req *models.AdminUpdatePricesRequest) (*models.AdminUpdatePricesResponse, error)
 	UpdateRentalTimes(req *models.AdminUpdateRentalTimesRequest) (*models.AdminUpdateRentalTimesResponse, error)
 
-	// Методы для управления временем доступности химии
-	GetChemistryTimeout(req *models.AdminGetChemistryTimeoutRequest) (*models.AdminGetChemistryTimeoutResponse, error)
-	UpdateChemistryTimeout(req *models.AdminUpdateChemistryTimeoutRequest) (*models.AdminUpdateChemistryTimeoutResponse, error)
+	// Методы для управления доступным временем химии
+	GetAvailableChemistryTimes(req *models.GetAvailableChemistryTimesRequest) (*models.GetAvailableChemistryTimesResponse, error)
+	AdminGetAvailableChemistryTimes(req *models.AdminGetAvailableChemistryTimesRequest) (*models.AdminGetAvailableChemistryTimesResponse, error)
+	AdminUpdateAvailableChemistryTimes(req *models.AdminUpdateAvailableChemistryTimesRequest) (*models.AdminUpdateAvailableChemistryTimesResponse, error)
 }
 
 // ServiceImpl реализация Service
@@ -129,37 +130,64 @@ func (s *ServiceImpl) UpdateRentalTimes(req *models.AdminUpdateRentalTimesReques
 	}, nil
 }
 
-// GetChemistryTimeout получает время доступности кнопки химии
-func (s *ServiceImpl) GetChemistryTimeout(req *models.AdminGetChemistryTimeoutRequest) (*models.AdminGetChemistryTimeoutResponse, error) {
-	setting, err := s.repo.GetServiceSetting(req.ServiceType, "chemistry_enable_timeout_minutes")
+// GetAvailableChemistryTimes получает доступное время химии для определенного типа услуги (публичный метод)
+func (s *ServiceImpl) GetAvailableChemistryTimes(req *models.GetAvailableChemistryTimesRequest) (*models.GetAvailableChemistryTimesResponse, error) {
+	// Получаем настройку доступного времени химии
+	setting, err := s.repo.GetServiceSetting(req.ServiceType, "available_chemistry_times")
 	if err != nil {
 		return nil, err
 	}
 
-	var timeoutMinutes int
+	var times []int
+	// Если настройка найдена, парсим JSON
 	if setting != nil {
-		if err := json.Unmarshal(setting.SettingValue, &timeoutMinutes); err != nil {
+		if err := json.Unmarshal(setting.SettingValue, &times); err != nil {
 			return nil, err
 		}
 	} else {
-		// Значение по умолчанию
-		timeoutMinutes = 10
+		// Значения по умолчанию
+		times = []int{3, 4, 5}
 	}
 
-	return &models.AdminGetChemistryTimeoutResponse{
-		ServiceType:                   req.ServiceType,
-		ChemistryEnableTimeoutMinutes: timeoutMinutes,
+	return &models.GetAvailableChemistryTimesResponse{
+		AvailableChemistryTimes: times,
 	}, nil
 }
 
-// UpdateChemistryTimeout обновляет время доступности кнопки химии
-func (s *ServiceImpl) UpdateChemistryTimeout(req *models.AdminUpdateChemistryTimeoutRequest) (*models.AdminUpdateChemistryTimeoutResponse, error) {
-	if err := s.repo.UpdateServiceSetting(req.ServiceType, "chemistry_enable_timeout_minutes", req.ChemistryEnableTimeoutMinutes); err != nil {
+// AdminGetAvailableChemistryTimes получает доступное время химии для определенного типа услуги (админка)
+func (s *ServiceImpl) AdminGetAvailableChemistryTimes(req *models.AdminGetAvailableChemistryTimesRequest) (*models.AdminGetAvailableChemistryTimesResponse, error) {
+	// Получаем настройку доступного времени химии
+	setting, err := s.repo.GetServiceSetting(req.ServiceType, "available_chemistry_times")
+	if err != nil {
 		return nil, err
 	}
 
-	return &models.AdminUpdateChemistryTimeoutResponse{
+	var times []int
+	// Если настройка найдена, парсим JSON
+	if setting != nil {
+		if err := json.Unmarshal(setting.SettingValue, &times); err != nil {
+			return nil, err
+		}
+	} else {
+		// Значения по умолчанию
+		times = []int{3, 4, 5}
+	}
+
+	return &models.AdminGetAvailableChemistryTimesResponse{
+		ServiceType:             req.ServiceType,
+		AvailableChemistryTimes: times,
+	}, nil
+}
+
+// AdminUpdateAvailableChemistryTimes обновляет доступное время химии для определенного типа услуги (админка)
+func (s *ServiceImpl) AdminUpdateAvailableChemistryTimes(req *models.AdminUpdateAvailableChemistryTimesRequest) (*models.AdminUpdateAvailableChemistryTimesResponse, error) {
+	// Обновляем настройку (UpdateServiceSetting сам сделает Marshal)
+	if err := s.repo.UpdateServiceSetting(req.ServiceType, "available_chemistry_times", req.AvailableChemistryTimes); err != nil {
+		return nil, err
+	}
+
+	return &models.AdminUpdateAvailableChemistryTimesResponse{
 		Success: true,
-		Message: "Время доступности кнопки химии успешно обновлено",
+		Message: "Доступное время химии успешно обновлено",
 	}, nil
 }

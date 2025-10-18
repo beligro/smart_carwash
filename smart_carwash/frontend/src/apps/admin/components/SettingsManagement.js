@@ -216,14 +216,15 @@ const SettingsManagement = () => {
   const [settings, setSettings] = useState({
     price_per_minute: 0,
     chemistry_price_per_minute: 0,
-    available_rental_times: []
+    available_rental_times: [],
+    available_chemistry_times: []
   });
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const [newRentalTime, setNewRentalTime] = useState('');
-  const [chemistryTimeout, setChemistryTimeout] = useState(10);
+  const [newChemistryTime, setNewChemistryTime] = useState('');
 
   const serviceOptions = [
     { value: 'wash', label: 'Мойка' },
@@ -240,16 +241,25 @@ const SettingsManagement = () => {
       setSettings({
         price_per_minute: response.price_per_minute || 0,
         chemistry_price_per_minute: response.chemistry_price_per_minute || 0,
-        available_rental_times: response.available_rental_times || []
+        available_rental_times: response.available_rental_times || [],
+        available_chemistry_times: []
       });
 
-      // Загружаем настройки химии
-      try {
-        const chemistryResponse = await ApiService.getChemistryTimeout(selectedService);
-        setChemistryTimeout(chemistryResponse.chemistry_enable_timeout_minutes || 10);
-      } catch (chemistryErr) {
-        console.warn('Не удалось загрузить настройки химии:', chemistryErr);
-        setChemistryTimeout(10); // Значение по умолчанию
+      // Загружаем доступное время химии (только для wash)
+      if (selectedService === 'wash') {
+        try {
+          const chemistryTimesResponse = await ApiService.getAdminAvailableChemistryTimes(selectedService);
+          setSettings(prev => ({
+            ...prev,
+            available_chemistry_times: chemistryTimesResponse.available_chemistry_times || [3, 4, 5]
+          }));
+        } catch (chemistryTimesErr) {
+          console.warn('Не удалось загрузить доступное время химии:', chemistryTimesErr);
+          setSettings(prev => ({
+            ...prev,
+            available_chemistry_times: [3, 4, 5] // Значения по умолчанию
+          }));
+        }
       }
     } catch (err) {
       setError('Ошибка при загрузке настроек: ' + (err.message || 'Неизвестная ошибка'));
@@ -330,16 +340,37 @@ const SettingsManagement = () => {
     }
   };
 
-  const handleSaveChemistryTimeout = async () => {
+  const handleAddChemistryTime = () => {
+    const time = parseInt(newChemistryTime);
+    if (time && time > 0 && !settings.available_chemistry_times.includes(time)) {
+      setSettings(prev => ({
+        ...prev,
+        available_chemistry_times: [...prev.available_chemistry_times, time].sort((a, b) => a - b)
+      }));
+      setNewChemistryTime('');
+    }
+  };
+
+  const handleRemoveChemistryTime = (time) => {
+    setSettings(prev => ({
+      ...prev,
+      available_chemistry_times: prev.available_chemistry_times.filter(t => t !== time)
+    }));
+  };
+
+  const handleSaveChemistryTimes = async () => {
     setSaving(true);
     setError('');
     setSuccess('');
 
     try {
-      await ApiService.updateChemistryTimeout(selectedService, parseInt(chemistryTimeout));
-      setSuccess('Настройки химии успешно обновлены');
+      await ApiService.updateAvailableChemistryTimes({
+        serviceType: selectedService,
+        availableChemistryTimes: settings.available_chemistry_times
+      });
+      setSuccess('Доступное время химии успешно обновлено');
     } catch (err) {
-      setError('Ошибка при обновлении настроек химии: ' + (err.message || 'Неизвестная ошибка'));
+      setError('Ошибка при обновлении времени химии: ' + (err.message || 'Неизвестная ошибка'));
     } finally {
       setSaving(false);
     }
@@ -464,27 +495,46 @@ const SettingsManagement = () => {
             <SettingsContainer theme={theme}>
               <SettingsTitle theme={theme}>Настройки химии</SettingsTitle>
               
-              <FormGrid>
-                <FormGroup>
-                  <FormLabel theme={theme}>Время доступности кнопки химии (в минутах)</FormLabel>
-                  <FormInput
+              <RentalTimesContainer>
+                <RentalTimesTitle theme={theme}>Доступное время химии (в минутах):</RentalTimesTitle>
+                
+                <RentalTimesList>
+                  {settings.available_chemistry_times.map(time => (
+                    <RentalTimeItem key={time} theme={theme}>
+                      {time} мин
+                      <RemoveButton onClick={() => handleRemoveChemistryTime(time)}>
+                        ×
+                      </RemoveButton>
+                    </RentalTimeItem>
+                  ))}
+                </RentalTimesList>
+
+                <AddRentalTimeContainer>
+                  <AddRentalTimeInput
                     theme={theme}
                     type="number"
-                    value={chemistryTimeout}
-                    onChange={(e) => setChemistryTimeout(e.target.value)}
-                    placeholder="Например: 10"
+                    value={newChemistryTime}
+                    onChange={(e) => setNewChemistryTime(e.target.value)}
+                    placeholder="Минуты"
                     min="1"
-                    max="60"
                   />
-                  <small style={{ color: theme.textColor, opacity: 0.7 }}>
-                    Время, в течение которого пользователь может включить химию после старта мойки
-                  </small>
-                </FormGroup>
-              </FormGrid>
+                  <Button
+                    theme={theme}
+                    onClick={handleAddChemistryTime}
+                    disabled={!newChemistryTime || parseInt(newChemistryTime) <= 0}
+                  >
+                    Добавить
+                  </Button>
+                </AddRentalTimeContainer>
+                
+                <small style={{ color: theme.textColor, opacity: 0.7, marginTop: '10px', display: 'block' }}>
+                  Пользователь сможет выбрать одно из этих значений при оплате химии
+                </small>
+              </RentalTimesContainer>
 
               <ButtonGroup>
-                <Button theme={theme} onClick={handleSaveChemistryTimeout} disabled={saving}>
-                  {saving ? 'Сохранение...' : 'Сохранить настройки химии'}
+                <Button theme={theme} onClick={handleSaveChemistryTimes} disabled={saving}>
+                  {saving ? 'Сохранение...' : 'Сохранить время химии'}
                 </Button>
               </ButtonGroup>
             </SettingsContainer>

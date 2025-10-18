@@ -17,6 +17,7 @@ type Repository interface {
 	GetUserSessionForPayment(userID uuid.UUID) (*models.Session, error)
 	GetSessionByIdempotencyKey(key string) (*models.Session, error)
 	UpdateSession(session *models.Session) error
+	UpdateSessionFields(sessionID uuid.UUID, fields map[string]interface{}) error
 	GetSessionsByStatus(status string) ([]models.Session, error)
 	CountSessionsByStatus(status string) (int, error)
 	GetUserSessionHistory(userID uuid.UUID, limit, offset int) ([]models.Session, error)
@@ -130,7 +131,17 @@ func (r *PostgresRepository) GetSessionByIdempotencyKey(key string) (*models.Ses
 
 // UpdateSession обновляет сессию
 func (r *PostgresRepository) UpdateSession(session *models.Session) error {
+	// Используем Save для обновления всех полей
+	// ВАЖНО: Save обновляет все поля, включая updated_at (автоматически через GORM)
+	// но НЕ обновляет status_updated_at если мы его явно не изменили
 	return r.db.Save(session).Error
+}
+
+// UpdateSessionFields обновляет только указанные поля сессии
+func (r *PostgresRepository) UpdateSessionFields(sessionID uuid.UUID, fields map[string]interface{}) error {
+	// Используем Updates для обновления только указанных полей
+	// Это безопаснее чем Save, так как не затрагивает другие поля
+	return r.db.Model(&models.Session{}).Where("id = ?", sessionID).Updates(fields).Error
 }
 
 // GetSessionsByStatus получает сессии по статусу

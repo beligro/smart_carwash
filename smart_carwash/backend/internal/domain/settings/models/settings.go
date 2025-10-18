@@ -78,25 +78,35 @@ type AdminUpdateRentalTimesResponse struct {
 	Message string `json:"message"`
 }
 
-// AdminGetChemistryTimeoutRequest запрос на получение времени доступности кнопки химии
-type AdminGetChemistryTimeoutRequest struct {
+// GetAvailableChemistryTimesRequest запрос на получение доступного времени химии (публичный)
+type GetAvailableChemistryTimesRequest struct {
 	ServiceType string `json:"service_type" binding:"required"`
 }
 
-// AdminGetChemistryTimeoutResponse ответ на получение времени доступности кнопки химии
-type AdminGetChemistryTimeoutResponse struct {
-	ServiceType                   string `json:"service_type"`
-	ChemistryEnableTimeoutMinutes int    `json:"chemistry_enable_timeout_minutes"`
+// GetAvailableChemistryTimesResponse ответ на получение доступного времени химии (публичный)
+type GetAvailableChemistryTimesResponse struct {
+	AvailableChemistryTimes []int `json:"available_chemistry_times"`
 }
 
-// AdminUpdateChemistryTimeoutRequest запрос на обновление времени доступности кнопки химии
-type AdminUpdateChemistryTimeoutRequest struct {
-	ServiceType                   string `json:"service_type" binding:"required"`
-	ChemistryEnableTimeoutMinutes int    `json:"chemistry_enable_timeout_minutes" binding:"required"`
+// AdminGetAvailableChemistryTimesRequest запрос на получение доступного времени химии (админка)
+type AdminGetAvailableChemistryTimesRequest struct {
+	ServiceType string `json:"service_type" binding:"required"`
 }
 
-// AdminUpdateChemistryTimeoutResponse ответ на обновление времени доступности кнопки химии
-type AdminUpdateChemistryTimeoutResponse struct {
+// AdminGetAvailableChemistryTimesResponse ответ на получение доступного времени химии (админка)
+type AdminGetAvailableChemistryTimesResponse struct {
+	ServiceType             string `json:"service_type"`
+	AvailableChemistryTimes []int  `json:"available_chemistry_times"`
+}
+
+// AdminUpdateAvailableChemistryTimesRequest запрос на обновление доступного времени химии (админка)
+type AdminUpdateAvailableChemistryTimesRequest struct {
+	ServiceType             string `json:"service_type" binding:"required"`
+	AvailableChemistryTimes []int  `json:"available_chemistry_times" binding:"required"`
+}
+
+// AdminUpdateAvailableChemistryTimesResponse ответ на обновление доступного времени химии (админка)
+type AdminUpdateAvailableChemistryTimesResponse struct {
 	Success bool   `json:"success"`
 	Message string `json:"message"`
 }

@@ -188,40 +188,8 @@ const getServiceTypeText = (serviceType) => {
   }
 };
 
-// Компонент кнопки включения химии для кассира
-const ChemistryEnableButton = ({ session, onEnable, actionLoading, theme }) => {
-  const [timeLeft, setTimeLeft] = useState(null);
-  const [isExpired, setIsExpired] = useState(false);
-
-  // Проверяем время доступности кнопки (по умолчанию 10 минут)
-  useEffect(() => {
-    if (!session || !session.status_updated_at) return;
-
-    const checkTimeLimit = () => {
-      const startTime = new Date(session.status_updated_at);
-      const now = new Date();
-      const timeLimit = 10 * 60 * 1000; // 10 минут в миллисекундах
-      const timePassed = now - startTime;
-      const remaining = timeLimit - timePassed;
-
-      if (remaining <= 0) {
-        setIsExpired(true);
-        setTimeLeft(0);
-      } else {
-        setTimeLeft(Math.floor(remaining / 1000));
-      }
-    };
-
-    checkTimeLimit();
-    const interval = setInterval(checkTimeLimit, 1000);
-
-    return () => clearInterval(interval);
-  }, [session]);
-
-  if (isExpired) {
-    return null; // Не показываем ничего, когда время истекло
-  }
-
+// Компонент кнопки включения химии для кассира (только кнопка!)
+const ChemistryEnableButton = ({ session, onEnable, actionLoading }) => {
   return (
     <ActionButton
       className="chemistry"
@@ -229,14 +197,58 @@ const ChemistryEnableButton = ({ session, onEnable, actionLoading, theme }) => {
       disabled={actionLoading[session.id]}
       style={{ backgroundColor: '#4CAF50', color: 'white' }}
     >
-      {actionLoading[session.id] ? 'Включение...' : '🧪 Включить химию'}
-      {timeLeft !== null && (
-        <span style={{ fontSize: '0.8rem', marginLeft: '4px' }}>
-          ({Math.floor(timeLeft / 60)}:{(timeLeft % 60).toString().padStart(2, '0')})
-        </span>
-      )}
+      {actionLoading[session.id] ? 'Включение...' : `🧪 Включить химию (${session.chemistry_time_minutes} мин)`}
     </ActionButton>
   );
+};
+
+// Компонент для отображения таймера химии в кассирском интерфейсе
+const ChemistryTimer = ({ session }) => {
+  const [chemistryTimeLeft, setChemistryTimeLeft] = useState(null);
+
+  useEffect(() => {
+    if (!session || !session.chemistry_started_at || session.chemistry_ended_at) {
+      setChemistryTimeLeft(null);
+      return;
+    }
+
+    const updateChemistryTimer = () => {
+      const startTime = new Date(session.chemistry_started_at);
+      const now = new Date();
+      const timeLimit = (session.chemistry_time_minutes || 0) * 60 * 1000;
+      const timePassed = now - startTime;
+      const remaining = timeLimit - timePassed;
+
+      if (remaining <= 0) {
+        setChemistryTimeLeft(0);
+      } else {
+        setChemistryTimeLeft(Math.floor(remaining / 1000));
+      }
+    };
+
+    updateChemistryTimer();
+    const interval = setInterval(updateChemistryTimer, 1000);
+
+    return () => clearInterval(interval);
+  }, [session]);
+
+  // Если химия выключена - ничего не показываем (статус уже в ChemistryStatus выше)
+  if (session.chemistry_ended_at) {
+    return null;
+  }
+
+  // Если химия активна - показываем таймер
+  if (session.was_chemistry_on && session.chemistry_started_at && chemistryTimeLeft !== null && chemistryTimeLeft > 0) {
+    return (
+      <div style={{ marginTop: '8px', padding: '8px', backgroundColor: '#e8f5e9', borderRadius: '6px', border: '1px solid #4caf50' }}>
+        <div style={{ fontSize: '11px', color: '#2e7d32', fontWeight: 'bold' }}>
+          🧪 Химия: {Math.floor(chemistryTimeLeft / 60)}:{(chemistryTimeLeft % 60).toString().padStart(2, '0')}
+        </div>
+      </div>
+    );
+  }
+
+  return null;
 };
 
 const ChemistryStatus = styled.div`
@@ -262,10 +274,11 @@ const SessionCardComponent = ({ session, onStart, onComplete, onCancel, onEnable
     if (!session.with_chemistry) {
       return { text: 'Без химии', icon: '❌', color: '#6c757d' };
     }
+    const chemistryTime = session.chemistry_time_minutes || 0;
     if (session.was_chemistry_on) {
-      return { text: 'Химия включена', icon: '🧪✅', color: '#28a745' };
+      return { text: `Химия включена (${chemistryTime} мин)`, icon: '🧪✅', color: '#28a745' };
     }
-    return { text: 'Химия оплачена', icon: '🧪', color: '#ffc107' };
+    return { text: `Химия оплачена (${chemistryTime} мин)`, icon: '🧪', color: '#ffc107' };
   };
 
   const chemistryStatus = getChemistryStatus();
@@ -285,6 +298,11 @@ const SessionCardComponent = ({ session, onStart, onComplete, onCancel, onEnable
             <TimerLabel theme={theme}>Осталось:</TimerLabel>
             <Timer seconds={timeLeft} theme="light" />
           </TimerContainer>
+        )}
+        
+        {/* Таймер химии (если активна) */}
+        {session.status === 'active' && session.with_chemistry && session.was_chemistry_on && (
+          <ChemistryTimer session={session} />
         )}
       </SessionHeader>
 

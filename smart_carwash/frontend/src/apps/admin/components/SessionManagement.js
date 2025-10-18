@@ -506,6 +506,7 @@ const SessionManagement = () => {
             <Th theme={theme}>Статус</Th>
             <Th theme={theme}>Тип услуги</Th>
             <Th theme={theme}>Химия</Th>
+            <Th theme={theme}>Время химии</Th>
             <Th theme={theme}>Время аренды</Th>
             <Th theme={theme}>Дата создания</Th>
             <Th theme={theme}>Действия</Th>
@@ -538,6 +539,13 @@ const SessionManagement = () => {
                     <span style={{ color: '#4CAF50' }}>🧪</span>
                     {session.was_chemistry_on ? 'Включена' : 'Не включена'}
                   </span>
+                ) : (
+                  <span style={{ color: '#999', fontSize: '12px' }}>-</span>
+                )}
+              </Td>
+              <Td>
+                {session.with_chemistry ? (
+                  <span style={{ fontSize: '12px' }}>{session.chemistry_time_minutes || 0} мин</span>
                 ) : (
                   <span style={{ color: '#999', fontSize: '12px' }}>-</span>
                 )}

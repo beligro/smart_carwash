@@ -316,6 +316,51 @@ const TestResult = styled.div`
   }
 `;
 
+const ControlButtonsGroup = styled.div`
+  display: flex;
+  gap: 4px;
+  align-items: center;
+`;
+
+const ControlButton = styled.button`
+  background: ${props => props.$isOn ? '#4CAF50' : '#F44336'};
+  color: white;
+  border: none;
+  padding: 4px 10px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 11px;
+  font-weight: 500;
+  min-width: 45px;
+  transition: opacity 0.2s;
+  
+  &:hover:not(:disabled) {
+    opacity: 0.85;
+  }
+  
+  &:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+`;
+
+const ControlStatus = styled.div`
+  font-size: 10px;
+  margin-top: 2px;
+  
+  &.success {
+    color: #2E7D32;
+  }
+  
+  &.error {
+    color: #C62828;
+  }
+  
+  &.testing {
+    color: #1565C0;
+  }
+`;
+
 const LoadingMessage = styled.div`
   color: ${props => props.theme.textColor};
   text-align: center;
@@ -351,6 +396,10 @@ const WashBoxManagement = () => {
   // Состояния для тестирования Modbus
   const [testingBox, setTestingBox] = useState(null);
   const [testResults, setTestResults] = useState({});
+  
+  // Состояния для управления регистрами в таблице
+  const [controlOperations, setControlOperations] = useState({});
+  const [controlResults, setControlResults] = useState({});
 
   // Загрузка боксов
   const fetchWashBoxes = async () => {
@@ -419,6 +468,59 @@ const WashBoxManagement = () => {
       }));
     } finally {
       setTestingBox(null);
+    }
+  };
+
+  // Функция управления регистром из таблицы
+  const handleControlRegister = async (boxId, register, value, type) => {
+    const key = `${boxId}_${type}`;
+    
+    try {
+      setControlOperations(prev => ({ ...prev, [key]: true }));
+      setControlResults(prev => ({ 
+        ...prev, 
+        [key]: { 
+          status: 'testing', 
+          message: value ? 'Включение...' : 'Выключение...' 
+        } 
+      }));
+      
+      const response = await modbusApi.post('/admin/modbus/test-coil', { 
+        box_id: boxId, 
+        register, 
+        value 
+      });
+      
+      setControlResults(prev => ({ 
+        ...prev, 
+        [key]: { 
+          status: response.data.success ? 'success' : 'error', 
+          message: response.data.success 
+            ? (value ? '✓ Включено' : '✓ Выключено') 
+            : response.data.message 
+        } 
+      }));
+      
+      // Автоматически скрываем сообщение об успехе через 3 секунды
+      if (response.data.success) {
+        setTimeout(() => {
+          setControlResults(prev => {
+            const newResults = { ...prev };
+            delete newResults[key];
+            return newResults;
+          });
+        }, 3000);
+      }
+    } catch (err) {
+      setControlResults(prev => ({ 
+        ...prev, 
+        [key]: { 
+          status: 'error', 
+          message: err.response?.data?.error || err.message 
+        } 
+      }));
+    } finally {
+      setControlOperations(prev => ({ ...prev, [key]: false }));
     }
   };
 
@@ -646,13 +748,63 @@ const WashBoxManagement = () => {
                   )}
                 </Td>
                 <Td>
-                  {washBox.light_coil_register || (
+                  {washBox.light_coil_register ? (
+                    <div>
+                      <div style={{ marginBottom: '6px' }}>{washBox.light_coil_register}</div>
+                      <ControlButtonsGroup>
+                        <ControlButton
+                          $isOn={true}
+                          onClick={() => handleControlRegister(washBox.id, washBox.light_coil_register, true, 'light')}
+                          disabled={controlOperations[`${washBox.id}_light`]}
+                        >
+                          ВКЛ
+                        </ControlButton>
+                        <ControlButton
+                          $isOn={false}
+                          onClick={() => handleControlRegister(washBox.id, washBox.light_coil_register, false, 'light')}
+                          disabled={controlOperations[`${washBox.id}_light`]}
+                        >
+                          ВЫКЛ
+                        </ControlButton>
+                      </ControlButtonsGroup>
+                      {controlResults[`${washBox.id}_light`] && (
+                        <ControlStatus className={controlResults[`${washBox.id}_light`].status}>
+                          {controlResults[`${washBox.id}_light`].message}
+                        </ControlStatus>
+                      )}
+                    </div>
+                  ) : (
                     <span style={{ color: '#999' }}>Не задан</span>
                   )}
                 </Td>
                 <Td>
                   {washBox.service_type === 'wash' ? (
-                    washBox.chemistry_coil_register || (
+                    washBox.chemistry_coil_register ? (
+                      <div>
+                        <div style={{ marginBottom: '6px' }}>{washBox.chemistry_coil_register}</div>
+                        <ControlButtonsGroup>
+                          <ControlButton
+                            $isOn={true}
+                            onClick={() => handleControlRegister(washBox.id, washBox.chemistry_coil_register, true, 'chemistry')}
+                            disabled={controlOperations[`${washBox.id}_chemistry`]}
+                          >
+                            ВКЛ
+                          </ControlButton>
+                          <ControlButton
+                            $isOn={false}
+                            onClick={() => handleControlRegister(washBox.id, washBox.chemistry_coil_register, false, 'chemistry')}
+                            disabled={controlOperations[`${washBox.id}_chemistry`]}
+                          >
+                            ВЫКЛ
+                          </ControlButton>
+                        </ControlButtonsGroup>
+                        {controlResults[`${washBox.id}_chemistry`] && (
+                          <ControlStatus className={controlResults[`${washBox.id}_chemistry`].status}>
+                            {controlResults[`${washBox.id}_chemistry`].message}
+                          </ControlStatus>
+                        )}
+                      </div>
+                    ) : (
                       <span style={{ color: '#999' }}>Не задан</span>
                     )
                   ) : (

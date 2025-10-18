@@ -265,13 +265,16 @@ const TelegramApp = () => {
       setError(null);
       
       // Создаем сессию с платежом
-      const response = await ApiService.createSessionWithPayment({
+      const requestData = {
         userId: user.id,
         serviceType: serviceData.serviceType,
         withChemistry: serviceData.withChemistry,
+        chemistryTimeMinutes: serviceData.chemistryTimeMinutes || 0,
         carNumber: serviceData.carNumber,
         rentalTimeMinutes: serviceData.rentalTimeMinutes
-      });
+      };
+      
+      const response = await ApiService.createSessionWithPayment(requestData);
 
       if (response && response.session && response.payment) {
         // Очищаем старый поллинг сессии перед созданием нового
