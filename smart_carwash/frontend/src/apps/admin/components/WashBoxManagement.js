@@ -387,6 +387,7 @@ const WashBoxManagement = () => {
     status: 'free',
     serviceType: 'wash',
     chemistryEnabled: true,
+    priority: 1,
     lightCoilRegister: '',
     chemistryCoilRegister: ''
   });
@@ -544,6 +545,7 @@ const WashBoxManagement = () => {
         status: formData.status,
         service_type: formData.serviceType,
         chemistry_enabled: formData.chemistryEnabled,
+        priority: formData.priority || 1,
         light_coil_register: formData.lightCoilRegister || null,
         chemistry_coil_register: formData.chemistryCoilRegister || null
       };
@@ -551,7 +553,7 @@ const WashBoxManagement = () => {
       await ApiService.createWashBox(washBoxData);
       setSuccess('Бокс успешно создан');
       setShowCreateModal(false);
-      setFormData({ number: '', status: 'free', serviceType: 'wash', chemistryEnabled: true, lightCoilRegister: '', chemistryCoilRegister: '' });
+      setFormData({ number: '', status: 'free', serviceType: 'wash', chemistryEnabled: true, priority: 1, lightCoilRegister: '', chemistryCoilRegister: '' });
       fetchWashBoxes();
     } catch (err) {
       if (err.response?.data?.error) {
@@ -578,6 +580,7 @@ const WashBoxManagement = () => {
         status: formData.status,
         service_type: formData.serviceType,
         chemistry_enabled: formData.chemistryEnabled,
+        priority: formData.priority || 1,
         light_coil_register: formData.lightCoilRegister || null,
         chemistry_coil_register: formData.chemistryCoilRegister || null
       };
@@ -586,7 +589,7 @@ const WashBoxManagement = () => {
       setSuccess('Бокс успешно обновлен');
       setShowEditModal(false);
       setEditingWashBox(null);
-      setFormData({ number: '', status: 'free', serviceType: 'wash', chemistryEnabled: true, lightCoilRegister: '', chemistryCoilRegister: '' });
+      setFormData({ number: '', status: 'free', serviceType: 'wash', chemistryEnabled: true, priority: 1, lightCoilRegister: '', chemistryCoilRegister: '' });
       fetchWashBoxes();
     } catch (err) {
       if (err.response?.data?.error) {
@@ -631,6 +634,7 @@ const WashBoxManagement = () => {
       status: washBox.status,
       serviceType: washBox.service_type,
       chemistryEnabled: washBox.chemistry_enabled,
+      priority: washBox.priority || 1,
       lightCoilRegister: washBox.light_coil_register || '',
       chemistryCoilRegister: washBox.chemistry_coil_register || ''
     });
@@ -714,6 +718,7 @@ const WashBoxManagement = () => {
             <Th theme={theme}>Номер</Th>
             <Th theme={theme}>Статус</Th>
             <Th theme={theme}>Тип услуги</Th>
+            <Th theme={theme}>Приоритет</Th>
             <Th theme={theme}>Химия</Th>
             <Th theme={theme}>Регистр света</Th>
             <Th theme={theme}>Регистр химии</Th>
@@ -739,6 +744,14 @@ const WashBoxManagement = () => {
                   <ServiceTypeBadge className={washBox.service_type}>
                     {getServiceTypeText(washBox.service_type)}
                   </ServiceTypeBadge>
+                </Td>
+                <Td>
+                  <span style={{ 
+                    fontWeight: 'bold', 
+                    color: washBox.priority === 1 ? '#28a745' : washBox.priority <= 3 ? '#ffc107' : '#dc3545' 
+                  }}>
+                    {washBox.priority || 1}
+                  </span>
                 </Td>
                 <Td>
                   {washBox.service_type === 'wash' ? (
@@ -857,6 +870,14 @@ const WashBoxManagement = () => {
           { key: 'service_type', label: 'Тип услуги', accessor: (item) => (
             <ServiceTypeBadge className={item.service_type}>{getServiceTypeText(item.service_type)}</ServiceTypeBadge>
           )},
+          { key: 'priority', label: 'Приоритет', accessor: (item) => (
+            <span style={{ 
+              fontWeight: 'bold', 
+              color: item.priority === 1 ? '#28a745' : item.priority <= 3 ? '#ffc107' : '#dc3545' 
+            }}>
+              {item.priority || 1}
+            </span>
+          )},
           { key: 'chemistry', label: 'Химия', accessor: (item) => (
             item.service_type === 'wash' ? (
               <ChemistryBadge className={item.chemistry_enabled ? 'enabled' : 'disabled'}>
@@ -943,6 +964,20 @@ const WashBoxManagement = () => {
                   <option value="air_dry">Обдув</option>
                   <option value="vacuum">Пылесос</option>
                 </Select>
+              </FormGroup>
+              
+              <FormGroup>
+                <Label theme={theme}>Приоритет</Label>
+                <Input
+                  type="number"
+                  value={formData.priority}
+                  onChange={(e) => setFormData({ ...formData, priority: e.target.value === '' ? '' : parseInt(e.target.value) || 1 })}
+                  min="1"
+                  required
+                />
+                <small style={{ color: '#666', fontSize: '12px' }}>
+                  Чем меньше число, тем выше приоритет (1 - наивысший приоритет)
+                </small>
               </FormGroup>
               
               {formData.serviceType === 'wash' && (
@@ -1044,6 +1079,20 @@ const WashBoxManagement = () => {
                   <option value="air_dry">Обдув</option>
                   <option value="vacuum">Пылесос</option>
                 </Select>
+              </FormGroup>
+              
+              <FormGroup>
+                <Label theme={theme}>Приоритет</Label>
+                <Input
+                  type="number"
+                  value={formData.priority}
+                  onChange={(e) => setFormData({ ...formData, priority: e.target.value === '' ? '' : parseInt(e.target.value) || 1 })}
+                  min="1"
+                  required
+                />
+                <small style={{ color: '#666', fontSize: '12px' }}>
+                  Чем меньше число, тем выше приоритет (1 - наивысший приоритет)
+                </small>
               </FormGroup>
               
               {formData.serviceType === 'wash' && (

@@ -5,6 +5,7 @@ import (
 	"carwash_backend/internal/domain/washbox/models"
 	"carwash_backend/internal/domain/washbox/repository"
 	"errors"
+	"math/rand"
 	"time"
 
 	"github.com/google/uuid"
@@ -53,6 +54,33 @@ type ServiceImpl struct {
 	settingsService service.Service
 }
 
+// shuffleBoxesWithSamePriority перемешивает боксы с одинаковым приоритетом
+func shuffleBoxesWithSamePriority(boxes []models.WashBox) []models.WashBox {
+	if len(boxes) <= 1 {
+		return boxes
+	}
+
+	// Группируем боксы по приоритету
+	priorityGroups := make(map[int][]models.WashBox)
+	for _, box := range boxes {
+		priorityGroups[box.Priority] = append(priorityGroups[box.Priority], box)
+	}
+
+	// Перемешиваем боксы в каждой группе с одинаковым приоритетом
+	result := make([]models.WashBox, 0, len(boxes))
+	for priority := 1; priority <= 100; priority++ { // Предполагаем, что приоритеты не превышают 100
+		if group, exists := priorityGroups[priority]; exists {
+			// Перемешиваем группу
+			rand.Shuffle(len(group), func(i, j int) {
+				group[i], group[j] = group[j], group[i]
+			})
+			result = append(result, group...)
+		}
+	}
+
+	return result
+}
+
 // NewService создает новый экземпляр Service
 func NewService(repo repository.Repository, settingsService service.Service) *ServiceImpl {
 	return &ServiceImpl{
@@ -71,19 +99,31 @@ func (s *ServiceImpl) UpdateWashBoxStatus(id uuid.UUID, status string) error {
 	return s.repo.UpdateWashBoxStatus(id, status)
 }
 
-// GetFreeWashBoxes получает все свободные боксы мойки
+// GetFreeWashBoxes получает все свободные боксы мойки, отсортированные по приоритету с рандомизацией
 func (s *ServiceImpl) GetFreeWashBoxes() ([]models.WashBox, error) {
-	return s.repo.GetFreeWashBoxes()
+	boxes, err := s.repo.GetFreeWashBoxes()
+	if err != nil {
+		return nil, err
+	}
+	return shuffleBoxesWithSamePriority(boxes), nil
 }
 
-// GetFreeWashBoxesByServiceType получает все свободные боксы мойки определенного типа
+// GetFreeWashBoxesByServiceType получает все свободные боксы мойки определенного типа, отсортированные по приоритету с рандомизацией
 func (s *ServiceImpl) GetFreeWashBoxesByServiceType(serviceType string) ([]models.WashBox, error) {
-	return s.repo.GetFreeWashBoxesByServiceType(serviceType)
+	boxes, err := s.repo.GetFreeWashBoxesByServiceType(serviceType)
+	if err != nil {
+		return nil, err
+	}
+	return shuffleBoxesWithSamePriority(boxes), nil
 }
 
-// GetFreeWashBoxesWithChemistry получает все свободные боксы мойки с химией определенного типа
+// GetFreeWashBoxesWithChemistry получает все свободные боксы мойки с химией определенного типа, отсортированные по приоритету с рандомизацией
 func (s *ServiceImpl) GetFreeWashBoxesWithChemistry(serviceType string) ([]models.WashBox, error) {
-	return s.repo.GetFreeWashBoxesWithChemistry(serviceType)
+	boxes, err := s.repo.GetFreeWashBoxesWithChemistry(serviceType)
+	if err != nil {
+		return nil, err
+	}
+	return shuffleBoxesWithSamePriority(boxes), nil
 }
 
 // GetWashBoxesByServiceType получает все боксы мойки определенного типа
@@ -122,6 +162,7 @@ func (s *ServiceImpl) AdminCreateWashBox(req *models.AdminCreateWashBoxRequest) 
 		Number:      req.Number,
 		Status:      req.Status,
 		ServiceType: req.ServiceType,
+		Priority:    req.Priority,
 	}
 
 	// Устанавливаем химию по умолчанию в зависимости от типа услуги
@@ -172,6 +213,10 @@ func (s *ServiceImpl) AdminUpdateWashBox(req *models.AdminUpdateWashBoxRequest) 
 
 	if req.ChemistryEnabled != nil {
 		existingBox.ChemistryEnabled = *req.ChemistryEnabled
+	}
+
+	if req.Priority != nil {
+		existingBox.Priority = *req.Priority
 	}
 
 	if req.LightCoilRegister != nil {

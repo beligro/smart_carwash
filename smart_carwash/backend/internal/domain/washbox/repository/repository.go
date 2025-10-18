@@ -87,24 +87,24 @@ func (r *PostgresRepository) CreateWashBox(box *models.WashBox) (*models.WashBox
 	return box, nil
 }
 
-// GetFreeWashBoxes получает все свободные боксы мойки
+// GetFreeWashBoxes получает все свободные боксы мойки, отсортированные по приоритету
 func (r *PostgresRepository) GetFreeWashBoxes() ([]models.WashBox, error) {
 	var boxes []models.WashBox
-	err := r.db.Where("status = ?", models.StatusFree).Find(&boxes).Error
+	err := r.db.Where("status = ?", models.StatusFree).Order("priority ASC, number ASC").Find(&boxes).Error
 	return boxes, err
 }
 
-// GetFreeWashBoxesByServiceType получает все свободные боксы мойки определенного типа
+// GetFreeWashBoxesByServiceType получает все свободные боксы мойки определенного типа, отсортированные по приоритету
 func (r *PostgresRepository) GetFreeWashBoxesByServiceType(serviceType string) ([]models.WashBox, error) {
 	var boxes []models.WashBox
-	err := r.db.Where("status = ? AND service_type = ?", models.StatusFree, serviceType).Find(&boxes).Error
+	err := r.db.Where("status = ? AND service_type = ?", models.StatusFree, serviceType).Order("priority ASC, number ASC").Find(&boxes).Error
 	return boxes, err
 }
 
-// GetFreeWashBoxesWithChemistry получает все свободные боксы мойки с химией определенного типа
+// GetFreeWashBoxesWithChemistry получает все свободные боксы мойки с химией определенного типа, отсортированные по приоритету
 func (r *PostgresRepository) GetFreeWashBoxesWithChemistry(serviceType string) ([]models.WashBox, error) {
 	var boxes []models.WashBox
-	err := r.db.Where("status = ? AND service_type = ? AND chemistry_enabled = ?", models.StatusFree, serviceType, true).Find(&boxes).Error
+	err := r.db.Where("status = ? AND service_type = ? AND chemistry_enabled = ?", models.StatusFree, serviceType, true).Order("priority ASC, number ASC").Find(&boxes).Error
 	return boxes, err
 }
 
