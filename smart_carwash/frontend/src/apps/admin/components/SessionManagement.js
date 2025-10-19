@@ -3,6 +3,12 @@ import styled from 'styled-components';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { getTheme } from '../../../shared/styles/theme';
 import ApiService from '../../../shared/services/ApiService';
+import { 
+  convertDateTimeLocalToUTC, 
+  convertUTCToDateTimeLocal, 
+  getQuickFilterDates,
+  formatDateForDisplay 
+} from '../../../shared/utils/dateUtils';
 
 const Container = styled.div`
   padding: 20px;
@@ -389,10 +395,12 @@ const SessionManagement = () => {
   const [filters, setFilters] = useState({
     status: '',
     serviceType: '',
-    dateFrom: '',
-    dateTo: '',
     userId: '',
     boxNumber: ''
+  });
+  const [localDateFilters, setLocalDateFilters] = useState({
+    dateFrom: '',
+    dateTo: ''
   });
   const [pagination, setPagination] = useState({
     limit: 20,
@@ -428,10 +436,16 @@ const SessionManagement = () => {
       // Добавляем фильтры с правильными названиями полей
       if (filters.status) filtersData.status = filters.status;
       if (filters.serviceType) filtersData.service_type = filters.serviceType;
-      if (filters.dateFrom) filtersData.date_from = filters.dateFrom;
-      if (filters.dateTo) filtersData.date_to = filters.dateTo;
       if (filters.userId) filtersData.user_id = filters.userId;
       if (filters.boxNumber) filtersData.box_number = filters.boxNumber;
+      
+      // Конвертируем локальные даты в UTC перед отправкой
+      if (localDateFilters.dateFrom) {
+        filtersData.date_from = convertDateTimeLocalToUTC(localDateFilters.dateFrom);
+      }
+      if (localDateFilters.dateTo) {
+        filtersData.date_to = convertDateTimeLocalToUTC(localDateFilters.dateTo);
+      }
       
       const response = await ApiService.getSessions(filtersData);
       
@@ -450,12 +464,12 @@ const SessionManagement = () => {
 
   useEffect(() => {
     fetchSessions();
-  }, [filters, pagination.limit, pagination.offset]);
+  }, [filters, localDateFilters, pagination.limit, pagination.offset]);
 
   // Сброс пагинации при изменении фильтров
   useEffect(() => {
     setPagination(prev => ({ ...prev, offset: 0 }));
-  }, [filters]);
+  }, [filters, localDateFilters]);
 
   // Загрузка деталей сессии
   const fetchSessionDetails = async (sessionId) => {
@@ -532,15 +546,9 @@ const SessionManagement = () => {
     }
     
     try {
-      const date = new Date(dateString);
-      if (isNaN(date.getTime())) {
-        // Возвращаем исходную строку вместо "Некорректная дата"
-        return dateString;
-      }
-      return date.toLocaleString('ru-RU');
+      return formatDateForDisplay(dateString);
     } catch (error) {
       console.error('Ошибка форматирования даты:', error, 'dateString:', dateString);
-      // Возвращаем исходную строку вместо "Ошибка форматирования даты"
       return dateString;
     }
   };
@@ -608,18 +616,18 @@ const SessionManagement = () => {
 
         <div className="filter-item">
           <FilterInput
-            type="date"
-            value={filters.dateFrom}
-            onChange={(e) => setFilters({ ...filters, dateFrom: e.target.value })}
+            type="datetime-local"
+            value={localDateFilters.dateFrom}
+            onChange={(e) => setLocalDateFilters({ ...localDateFilters, dateFrom: e.target.value })}
             placeholder="Дата от"
           />
         </div>
 
         <div className="filter-item">
           <FilterInput
-            type="date"
-            value={filters.dateTo}
-            onChange={(e) => setFilters({ ...filters, dateTo: e.target.value })}
+            type="datetime-local"
+            value={localDateFilters.dateTo}
+            onChange={(e) => setLocalDateFilters({ ...localDateFilters, dateTo: e.target.value })}
             placeholder="Дата до"
           />
         </div>

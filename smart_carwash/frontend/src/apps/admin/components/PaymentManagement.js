@@ -4,6 +4,12 @@ import { useSearchParams, useLocation } from 'react-router-dom';
 import { getTheme } from '../../../shared/styles/theme';
 import ApiService from '../../../shared/services/ApiService';
 import PaymentStatistics from './PaymentStatistics';
+import { 
+  convertDateTimeLocalToUTC, 
+  convertUTCToDateTimeLocal, 
+  getQuickFilterDates,
+  formatDateForDisplay 
+} from '../../../shared/utils/dateUtils';
 
 const Container = styled.div`
   padding: 20px;
@@ -238,7 +244,9 @@ const PaymentManagement = () => {
     user_id: '',
     status: '',
     payment_type: '',
-    payment_method: '',
+    payment_method: ''
+  });
+  const [localFilters, setLocalFilters] = useState({
     date_from: '',
     date_to: ''
   });
@@ -261,9 +269,7 @@ const PaymentManagement = () => {
         user_id: userId || '',
         status: '',
         payment_type: '',
-        payment_method: '',
-        date_from: '',
-        date_to: ''
+        payment_method: ''
       };
       
       setFilters(newFilters);
@@ -304,12 +310,20 @@ const PaymentManagement = () => {
         offset: pagination.offset
       };
 
-      // Добавляем только непустые фильтры
+      // Добавляем только непустые фильтры (исключая date_from и date_to)
       Object.keys(filters).forEach(key => {
-        if (filters[key]) {
+        if (filters[key] && key !== 'date_from' && key !== 'date_to') {
           params[key] = filters[key];
         }
       });
+
+      // Конвертируем локальные даты в UTC перед отправкой
+      if (localFilters.date_from) {
+        params.date_from = convertDateTimeLocalToUTC(localFilters.date_from);
+      }
+      if (localFilters.date_to) {
+        params.date_to = convertDateTimeLocalToUTC(localFilters.date_to);
+      }
 
       const response = await ApiService.getPayments(params);
       setPayments(response.payments || []);
@@ -328,10 +342,17 @@ const PaymentManagement = () => {
     if (isInitialized) {
       loadPayments();
     }
-  }, [pagination.offset, filters, isInitialized]);
+  }, [pagination.offset, filters, localFilters, isInitialized]);
 
   const handleFilterChange = (key, value) => {
     setFilters(prev => ({
+      ...prev,
+      [key]: value
+    }));
+  };
+
+  const handleDateFilterChange = (key, value) => {
+    setLocalFilters(prev => ({
       ...prev,
       [key]: value
     }));
@@ -349,10 +370,14 @@ const PaymentManagement = () => {
       user_id: '',
       status: '',
       payment_type: '',
+      payment_method: ''
+    };
+    const clearedLocalFilters = {
       date_from: '',
       date_to: ''
     };
     setFilters(clearedFilters);
+    setLocalFilters(clearedLocalFilters);
     setPagination(prev => ({ ...prev, offset: 0 }));
     loadPayments();
   };
@@ -381,7 +406,7 @@ const PaymentManagement = () => {
   };
 
   const formatDate = (dateString) => {
-    return new Date(dateString).toLocaleString('ru-RU');
+    return formatDateForDisplay(dateString);
   };
 
   const canRefund = (payment) => {
@@ -486,9 +511,9 @@ const PaymentManagement = () => {
             <FilterLabel theme={theme}>Дата от</FilterLabel>
             <FilterInput
               theme={theme}
-              type="date"
-              value={filters.date_from}
-              onChange={(e) => handleFilterChange('date_from', e.target.value)}
+              type="datetime-local"
+              value={localFilters.date_from}
+              onChange={(e) => handleDateFilterChange('date_from', e.target.value)}
             />
           </FilterGroup>
 
@@ -496,9 +521,9 @@ const PaymentManagement = () => {
             <FilterLabel theme={theme}>Дата до</FilterLabel>
             <FilterInput
               theme={theme}
-              type="date"
-              value={filters.date_to}
-              onChange={(e) => handleFilterChange('date_to', e.target.value)}
+              type="datetime-local"
+              value={localFilters.date_to}
+              onChange={(e) => handleDateFilterChange('date_to', e.target.value)}
             />
           </FilterGroup>
 
@@ -507,66 +532,27 @@ const PaymentManagement = () => {
             <FilterSelect
               theme={theme}
               onChange={(e) => {
-                const today = new Date();
-                const yesterday = new Date(today);
-                yesterday.setDate(yesterday.getDate() - 1);
+                const filterType = e.target.value;
                 
-                let dateFrom = '';
-                let dateTo = '';
-                
-                switch (e.target.value) {
-                  case 'today':
-                    dateFrom = today.toISOString().split('T')[0];
-                    dateTo = today.toISOString().split('T')[0];
-                    break;
-                  case 'yesterday':
-                    dateFrom = yesterday.toISOString().split('T')[0];
-                    dateTo = yesterday.toISOString().split('T')[0];
-                    break;
-                  case 'this_week':
-                    const startOfWeek = new Date(today);
-                    startOfWeek.setDate(today.getDate() - today.getDay());
-                    dateFrom = startOfWeek.toISOString().split('T')[0];
-                    dateTo = today.toISOString().split('T')[0];
-                    break;
-                  case 'last_week':
-                    const lastWeekStart = new Date(today);
-                    lastWeekStart.setDate(today.getDate() - today.getDay() - 7);
-                    const lastWeekEnd = new Date(lastWeekStart);
-                    lastWeekEnd.setDate(lastWeekStart.getDate() + 6);
-                    dateFrom = lastWeekStart.toISOString().split('T')[0];
-                    dateTo = lastWeekEnd.toISOString().split('T')[0];
-                    break;
-                  case 'this_month':
-                    dateFrom = new Date(today.getFullYear(), today.getMonth(), 1).toISOString().split('T')[0];
-                    dateTo = today.toISOString().split('T')[0];
-                    break;
-                  case 'last_month':
-                    const lastMonth = new Date(today.getFullYear(), today.getMonth() - 1, 1);
-                    const lastMonthEnd = new Date(today.getFullYear(), today.getMonth(), 0);
-                    dateFrom = lastMonth.toISOString().split('T')[0];
-                    dateTo = lastMonthEnd.toISOString().split('T')[0];
-                    break;
-                  case 'this_year':
-                    dateFrom = new Date(today.getFullYear(), 0, 1).toISOString().split('T')[0];
-                    dateTo = today.toISOString().split('T')[0];
-                    break;
-                  case 'last_year':
-                    const lastYearStart = new Date(today.getFullYear() - 1, 0, 1);
-                    const lastYearEnd = new Date(today.getFullYear() - 1, 11, 31);
-                    dateFrom = lastYearStart.toISOString().split('T')[0];
-                    dateTo = lastYearEnd.toISOString().split('T')[0];
-                    break;
-                  default:
-                    break;
-                }
-                
-                if (dateFrom || dateTo) {
-                  setFilters(prev => ({
-                    ...prev,
-                    date_from: dateFrom,
-                    date_to: dateTo
-                  }));
+                if (filterType) {
+                  const { dateFrom, dateTo } = getQuickFilterDates(filterType);
+                  
+                  if (dateFrom && dateTo) {
+                    // Конвертируем UTC даты обратно в datetime-local формат для отображения
+                    const localDateFrom = convertUTCToDateTimeLocal(dateFrom);
+                    const localDateTo = convertUTCToDateTimeLocal(dateTo);
+                    
+                    setLocalFilters({
+                      date_from: localDateFrom,
+                      date_to: localDateTo
+                    });
+                  }
+                } else {
+                  // Очищаем фильтры
+                  setLocalFilters({
+                    date_from: '',
+                    date_to: ''
+                  });
                 }
               }}
             >
@@ -602,7 +588,8 @@ const PaymentManagement = () => {
 
       {showStatistics && (
         <PaymentStatistics 
-          filters={filters} 
+          filters={filters}
+          localDateFilters={localFilters}
           onClose={() => setShowStatistics(false)}
         />
       )}

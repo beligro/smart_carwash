@@ -564,19 +564,27 @@ func (s *ServiceImpl) AdminListCleaningLogs(req *models.AdminListCleaningLogsReq
 		Status: req.Status,
 	}
 
-	// Конвертируем даты из строк в time.Time
+	// Конвертируем даты из строк в time.Time (поддерживаем ISO 8601 с timezone)
 	if req.DateFrom != nil && *req.DateFrom != "" {
-		dateFrom, err := time.Parse("2006-01-02T15:04", *req.DateFrom)
+		dateFrom, err := time.Parse(time.RFC3339, *req.DateFrom)
 		if err != nil {
-			return nil, errors.New("неверный формат даты начала")
+			// Пробуем парсить как datetime-local для обратной совместимости
+			dateFrom, err = time.Parse("2006-01-02T15:04", *req.DateFrom)
+			if err != nil {
+				return nil, errors.New("неверный формат даты начала")
+			}
 		}
 		convertedReq.DateFrom = &dateFrom
 	}
 
 	if req.DateTo != nil && *req.DateTo != "" {
-		dateTo, err := time.Parse("2006-01-02T15:04", *req.DateTo)
+		dateTo, err := time.Parse(time.RFC3339, *req.DateTo)
 		if err != nil {
-			return nil, errors.New("неверный формат даты окончания")
+			// Пробуем парсить как datetime-local для обратной совместимости
+			dateTo, err = time.Parse("2006-01-02T15:04", *req.DateTo)
+			if err != nil {
+				return nil, errors.New("неверный формат даты окончания")
+			}
 		}
 		convertedReq.DateTo = &dateTo
 	}

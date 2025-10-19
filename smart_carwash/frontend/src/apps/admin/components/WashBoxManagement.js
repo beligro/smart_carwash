@@ -409,7 +409,7 @@ const WashBoxManagement = () => {
       setLoading(true);
       setError('');
       
-      const response = await ApiService.getWashBoxes();
+      const response = await ApiService.getWashBoxes(filters);
       setWashBoxes(response.wash_boxes || []);
     } catch (err) {
       setError('Ошибка при загрузке боксов');

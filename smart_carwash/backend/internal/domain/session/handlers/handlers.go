@@ -452,16 +452,26 @@ func (h *Handler) adminListSessions(c *gin.Context) {
 		req.ServiceType = &serviceType
 	}
 
-	// Дата от
+	// Дата от (поддерживаем ISO 8601 с timezone)
 	if dateFromStr := c.Query("date_from"); dateFromStr != "" {
-		if dateFrom, err := time.Parse("2006-01-02", dateFromStr); err == nil {
+		dateFrom, err := time.Parse(time.RFC3339, dateFromStr)
+		if err != nil {
+			// Пробуем парсить как простую дату для обратной совместимости
+			dateFrom, err = time.Parse("2006-01-02", dateFromStr)
+		}
+		if err == nil {
 			req.DateFrom = &dateFrom
 		}
 	}
 
-	// Дата до
+	// Дата до (поддерживаем ISO 8601 с timezone)
 	if dateToStr := c.Query("date_to"); dateToStr != "" {
-		if dateTo, err := time.Parse("2006-01-02", dateToStr); err == nil {
+		dateTo, err := time.Parse(time.RFC3339, dateToStr)
+		if err != nil {
+			// Пробуем парсить как простую дату для обратной совместимости
+			dateTo, err = time.Parse("2006-01-02", dateToStr)
+		}
+		if err == nil {
 			req.DateTo = &dateTo
 		}
 	}
@@ -869,25 +879,33 @@ func (h *Handler) getChemistryStats(c *gin.Context) {
 
 	var dateFrom, dateTo *time.Time
 
-	// Парсим дату начала периода
+	// Парсим дату начала периода (поддерживаем ISO 8601 с timezone)
 	if dateFromStr != "" {
-		parsedDateFrom, err := time.Parse("2006-01-02", dateFromStr)
+		parsedDateFrom, err := time.Parse(time.RFC3339, dateFromStr)
 		if err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "Неверный формат даты начала периода"})
-			return
+			// Пробуем парсить как простую дату для обратной совместимости
+			parsedDateFrom, err = time.Parse("2006-01-02", dateFromStr)
+			if err != nil {
+				c.JSON(http.StatusBadRequest, gin.H{"error": "Неверный формат даты начала периода"})
+				return
+			}
 		}
 		dateFrom = &parsedDateFrom
 	}
 
-	// Парсим дату окончания периода
+	// Парсим дату окончания периода (поддерживаем ISO 8601 с timezone)
 	if dateToStr != "" {
-		parsedDateTo, err := time.Parse("2006-01-02", dateToStr)
+		parsedDateTo, err := time.Parse(time.RFC3339, dateToStr)
 		if err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "Неверный формат даты окончания периода"})
-			return
+			// Пробуем парсить как простую дату для обратной совместимости
+			parsedDateTo, err = time.Parse("2006-01-02", dateToStr)
+			if err != nil {
+				c.JSON(http.StatusBadRequest, gin.H{"error": "Неверный формат даты окончания периода"})
+				return
+			}
+			// Устанавливаем время на конец дня только для простых дат
+			parsedDateTo = parsedDateTo.Add(23*time.Hour + 59*time.Minute + 59*time.Second)
 		}
-		// Устанавливаем время на конец дня
-		parsedDateTo = parsedDateTo.Add(23*time.Hour + 59*time.Minute + 59*time.Second)
 		dateTo = &parsedDateTo
 	}
 

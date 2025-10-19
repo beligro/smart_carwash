@@ -207,15 +207,21 @@ func (h *Handler) adminListPayments(c *gin.Context) {
 	}
 
 	if dateFromStr := c.Query("date_from"); dateFromStr != "" {
-		if dateFrom, err := time.Parse("2006-01-02", dateFromStr); err == nil {
-			req.DateFrom = &dateFrom
+		dateFrom, err := time.Parse(time.RFC3339, dateFromStr)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid date_from format, expected ISO 8601"})
+			return
 		}
+		req.DateFrom = &dateFrom
 	}
 
 	if dateToStr := c.Query("date_to"); dateToStr != "" {
-		if dateTo, err := time.Parse("2006-01-02", dateToStr); err == nil {
-			req.DateTo = &dateTo
+		dateTo, err := time.Parse(time.RFC3339, dateToStr)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid date_to format, expected ISO 8601"})
+			return
 		}
+		req.DateTo = &dateTo
 	}
 
 	if limitStr := c.Query("limit"); limitStr != "" {
@@ -231,8 +237,8 @@ func (h *Handler) adminListPayments(c *gin.Context) {
 	}
 
 	// Логируем запрос с мета-параметрами
-	logger.WithContext(c).Infof("Запрос списка платежей (админка): PaymentID=%v, SessionID=%v, UserID=%v, Status=%v, PaymentType=%v, PaymentMethod=%v, Limit=%v, Offset=%v", 
-		req.PaymentID, req.SessionID, req.UserID, req.Status, req.PaymentType, req.PaymentMethod, req.Limit, req.Offset)
+	logger.WithContext(c).Infof("Запрос списка платежей (админка): PaymentID=%v, SessionID=%v, UserID=%v, Status=%v, PaymentType=%v, PaymentMethod=%v, DateFrom=%v, DateTo=%v, Limit=%v, Offset=%v", 
+		req.PaymentID, req.SessionID, req.UserID, req.Status, req.PaymentType, req.PaymentMethod, req.DateFrom, req.DateTo, req.Limit, req.Offset)
 
 	response, err := h.service.ListPayments(&req)
 	if err != nil {
@@ -324,18 +330,18 @@ func (h *Handler) adminGetPaymentStatistics(c *gin.Context) {
 	}
 
 	if dateFromStr := c.Query("date_from"); dateFromStr != "" {
-		dateFrom, err := time.Parse("2006-01-02", dateFromStr)
+		dateFrom, err := time.Parse(time.RFC3339, dateFromStr)
 		if err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid date_from format, expected YYYY-MM-DD"})
+			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid date_from format, expected ISO 8601"})
 			return
 		}
 		req.DateFrom = &dateFrom
 	}
 
 	if dateToStr := c.Query("date_to"); dateToStr != "" {
-		dateTo, err := time.Parse("2006-01-02", dateToStr)
+		dateTo, err := time.Parse(time.RFC3339, dateToStr)
 		if err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid date_to format, expected YYYY-MM-DD"})
+			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid date_to format, expected ISO 8601"})
 			return
 		}
 		req.DateTo = &dateTo

@@ -2,6 +2,12 @@ import React, { useState, useEffect } from 'react';
 import styled from 'styled-components';
 import { getTheme } from '../../../shared/styles/theme';
 import ApiService from '../../../shared/services/ApiService';
+import { 
+  convertDateTimeLocalToUTC, 
+  convertUTCToDateTimeLocal, 
+  getQuickFilterDates,
+  formatDateForDisplay 
+} from '../../../shared/utils/dateUtils';
 
 const Container = styled.div`
   padding: 20px;
@@ -235,12 +241,12 @@ const CleaningLogsManagement = () => {
 
   // Фильтры
   const [filters, setFilters] = useState({
-    status: '',
-    date_from: '',
-    date_to: ''
+    status: ''
   });
   const [appliedFilters, setAppliedFilters] = useState({
-    status: '',
+    status: ''
+  });
+  const [localDateFilters, setLocalDateFilters] = useState({
     date_from: '',
     date_to: ''
   });
@@ -260,11 +266,13 @@ const CleaningLogsManagement = () => {
       if (appliedFilters.status && appliedFilters.status.trim() !== '') {
         requestData.status = appliedFilters.status;
       }
-      if (appliedFilters.date_from && appliedFilters.date_from.trim() !== '') {
-        requestData.date_from = appliedFilters.date_from;
+      
+      // Конвертируем локальные даты в UTC перед отправкой
+      if (localDateFilters.date_from && localDateFilters.date_from.trim() !== '') {
+        requestData.date_from = convertDateTimeLocalToUTC(localDateFilters.date_from);
       }
-      if (appliedFilters.date_to && appliedFilters.date_to.trim() !== '') {
-        requestData.date_to = appliedFilters.date_to;
+      if (localDateFilters.date_to && localDateFilters.date_to.trim() !== '') {
+        requestData.date_to = convertDateTimeLocalToUTC(localDateFilters.date_to);
       }
 
       const response = await ApiService.getCleaningLogs(requestData);
@@ -279,10 +287,18 @@ const CleaningLogsManagement = () => {
 
   useEffect(() => {
     loadLogs();
-  }, [currentPage, appliedFilters]);
+  }, [currentPage, appliedFilters, localDateFilters]);
 
   const handleFilterChange = (field, value) => {
     setFilters(prev => ({
+      ...prev,
+      [field]: value
+    }));
+    setCurrentPage(1); // Сбрасываем на первую страницу при изменении фильтров
+  };
+
+  const handleDateFilterChange = (field, value) => {
+    setLocalDateFilters(prev => ({
       ...prev,
       [field]: value
     }));
@@ -296,19 +312,21 @@ const CleaningLogsManagement = () => {
 
   const handleClearFilters = () => {
     const emptyFilters = {
-      status: '',
+      status: ''
+    };
+    const emptyLocalDateFilters = {
       date_from: '',
       date_to: ''
     };
     setFilters(emptyFilters);
     setAppliedFilters(emptyFilters);
+    setLocalDateFilters(emptyLocalDateFilters);
     setCurrentPage(1);
   };
 
   const formatDateTime = (dateString) => {
     if (!dateString) return '-';
-    const date = new Date(dateString);
-    return date.toLocaleString('ru-RU');
+    return formatDateForDisplay(dateString);
   };
 
   const formatDuration = (minutes) => {
@@ -358,8 +376,8 @@ const CleaningLogsManagement = () => {
             <Input
               theme={theme}
               type="datetime-local"
-              value={filters.date_from}
-              onChange={(e) => handleFilterChange('date_from', e.target.value)}
+              value={localDateFilters.date_from}
+              onChange={(e) => handleDateFilterChange('date_from', e.target.value)}
             />
           </FilterGroup>
 
@@ -368,8 +386,8 @@ const CleaningLogsManagement = () => {
             <Input
               theme={theme}
               type="datetime-local"
-              value={filters.date_to}
-              onChange={(e) => handleFilterChange('date_to', e.target.value)}
+              value={localDateFilters.date_to}
+              onChange={(e) => handleDateFilterChange('date_to', e.target.value)}
             />
           </FilterGroup>
 
