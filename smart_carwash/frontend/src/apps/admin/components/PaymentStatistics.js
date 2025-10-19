@@ -2,6 +2,7 @@ import React from 'react';
 import styled from 'styled-components';
 import { getTheme } from '../../../shared/styles/theme';
 import ApiService from '../../../shared/services/ApiService';
+import { convertDateTimeLocalToUTC } from '../../../shared/utils/dateUtils';
 
 const Container = styled.div`
   margin-top: 20px;
@@ -70,7 +71,7 @@ const ErrorText = styled.div`
   padding: 20px;
 `;
 
-const PaymentStatistics = ({ filters, onClose }) => {
+const PaymentStatistics = ({ filters, localDateFilters, onClose }) => {
   const [statistics, setStatistics] = React.useState(null);
   const [loading, setLoading] = React.useState(false);
   const [error, setError] = React.useState(null);
@@ -80,23 +81,29 @@ const PaymentStatistics = ({ filters, onClose }) => {
     setError(null);
     
     try {
-      const response = await ApiService.getPaymentStatistics(filters);
+      // Формируем параметры для статистики
+      const params = { ...filters };
+      
+      // Конвертируем локальные даты в UTC перед отправкой
+      if (localDateFilters && localDateFilters.date_from) {
+        params.date_from = convertDateTimeLocalToUTC(localDateFilters.date_from);
+      }
+      if (localDateFilters && localDateFilters.date_to) {
+        params.date_to = convertDateTimeLocalToUTC(localDateFilters.date_to);
+      }
+      
+      const response = await ApiService.getPaymentStatistics(params);
       setStatistics(response);
     } catch (err) {
       setError('Ошибка при загрузке статистики');
     } finally {
       setLoading(false);
     }
-  }, [filters]);
+  }, [filters, localDateFilters]);
 
   React.useEffect(() => {
     loadStatistics();
   }, [loadStatistics]);
-
-  // Обновляем статистику при изменении фильтров
-  React.useEffect(() => {
-    loadStatistics();
-  }, [filters]);
 
   const formatAmount = (amount) => {
     // Принудительно преобразуем в число

@@ -157,7 +157,7 @@ func (s *service) CalculatePrice(req *models.CalculatePriceRequest) (*models.Cal
 	}
 
 	// Если используется химия, добавляем стоимость химии
-	if req.WithChemistry {
+	if req.WithChemistry && req.ChemistryTimeMinutes > 0 {
 		chemistryPriceSetting, err := s.settingsRepo.GetServiceSetting(req.ServiceType, "chemistry_price_per_minute")
 		if err != nil {
 			return nil, fmt.Errorf("не удалось получить цену химии: %w", err)
@@ -173,7 +173,8 @@ func (s *service) CalculatePrice(req *models.CalculatePriceRequest) (*models.Cal
 			return nil, fmt.Errorf("неверный формат цены химии в настройках: %w", err)
 		}
 
-		chemistryPrice := chemistryPricePerMinute * req.RentalTimeMinutes
+		// НОВАЯ ФОРМУЛА: цена химии = chemistry_price_per_minute * chemistry_time_minutes
+		chemistryPrice := chemistryPricePerMinute * req.ChemistryTimeMinutes
 		breakdown.ChemistryPrice = chemistryPrice
 		totalPrice += chemistryPrice
 	}

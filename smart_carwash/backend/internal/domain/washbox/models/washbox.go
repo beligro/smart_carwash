@@ -30,6 +30,7 @@ type WashBox struct {
 	Status                string         `json:"status" gorm:"default:free"`
 	ServiceType           string         `json:"service_type" gorm:"default:wash"`
 	ChemistryEnabled      bool           `json:"chemistry_enabled" gorm:"default:true"`
+	Priority              int            `json:"priority" gorm:"default:1;check:priority >= 1"`
 	LightCoilRegister     *string        `json:"light_coil_register"`
 	ChemistryCoilRegister *string        `json:"chemistry_coil_register"`
 	CleaningReservedBy    *uuid.UUID     `json:"cleaning_reserved_by" gorm:"type:uuid;index"`
@@ -52,6 +53,7 @@ type AdminCreateWashBoxRequest struct {
 	Status                string  `json:"status" binding:"required,oneof=free reserved busy maintenance cleaning"`
 	ServiceType           string  `json:"service_type" binding:"required,oneof=wash air_dry vacuum"`
 	ChemistryEnabled      *bool   `json:"chemistry_enabled"`
+	Priority              int     `json:"priority" binding:"required,min=1"`
 	LightCoilRegister     *string `json:"light_coil_register"`
 	ChemistryCoilRegister *string `json:"chemistry_coil_register"`
 }
@@ -63,6 +65,7 @@ type AdminUpdateWashBoxRequest struct {
 	Status                *string   `json:"status" binding:"omitempty,oneof=free reserved busy maintenance cleaning"`
 	ServiceType           *string   `json:"service_type" binding:"omitempty,oneof=wash air_dry vacuum"`
 	ChemistryEnabled      *bool     `json:"chemistry_enabled"`
+	Priority              *int      `json:"priority" binding:"omitempty,min=1"`
 	LightCoilRegister     *string   `json:"light_coil_register"`
 	ChemistryCoilRegister *string   `json:"chemistry_coil_register"`
 }

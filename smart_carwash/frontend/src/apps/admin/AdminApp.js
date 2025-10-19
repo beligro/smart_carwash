@@ -13,6 +13,7 @@ import UserManagement from './components/UserManagement';
 import PaymentManagement from './components/PaymentManagement';
 import SettingsManagement from './components/SettingsManagement';
 import ModbusDashboard from './components/ModbusDashboard';
+import CleaningLogsManagement from './components/CleaningLogsManagement';
 
 
 const AdminContainer = styled.div`
@@ -105,6 +106,101 @@ const Content = styled.main`
   width: 100%;
 `;
 
+// Мобильная навигация
+const MobileMenuButton = styled.button`
+  display: none;
+  background: none;
+  border: none;
+  color: ${props => props.theme.textColor};
+  font-size: 1.5rem;
+  cursor: pointer;
+  padding: 8px;
+  
+  @media (max-width: 768px) {
+    display: block;
+  }
+`;
+
+const MobileMenu = styled.div`
+  display: none;
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background-color: rgba(0, 0, 0, 0.5);
+  z-index: 1000;
+  
+  @media (max-width: 768px) {
+    display: ${props => props.isOpen ? 'block' : 'none'};
+  }
+`;
+
+const MobileMenuContent = styled.div`
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 280px;
+  height: 100%;
+  background-color: ${props => props.theme.cardBackground};
+  padding: 20px;
+  overflow-y: auto;
+  box-shadow: 2px 0 10px rgba(0, 0, 0, 0.1);
+`;
+
+const MobileMenuHeader = styled.div`
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 30px;
+  padding-bottom: 20px;
+  border-bottom: 1px solid ${props => props.theme.borderColor};
+`;
+
+const MobileMenuTitle = styled.h3`
+  margin: 0;
+  color: ${props => props.theme.textColor};
+`;
+
+const MobileMenuCloseButton = styled.button`
+  background: none;
+  border: none;
+  color: ${props => props.theme.textColor};
+  font-size: 1.5rem;
+  cursor: pointer;
+  padding: 8px;
+`;
+
+const MobileNavList = styled.ul`
+  list-style: none;
+  margin: 0;
+  padding: 0;
+`;
+
+const MobileNavItem = styled.li`
+  margin-bottom: 10px;
+`;
+
+const MobileNavLink = styled(Link)`
+  display: block;
+  color: ${props => props.theme.textColor};
+  text-decoration: none;
+  font-weight: 500;
+  padding: 12px 16px;
+  border-radius: 6px;
+  transition: background-color 0.2s;
+  
+  &:hover {
+    background-color: ${props => props.theme.backgroundColor};
+    color: ${props => props.theme.textColor};
+  }
+  
+  ${props => props.isActive && `
+    background-color: ${props.theme.primaryColor};
+    color: white;
+  `}
+`;
+
 /**
  * Приложение администратора
  * @returns {React.ReactNode} - Приложение администратора
@@ -115,6 +211,7 @@ const AdminApp = () => {
   const location = useLocation();
   const [user, setUser] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   
   useEffect(() => {
     // Проверяем авторизацию при загрузке компонента
@@ -157,6 +254,12 @@ const AdminApp = () => {
   return (
     <AdminContainer theme={theme}>
       <Header theme={theme}>
+        <MobileMenuButton 
+          theme={theme} 
+          onClick={() => setIsMobileMenuOpen(true)}
+        >
+          ☰
+        </MobileMenuButton>
         <Title>Интерфейс администратора</Title>
         {user && (
           <UserInfo>
@@ -168,7 +271,7 @@ const AdminApp = () => {
         )}
       </Header>
       
-      <Navigation theme={theme}>
+      <Navigation theme={theme} className="desktop-nav">
         <NavList>
           <NavItem>
             <NavLink to="/admin" theme={theme} isActive={location.pathname === '/admin'}>
@@ -192,7 +295,7 @@ const AdminApp = () => {
           </NavItem>
           <NavItem>
             <NavLink to="/admin/users" theme={theme} isActive={location.pathname === '/admin/users'}>
-              Пользователи
+              Клиенты
             </NavLink>
           </NavItem>
           <NavItem>
@@ -203,6 +306,11 @@ const AdminApp = () => {
           <NavItem>
             <NavLink to="/admin/cleaners" theme={theme} isActive={location.pathname === '/admin/cleaners'}>
               Управление уборщиками
+            </NavLink>
+          </NavItem>
+          <NavItem>
+            <NavLink to="/admin/cleaning-logs" theme={theme} isActive={location.pathname === '/admin/cleaning-logs'}>
+              Логи уборки
             </NavLink>
           </NavItem>
           <NavItem>
@@ -232,11 +340,140 @@ const AdminApp = () => {
           <Route path="/users" element={<UserManagement />} />
           <Route path="/cashiers" element={<CashierManagement />} />
           <Route path="/cleaners" element={<CleanerManagement />} />
+          <Route path="/cleaning-logs" element={<CleaningLogsManagement />} />
           <Route path="/payments" element={<PaymentManagement />} />
           <Route path="/settings" element={<SettingsManagement />} />
           <Route path="/modbus-dashboard" element={<ModbusDashboard />} />
         </Routes>
       </Content>
+
+      {/* Мобильное меню */}
+      <MobileMenu isOpen={isMobileMenuOpen} onClick={() => setIsMobileMenuOpen(false)}>
+        <MobileMenuContent theme={theme} onClick={(e) => e.stopPropagation()}>
+          <MobileMenuHeader theme={theme}>
+            <MobileMenuTitle theme={theme}>Меню</MobileMenuTitle>
+            <MobileMenuCloseButton 
+              theme={theme} 
+              onClick={() => setIsMobileMenuOpen(false)}
+            >
+              ×
+            </MobileMenuCloseButton>
+          </MobileMenuHeader>
+          
+          <MobileNavList>
+            <MobileNavItem>
+              <MobileNavLink 
+                to="/admin" 
+                theme={theme} 
+                isActive={location.pathname === '/admin'}
+                onClick={() => setIsMobileMenuOpen(false)}
+              >
+                Панель управления
+              </MobileNavLink>
+            </MobileNavItem>
+            <MobileNavItem>
+              <MobileNavLink 
+                to="/admin/washboxes" 
+                theme={theme} 
+                isActive={location.pathname === '/admin/washboxes'}
+                onClick={() => setIsMobileMenuOpen(false)}
+              >
+                Боксы мойки
+              </MobileNavLink>
+            </MobileNavItem>
+            <MobileNavItem>
+              <MobileNavLink 
+                to="/admin/sessions" 
+                theme={theme} 
+                isActive={location.pathname === '/admin/sessions'}
+                onClick={() => setIsMobileMenuOpen(false)}
+              >
+                Сессии мойки
+              </MobileNavLink>
+            </MobileNavItem>
+            <MobileNavItem>
+              <MobileNavLink 
+                to="/admin/queue" 
+                theme={theme} 
+                isActive={location.pathname === '/admin/queue'}
+                onClick={() => setIsMobileMenuOpen(false)}
+              >
+                Очередь
+              </MobileNavLink>
+            </MobileNavItem>
+            <MobileNavItem>
+              <MobileNavLink 
+                to="/admin/users" 
+                theme={theme} 
+                isActive={location.pathname === '/admin/users'}
+                onClick={() => setIsMobileMenuOpen(false)}
+              >
+                Клиенты
+              </MobileNavLink>
+            </MobileNavItem>
+            <MobileNavItem>
+              <MobileNavLink 
+                to="/admin/cashiers" 
+                theme={theme} 
+                isActive={location.pathname === '/admin/cashiers'}
+                onClick={() => setIsMobileMenuOpen(false)}
+              >
+                Управление кассирами
+              </MobileNavLink>
+            </MobileNavItem>
+            <MobileNavItem>
+              <MobileNavLink 
+                to="/admin/cleaners" 
+                theme={theme} 
+                isActive={location.pathname === '/admin/cleaners'}
+                onClick={() => setIsMobileMenuOpen(false)}
+              >
+                Управление уборщиками
+              </MobileNavLink>
+            </MobileNavItem>
+            <MobileNavItem>
+              <MobileNavLink 
+                to="/admin/cleaning-logs" 
+                theme={theme} 
+                isActive={location.pathname === '/admin/cleaning-logs'}
+                onClick={() => setIsMobileMenuOpen(false)}
+              >
+                Логи уборки
+              </MobileNavLink>
+            </MobileNavItem>
+            <MobileNavItem>
+              <MobileNavLink 
+                to="/admin/payments" 
+                theme={theme} 
+                isActive={location.pathname === '/admin/payments'}
+                onClick={() => setIsMobileMenuOpen(false)}
+              >
+                Платежи
+              </MobileNavLink>
+            </MobileNavItem>
+            <MobileNavItem>
+              <MobileNavLink 
+                to="/admin/settings" 
+                theme={theme} 
+                isActive={location.pathname === '/admin/settings'}
+                onClick={() => setIsMobileMenuOpen(false)}
+              >
+                Настройки
+              </MobileNavLink>
+            </MobileNavItem>
+            <MobileNavItem>
+              <MobileNavLink 
+                to="/admin/modbus-dashboard" 
+                theme={theme} 
+                isActive={location.pathname === '/admin/modbus-dashboard'}
+                onClick={() => setIsMobileMenuOpen(false)}
+              >
+                Modbus мониторинг
+              </MobileNavLink>
+            </MobileNavItem>
+          </MobileNavList>
+        </MobileMenuContent>
+      </MobileMenu>
     </AdminContainer>
   );
 };

@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import styled from 'styled-components';
 import { getTheme } from '../../../shared/styles/theme';
 import ApiService from '../../../shared/services/ApiService';
+import MobileTable from '../../../shared/components/MobileTable';
 
 const Container = styled.div`
   margin-top: 16px;
@@ -126,6 +127,7 @@ const WashBoxList = ({ onCleaningAction }) => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [actionLoading, setActionLoading] = useState({});
+  const [activeCleaningBox, setActiveCleaningBox] = useState(null);
 
   useEffect(() => {
     loadWashBoxes();
@@ -136,13 +138,26 @@ const WashBoxList = ({ onCleaningAction }) => {
       setLoading(true);
       setError(null);
       const response = await ApiService.getCleanerWashBoxes();
-      setWashBoxes(response.wash_boxes || []);
+      const boxes = response.wash_boxes || [];
+      setWashBoxes(boxes);
+      
+      // Определяем активную уборку
+      const cleaningBox = boxes.find(box => box.status === 'cleaning');
+      setActiveCleaningBox(cleaningBox || null);
     } catch (err) {
       setError('Ошибка при загрузке списка боксов');
       console.error(err);
     } finally {
       setLoading(false);
     }
+  };
+
+  // Функция для извлечения конкретного сообщения об ошибке
+  const getErrorMessage = (error, defaultMessage) => {
+    if (error?.response?.data?.error) {
+      return error.response.data.error;
+    }
+    return defaultMessage;
   };
 
   const handleReserveCleaning = async (washBoxId) => {
@@ -156,7 +171,7 @@ const WashBoxList = ({ onCleaningAction }) => {
         onCleaningAction();
       }
     } catch (error) {
-      setError('Ошибка при резервировании уборки');
+      setError(getErrorMessage(error, 'Ошибка при резервировании уборки'));
       console.error(error);
     } finally {
       setActionLoading(prev => ({ ...prev, [washBoxId]: false }));
@@ -174,7 +189,7 @@ const WashBoxList = ({ onCleaningAction }) => {
         onCleaningAction();
       }
     } catch (error) {
-      setError('Ошибка при начале уборки');
+      setError(getErrorMessage(error, 'Ошибка при начале уборки'));
       console.error(error);
     } finally {
       setActionLoading(prev => ({ ...prev, [washBoxId]: false }));
@@ -192,7 +207,7 @@ const WashBoxList = ({ onCleaningAction }) => {
         onCleaningAction();
       }
     } catch (error) {
-      setError('Ошибка при отмене уборки');
+      setError(getErrorMessage(error, 'Ошибка при отмене уборки'));
       console.error(error);
     } finally {
       setActionLoading(prev => ({ ...prev, [washBoxId]: false }));
@@ -210,7 +225,7 @@ const WashBoxList = ({ onCleaningAction }) => {
         onCleaningAction();
       }
     } catch (error) {
-      setError('Ошибка при завершении уборки');
+      setError(getErrorMessage(error, 'Ошибка при завершении уборки'));
       console.error(error);
     } finally {
       setActionLoading(prev => ({ ...prev, [washBoxId]: false }));
@@ -239,6 +254,15 @@ const WashBoxList = ({ onCleaningAction }) => {
 
   const renderActions = (washBox) => {
     const isLoading = actionLoading[washBox.id];
+
+    // Если есть активная уборка и это не текущий бокс, скрываем кнопки
+    if (activeCleaningBox && activeCleaningBox.id !== washBox.id) {
+      return (
+        <span style={{ color: '#6c757d', fontStyle: 'italic' }}>
+          Убирает бокс №{activeCleaningBox.number}
+        </span>
+      );
+    }
 
     switch (washBox.status) {
       case 'free':
@@ -298,6 +322,7 @@ const WashBoxList = ({ onCleaningAction }) => {
     <Container>
       {error && <ErrorMessage>{error}</ErrorMessage>}
       
+      {/* Десктопная таблица */}
       <Table>
         <thead>
           <tr>
@@ -328,6 +353,33 @@ const WashBoxList = ({ onCleaningAction }) => {
           ))}
         </tbody>
       </Table>
+
+      {/* Мобильные карточки */}
+      <MobileTable
+        data={washBoxes}
+        columns={[
+          { key: 'number', label: 'Номер', accessor: (item) => item.number },
+          { key: 'service_type', label: 'Тип услуги', accessor: (item) => getServiceTypeText(item.service_type) },
+          { key: 'status', label: 'Статус', accessor: (item) => (
+            <StatusBadge status={item.status}>{getStatusText(item.status)}</StatusBadge>
+          )},
+          { key: 'chemistry', label: 'Химия', accessor: (item) => item.chemistry_enabled ? 'Доступна' : 'Недоступна' }
+        ]}
+        getBorderColor={(washBox) => {
+          switch (washBox.status) {
+            case 'free': return '#28a745';
+            case 'busy': return '#dc3545';
+            case 'reserved': return '#ffc107';
+            case 'maintenance': return '#6c757d';
+            case 'cleaning': return '#17a2b8';
+            default: return '#6c757d';
+          }
+        }}
+        renderActions={(washBox) => renderActions(washBox)}
+        theme={theme}
+        titleField="number"
+        statusField="status"
+      />
     </Container>
   );
 };

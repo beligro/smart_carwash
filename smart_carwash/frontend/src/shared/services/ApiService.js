@@ -180,6 +180,17 @@ const ApiService = {
     }
   },
 
+  // Получение доступного времени химии для определенного типа услуги (публичный)
+  getAvailableChemistryTimes: async (serviceType) => {
+    try {
+      const response = await api.get(`/settings/available-chemistry-times?service_type=${serviceType}`);
+      return response.data;
+    } catch (error) {
+      console.error('Ошибка при получении доступного времени химии:', error);
+      return { available_chemistry_times: [3, 4, 5] }; // Значение по умолчанию
+    }
+  },
+
   // Получение пользователя по telegram_id
   getUserByTelegramId: async (telegramId) => {
     try {
@@ -458,6 +469,19 @@ const ApiService = {
     return response.data;
   },
 
+  // Получение доступного времени химии (админка)
+  getAdminAvailableChemistryTimes: async (serviceType) => {
+    const response = await api.get(`/admin/settings/available-chemistry-times?service_type=${serviceType}`);
+    return response.data;
+  },
+
+  // Обновление доступного времени химии (админка)
+  updateAvailableChemistryTimes: async (data) => {
+    const snakeData = toSnakeCase(data);
+    const response = await api.put('/admin/settings/available-chemistry-times', snakeData);
+    return response.data;
+  },
+
   // === МЕТОДЫ ДЛЯ РАБОТЫ С КАССИРОМ ===
 
   // Получить статус смены кассира
@@ -627,32 +651,6 @@ const ApiService = {
 
 
 
-  // === МЕТОДЫ ДЛЯ УПРАВЛЕНИЯ НАСТРОЙКАМИ ХИМИИ ===
-
-  // Получить время доступности кнопки химии
-  getChemistryTimeout: async (serviceType) => {
-    try {
-      const response = await api.get(`/admin/settings/chemistry-timeout?service_type=${serviceType}`);
-      return response.data;
-    } catch (error) {
-      console.error('Ошибка получения времени доступности химии:', error);
-      throw error;
-    }
-  },
-
-  // Обновить время доступности кнопки химии
-  updateChemistryTimeout: async (serviceType, timeoutMinutes) => {
-    try {
-      const response = await api.put('/admin/settings/chemistry-timeout', {
-        service_type: serviceType,
-        chemistry_enable_timeout_minutes: timeoutMinutes
-      });
-      return response.data;
-    } catch (error) {
-      console.error('Ошибка обновления времени доступности химии:', error);
-      throw error;
-    }
-  },
 
   // === МЕТОДЫ ДЛЯ РАБОТЫ С MODBUS ===
 
@@ -744,6 +742,41 @@ const ApiService = {
       return response.data;
     } catch (error) {
       console.error('Ошибка при завершении уборки:', error);
+      throw error;
+    }
+  },
+
+  // Получение логов уборки (админка)
+  getCleaningLogs: async (filters = {}) => {
+    try {
+      const response = await api.post('/admin/cleaning-logs', toSnakeCase(filters));
+      return response.data;
+    } catch (error) {
+      console.error('Ошибка при получении логов уборки:', error);
+      throw error;
+    }
+  },
+
+  // Получение времени уборки (админка)
+  getCleaningTimeout: async () => {
+    try {
+      const response = await api.get('/admin/settings/cleaning-timeout');
+      return response.data;
+    } catch (error) {
+      console.error('Ошибка при получении времени уборки:', error);
+      throw error;
+    }
+  },
+
+  // Обновление времени уборки (админка)
+  updateCleaningTimeout: async (timeoutMinutes) => {
+    try {
+      const response = await api.put('/admin/settings/cleaning-timeout', {
+        timeout_minutes: timeoutMinutes,
+      });
+      return response.data;
+    } catch (error) {
+      console.error('Ошибка при обновлении времени уборки:', error);
       throw error;
     }
   },

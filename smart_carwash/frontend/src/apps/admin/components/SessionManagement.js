@@ -3,6 +3,12 @@ import styled from 'styled-components';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { getTheme } from '../../../shared/styles/theme';
 import ApiService from '../../../shared/services/ApiService';
+import { 
+  convertDateTimeLocalToUTC, 
+  convertUTCToDateTimeLocal, 
+  getQuickFilterDates,
+  formatDateForDisplay 
+} from '../../../shared/utils/dateUtils';
 
 const Container = styled.div`
   padding: 20px;
@@ -201,6 +207,14 @@ const ModalContent = styled.div`
   max-width: 90%;
   max-height: 80vh;
   overflow-y: auto;
+  
+  @media (max-width: 768px) {
+    width: 95%;
+    max-width: 95%;
+    margin: 10px;
+    padding: 20px;
+    max-height: 90vh;
+  }
 `;
 
 const ModalHeader = styled.div`
@@ -263,6 +277,114 @@ const LinkButton = styled.button`
   }
 `;
 
+// Мобильные стили для таблиц
+const MobileCard = styled.div`
+  display: none;
+  background-color: ${props => props.theme.cardBackground};
+  border-radius: 8px;
+  padding: 16px;
+  margin-bottom: 16px;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+  border-left: 4px solid ${props => {
+    switch (props.status) {
+      case 'created': return '#ffc107';
+      case 'assigned': return '#007bff';
+      case 'active': return '#28a745';
+      case 'complete': return '#6c757d';
+      case 'canceled': return '#dc3545';
+      case 'expired': return '#6c757d';
+      default: return '#6c757d';
+    }
+  }};
+  
+  @media (max-width: 768px) {
+    display: block;
+  }
+`;
+
+const MobileCardHeader = styled.div`
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+`;
+
+const MobileCardTitle = styled.div`
+  font-weight: 600;
+  font-size: 1rem;
+  color: ${props => props.theme.textColor};
+`;
+
+const MobileCardStatus = styled.div`
+  font-size: 0.8rem;
+  color: ${props => props.theme.textColorSecondary};
+`;
+
+const MobileCardDetails = styled.div`
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin-bottom: 12px;
+`;
+
+const MobileCardDetail = styled.div`
+  display: flex;
+  flex-direction: column;
+`;
+
+const MobileCardLabel = styled.span`
+  font-size: 0.7rem;
+  color: ${props => props.theme.textColorSecondary};
+  margin-bottom: 2px;
+`;
+
+const MobileCardValue = styled.span`
+  font-size: 0.8rem;
+  color: ${props => props.theme.textColor};
+  font-weight: 500;
+`;
+
+const MobileCardActions = styled.div`
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+`;
+
+const MobileActionButton = styled.button`
+  padding: 6px 12px;
+  border: none;
+  border-radius: 4px;
+  font-size: 0.8rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s;
+  min-height: 32px;
+  min-width: 32px;
+
+  &:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+
+  &.primary {
+    background-color: ${props => props.theme.primaryColor};
+    color: white;
+    
+    &:hover:not(:disabled) {
+      opacity: 0.9;
+    }
+  }
+
+  &.secondary {
+    background-color: #6c757d;
+    color: white;
+    
+    &:hover:not(:disabled) {
+      background-color: #5a6268;
+    }
+  }
+`;
+
 const SessionManagement = () => {
   const theme = getTheme('light');
   const location = useLocation();
@@ -273,10 +395,12 @@ const SessionManagement = () => {
   const [filters, setFilters] = useState({
     status: '',
     serviceType: '',
-    dateFrom: '',
-    dateTo: '',
     userId: '',
     boxNumber: ''
+  });
+  const [localDateFilters, setLocalDateFilters] = useState({
+    dateFrom: '',
+    dateTo: ''
   });
   const [pagination, setPagination] = useState({
     limit: 20,
@@ -312,10 +436,16 @@ const SessionManagement = () => {
       // Добавляем фильтры с правильными названиями полей
       if (filters.status) filtersData.status = filters.status;
       if (filters.serviceType) filtersData.service_type = filters.serviceType;
-      if (filters.dateFrom) filtersData.date_from = filters.dateFrom;
-      if (filters.dateTo) filtersData.date_to = filters.dateTo;
       if (filters.userId) filtersData.user_id = filters.userId;
       if (filters.boxNumber) filtersData.box_number = filters.boxNumber;
+      
+      // Конвертируем локальные даты в UTC перед отправкой
+      if (localDateFilters.dateFrom) {
+        filtersData.date_from = convertDateTimeLocalToUTC(localDateFilters.dateFrom);
+      }
+      if (localDateFilters.dateTo) {
+        filtersData.date_to = convertDateTimeLocalToUTC(localDateFilters.dateTo);
+      }
       
       const response = await ApiService.getSessions(filtersData);
       
@@ -334,12 +464,12 @@ const SessionManagement = () => {
 
   useEffect(() => {
     fetchSessions();
-  }, [filters, pagination.limit, pagination.offset]);
+  }, [filters, localDateFilters, pagination.limit, pagination.offset]);
 
   // Сброс пагинации при изменении фильтров
   useEffect(() => {
     setPagination(prev => ({ ...prev, offset: 0 }));
-  }, [filters]);
+  }, [filters, localDateFilters]);
 
   // Загрузка деталей сессии
   const fetchSessionDetails = async (sessionId) => {
@@ -416,15 +546,9 @@ const SessionManagement = () => {
     }
     
     try {
-      const date = new Date(dateString);
-      if (isNaN(date.getTime())) {
-        // Возвращаем исходную строку вместо "Некорректная дата"
-        return dateString;
-      }
-      return date.toLocaleString('ru-RU');
+      return formatDateForDisplay(dateString);
     } catch (error) {
       console.error('Ошибка форматирования даты:', error, 'dateString:', dateString);
-      // Возвращаем исходную строку вместо "Ошибка форматирования даты"
       return dateString;
     }
   };
@@ -444,68 +568,82 @@ const SessionManagement = () => {
 
       {error && <ErrorMessage>{error}</ErrorMessage>}
 
-      <Filters>
-        <FilterSelect
-          value={filters.status}
-          onChange={(e) => setFilters({ ...filters, status: e.target.value })}
-        >
-          <option value="">Все статусы</option>
-          <option value="created">Создана</option>
-          <option value="assigned">Назначена</option>
-          <option value="active">Активна</option>
-          <option value="complete">Завершена</option>
-          <option value="canceled">Отменена</option>
-          <option value="expired">Истекла</option>
-        </FilterSelect>
+      <Filters className="filters-container">
+        <div className="filter-item">
+          <FilterSelect
+            value={filters.status}
+            onChange={(e) => setFilters({ ...filters, status: e.target.value })}
+          >
+            <option value="">Все статусы</option>
+            <option value="created">Создана</option>
+            <option value="assigned">Назначена</option>
+            <option value="active">Активна</option>
+            <option value="complete">Завершена</option>
+            <option value="canceled">Отменена</option>
+            <option value="expired">Истекла</option>
+          </FilterSelect>
+        </div>
 
-        <FilterSelect
-          value={filters.serviceType}
-          onChange={(e) => setFilters({ ...filters, serviceType: e.target.value })}
-        >
-          <option value="">Все типы услуг</option>
-          <option value="wash">Мойка</option>
-          <option value="air_dry">Обдув</option>
-          <option value="vacuum">Пылесос</option>
-        </FilterSelect>
+        <div className="filter-item">
+          <FilterSelect
+            value={filters.serviceType}
+            onChange={(e) => setFilters({ ...filters, serviceType: e.target.value })}
+          >
+            <option value="">Все типы услуг</option>
+            <option value="wash">Мойка</option>
+            <option value="air_dry">Обдув</option>
+            <option value="vacuum">Пылесос</option>
+          </FilterSelect>
+        </div>
 
-        <FilterInput
-          type="text"
-          value={filters.userId}
-          onChange={(e) => setFilters({ ...filters, userId: e.target.value })}
-          placeholder="ID пользователя"
-        />
+        <div className="filter-item">
+          <FilterInput
+            type="text"
+            value={filters.userId}
+            onChange={(e) => setFilters({ ...filters, userId: e.target.value })}
+            placeholder="ID клиента"
+          />
+        </div>
 
-        <FilterInput
-          type="number"
-          value={filters.boxNumber}
-          onChange={(e) => setFilters({ ...filters, boxNumber: e.target.value })}
-          placeholder="Номер бокса"
-        />
+        <div className="filter-item">
+          <FilterInput
+            type="number"
+            value={filters.boxNumber}
+            onChange={(e) => setFilters({ ...filters, boxNumber: e.target.value })}
+            placeholder="Номер бокса"
+          />
+        </div>
 
-        <FilterInput
-          type="date"
-          value={filters.dateFrom}
-          onChange={(e) => setFilters({ ...filters, dateFrom: e.target.value })}
-          placeholder="Дата от"
-        />
+        <div className="filter-item">
+          <FilterInput
+            type="datetime-local"
+            value={localDateFilters.dateFrom}
+            onChange={(e) => setLocalDateFilters({ ...localDateFilters, dateFrom: e.target.value })}
+            placeholder="Дата от"
+          />
+        </div>
 
-        <FilterInput
-          type="date"
-          value={filters.dateTo}
-          onChange={(e) => setFilters({ ...filters, dateTo: e.target.value })}
-          placeholder="Дата до"
-        />
+        <div className="filter-item">
+          <FilterInput
+            type="datetime-local"
+            value={localDateFilters.dateTo}
+            onChange={(e) => setLocalDateFilters({ ...localDateFilters, dateTo: e.target.value })}
+            placeholder="Дата до"
+          />
+        </div>
       </Filters>
 
-      <Table theme={theme}>
+      {/* Десктопная таблица */}
+      <Table theme={theme} className="mobile-table">
         <thead>
           <tr>
             <Th theme={theme}>ID</Th>
-            <Th theme={theme}>Пользователь</Th>
+            <Th theme={theme}>Клиент</Th>
             <Th theme={theme}>Бокс</Th>
             <Th theme={theme}>Статус</Th>
             <Th theme={theme}>Тип услуги</Th>
             <Th theme={theme}>Химия</Th>
+            <Th theme={theme}>Время химии</Th>
             <Th theme={theme}>Время аренды</Th>
             <Th theme={theme}>Дата создания</Th>
             <Th theme={theme}>Действия</Th>
@@ -542,6 +680,13 @@ const SessionManagement = () => {
                   <span style={{ color: '#999', fontSize: '12px' }}>-</span>
                 )}
               </Td>
+              <Td>
+                {session.with_chemistry ? (
+                  <span style={{ fontSize: '12px' }}>{session.chemistry_time_minutes || 0} мин</span>
+                ) : (
+                  <span style={{ color: '#999', fontSize: '12px' }}>-</span>
+                )}
+              </Td>
               <Td>{session.rental_time_minutes} мин</Td>
               <Td>{formatDate(session.created_at)}</Td>
               <Td>
@@ -560,6 +705,97 @@ const SessionManagement = () => {
           ))}
         </tbody>
       </Table>
+
+      {/* Мобильные карточки */}
+      <div className="mobile-card">
+        {sessions.map((session) => (
+          <MobileCard key={session.id} theme={theme} status={session.status}>
+            <MobileCardHeader>
+              <MobileCardTitle theme={theme}>
+                Сессия #{session.id.substring(0, 8)}...
+              </MobileCardTitle>
+              <MobileCardStatus theme={theme}>
+                <StatusBadge className={session.status}>
+                  {getStatusText(session.status)}
+                </StatusBadge>
+              </MobileCardStatus>
+            </MobileCardHeader>
+            
+            <MobileCardDetails>
+              <MobileCardDetail>
+                <MobileCardLabel theme={theme}>Клиент</MobileCardLabel>
+                <MobileCardValue theme={theme}>
+                  {session.user_id.substring(0, 8)}...
+                </MobileCardValue>
+              </MobileCardDetail>
+              
+              <MobileCardDetail>
+                <MobileCardLabel theme={theme}>Бокс</MobileCardLabel>
+                <MobileCardValue theme={theme}>
+                  {session.box_number || '-'}
+                </MobileCardValue>
+              </MobileCardDetail>
+              
+              <MobileCardDetail>
+                <MobileCardLabel theme={theme}>Тип услуги</MobileCardLabel>
+                <MobileCardValue theme={theme}>
+                  <ServiceTypeBadge className={session.service_type}>
+                    {getServiceTypeText(session.service_type)}
+                  </ServiceTypeBadge>
+                </MobileCardValue>
+              </MobileCardDetail>
+              
+              <MobileCardDetail>
+                <MobileCardLabel theme={theme}>Химия</MobileCardLabel>
+                <MobileCardValue theme={theme}>
+                  {session.with_chemistry ? (
+                    <span style={{ 
+                      display: 'flex', 
+                      alignItems: 'center', 
+                      gap: '4px',
+                      fontSize: '12px'
+                    }}>
+                      <span style={{ color: '#4CAF50' }}>🧪</span>
+                      {session.was_chemistry_on ? 'Включена' : 'Не включена'}
+                    </span>
+                  ) : (
+                    <span style={{ color: '#999', fontSize: '12px' }}>-</span>
+                  )}
+                </MobileCardValue>
+              </MobileCardDetail>
+              
+              <MobileCardDetail>
+                <MobileCardLabel theme={theme}>Время аренды</MobileCardLabel>
+                <MobileCardValue theme={theme}>
+                  {session.rental_time_minutes} мин
+                </MobileCardValue>
+              </MobileCardDetail>
+              
+              <MobileCardDetail>
+                <MobileCardLabel theme={theme}>Создана</MobileCardLabel>
+                <MobileCardValue theme={theme}>
+                  {formatDate(session.created_at)}
+                </MobileCardValue>
+              </MobileCardDetail>
+            </MobileCardDetails>
+            
+            <MobileCardActions>
+              <MobileActionButton 
+                className="primary"
+                onClick={() => openSessionModal(session)}
+              >
+                Подробнее
+              </MobileActionButton>
+              <MobileActionButton 
+                className="secondary"
+                onClick={() => navigate(`/admin/payments?session_id=${session.id}`)}
+              >
+                Платежи
+              </MobileActionButton>
+            </MobileCardActions>
+          </MobileCard>
+        ))}
+      </div>
 
       {sessions.length === 0 && !loading && (
         <div style={{ textAlign: 'center', padding: '20px', color: theme.textColor }}>
@@ -625,7 +861,7 @@ const SessionManagement = () => {
                   </DetailGroup>
                   
                   <DetailGroup>
-                    <DetailLabel theme={theme}>ID пользователя:</DetailLabel>
+                    <DetailLabel theme={theme}>ID клиента:</DetailLabel>
                     <DetailValue theme={theme}>{sessionDetails.user_id}</DetailValue>
                   </DetailGroup>
                   
@@ -709,7 +945,7 @@ const SessionManagement = () => {
                       closeSessionModal();
                       navigate(`/admin/users?highlight=${sessionDetails.user_id}`);
                     }}>
-                      Посмотреть пользователя
+                      Посмотреть клиента
                     </LinkButton>
                     {sessionDetails.box_number && (
                       <LinkButton theme={theme} onClick={() => {
@@ -728,7 +964,7 @@ const SessionManagement = () => {
                         } 
                       });
                     }}>
-                      Все сессии пользователя
+                      Все сессии клиента
                     </LinkButton>
                   </div>
                 </div>

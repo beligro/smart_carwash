@@ -15,9 +15,6 @@ import (
 	authHandlers "carwash_backend/internal/domain/auth/handlers"
 	authRepo "carwash_backend/internal/domain/auth/repository"
 	authService "carwash_backend/internal/domain/auth/service"
-	"carwash_backend/internal/logger"
-	"carwash_backend/internal/middleware"
-	"carwash_backend/internal/metrics"
 	modbusAdapter "carwash_backend/internal/domain/modbus/adapter"
 	modbusHandlers "carwash_backend/internal/domain/modbus/handlers"
 	modbusService "carwash_backend/internal/domain/modbus/service"
@@ -40,6 +37,9 @@ import (
 	washboxHandlers "carwash_backend/internal/domain/washbox/handlers"
 	washboxRepo "carwash_backend/internal/domain/washbox/repository"
 	washboxService "carwash_backend/internal/domain/washbox/service"
+	"carwash_backend/internal/logger"
+	"carwash_backend/internal/metrics"
+	"carwash_backend/internal/middleware"
 
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
@@ -157,9 +157,6 @@ func main() {
 	// Создаем роутер
 	router := gin.Default()
 
-	// Добавляем middleware для логирования
-	router.Use(middleware.LoggingMiddleware())
-
 	// Добавляем middleware для метрик
 	router.Use(appMetrics.PrometheusMiddleware())
 
@@ -178,6 +175,7 @@ func main() {
 
 	// Инициализируем маршруты
 	api := router.Group("/")
+	api.Use(middleware.LoggingMiddleware())
 	{
 		// Регистрируем маршруты для каждого домена
 		userHandler.RegisterRoutes(api)
@@ -281,6 +279,23 @@ func main() {
 			case <-ticker.C:
 				if err := sessionSvc.CheckAndExpireReservedSessions(); err != nil {
 					log.WithField("error", err).Error("Ошибка проверки зарезервированных сессий")
+				}
+			case <-quit:
+				return
+			}
+		}
+	}()
+
+	// Запускаем периодическую задачу для автоматического завершения просроченных уборок
+	go func() {
+		ticker := time.NewTicker(30 * time.Second) // Проверяем каждые 30 секунд
+		defer ticker.Stop()
+
+		for {
+			select {
+			case <-ticker.C:
+				if err := washboxSvc.AutoCompleteExpiredCleanings(); err != nil {
+					log.WithField("error", err).Error("Ошибка автоматического завершения уборок")
 				}
 			case <-quit:
 				return

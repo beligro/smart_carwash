@@ -3,6 +3,7 @@ import styled from 'styled-components';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { getTheme } from '../../../shared/styles/theme';
 import ApiService from '../../../shared/services/ApiService';
+import MobileTable from '../../../shared/components/MobileTable';
 
 const Container = styled.div`
   padding: 20px;
@@ -333,6 +334,7 @@ const UserManagement = () => {
 
       {error && <ErrorMessage>{error}</ErrorMessage>}
 
+      {/* Десктопная таблица */}
       <Table theme={theme}>
         <thead>
           <tr>
@@ -362,7 +364,7 @@ const UserManagement = () => {
                   {user.is_admin ? (
                     <AdminBadge>Администратор</AdminBadge>
                   ) : (
-                    'Пользователь'
+                    'Клиент'
                   )}
                 </Td>
                 <Td>{formatDate(user.created_at)}</Td>
@@ -384,9 +386,41 @@ const UserManagement = () => {
         </tbody>
       </Table>
 
+      {/* Мобильные карточки */}
+      <MobileTable
+        data={users}
+        columns={[
+          { key: 'id', label: 'ID', accessor: (item) => item.id.substring(0, 8) + '...' },
+          { key: 'telegram_id', label: 'Telegram ID', accessor: (item) => item.telegram_id },
+          { key: 'username', label: 'Имя пользователя', accessor: (item) => item.username || '-' },
+          { key: 'first_name', label: 'Имя', accessor: (item) => item.first_name || '-' },
+          { key: 'last_name', label: 'Фамилия', accessor: (item) => item.last_name || '-' },
+          { key: 'role', label: 'Роль', accessor: (item) => (
+            item.is_admin ? (
+              <AdminBadge>Администратор</AdminBadge>
+            ) : (
+              'Клиент'
+            )
+          )},
+          { key: 'created_at', label: 'Дата регистрации', accessor: (item) => formatDate(item.created_at) }
+        ]}
+        getBorderColor={(user) => user.is_admin ? '#ff6b6b' : '#6c757d'}
+        renderActions={(user) => [
+          <ActionButton key="details" theme={theme} onClick={() => openUserModal(user)}>
+            Подробнее
+          </ActionButton>,
+          <ActionButton key="payments" theme={theme} onClick={() => navigate(`/admin/payments?user_id=${user.id}`)}>
+            Платежи
+          </ActionButton>
+        ]}
+        theme={theme}
+        titleField="username"
+        statusField="role"
+      />
+
       {users.length === 0 && !loading && (
         <div style={{ textAlign: 'center', padding: '20px', color: theme.textColor }}>
-          Пользователи не найдены
+          Клиенты не найдены
         </div>
       )}
 
@@ -479,7 +513,7 @@ const UserManagement = () => {
                         } else if (userDetails.last_name) {
                           displayName = userDetails.last_name;
                         } else {
-                          displayName = `Пользователь ${userDetails.id.substring(0, 8)}`;
+                          displayName = `Клиент ${userDetails.id.substring(0, 8)}`;
                         }
                         
                         const username = userDetails.username ? ` (${userDetails.username})` : '';
@@ -494,7 +528,7 @@ const UserManagement = () => {
                       {userDetails.is_admin ? (
                         <AdminBadge>Администратор</AdminBadge>
                       ) : (
-                        'Пользователь'
+                        'Клиент'
                       )}
                     </DetailValue>
                   </DetailGroup>

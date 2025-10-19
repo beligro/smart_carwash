@@ -56,6 +56,10 @@ const Content = styled.main`
   max-width: 1200px;
   margin: 0 auto;
   width: 100%;
+  
+  @media (max-width: 768px) {
+    padding: 16px;
+  }
 `;
 
 const Card = styled.div`
@@ -64,6 +68,11 @@ const Card = styled.div`
   padding: 20px;
   margin-bottom: 20px;
   box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+  
+  @media (max-width: 768px) {
+    padding: 16px;
+    margin-bottom: 16px;
+  }
 `;
 
 const ErrorMessage = styled.div`

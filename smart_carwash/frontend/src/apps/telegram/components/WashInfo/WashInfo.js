@@ -7,39 +7,93 @@ import { getSessionStatusDescription, getServiceTypeDescription, formatRefundInf
 import useTimer from '../../../../shared/hooks/useTimer';
 import ApiService from '../../../../shared/services/ApiService';
 
-// Компонент кнопки включения химии
-const ChemistryEnableButton = ({ session, theme, onChemistryEnabled }) => {
-  const [isEnabling, setIsEnabling] = useState(false);
-  const [timeLeft, setTimeLeft] = useState(null);
-  const [isExpired, setIsExpired] = useState(false);
+// Компонент для отображения статуса и таймера химии
+const ChemistryStatus = ({ session }) => {
+  const [chemistryTimeLeft, setChemistryTimeLeft] = useState(null);
 
-  // Проверяем время доступности кнопки (по умолчанию 10 минут)
+  // Таймер обратного отсчета химии (если активна)
   useEffect(() => {
-    if (!session || !session.statusUpdatedAt) return;
+    if (!session || !session.chemistry_started_at || session.chemistry_ended_at) {
+      setChemistryTimeLeft(null);
+      return;
+    }
 
-    const checkTimeLimit = () => {
-      const startTime = new Date(session.statusUpdatedAt);
+    const updateChemistryTimer = () => {
+      const startTime = new Date(session.chemistry_started_at);
       const now = new Date();
-      const timeLimit = 10 * 60 * 1000; // 10 минут в миллисекундах
+      const timeLimit = (session.chemistry_time_minutes || 0) * 60 * 1000;
       const timePassed = now - startTime;
       const remaining = timeLimit - timePassed;
 
       if (remaining <= 0) {
-        setIsExpired(true);
-        setTimeLeft(0);
+        setChemistryTimeLeft(0);
       } else {
-        setTimeLeft(Math.floor(remaining / 1000));
+        setChemistryTimeLeft(Math.floor(remaining / 1000));
       }
     };
 
-    checkTimeLimit();
-    const interval = setInterval(checkTimeLimit, 1000);
+    updateChemistryTimer();
+    const interval = setInterval(updateChemistryTimer, 1000);
 
     return () => clearInterval(interval);
   }, [session]);
 
+  // Если химия выключена
+  if (session.was_chemistry_on && session.chemistry_ended_at) {
+    return (
+      <div style={{ marginTop: '8px', padding: '10px', backgroundColor: '#f5f5f5', borderRadius: '6px', fontSize: '12px', color: '#666' }}>
+        ✓ Химия была использована ({session.chemistry_time_minutes} мин)
+      </div>
+    );
+  }
+
+  // Если химия активна - показываем отдельный таймер
+  if (session.was_chemistry_on && session.chemistry_started_at && !session.chemistry_ended_at) {
+    return (
+      <div style={{ marginTop: '12px' }}>
+        <p style={{ fontSize: '13px', fontWeight: 'bold', margin: '0 0 8px 0', color: '#2e7d32' }}>
+          🧪 Химия активна:
+        </p>
+        {chemistryTimeLeft !== null && chemistryTimeLeft > 0 ? (
+          <div style={{ 
+            padding: '12px', 
+            backgroundColor: '#e8f5e9', 
+            borderRadius: '8px',
+            border: '2px solid #4caf50',
+            textAlign: 'center'
+          }}>
+            <div style={{ fontSize: '24px', fontWeight: 'bold', color: '#2e7d32', marginBottom: '4px' }}>
+              {Math.floor(chemistryTimeLeft / 60)}:{(chemistryTimeLeft % 60).toString().padStart(2, '0')}
+            </div>
+            <div style={{ fontSize: '11px', color: '#666' }}>
+              до автовыключения
+            </div>
+          </div>
+        ) : (
+          <div style={{ 
+            padding: '10px', 
+            backgroundColor: '#f5f5f5', 
+            borderRadius: '6px',
+            textAlign: 'center',
+            fontSize: '12px',
+            color: '#666'
+          }}>
+            Химия выключается...
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  return null;
+};
+
+// Компонент кнопки включения химии (только кнопка!)
+const ChemistryEnableButton = ({ session, theme, onChemistryEnabled }) => {
+  const [isEnabling, setIsEnabling] = useState(false);
+
   const handleEnableChemistry = async () => {
-    if (isEnabling || isExpired) return;
+    if (isEnabling) return;
 
     try {
       setIsEnabling(true);
@@ -56,12 +110,11 @@ const ChemistryEnableButton = ({ session, theme, onChemistryEnabled }) => {
     }
   };
 
-  if (isExpired) {
-    return null; // Не показываем ничего, когда время истекло
-  }
-
   return (
     <div style={{ marginTop: '12px' }}>
+      <p style={{ fontSize: '12px', color: '#666', marginBottom: '8px' }}>
+        Оплачено: {session.chemistry_time_minutes} мин. химии
+      </p>
       <Button 
         theme={theme} 
         onClick={handleEnableChemistry}
@@ -74,16 +127,6 @@ const ChemistryEnableButton = ({ session, theme, onChemistryEnabled }) => {
       >
         {isEnabling ? 'Включение...' : '🧪 Включить химию'}
       </Button>
-      {timeLeft !== null && (
-        <p style={{ 
-          marginTop: '4px',
-          fontSize: '11px',
-          color: '#666',
-          textAlign: 'center'
-        }}>
-          ⏰ Осталось времени: {Math.floor(timeLeft / 60)}:{(timeLeft % 60).toString().padStart(2, '0')}
-        </p>
-      )}
     </div>
   );
 };
@@ -302,7 +345,13 @@ const WashInfo = ({ washInfo, theme = 'light', onCreateSession, onViewHistory, o
                   </p>
                   <Timer seconds={timeLeft} theme={theme} />
                   
-                  {/* Кнопка включения химии */}
+                  {/* Статус и таймер химии (если была включена) */}
+                  {(userSession.withChemistry || userSession.with_chemistry) && 
+                   (userSession.wasChemistryOn || userSession.was_chemistry_on) && (
+                    <ChemistryStatus session={userSession} />
+                  )}
+                  
+                  {/* Кнопка включения химии (если оплачена, но не включена) */}
                   {(userSession.withChemistry || userSession.with_chemistry) && 
                    !(userSession.wasChemistryOn || userSession.was_chemistry_on) && (
                     <ChemistryEnableButton 

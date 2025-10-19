@@ -17,7 +17,10 @@ const ServiceSelector = ({ onSelect, theme = 'light', user }) => {
   const [withChemistry, setWithChemistry] = useState(false);
   const [rentalTimes, setRentalTimes] = useState([]);
   const [selectedRentalTime, setSelectedRentalTime] = useState(null);
+  const [chemistryTimes, setChemistryTimes] = useState([]);
+  const [selectedChemistryTime, setSelectedChemistryTime] = useState(null);
   const [loading, setLoading] = useState(false);
+  const [loadingChemistryTimes, setLoadingChemistryTimes] = useState(false);
   const [carNumber, setCarNumber] = useState('');
   const [rememberCarNumber, setRememberCarNumber] = useState(false);
   const [savingCarNumber, setSavingCarNumber] = useState(false);
@@ -86,9 +89,30 @@ const ServiceSelector = ({ onSelect, theme = 'light', user }) => {
   };
   
   // Обработчик переключения опции химии
-  const handleChemistryToggle = () => {
+  const handleChemistryToggle = async () => {
     try {
-      setWithChemistry(!withChemistry);
+      const newWithChemistry = !withChemistry;
+      setWithChemistry(newWithChemistry);
+      
+      // Если включаем химию, загружаем доступное время
+      if (newWithChemistry && selectedService) {
+        setLoadingChemistryTimes(true);
+        try {
+          const data = await ApiService.getAvailableChemistryTimes(selectedService.id);
+          setChemistryTimes(data.available_chemistry_times || [3, 4, 5]);
+          setSelectedChemistryTime(data.available_chemistry_times ? data.available_chemistry_times[0] : 3);
+        } catch (error) {
+          console.error('Ошибка при загрузке времени химии:', error);
+          setChemistryTimes([3, 4, 5]);
+          setSelectedChemistryTime(3);
+        } finally {
+          setLoadingChemistryTimes(false);
+        }
+      } else {
+        // Если выключаем химию, сбрасываем выбор
+        setChemistryTimes([]);
+        setSelectedChemistryTime(null);
+      }
     } catch (error) {
       console.error('Ошибка в handleChemistryToggle:', error);
     }
@@ -100,6 +124,15 @@ const ServiceSelector = ({ onSelect, theme = 'light', user }) => {
       setSelectedRentalTime(time);
     } catch (error) {
       console.error('Ошибка в handleRentalTimeSelect:', error);
+    }
+  };
+
+  // Обработчик выбора времени химии
+  const handleChemistryTimeSelect = (time) => {
+    try {
+      setSelectedChemistryTime(time);
+    } catch (error) {
+      console.error('Ошибка в handleChemistryTimeSelect:', error);
     }
   };
 
@@ -177,12 +210,26 @@ const ServiceSelector = ({ onSelect, theme = 'light', user }) => {
           await saveCarNumber();
         }
 
+        // Определяем время химии
+        let chemistryTime = 0;
+        if (selectedService.hasChemistry && withChemistry) {
+          chemistryTime = selectedChemistryTime || 0;
+          
+          // Дополнительная проверка на случай если время не выбрано
+          if (chemistryTime === 0) {
+            alert('Пожалуйста, выберите время химии');
+            return;
+          }
+        }
+
         const serviceData = {
           serviceType: selectedService.id,
           withChemistry: selectedService.hasChemistry ? withChemistry : false,
+          chemistryTimeMinutes: chemistryTime,
           rentalTimeMinutes: selectedRentalTime,
           carNumber: carNumber
         };
+        
         onSelect(serviceData);
       }
     } catch (error) {
@@ -195,7 +242,8 @@ const ServiceSelector = ({ onSelect, theme = 'light', user }) => {
     selectedRentalTime && 
     carNumber && 
     carNumber.length >= 6 && 
-    isValidCarNumber(carNumber);
+    isValidCarNumber(carNumber) &&
+    (!withChemistry || selectedChemistryTime); // Если химия включена, должно быть выбрано время
 
   // Определяем, нужно ли показывать чекбокс "запомнить номер"
   const showRememberCheckbox = user && 
@@ -238,23 +286,50 @@ const ServiceSelector = ({ onSelect, theme = 'light', user }) => {
           />
 
           {selectedService.hasChemistry && (
-            <Card theme={theme} className={styles.optionCard}>
-              <div className={styles.optionRow}>
-                <label className={`${styles.optionLabel} ${themeClass}`}>
-                  <input 
-                    type="checkbox" 
-                    checked={withChemistry} 
-                    onChange={handleChemistryToggle}
-                    className={styles.checkbox}
-                  />
-                  <span className={styles.checkmark}></span>
-                  Использовать химию
-                </label>
-              </div>
-              <p className={`${styles.optionDescription} ${themeClass}`}>
-                Химия помогает лучше очистить поверхность автомобиля от грязи и жира
-              </p>
-            </Card>
+            <>
+              <Card theme={theme} className={styles.optionCard}>
+                <div className={styles.optionRow}>
+                  <label className={`${styles.optionLabel} ${themeClass}`}>
+                    <input 
+                      type="checkbox" 
+                      checked={withChemistry} 
+                      onChange={handleChemistryToggle}
+                      className={styles.checkbox}
+                    />
+                    <span className={styles.checkmark}></span>
+                    Использовать химию
+                  </label>
+                </div>
+                <p className={`${styles.optionDescription} ${themeClass}`}>
+                  Химия помогает лучше очистить поверхность автомобиля от грязи и жира
+                </p>
+              </Card>
+
+              {withChemistry && (
+                <Card theme={theme} className={styles.optionCard}>
+                  <h3 className={`${styles.optionTitle} ${themeClass}`}>Выберите время химии</h3>
+                  <p className={`${styles.optionDescription} ${themeClass}`}>
+                    Химия будет автоматически выключена через выбранное время
+                  </p>
+                  {loadingChemistryTimes ? (
+                    <p className={`${styles.loadingText} ${themeClass}`}>Загрузка доступного времени...</p>
+                  ) : (
+                    <div className={styles.rentalTimeGrid}>
+                      {chemistryTimes.map((time) => (
+                        <div 
+                          key={time} 
+                          className={`${styles.rentalTimeItem} ${selectedChemistryTime === time ? styles.selectedTime : ''}`}
+                          onClick={() => handleChemistryTimeSelect(time)}
+                        >
+                          <span className={`${styles.rentalTimeValue} ${themeClass}`}>{time}</span>
+                          <span className={`${styles.rentalTimeUnit} ${themeClass}`}>мин</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </Card>
+              )}
+            </>
           )}
           
           <Card theme={theme} className={styles.optionCard}>
@@ -282,6 +357,7 @@ const ServiceSelector = ({ onSelect, theme = 'light', user }) => {
             <PriceCalculator
               serviceType={selectedService.id}
               withChemistry={withChemistry}
+              chemistryTimeMinutes={withChemistry ? selectedChemistryTime : 0}
               rentalTimeMinutes={selectedRentalTime}
               theme={theme}
             />

@@ -7,6 +7,7 @@ import ApiService from '../../shared/services/ApiService';
 import ActiveSessions from './components/ActiveSessions';
 import LastShiftStatistics from './components/LastShiftStatistics';
 import BoxManagement from './components/BoxManagement';
+import MobileTable from '../../shared/components/MobileTable';
 
 const CashierContainer = styled.div`
   display: flex;
@@ -113,6 +114,12 @@ const TabContainer = styled.div`
   display: flex;
   margin-bottom: 20px;
   border-bottom: 1px solid ${props => props.theme.borderColor};
+  overflow-x: auto;
+  
+  @media (max-width: 768px) {
+    flex-wrap: nowrap;
+    gap: 0;
+  }
 `;
 
 const Tab = styled.button`
@@ -124,9 +131,17 @@ const Tab = styled.button`
   color: ${props => props.active ? props.theme.primaryColor : props.theme.textColor};
   border-bottom: 2px solid ${props => props.active ? props.theme.primaryColor : 'transparent'};
   transition: all 0.2s;
+  white-space: nowrap;
+  min-width: fit-content;
 
   &:hover {
     color: ${props => props.theme.primaryColor};
+  }
+  
+  @media (max-width: 768px) {
+    padding: 12px 16px;
+    font-size: 0.9rem;
+    min-height: 44px;
   }
 `;
 
@@ -134,6 +149,10 @@ const Table = styled.table`
   width: 100%;
   border-collapse: collapse;
   margin-top: 16px;
+  
+  @media (max-width: 768px) {
+    display: none;
+  }
 `;
 
 const Th = styled.th`
@@ -146,6 +165,79 @@ const Th = styled.th`
 const Td = styled.td`
   padding: 12px;
   border-bottom: 1px solid ${props => props.theme.borderColor};
+`;
+
+// Мобильные карточки для кассира
+const MobileSessionCard = styled.div`
+  display: none;
+  background-color: ${props => props.theme.cardBackground};
+  border-radius: 8px;
+  padding: 16px;
+  margin-bottom: 16px;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+  border-left: 4px solid ${props => {
+    switch (props.status) {
+      case 'created': return '#ffc107';
+      case 'in_queue': return '#17a2b8';
+      case 'assigned': return '#007bff';
+      case 'active': return '#28a745';
+      case 'complete': return '#6c757d';
+      case 'canceled': return '#dc3545';
+      case 'expired': return '#6c757d';
+      default: return '#6c757d';
+    }
+  }};
+  
+  @media (max-width: 768px) {
+    display: block;
+  }
+`;
+
+const MobileCardHeader = styled.div`
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+`;
+
+const MobileCardTitle = styled.div`
+  font-weight: 600;
+  font-size: 1rem;
+  color: ${props => props.theme.textColor};
+`;
+
+const MobileCardStatus = styled.div`
+  font-size: 0.8rem;
+`;
+
+const MobileCardDetails = styled.div`
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin-bottom: 12px;
+`;
+
+const MobileCardDetail = styled.div`
+  display: flex;
+  flex-direction: column;
+`;
+
+const MobileCardLabel = styled.span`
+  font-size: 0.7rem;
+  color: ${props => props.theme.textColorSecondary};
+  margin-bottom: 2px;
+`;
+
+const MobileCardValue = styled.span`
+  font-size: 0.8rem;
+  color: ${props => props.theme.textColor};
+  font-weight: 500;
+`;
+
+const MobileCardActions = styled.div`
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
 `;
 
 const StatusBadge = styled.span`
@@ -556,59 +648,141 @@ const CashierApp = () => {
                   {sessions.length === 0 ? (
                     <p>Сессий пока нет</p>
                   ) : (
-                    <Table>
-                      <thead>
-                        <tr>
-                          <Th theme={theme}>ID</Th>
-                          <Th theme={theme}>Статус</Th>
-                          <Th theme={theme}>Тип услуги</Th>
-                          <Th theme={theme}>Номер машины</Th>
-                          <Th theme={theme}>Номер бокса</Th>
-                          <Th theme={theme}>Химия</Th>
-                          <Th theme={theme}>Время аренды</Th>
-                          <Th theme={theme}>Создана</Th>
-                          <Th theme={theme}>Действия</Th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {sessions.map(session => {
-                          const chemistryStatus = getChemistryStatus(session);
-                          return (
-                            <tr key={session.id}>
-                              <Td theme={theme}>{session.id}</Td>
-                              <Td theme={theme}>
+                    <>
+                      {/* Десктопная таблица */}
+                      <Table>
+                        <thead>
+                          <tr>
+                            <Th theme={theme}>ID</Th>
+                            <Th theme={theme}>Статус</Th>
+                            <Th theme={theme}>Тип услуги</Th>
+                            <Th theme={theme}>Номер машины</Th>
+                            <Th theme={theme}>Номер бокса</Th>
+                            <Th theme={theme}>Химия</Th>
+                            <Th theme={theme}>Время аренды</Th>
+                            <Th theme={theme}>Создана</Th>
+                            <Th theme={theme}>Действия</Th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {sessions.map(session => {
+                            const chemistryStatus = getChemistryStatus(session);
+                            return (
+                              <tr key={session.id}>
+                                <Td theme={theme}>{session.id}</Td>
+                                <Td theme={theme}>
+                                  <StatusBadge status={session.status}>
+                                    {session.status}
+                                  </StatusBadge>
+                                </Td>
+                                <Td theme={theme}>{getServiceTypeText(session.service_type)}</Td>
+                                <Td theme={theme}>{session.car_number || 'Не указан'}</Td>
+                                <Td theme={theme}>{session.box_number ? `Бокс ${session.box_number}` : 'Не назначен'}</Td>
+                                <Td theme={theme}>
+                                  <ChemistryStatus theme={theme} style={{ color: chemistryStatus.color }}>
+                                    <ChemistryIcon>{chemistryStatus.icon}</ChemistryIcon>
+                                    {chemistryStatus.text}
+                                  </ChemistryStatus>
+                                </Td>
+                                <Td theme={theme}>{session.rental_time_minutes} мин</Td>
+                                <Td theme={theme}>{formatDateTime(session.created_at)}</Td>
+                                <Td theme={theme}>
+                                  {session.status === 'active' && (
+                                    <ActionButton
+                                      className="complete"
+                                      onClick={() => handleCompleteSessionFromTable(session.id)}
+                                      disabled={actionLoading[session.id]}
+                                      style={{ padding: '4px 8px', fontSize: '0.8rem' }}
+                                    >
+                                      {actionLoading[session.id] ? 'Завершаем...' : 'Завершить'}
+                                    </ActionButton>
+                                  )}
+                                </Td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </Table>
+
+                      {/* Мобильные карточки */}
+                      {sessions.map(session => {
+                        const chemistryStatus = getChemistryStatus(session);
+                        return (
+                          <MobileSessionCard key={session.id} theme={theme} status={session.status}>
+                            <MobileCardHeader>
+                              <MobileCardTitle theme={theme}>
+                                Сессия #{session.id}
+                              </MobileCardTitle>
+                              <MobileCardStatus>
                                 <StatusBadge status={session.status}>
                                   {session.status}
                                 </StatusBadge>
-                              </Td>
-                              <Td theme={theme}>{getServiceTypeText(session.service_type)}</Td>
-                              <Td theme={theme}>{session.car_number || 'Не указан'}</Td>
-                              <Td theme={theme}>{session.box_number ? `Бокс ${session.box_number}` : 'Не назначен'}</Td>
-                              <Td theme={theme}>
-                                <ChemistryStatus theme={theme} style={{ color: chemistryStatus.color }}>
-                                  <ChemistryIcon>{chemistryStatus.icon}</ChemistryIcon>
-                                  {chemistryStatus.text}
-                                </ChemistryStatus>
-                              </Td>
-                              <Td theme={theme}>{session.rental_time_minutes} мин</Td>
-                              <Td theme={theme}>{formatDateTime(session.created_at)}</Td>
-                              <Td theme={theme}>
-                                {session.status === 'active' && (
-                                  <ActionButton
-                                    className="complete"
-                                    onClick={() => handleCompleteSessionFromTable(session.id)}
-                                    disabled={actionLoading[session.id]}
-                                    style={{ padding: '4px 8px', fontSize: '0.8rem' }}
-                                  >
-                                    {actionLoading[session.id] ? 'Завершаем...' : 'Завершить'}
-                                  </ActionButton>
-                                )}
-                              </Td>
-                            </tr>
-                          );
-                        })}
-                      </tbody>
-                    </Table>
+                              </MobileCardStatus>
+                            </MobileCardHeader>
+                            
+                            <MobileCardDetails>
+                              <MobileCardDetail>
+                                <MobileCardLabel theme={theme}>Тип услуги</MobileCardLabel>
+                                <MobileCardValue theme={theme}>
+                                  {getServiceTypeText(session.service_type)}
+                                </MobileCardValue>
+                              </MobileCardDetail>
+                              
+                              <MobileCardDetail>
+                                <MobileCardLabel theme={theme}>Номер машины</MobileCardLabel>
+                                <MobileCardValue theme={theme}>
+                                  {session.car_number || 'Не указан'}
+                                </MobileCardValue>
+                              </MobileCardDetail>
+                              
+                              <MobileCardDetail>
+                                <MobileCardLabel theme={theme}>Номер бокса</MobileCardLabel>
+                                <MobileCardValue theme={theme}>
+                                  {session.box_number ? `Бокс ${session.box_number}` : 'Не назначен'}
+                                </MobileCardValue>
+                              </MobileCardDetail>
+                              
+                              <MobileCardDetail>
+                                <MobileCardLabel theme={theme}>Химия</MobileCardLabel>
+                                <MobileCardValue theme={theme}>
+                                  <ChemistryStatus theme={theme} style={{ color: chemistryStatus.color }}>
+                                    <ChemistryIcon>{chemistryStatus.icon}</ChemistryIcon>
+                                    {chemistryStatus.text}
+                                  </ChemistryStatus>
+                                </MobileCardValue>
+                              </MobileCardDetail>
+                              
+                              <MobileCardDetail>
+                                <MobileCardLabel theme={theme}>Время аренды</MobileCardLabel>
+                                <MobileCardValue theme={theme}>
+                                  {session.rental_time_minutes} мин
+                                </MobileCardValue>
+                              </MobileCardDetail>
+                              
+                              <MobileCardDetail>
+                                <MobileCardLabel theme={theme}>Создана</MobileCardLabel>
+                                <MobileCardValue theme={theme}>
+                                  {formatDateTime(session.created_at)}
+                                </MobileCardValue>
+                              </MobileCardDetail>
+                            </MobileCardDetails>
+                            
+                            <MobileCardActions>
+                              {session.status === 'active' && (
+                                <ActionButton
+                                  className="complete"
+                                  onClick={() => handleCompleteSessionFromTable(session.id)}
+                                  disabled={actionLoading[session.id]}
+                                  style={{ padding: '8px 16px', fontSize: '0.9rem', minHeight: '44px' }}
+                                >
+                                  {actionLoading[session.id] ? 'Завершаем...' : 'Завершить'}
+                                </ActionButton>
+                              )}
+                            </MobileCardActions>
+                          </MobileSessionCard>
+                        );
+                      })}
+                    </>
                   )}
                 </div>
               ) : activeTab === 'payments' ? (
@@ -617,34 +791,63 @@ const CashierApp = () => {
                   {payments.length === 0 ? (
                     <p>Платежей пока нет</p>
                   ) : (
-                    <Table>
-                      <thead>
-                        <tr>
-                          <Th theme={theme}>ID</Th>
-                          <Th theme={theme}>Статус</Th>
-                          <Th theme={theme}>Тип</Th>
-                          <Th theme={theme}>Метод</Th>
-                          <Th theme={theme}>Сумма</Th>
-                          <Th theme={theme}>Создан</Th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {payments.map(payment => (
-                          <tr key={payment.id}>
-                            <Td theme={theme}>{payment.id}</Td>
-                            <Td theme={theme}>
-                              <StatusBadge status={payment.status}>
-                                {payment.status}
-                              </StatusBadge>
-                            </Td>
-                            <Td theme={theme}>{payment.payment_type}</Td>
-                            <Td theme={theme}>{payment.payment_method}</Td>
-                            <Td theme={theme}>{formatAmount(payment.amount)}</Td>
-                            <Td theme={theme}>{formatDateTime(payment.created_at)}</Td>
+                    <>
+                      {/* Десктопная таблица */}
+                      <Table>
+                        <thead>
+                          <tr>
+                            <Th theme={theme}>ID</Th>
+                            <Th theme={theme}>Статус</Th>
+                            <Th theme={theme}>Тип</Th>
+                            <Th theme={theme}>Метод</Th>
+                            <Th theme={theme}>Сумма</Th>
+                            <Th theme={theme}>Создан</Th>
                           </tr>
-                        ))}
-                      </tbody>
-                    </Table>
+                        </thead>
+                        <tbody>
+                          {payments.map(payment => (
+                            <tr key={payment.id}>
+                              <Td theme={theme}>{payment.id}</Td>
+                              <Td theme={theme}>
+                                <StatusBadge status={payment.status}>
+                                  {payment.status}
+                                </StatusBadge>
+                              </Td>
+                              <Td theme={theme}>{payment.payment_type}</Td>
+                              <Td theme={theme}>{payment.payment_method}</Td>
+                              <Td theme={theme}>{formatAmount(payment.amount)}</Td>
+                              <Td theme={theme}>{formatDateTime(payment.created_at)}</Td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </Table>
+
+                      {/* Мобильные карточки */}
+                      <MobileTable
+                        data={payments}
+                        columns={[
+                          { key: 'id', label: 'ID', accessor: (item) => item.id },
+                          { key: 'status', label: 'Статус', accessor: (item) => (
+                            <StatusBadge status={item.status}>{item.status}</StatusBadge>
+                          )},
+                          { key: 'payment_type', label: 'Тип', accessor: (item) => item.payment_type },
+                          { key: 'payment_method', label: 'Метод', accessor: (item) => item.payment_method },
+                          { key: 'amount', label: 'Сумма', accessor: (item) => formatAmount(item.amount) },
+                          { key: 'created_at', label: 'Создан', accessor: (item) => formatDateTime(item.created_at) }
+                        ]}
+                        getBorderColor={(payment) => {
+                          switch (payment.status) {
+                            case 'succeeded': return '#28a745';
+                            case 'pending': return '#ffc107';
+                            case 'failed': return '#dc3545';
+                            default: return '#6c757d';
+                          }
+                        }}
+                        theme={theme}
+                        titleField="id"
+                        statusField="status"
+                      />
+                    </>
                   )}
                 </div>
               ) : activeTab === 'boxes' ? (

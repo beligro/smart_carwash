@@ -68,12 +68,17 @@ const CleaningTimer = forwardRef((props, ref) => {
   const [cleaningBoxes, setCleaningBoxes] = useState([]);
   const [error, setError] = useState(null);
   const [timeouts, setTimeouts] = useState({});
+  const [cleaningTimeout, setCleaningTimeout] = useState(3); // По умолчанию 3 минуты
 
   useEffect(() => {
+    loadCleaningTimeout();
     loadCleaningBoxes();
     
     // Обновляем данные каждые 30 секунд
-    const dataInterval = setInterval(loadCleaningBoxes, 30000);
+    const dataInterval = setInterval(() => {
+      loadCleaningTimeout();
+      loadCleaningBoxes();
+    }, 30000);
     
     // Обновляем UI каждую секунду для плавного таймера
     const timerInterval = setInterval(() => {
@@ -87,6 +92,16 @@ const CleaningTimer = forwardRef((props, ref) => {
       Object.values(timeouts).forEach(clearTimeout);
     };
   }, []);
+
+  const loadCleaningTimeout = async () => {
+    try {
+      const response = await ApiService.getCleaningTimeout();
+      setCleaningTimeout(response.timeout_minutes || 3);
+    } catch (err) {
+      console.warn('Не удалось загрузить время уборки, используем значение по умолчанию:', err);
+      setCleaningTimeout(3);
+    }
+  };
 
   const loadCleaningBoxes = async () => {
     try {
@@ -105,6 +120,7 @@ const CleaningTimer = forwardRef((props, ref) => {
 
   // Функция для принудительного обновления данных (будет вызвана из родительского компонента)
   const refreshData = () => {
+    loadCleaningTimeout();
     loadCleaningBoxes();
   };
 
@@ -119,13 +135,13 @@ const CleaningTimer = forwardRef((props, ref) => {
     return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
   };
 
-  const getTimeRemaining = (startedAt, timeoutMinutes = 30) => {
+  const getTimeRemaining = (startedAt) => {
     if (!startedAt) return { minutes: 0, seconds: 0 };
     
     const startTime = new Date(startedAt);
     const now = new Date();
     const elapsedMs = now - startTime;
-    const totalMs = timeoutMinutes * 60 * 1000;
+    const totalMs = cleaningTimeout * 60 * 1000;
     const remainingMs = Math.max(0, totalMs - elapsedMs);
     
     const minutes = remainingMs / (60 * 1000);
@@ -137,16 +153,21 @@ const CleaningTimer = forwardRef((props, ref) => {
   const renderCleaningBox = (washBox) => {
     const { minutes, seconds } = getTimeRemaining(washBox.cleaning_started_at);
     const isExpired = minutes === 0 && seconds === 0;
+    const isWarning = minutes < 1 && !isExpired; // Предупреждение за минуту до окончания
 
     return (
-      <TimerCard key={washBox.id} theme={theme}>
+      <TimerCard key={washBox.id} theme={theme} style={{ 
+        borderColor: isExpired ? '#dc3545' : isWarning ? '#ffc107' : '#17a2b8' 
+      }}>
         <BoxInfo>
-          <BoxNumber theme={theme}>Бокс {washBox.number}</BoxNumber>
+          <BoxNumber theme={theme}>Бокс №{washBox.number}</BoxNumber>
           <StatusText theme={theme}>
-            {isExpired ? 'Время истекло' : 'Идет уборка'}
+            {isExpired ? 'Время истекло' : isWarning ? 'Заканчивается через минуту' : 'Идет уборка'}
           </StatusText>
         </BoxInfo>
-        <Timer>
+        <Timer style={{ 
+          color: isExpired ? '#dc3545' : isWarning ? '#ffc107' : '#17a2b8' 
+        }}>
           {isExpired ? '00:00' : formatTime(minutes, seconds)}
         </Timer>
       </TimerCard>

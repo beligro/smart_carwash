@@ -42,9 +42,10 @@ type Payment struct {
 
 // CalculatePriceRequest представляет запрос на расчет цены
 type CalculatePriceRequest struct {
-	ServiceType       string `json:"service_type" binding:"required"`
-	WithChemistry     bool   `json:"with_chemistry"`
-	RentalTimeMinutes int    `json:"rental_time_minutes" binding:"required"`
+	ServiceType          string `json:"service_type" binding:"required"`
+	WithChemistry        bool   `json:"with_chemistry"`
+	ChemistryTimeMinutes int    `json:"chemistry_time_minutes"` // Выбранное время химии в минутах
+	RentalTimeMinutes    int    `json:"rental_time_minutes" binding:"required"`
 }
 
 // CalculatePriceResponse представляет ответ на расчет цены

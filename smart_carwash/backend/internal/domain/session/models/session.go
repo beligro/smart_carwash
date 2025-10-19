@@ -29,6 +29,9 @@ type Session struct {
 	ServiceType                  string         `json:"service_type,omitempty" gorm:"default:null"`
 	WithChemistry                bool           `json:"with_chemistry" gorm:"default:false"`
 	WasChemistryOn               bool           `json:"was_chemistry_on" gorm:"default:false"`   // Была ли фактически включена химия
+	ChemistryTimeMinutes         int            `json:"chemistry_time_minutes" gorm:"default:0"` // Выбранное время химии в минутах
+	ChemistryStartedAt           *time.Time     `json:"chemistry_started_at,omitempty"`          // Когда была включена химия
+	ChemistryEndedAt             *time.Time     `json:"chemistry_ended_at,omitempty"`            // Когда была выключена химия
 	CarNumber                    string         `json:"car_number"`                              // Номер машины в сессии
 	RentalTimeMinutes            int            `json:"rental_time_minutes" gorm:"default:5"`    // Время аренды в минутах
 	ExtensionTimeMinutes         int            `json:"extension_time_minutes" gorm:"default:0"` // Время продления в минутах
@@ -47,12 +50,13 @@ type Session struct {
 
 // CreateSessionRequest представляет запрос на создание сессии
 type CreateSessionRequest struct {
-	UserID            uuid.UUID `json:"user_id" binding:"required"`
-	ServiceType       string    `json:"service_type" binding:"required"`
-	WithChemistry     bool      `json:"with_chemistry"`
-	CarNumber         string    `json:"car_number" binding:"required"`
-	RentalTimeMinutes int       `json:"rental_time_minutes" binding:"required"`
-	IdempotencyKey    string    `json:"idempotency_key" binding:"required"`
+	UserID               uuid.UUID `json:"user_id" binding:"required"`
+	ServiceType          string    `json:"service_type" binding:"required"`
+	WithChemistry        bool      `json:"with_chemistry"`
+	ChemistryTimeMinutes int       `json:"chemistry_time_minutes"` // Выбранное время химии в минутах
+	CarNumber            string    `json:"car_number" binding:"required"`
+	RentalTimeMinutes    int       `json:"rental_time_minutes" binding:"required"`
+	IdempotencyKey       string    `json:"idempotency_key" binding:"required"`
 }
 
 // CreateSessionResponse представляет ответ на создание сессии
@@ -62,12 +66,13 @@ type CreateSessionResponse struct {
 
 // CreateSessionWithPaymentRequest представляет запрос на создание сессии с платежом
 type CreateSessionWithPaymentRequest struct {
-	UserID            uuid.UUID `json:"user_id" binding:"required"`
-	ServiceType       string    `json:"service_type" binding:"required"`
-	WithChemistry     bool      `json:"with_chemistry"`
-	CarNumber         string    `json:"car_number" binding:"required"`
-	RentalTimeMinutes int       `json:"rental_time_minutes" binding:"required"`
-	IdempotencyKey    string    `json:"idempotency_key" binding:"required"`
+	UserID               uuid.UUID `json:"user_id" binding:"required"`
+	ServiceType          string    `json:"service_type" binding:"required"`
+	WithChemistry        bool      `json:"with_chemistry"`
+	ChemistryTimeMinutes int       `json:"chemistry_time_minutes"` // Выбранное время химии в минутах
+	CarNumber            string    `json:"car_number" binding:"required"`
+	RentalTimeMinutes    int       `json:"rental_time_minutes" binding:"required"`
+	IdempotencyKey       string    `json:"idempotency_key" binding:"required"`
 }
 
 // CreateSessionWithPaymentResponse представляет ответ на создание сессии с платежом
