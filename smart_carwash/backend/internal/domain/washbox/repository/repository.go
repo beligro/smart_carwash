@@ -170,8 +170,8 @@ func (r *PostgresRepository) GetWashBoxesWithFilters(status *string, serviceType
 		return nil, 0, err
 	}
 
-	// Получаем данные с пагинацией
-	err = query.Limit(limit).Offset(offset).Find(&boxes).Error
+	// Получаем данные с пагинацией и сортировкой по номеру
+	err = query.Order("number ASC").Limit(limit).Offset(offset).Find(&boxes).Error
 	if err != nil {
 		return nil, 0, err
 	}

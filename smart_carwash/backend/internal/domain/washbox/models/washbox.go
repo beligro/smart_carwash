@@ -30,9 +30,10 @@ type WashBox struct {
 	Status                string         `json:"status" gorm:"default:free"`
 	ServiceType           string         `json:"service_type" gorm:"default:wash"`
 	ChemistryEnabled      bool           `json:"chemistry_enabled" gorm:"default:true"`
-	Priority              int            `json:"priority" gorm:"default:1;check:priority >= 1"`
+	Priority              string         `json:"priority" gorm:"type:varchar(1);default:'A';check:priority ~ '^[A-Z]$'"`
 	LightCoilRegister     *string        `json:"light_coil_register"`
 	ChemistryCoilRegister *string        `json:"chemistry_coil_register"`
+	Comment               *string        `json:"comment" gorm:"type:varchar(1000)"`
 	CleaningReservedBy    *uuid.UUID     `json:"cleaning_reserved_by" gorm:"type:uuid;index"`
 	CleaningStartedAt     *time.Time     `json:"cleaning_started_at"`
 	CreatedAt             time.Time      `json:"created_at"`
@@ -53,9 +54,10 @@ type AdminCreateWashBoxRequest struct {
 	Status                string  `json:"status" binding:"required,oneof=free reserved busy maintenance cleaning"`
 	ServiceType           string  `json:"service_type" binding:"required,oneof=wash air_dry vacuum"`
 	ChemistryEnabled      *bool   `json:"chemistry_enabled"`
-	Priority              int     `json:"priority" binding:"required,min=1"`
+	Priority              string  `json:"priority" binding:"required,len=1"`
 	LightCoilRegister     *string `json:"light_coil_register"`
 	ChemistryCoilRegister *string `json:"chemistry_coil_register"`
+	Comment               *string `json:"comment" binding:"omitempty,max=1000"`
 }
 
 // AdminUpdateWashBoxRequest запрос на обновление бокса мойки
@@ -65,9 +67,10 @@ type AdminUpdateWashBoxRequest struct {
 	Status                *string   `json:"status" binding:"omitempty,oneof=free reserved busy maintenance cleaning"`
 	ServiceType           *string   `json:"service_type" binding:"omitempty,oneof=wash air_dry vacuum"`
 	ChemistryEnabled      *bool     `json:"chemistry_enabled"`
-	Priority              *int      `json:"priority" binding:"omitempty,min=1"`
+	Priority              *string   `json:"priority" binding:"omitempty,len=1"`
 	LightCoilRegister     *string   `json:"light_coil_register"`
 	ChemistryCoilRegister *string   `json:"chemistry_coil_register"`
+	Comment               *string   `json:"comment" binding:"omitempty,max=1000"`
 }
 
 // AdminDeleteWashBoxRequest запрос на удаление бокса мойки

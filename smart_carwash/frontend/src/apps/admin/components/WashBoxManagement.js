@@ -204,6 +204,28 @@ const ModalContent = styled.div`
   border-radius: 8px;
   width: 400px;
   max-width: 90%;
+  max-height: 90vh;
+  overflow-y: auto;
+`;
+
+const ModalContentWide = styled.div`
+  background-color: white;
+  padding: 30px;
+  border-radius: 8px;
+  width: 800px;
+  max-width: 95%;
+  max-height: 90vh;
+  overflow-y: auto;
+`;
+
+const TwoColumnGrid = styled.div`
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 20px;
+  
+  @media (max-width: 768px) {
+    grid-template-columns: 1fr;
+  }
 `;
 
 const ModalTitle = styled.h3`
@@ -221,6 +243,10 @@ const FormGroup = styled.div`
   display: flex;
   flex-direction: column;
   gap: 5px;
+`;
+
+const FullWidthFormGroup = styled(FormGroup)`
+  grid-column: 1 / -1;
 `;
 
 const Label = styled.label`
@@ -369,6 +395,81 @@ const LoadingMessage = styled.div`
   font-size: 14px;
 `;
 
+const BoxNumber = styled.span`
+  font-size: 24px;
+  font-weight: bold;
+  color: ${props => props.theme.textColor};
+`;
+
+const MobileBoxNumber = styled.span`
+  font-size: 28px;
+  font-weight: bold;
+  color: ${props => props.theme.textColor};
+`;
+
+const UUIDContainer = styled.div`
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  margin-bottom: 15px;
+  padding: 12px;
+  background-color: #f8f9fa;
+  border-radius: 6px;
+`;
+
+const UUIDField = styled.div`
+  flex: 1;
+  font-family: 'Courier New', monospace;
+  font-size: 12px;
+  padding: 8px;
+  background-color: white;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  color: #666;
+  overflow: hidden;
+  text-overflow: ellipsis;
+`;
+
+const CopyButton = styled.button`
+  background-color: #6c757d;
+  color: white;
+  border: none;
+  padding: 8px 16px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 13px;
+  white-space: nowrap;
+  
+  &:hover {
+    background-color: #5a6268;
+  }
+`;
+
+const CommentCell = styled.div`
+  max-width: 250px;
+  word-wrap: break-word;
+  white-space: pre-wrap;
+  line-height: 1.4;
+  font-size: 13px;
+`;
+
+const CharCounter = styled.small`
+  color: ${props => props.$isNearLimit ? '#d32f2f' : '#666'};
+  font-size: 12px;
+  margin-top: 4px;
+  display: block;
+`;
+
+const Textarea = styled.textarea`
+  padding: 8px 12px;
+  border: 1px solid #ddd;
+  border-radius: 5px;
+  font-size: 14px;
+  font-family: inherit;
+  resize: vertical;
+  width: 100%;
+`;
+
 const WashBoxManagement = () => {
   const theme = getTheme('light');
   const [washBoxes, setWashBoxes] = useState([]);
@@ -387,9 +488,10 @@ const WashBoxManagement = () => {
     status: 'free',
     serviceType: 'wash',
     chemistryEnabled: true,
-    priority: 1,
+    priority: 'A',
     lightCoilRegister: '',
-    chemistryCoilRegister: ''
+    chemistryCoilRegister: '',
+    comment: ''
   });
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
@@ -473,6 +575,13 @@ const WashBoxManagement = () => {
     }
   };
 
+  // Функция копирования UUID
+  const handleCopyUUID = (uuid) => {
+    navigator.clipboard.writeText(uuid);
+    setSuccess('UUID скопирован в буфер обмена');
+    setTimeout(() => setSuccess(''), 2000);
+  };
+
   // Функция управления регистром из таблицы
   const handleControlRegister = async (boxId, register, value, type) => {
     const key = `${boxId}_${type}`;
@@ -545,15 +654,16 @@ const WashBoxManagement = () => {
         status: formData.status,
         service_type: formData.serviceType,
         chemistry_enabled: formData.chemistryEnabled,
-        priority: formData.priority || 1,
+        priority: formData.priority.toUpperCase() || 'A',
         light_coil_register: formData.lightCoilRegister || null,
-        chemistry_coil_register: formData.chemistryCoilRegister || null
+        chemistry_coil_register: formData.chemistryCoilRegister || null,
+        comment: formData.comment || null
       };
       
       await ApiService.createWashBox(washBoxData);
       setSuccess('Бокс успешно создан');
       setShowCreateModal(false);
-      setFormData({ number: '', status: 'free', serviceType: 'wash', chemistryEnabled: true, priority: 1, lightCoilRegister: '', chemistryCoilRegister: '' });
+      setFormData({ number: '', status: 'free', serviceType: 'wash', chemistryEnabled: true, priority: 'A', lightCoilRegister: '', chemistryCoilRegister: '', comment: '' });
       fetchWashBoxes();
     } catch (err) {
       if (err.response?.data?.error) {
@@ -580,16 +690,17 @@ const WashBoxManagement = () => {
         status: formData.status,
         service_type: formData.serviceType,
         chemistry_enabled: formData.chemistryEnabled,
-        priority: formData.priority || 1,
+        priority: formData.priority.toUpperCase() || 'A',
         light_coil_register: formData.lightCoilRegister || null,
-        chemistry_coil_register: formData.chemistryCoilRegister || null
+        chemistry_coil_register: formData.chemistryCoilRegister || null,
+        comment: formData.comment || null
       };
       
       await ApiService.updateWashBox(editingWashBox.id, washBoxData);
       setSuccess('Бокс успешно обновлен');
       setShowEditModal(false);
       setEditingWashBox(null);
-      setFormData({ number: '', status: 'free', serviceType: 'wash', chemistryEnabled: true, priority: 1, lightCoilRegister: '', chemistryCoilRegister: '' });
+      setFormData({ number: '', status: 'free', serviceType: 'wash', chemistryEnabled: true, priority: 'A', lightCoilRegister: '', chemistryCoilRegister: '', comment: '' });
       fetchWashBoxes();
     } catch (err) {
       if (err.response?.data?.error) {
@@ -634,9 +745,10 @@ const WashBoxManagement = () => {
       status: washBox.status,
       serviceType: washBox.service_type,
       chemistryEnabled: washBox.chemistry_enabled,
-      priority: washBox.priority || 1,
+      priority: washBox.priority || 'A',
       lightCoilRegister: washBox.light_coil_register || '',
-      chemistryCoilRegister: washBox.chemistry_coil_register || ''
+      chemistryCoilRegister: washBox.chemistry_coil_register || '',
+      comment: washBox.comment || ''
     });
     setShowEditModal(true);
   };
@@ -646,7 +758,7 @@ const WashBoxManagement = () => {
     setShowCreateModal(false);
     setShowEditModal(false);
     setEditingWashBox(null);
-    setFormData({ number: '', status: 'free', serviceType: 'wash', chemistryEnabled: true });
+    setFormData({ number: '', status: 'free', serviceType: 'wash', chemistryEnabled: true, priority: 'A', lightCoilRegister: '', chemistryCoilRegister: '', comment: '' });
     setError('');
   };
 
@@ -714,7 +826,6 @@ const WashBoxManagement = () => {
       <Table theme={theme}>
         <thead>
           <tr>
-            <Th theme={theme}>ID</Th>
             <Th theme={theme}>Номер</Th>
             <Th theme={theme}>Статус</Th>
             <Th theme={theme}>Тип услуги</Th>
@@ -722,6 +833,7 @@ const WashBoxManagement = () => {
             <Th theme={theme}>Химия</Th>
             <Th theme={theme}>Регистр света</Th>
             <Th theme={theme}>Регистр химии</Th>
+            <Th theme={theme}>Комментарий</Th>
             <Th theme={theme}>Дата создания</Th>
             <Th theme={theme}>Действия</Th>
           </tr>
@@ -733,8 +845,9 @@ const WashBoxManagement = () => {
             
             return (
               <RowComponent key={washBox.id} theme={theme}>
-                <Td>{washBox.id}</Td>
-                <Td>{washBox.number}</Td>
+                <Td>
+                  <BoxNumber theme={theme}>{washBox.number}</BoxNumber>
+                </Td>
                 <Td>
                   <StatusBadge className={washBox.status}>
                     {getStatusText(washBox.status)}
@@ -748,9 +861,10 @@ const WashBoxManagement = () => {
                 <Td>
                   <span style={{ 
                     fontWeight: 'bold', 
-                    color: washBox.priority === 1 ? '#28a745' : washBox.priority <= 3 ? '#ffc107' : '#dc3545' 
+                    fontSize: '16px',
+                    color: washBox.priority === 'A' ? '#28a745' : ['B', 'C'].includes(washBox.priority) ? '#ffc107' : '#dc3545' 
                   }}>
-                    {washBox.priority || 1}
+                    {washBox.priority || 'A'}
                   </span>
                 </Td>
                 <Td>
@@ -826,6 +940,13 @@ const WashBoxManagement = () => {
                     <span style={{ color: '#999' }}>Недоступна</span>
                   )}
                 </Td>
+                <Td>
+                  {washBox.comment ? (
+                    <CommentCell>{washBox.comment}</CommentCell>
+                  ) : (
+                    <span style={{ color: '#999' }}>—</span>
+                  )}
+                </Td>
                 <Td>{new Date(washBox.created_at).toLocaleDateString('ru-RU')}</Td>
                 <Td>
                   <ActionButton theme={theme} onClick={() => openEditModal(washBox)}>
@@ -862,8 +983,9 @@ const WashBoxManagement = () => {
       <MobileTable
         data={washBoxes}
         columns={[
-          { key: 'id', label: 'ID', accessor: (item) => item.id },
-          { key: 'number', label: 'Номер', accessor: (item) => item.number },
+          { key: 'number', label: 'Номер', accessor: (item) => (
+            <MobileBoxNumber theme={theme}>{item.number}</MobileBoxNumber>
+          )},
           { key: 'status', label: 'Статус', accessor: (item) => (
             <StatusBadge className={item.status}>{getStatusText(item.status)}</StatusBadge>
           )},
@@ -872,10 +994,11 @@ const WashBoxManagement = () => {
           )},
           { key: 'priority', label: 'Приоритет', accessor: (item) => (
             <span style={{ 
-              fontWeight: 'bold', 
-              color: item.priority === 1 ? '#28a745' : item.priority <= 3 ? '#ffc107' : '#dc3545' 
+              fontWeight: 'bold',
+              fontSize: '16px',
+              color: item.priority === 'A' ? '#28a745' : ['B', 'C'].includes(item.priority) ? '#ffc107' : '#dc3545' 
             }}>
-              {item.priority || 1}
+              {item.priority || 'A'}
             </span>
           )},
           { key: 'chemistry', label: 'Химия', accessor: (item) => (
@@ -887,10 +1010,77 @@ const WashBoxManagement = () => {
               <span style={{ color: '#999' }}>Недоступна</span>
             )
           )},
-          { key: 'light_register', label: 'Регистр света', accessor: (item) => item.light_coil_register || 'Не задан' },
-          { key: 'chemistry_register', label: 'Регистр химии', accessor: (item) => 
-            item.service_type === 'wash' ? (item.chemistry_coil_register || 'Не задан') : 'Недоступна'
-          },
+          { key: 'light_register', label: 'Регистр света', accessor: (item) => (
+            item.light_coil_register ? (
+              <div>
+                <div style={{ marginBottom: '6px', fontSize: '12px' }}>{item.light_coil_register}</div>
+                <ControlButtonsGroup>
+                  <ControlButton
+                    $isOn={true}
+                    onClick={() => handleControlRegister(item.id, item.light_coil_register, true, 'light')}
+                    disabled={controlOperations[`${item.id}_light`]}
+                  >
+                    ВКЛ
+                  </ControlButton>
+                  <ControlButton
+                    $isOn={false}
+                    onClick={() => handleControlRegister(item.id, item.light_coil_register, false, 'light')}
+                    disabled={controlOperations[`${item.id}_light`]}
+                  >
+                    ВЫКЛ
+                  </ControlButton>
+                </ControlButtonsGroup>
+                {controlResults[`${item.id}_light`] && (
+                  <ControlStatus className={controlResults[`${item.id}_light`].status}>
+                    {controlResults[`${item.id}_light`].message}
+                  </ControlStatus>
+                )}
+              </div>
+            ) : (
+              <span style={{ color: '#999' }}>Не задан</span>
+            )
+          )},
+          { key: 'chemistry_register', label: 'Регистр химии', accessor: (item) => (
+            item.service_type === 'wash' ? (
+              item.chemistry_coil_register ? (
+                <div>
+                  <div style={{ marginBottom: '6px', fontSize: '12px' }}>{item.chemistry_coil_register}</div>
+                  <ControlButtonsGroup>
+                    <ControlButton
+                      $isOn={true}
+                      onClick={() => handleControlRegister(item.id, item.chemistry_coil_register, true, 'chemistry')}
+                      disabled={controlOperations[`${item.id}_chemistry`]}
+                    >
+                      ВКЛ
+                    </ControlButton>
+                    <ControlButton
+                      $isOn={false}
+                      onClick={() => handleControlRegister(item.id, item.chemistry_coil_register, false, 'chemistry')}
+                      disabled={controlOperations[`${item.id}_chemistry`]}
+                    >
+                      ВЫКЛ
+                    </ControlButton>
+                  </ControlButtonsGroup>
+                  {controlResults[`${item.id}_chemistry`] && (
+                    <ControlStatus className={controlResults[`${item.id}_chemistry`].status}>
+                      {controlResults[`${item.id}_chemistry`].message}
+                    </ControlStatus>
+                  )}
+                </div>
+              ) : (
+                <span style={{ color: '#999' }}>Не задан</span>
+              )
+            ) : (
+              <span style={{ color: '#999' }}>Недоступна</span>
+            )
+          )},
+          { key: 'comment', label: 'Комментарий', accessor: (item) => (
+            item.comment ? (
+              <CommentCell>{item.comment}</CommentCell>
+            ) : (
+              <span style={{ color: '#999' }}>—</span>
+            )
+          )},
           { key: 'created_at', label: 'Создан', accessor: (item) => new Date(item.created_at).toLocaleDateString('ru-RU') }
         ]}
         getBorderColor={(washBox) => {
@@ -921,8 +1111,6 @@ const WashBoxManagement = () => {
           </ActionButton>
         ]}
         theme={theme}
-        titleField="number"
-        statusField="status"
       />
 
       {/* Модальное окно создания */}
@@ -969,14 +1157,16 @@ const WashBoxManagement = () => {
               <FormGroup>
                 <Label theme={theme}>Приоритет</Label>
                 <Input
-                  type="number"
+                  type="text"
                   value={formData.priority}
-                  onChange={(e) => setFormData({ ...formData, priority: e.target.value === '' ? '' : parseInt(e.target.value) || 1 })}
-                  min="1"
+                  onChange={(e) => setFormData({ ...formData, priority: e.target.value.toUpperCase() })}
+                  maxLength="1"
+                  pattern="[A-Z]"
+                  style={{ textTransform: 'uppercase' }}
                   required
                 />
                 <small style={{ color: '#666', fontSize: '12px' }}>
-                  Чем меньше число, тем выше приоритет (1 - наивысший приоритет)
+                  A - наивысший приоритет, затем B, C, D и так далее (только заглавные латинские буквы)
                 </small>
               </FormGroup>
               
@@ -993,6 +1183,20 @@ const WashBoxManagement = () => {
                   </Label>
                 </FormGroup>
               )}
+              
+              <FormGroup>
+                <Label theme={theme}>Комментарий</Label>
+                <Textarea
+                  value={formData.comment}
+                  onChange={(e) => setFormData({ ...formData, comment: e.target.value })}
+                  maxLength={1000}
+                  rows={4}
+                  placeholder="Дополнительная информация о боксе..."
+                />
+                <CharCounter $isNearLimit={(formData.comment?.length || 0) > 900}>
+                  {formData.comment?.length || 0}/1000
+                </CharCounter>
+              </FormGroup>
               
               <FormGroup>
                 <Label theme={theme}>Регистр света (0x0001)</Label>
@@ -1040,10 +1244,21 @@ const WashBoxManagement = () => {
       {/* Модальное окно редактирования */}
       {showEditModal && (
         <Modal>
-          <ModalContent>
+          <ModalContentWide>
             <ModalTitle theme={theme}>Редактировать бокс</ModalTitle>
             <Form onSubmit={handleUpdate}>
-              <FormGroup>
+              {editingWashBox && (
+                <FullWidthFormGroup>
+                  <UUIDContainer>
+                    <UUIDField>{editingWashBox.id}</UUIDField>
+                    <CopyButton type="button" onClick={() => handleCopyUUID(editingWashBox.id)}>
+                      📋 Копировать ID
+                    </CopyButton>
+                  </UUIDContainer>
+                </FullWidthFormGroup>
+              )}
+              
+              <FullWidthFormGroup>
                 <Label theme={theme}>Номер бокса</Label>
                 <div style={{ 
                   padding: '8px 12px', 
@@ -1054,147 +1269,169 @@ const WashBoxManagement = () => {
                 }}>
                   {formData.number}
                 </div>
-              </FormGroup>
+              </FullWidthFormGroup>
               
-              <FormGroup>
-                <Label theme={theme}>Статус</Label>
-                <Select
-                  value={formData.status}
-                  onChange={(e) => setFormData({ ...formData, status: e.target.value })}
-                >
-                  <option value="free">Свободен</option>
-                  <option value="busy">Занят</option>
-                  <option value="reserved">Зарезервирован</option>
-                  <option value="maintenance">Обслуживание</option>
-                </Select>
-              </FormGroup>
-              
-              <FormGroup>
-                <Label theme={theme}>Тип услуги</Label>
-                <Select
-                  value={formData.serviceType}
-                  onChange={(e) => setFormData({ ...formData, serviceType: e.target.value })}
-                >
-                  <option value="wash">Мойка</option>
-                  <option value="air_dry">Обдув</option>
-                  <option value="vacuum">Пылесос</option>
-                </Select>
-              </FormGroup>
-              
-              <FormGroup>
-                <Label theme={theme}>Приоритет</Label>
-                <Input
-                  type="number"
-                  value={formData.priority}
-                  onChange={(e) => setFormData({ ...formData, priority: e.target.value === '' ? '' : parseInt(e.target.value) || 1 })}
-                  min="1"
-                  required
-                />
-                <small style={{ color: '#666', fontSize: '12px' }}>
-                  Чем меньше число, тем выше приоритет (1 - наивысший приоритет)
-                </small>
-              </FormGroup>
-              
-              {formData.serviceType === 'wash' && (
+              <TwoColumnGrid>
                 <FormGroup>
-                  <Label theme={theme}>
-                    <input
-                      type="checkbox"
-                      checked={formData.chemistryEnabled}
-                      onChange={(e) => setFormData({ ...formData, chemistryEnabled: e.target.checked })}
-                      style={{ marginRight: '8px' }}
-                    />
-                    Химия включена
-                  </Label>
+                  <Label theme={theme}>Статус</Label>
+                  <Select
+                    value={formData.status}
+                    onChange={(e) => setFormData({ ...formData, status: e.target.value })}
+                  >
+                    <option value="free">Свободен</option>
+                    <option value="busy">Занят</option>
+                    <option value="reserved">Зарезервирован</option>
+                    <option value="maintenance">Обслуживание</option>
+                  </Select>
                 </FormGroup>
-              )}
-              
-              <FormGroup>
-                <Label theme={theme}>Регистр света (0x0001)</Label>
-                <Input
-                  type="text"
-                  value={formData.lightCoilRegister}
-                  onChange={(e) => setFormData({ ...formData, lightCoilRegister: e.target.value })}
-                  placeholder="0x0001"
-                  pattern="0x[0-9a-fA-F]{1,4}"
-                />
-                <small style={{ color: '#666', fontSize: '12px' }}>
-                  Hex формат регистра для управления светом
-                </small>
-                {formData.lightCoilRegister && editingWashBox && (
-                  <TestButtonGroup>
-                    <TestButton
-                      type="button"
-                      onClick={() => testCoil(editingWashBox.id, formData.lightCoilRegister, true)}
-                      disabled={testingBox === editingWashBox.id}
-                    >
-                      Тест ВКЛ
-                    </TestButton>
-                    <TestButton
-                      type="button"
-                      onClick={() => testCoil(editingWashBox.id, formData.lightCoilRegister, false)}
-                      disabled={testingBox === editingWashBox.id}
-                    >
-                      Тест ВЫКЛ
-                    </TestButton>
-                  </TestButtonGroup>
-                )}
-                {testResults[`${editingWashBox?.id}_${formData.lightCoilRegister}`] && (
-                  <TestResult className={testResults[`${editingWashBox?.id}_${formData.lightCoilRegister}`].status}>
-                    {testResults[`${editingWashBox?.id}_${formData.lightCoilRegister}`].message}
-                  </TestResult>
-                )}
-              </FormGroup>
-              
-              {formData.serviceType === 'wash' && (
+                
                 <FormGroup>
-                  <Label theme={theme}>Регистр химии (0x0002)</Label>
+                  <Label theme={theme}>Тип услуги</Label>
+                  <Select
+                    value={formData.serviceType}
+                    onChange={(e) => setFormData({ ...formData, serviceType: e.target.value })}
+                  >
+                    <option value="wash">Мойка</option>
+                    <option value="air_dry">Обдув</option>
+                    <option value="vacuum">Пылесос</option>
+                  </Select>
+                </FormGroup>
+                
+                <FormGroup>
+                  <Label theme={theme}>Приоритет</Label>
                   <Input
                     type="text"
-                    value={formData.chemistryCoilRegister}
-                    onChange={(e) => setFormData({ ...formData, chemistryCoilRegister: e.target.value })}
-                    placeholder="0x00002"
+                    value={formData.priority}
+                    onChange={(e) => setFormData({ ...formData, priority: e.target.value.toUpperCase() })}
+                    maxLength="1"
+                    pattern="[A-Z]"
+                    style={{ textTransform: 'uppercase' }}
+                    required
+                  />
+                  <small style={{ color: '#666', fontSize: '12px' }}>
+                    A - высокий, B, C... - низкий
+                  </small>
+                </FormGroup>
+                
+                {formData.serviceType === 'wash' && (
+                  <FormGroup>
+                    <Label theme={theme}>
+                      <input
+                        type="checkbox"
+                        checked={formData.chemistryEnabled}
+                        onChange={(e) => setFormData({ ...formData, chemistryEnabled: e.target.checked })}
+                        style={{ marginRight: '8px' }}
+                      />
+                      Химия включена
+                    </Label>
+                  </FormGroup>
+                )}
+              </TwoColumnGrid>
+              
+              <FullWidthFormGroup>
+                <Label theme={theme}>Комментарий</Label>
+                <Textarea
+                  value={formData.comment}
+                  onChange={(e) => setFormData({ ...formData, comment: e.target.value })}
+                  maxLength={1000}
+                  rows={3}
+                  placeholder="Дополнительная информация о боксе..."
+                />
+                <CharCounter $isNearLimit={(formData.comment?.length || 0) > 900}>
+                  {formData.comment?.length || 0}/1000
+                </CharCounter>
+              </FullWidthFormGroup>
+              
+              <TwoColumnGrid>
+                <FormGroup>
+                  <Label theme={theme}>Регистр света (0x0001)</Label>
+                  <Input
+                    type="text"
+                    value={formData.lightCoilRegister}
+                    onChange={(e) => setFormData({ ...formData, lightCoilRegister: e.target.value })}
+                    placeholder="0x0001"
                     pattern="0x[0-9a-fA-F]{1,4}"
                   />
                   <small style={{ color: '#666', fontSize: '12px' }}>
-                    Hex формат регистра для управления химией (только для мойки)
+                    Hex формат
                   </small>
-                  {formData.chemistryCoilRegister && editingWashBox && (
+                  {formData.lightCoilRegister && editingWashBox && (
                     <TestButtonGroup>
                       <TestButton
                         type="button"
-                        onClick={() => testCoil(editingWashBox.id, formData.chemistryCoilRegister, true)}
+                        onClick={() => testCoil(editingWashBox.id, formData.lightCoilRegister, true)}
                         disabled={testingBox === editingWashBox.id}
                       >
                         Тест ВКЛ
                       </TestButton>
                       <TestButton
                         type="button"
-                        onClick={() => testCoil(editingWashBox.id, formData.chemistryCoilRegister, false)}
+                        onClick={() => testCoil(editingWashBox.id, formData.lightCoilRegister, false)}
                         disabled={testingBox === editingWashBox.id}
                       >
                         Тест ВЫКЛ
                       </TestButton>
                     </TestButtonGroup>
                   )}
-                  {testResults[`${editingWashBox?.id}_${formData.chemistryCoilRegister}`] && (
-                    <TestResult className={testResults[`${editingWashBox?.id}_${formData.chemistryCoilRegister}`].status}>
-                      {testResults[`${editingWashBox?.id}_${formData.chemistryCoilRegister}`].message}
+                  {testResults[`${editingWashBox?.id}_${formData.lightCoilRegister}`] && (
+                    <TestResult className={testResults[`${editingWashBox?.id}_${formData.lightCoilRegister}`].status}>
+                      {testResults[`${editingWashBox?.id}_${formData.lightCoilRegister}`].message}
                     </TestResult>
                   )}
                 </FormGroup>
-              )}
+                
+                {formData.serviceType === 'wash' && (
+                  <FormGroup>
+                    <Label theme={theme}>Регистр химии (0x0002)</Label>
+                    <Input
+                      type="text"
+                      value={formData.chemistryCoilRegister}
+                      onChange={(e) => setFormData({ ...formData, chemistryCoilRegister: e.target.value })}
+                      placeholder="0x00002"
+                      pattern="0x[0-9a-fA-F]{1,4}"
+                    />
+                    <small style={{ color: '#666', fontSize: '12px' }}>
+                      Hex формат
+                    </small>
+                    {formData.chemistryCoilRegister && editingWashBox && (
+                      <TestButtonGroup>
+                        <TestButton
+                          type="button"
+                          onClick={() => testCoil(editingWashBox.id, formData.chemistryCoilRegister, true)}
+                          disabled={testingBox === editingWashBox.id}
+                        >
+                          Тест ВКЛ
+                        </TestButton>
+                        <TestButton
+                          type="button"
+                          onClick={() => testCoil(editingWashBox.id, formData.chemistryCoilRegister, false)}
+                          disabled={testingBox === editingWashBox.id}
+                        >
+                          Тест ВЫКЛ
+                        </TestButton>
+                      </TestButtonGroup>
+                    )}
+                    {testResults[`${editingWashBox?.id}_${formData.chemistryCoilRegister}`] && (
+                      <TestResult className={testResults[`${editingWashBox?.id}_${formData.chemistryCoilRegister}`].status}>
+                        {testResults[`${editingWashBox?.id}_${formData.chemistryCoilRegister}`].message}
+                      </TestResult>
+                    )}
+                  </FormGroup>
+                )}
+              </TwoColumnGrid>
               
-              <ButtonGroup>
-                <Button theme={theme} type="button" onClick={closeModals}>
-                  Отмена
-                </Button>
-                <Button theme={theme} type="submit" disabled={loading}>
-                  {loading ? 'Сохранение...' : 'Сохранить'}
-                </Button>
-              </ButtonGroup>
+              <FullWidthFormGroup>
+                <ButtonGroup>
+                  <Button theme={theme} type="button" onClick={closeModals}>
+                    Отмена
+                  </Button>
+                  <Button theme={theme} type="submit" disabled={loading}>
+                    {loading ? 'Сохранение...' : 'Сохранить'}
+                  </Button>
+                </ButtonGroup>
+              </FullWidthFormGroup>
             </Form>
-          </ModalContent>
+          </ModalContentWide>
         </Modal>
       )}
     </Container>

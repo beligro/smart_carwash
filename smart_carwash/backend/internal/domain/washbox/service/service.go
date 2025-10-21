@@ -61,15 +61,17 @@ func shuffleBoxesWithSamePriority(boxes []models.WashBox) []models.WashBox {
 	}
 
 	// Группируем боксы по приоритету
-	priorityGroups := make(map[int][]models.WashBox)
+	priorityGroups := make(map[string][]models.WashBox)
 	for _, box := range boxes {
 		priorityGroups[box.Priority] = append(priorityGroups[box.Priority], box)
 	}
 
 	// Перемешиваем боксы в каждой группе с одинаковым приоритетом
 	result := make([]models.WashBox, 0, len(boxes))
-	for priority := 1; priority <= 100; priority++ { // Предполагаем, что приоритеты не превышают 100
-		if group, exists := priorityGroups[priority]; exists {
+	// Проходим по всем возможным приоритетам от A до Z
+	for priority := 'A'; priority <= 'Z'; priority++ {
+		priorityStr := string(priority)
+		if group, exists := priorityGroups[priorityStr]; exists {
 			// Перемешиваем группу
 			rand.Shuffle(len(group), func(i, j int) {
 				group[i], group[j] = group[j], group[i]
@@ -206,6 +208,8 @@ func (s *ServiceImpl) AdminUpdateWashBox(req *models.AdminUpdateWashBoxRequest) 
 	if req.Status != nil {
 		existingBox.Status = *req.Status
 	}
+
+	existingBox.Comment = req.Comment
 
 	if req.ServiceType != nil {
 		existingBox.ServiceType = *req.ServiceType
