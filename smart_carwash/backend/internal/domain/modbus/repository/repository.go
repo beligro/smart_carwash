@@ -189,3 +189,46 @@ func (r *ModbusRepository) GetAllModbusConnectionStatuses() ([]models.ModbusConn
 	err := r.db.Find(&statuses).Error
 	return statuses, err
 }
+
+// UpdateModbusCoilStatus обновляет статус конкретного койла (света или химии) для бокса
+func (r *ModbusRepository) UpdateModbusCoilStatus(boxID uuid.UUID, coilType string, value bool) error {
+	// Получаем или создаем запись статуса
+	var status models.ModbusConnectionStatus
+	err := r.db.Where("box_id = ?", boxID).First(&status).Error
+	
+	// Если запись не найдена, создаем новую
+	if err == gorm.ErrRecordNotFound {
+		status = models.ModbusConnectionStatus{
+			BoxID:    boxID,
+			LastSeen: time.Now(),
+		}
+		
+		// Устанавливаем соответствующий статус
+		if coilType == "light" {
+			status.LightStatus = &value
+		} else if coilType == "chemistry" {
+			status.ChemistryStatus = &value
+		}
+		
+		return r.db.Create(&status).Error
+	}
+	
+	if err != nil {
+		return err
+	}
+	
+	// Обновляем соответствующий статус
+	updates := map[string]interface{}{
+		"last_seen": time.Now(),
+	}
+	
+	if coilType == "light" {
+		updates["light_status"] = value
+	} else if coilType == "chemistry" {
+		updates["chemistry_status"] = value
+	}
+	
+	return r.db.Model(&models.ModbusConnectionStatus{}).
+		Where("box_id = ?", boxID).
+		Updates(updates).Error
+}

@@ -109,7 +109,7 @@ func main() {
 	// Создаем сервисы
 	userSvc := userService.NewService(userRepository)
 	settingsSvc := settingsService.NewService(settingsRepository)
-	washboxSvc := washboxService.NewService(washboxRepository, settingsSvc)
+	washboxSvc := washboxService.NewService(washboxRepository, settingsSvc, db)
 	authSvc := authService.NewService(authRepository, cfg)
 
 	// Создаем Modbus HTTP адаптер

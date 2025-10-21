@@ -36,6 +36,8 @@ type WashBox struct {
 	Comment               *string        `json:"comment" gorm:"type:varchar(1000)"`
 	CleaningReservedBy    *uuid.UUID     `json:"cleaning_reserved_by" gorm:"type:uuid;index"`
 	CleaningStartedAt     *time.Time     `json:"cleaning_started_at"`
+	LightStatus           *bool          `json:"light_status,omitempty" gorm:"-"` // Статус света (не хранится в БД, заполняется из modbus_connection_statuses)
+	ChemistryStatus       *bool          `json:"chemistry_status,omitempty" gorm:"-"` // Статус химии (не хранится в БД, заполняется из modbus_connection_statuses)
 	CreatedAt             time.Time      `json:"created_at"`
 	UpdatedAt             time.Time      `json:"updated_at"`
 	DeletedAt             gorm.DeletedAt `json:"-" gorm:"index"`

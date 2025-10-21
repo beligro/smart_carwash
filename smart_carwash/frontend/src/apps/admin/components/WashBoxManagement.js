@@ -151,6 +151,30 @@ const ServiceTypeBadge = styled.span`
   }
 `;
 
+const CoilStatusIndicator = styled.span`
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 8px;
+  border-radius: 12px;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  margin-left: 8px;
+  background-color: ${props => {
+    if (props.status === null || props.status === undefined) return '#f5f5f5';
+    return props.status ? '#E8F5E8' : '#FFEBEE';
+  }};
+  color: ${props => {
+    if (props.status === null || props.status === undefined) return '#999';
+    return props.status ? '#2E7D32' : '#C62828';
+  }};
+  border: 1px solid ${props => {
+    if (props.status === null || props.status === undefined) return '#e0e0e0';
+    return props.status ? '#81C784' : '#EF9A9A';
+  }};
+`;
+
 const ChemistryBadge = styled.span`
   padding: 4px 8px;
   border-radius: 12px;
@@ -612,8 +636,11 @@ const WashBoxManagement = () => {
         } 
       }));
       
-      // Автоматически скрываем сообщение об успехе через 3 секунды
+      // Если операция успешна, обновляем список боксов для получения актуальных статусов
       if (response.data.success) {
+        fetchWashBoxes();
+        
+        // Автоматически скрываем сообщение об успехе через 3 секунды
         setTimeout(() => {
           setControlResults(prev => {
             const newResults = { ...prev };
@@ -879,7 +906,12 @@ const WashBoxManagement = () => {
                 <Td>
                   {washBox.light_coil_register ? (
                     <div>
-                      <div style={{ marginBottom: '6px' }}>{washBox.light_coil_register}</div>
+                      <div style={{ marginBottom: '6px', display: 'flex', alignItems: 'center', flexWrap: 'wrap' }}>
+                        <span>{washBox.light_coil_register}</span>
+                        <CoilStatusIndicator status={washBox.light_status}>
+                          {washBox.light_status === null || washBox.light_status === undefined ? '?' : washBox.light_status ? '💡 ВКЛ' : '💡 ВЫКЛ'}
+                        </CoilStatusIndicator>
+                      </div>
                       <ControlButtonsGroup>
                         <ControlButton
                           $isOn={true}
@@ -910,7 +942,12 @@ const WashBoxManagement = () => {
                   {washBox.service_type === 'wash' ? (
                     washBox.chemistry_coil_register ? (
                       <div>
-                        <div style={{ marginBottom: '6px' }}>{washBox.chemistry_coil_register}</div>
+                        <div style={{ marginBottom: '6px', display: 'flex', alignItems: 'center', flexWrap: 'wrap' }}>
+                          <span>{washBox.chemistry_coil_register}</span>
+                          <CoilStatusIndicator status={washBox.chemistry_status}>
+                            {washBox.chemistry_status === null || washBox.chemistry_status === undefined ? '?' : washBox.chemistry_status ? '🧪 ВКЛ' : '🧪 ВЫКЛ'}
+                          </CoilStatusIndicator>
+                        </div>
                         <ControlButtonsGroup>
                           <ControlButton
                             $isOn={true}
@@ -1013,7 +1050,12 @@ const WashBoxManagement = () => {
           { key: 'light_register', label: 'Регистр света', accessor: (item) => (
             item.light_coil_register ? (
               <div>
-                <div style={{ marginBottom: '6px', fontSize: '12px' }}>{item.light_coil_register}</div>
+                <div style={{ marginBottom: '6px', fontSize: '12px', display: 'flex', alignItems: 'center', flexWrap: 'wrap' }}>
+                  <span>{item.light_coil_register}</span>
+                  <CoilStatusIndicator status={item.light_status}>
+                    {item.light_status === null || item.light_status === undefined ? '?' : item.light_status ? '💡 ВКЛ' : '💡 ВЫКЛ'}
+                  </CoilStatusIndicator>
+                </div>
                 <ControlButtonsGroup>
                   <ControlButton
                     $isOn={true}
@@ -1044,7 +1086,12 @@ const WashBoxManagement = () => {
             item.service_type === 'wash' ? (
               item.chemistry_coil_register ? (
                 <div>
-                  <div style={{ marginBottom: '6px', fontSize: '12px' }}>{item.chemistry_coil_register}</div>
+                  <div style={{ marginBottom: '6px', fontSize: '12px', display: 'flex', alignItems: 'center', flexWrap: 'wrap' }}>
+                    <span>{item.chemistry_coil_register}</span>
+                    <CoilStatusIndicator status={item.chemistry_status}>
+                      {item.chemistry_status === null || item.chemistry_status === undefined ? '?' : item.chemistry_status ? '🧪 ВКЛ' : '🧪 ВЫКЛ'}
+                    </CoilStatusIndicator>
+                  </div>
                   <ControlButtonsGroup>
                     <ControlButton
                       $isOn={true}

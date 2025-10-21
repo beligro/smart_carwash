@@ -3,11 +3,14 @@ package adapter
 import (
 	"carwash_backend/internal/logger"
 	"fmt"
+	"time"
 
 	"github.com/google/uuid"
 
 	"carwash_backend/internal/config"
 	"carwash_backend/internal/domain/modbus/client"
+	"carwash_backend/internal/domain/modbus/models"
+	"carwash_backend/internal/domain/modbus/repository"
 
 	"gorm.io/gorm"
 )
@@ -15,6 +18,7 @@ import (
 // ModbusAdapter адаптер для взаимодействия с modbus сервером через HTTP
 type ModbusAdapter struct {
 	httpClient *client.ModbusHTTPClient
+	repository *repository.ModbusRepository
 	config     *config.Config
 	db         *gorm.DB
 }
@@ -23,6 +27,7 @@ type ModbusAdapter struct {
 func NewModbusAdapter(config *config.Config, db *gorm.DB) *ModbusAdapter {
 	return &ModbusAdapter{
 		httpClient: client.NewModbusHTTPClient(config),
+		repository: repository.NewModbusRepository(db),
 		config:     config,
 		db:         db,
 	}
@@ -37,13 +42,111 @@ func (a *ModbusAdapter) WriteCoil(boxID uuid.UUID, register string, value bool) 
 // WriteLightCoil включает или выключает свет для бокса
 func (a *ModbusAdapter) WriteLightCoil(boxID uuid.UUID, value bool) error {
 	logger.Printf("ModbusAdapter WriteLightCoil - box_id: %s, value: %v", boxID, value)
-	return a.httpClient.WriteLightCoil(boxID, value)
+	
+	// Получаем информацию о боксе для регистра
+	box, err := a.repository.GetWashBoxByID(boxID)
+	if err != nil {
+		logger.Printf("Ошибка получения бокса для WriteLightCoil - box_id: %s, error: %v", boxID, err)
+		return fmt.Errorf("не удалось найти бокс: %v", err)
+	}
+	
+	register := ""
+	if box.LightCoilRegister != nil {
+		register = *box.LightCoilRegister
+	}
+	
+	// Выполняем операцию через HTTP клиент
+	err = a.httpClient.WriteLightCoil(boxID, value)
+	
+	// Определяем операцию
+	operation := "light_off"
+	if value {
+		operation = "light_on"
+	}
+	
+	// Сохраняем операцию в БД
+	modbusOp := &models.ModbusOperation{
+		ID:        uuid.New(),
+		BoxID:     boxID,
+		Operation: operation,
+		Register:  register,
+		Value:     value,
+		Success:   err == nil,
+		CreatedAt: time.Now(),
+	}
+	
+	if err != nil {
+		modbusOp.Error = err.Error()
+	}
+	
+	// Сохраняем операцию
+	if saveErr := a.repository.SaveModbusOperation(modbusOp); saveErr != nil {
+		logger.Printf("Ошибка сохранения операции WriteLightCoil - box_id: %s, error: %v", boxID, saveErr)
+	}
+	
+	// Если операция успешна, обновляем статус койла
+	if err == nil {
+		if updateErr := a.repository.UpdateModbusCoilStatus(boxID, "light", value); updateErr != nil {
+			logger.Printf("Ошибка обновления статуса света - box_id: %s, error: %v", boxID, updateErr)
+		}
+	}
+	
+	return err
 }
 
 // WriteChemistryCoil включает или выключает химию для бокса
 func (a *ModbusAdapter) WriteChemistryCoil(boxID uuid.UUID, value bool) error {
 	logger.Printf("ModbusAdapter WriteChemistryCoil - box_id: %s, value: %v", boxID, value)
-	return a.httpClient.WriteChemistryCoil(boxID, value)
+	
+	// Получаем информацию о боксе для регистра
+	box, err := a.repository.GetWashBoxByID(boxID)
+	if err != nil {
+		logger.Printf("Ошибка получения бокса для WriteChemistryCoil - box_id: %s, error: %v", boxID, err)
+		return fmt.Errorf("не удалось найти бокс: %v", err)
+	}
+	
+	register := ""
+	if box.ChemistryCoilRegister != nil {
+		register = *box.ChemistryCoilRegister
+	}
+	
+	// Выполняем операцию через HTTP клиент
+	err = a.httpClient.WriteChemistryCoil(boxID, value)
+	
+	// Определяем операцию
+	operation := "chemistry_off"
+	if value {
+		operation = "chemistry_on"
+	}
+	
+	// Сохраняем операцию в БД
+	modbusOp := &models.ModbusOperation{
+		ID:        uuid.New(),
+		BoxID:     boxID,
+		Operation: operation,
+		Register:  register,
+		Value:     value,
+		Success:   err == nil,
+		CreatedAt: time.Now(),
+	}
+	
+	if err != nil {
+		modbusOp.Error = err.Error()
+	}
+	
+	// Сохраняем операцию
+	if saveErr := a.repository.SaveModbusOperation(modbusOp); saveErr != nil {
+		logger.Printf("Ошибка сохранения операции WriteChemistryCoil - box_id: %s, error: %v", boxID, saveErr)
+	}
+	
+	// Если операция успешна, обновляем статус койла
+	if err == nil {
+		if updateErr := a.repository.UpdateModbusCoilStatus(boxID, "chemistry", value); updateErr != nil {
+			logger.Printf("Ошибка обновления статуса химии - box_id: %s, error: %v", boxID, updateErr)
+		}
+	}
+	
+	return err
 }
 
 // HandleModbusError обрабатывает ошибку Modbus (только логирует, без продления времени)
@@ -52,22 +155,6 @@ func (a *ModbusAdapter) HandleModbusError(boxID uuid.UUID, operation string, ses
 		boxID, operation, sessionID, err)
 
 	return err
-}
-
-// TestConnection тестирует соединение с Modbus устройством
-func (a *ModbusAdapter) TestConnection(boxID uuid.UUID) error {
-	logger.Printf("ModbusAdapter TestConnection - box_id: %s", boxID)
-
-	resp, err := a.httpClient.TestConnection(boxID)
-	if err != nil {
-		return err
-	}
-
-	if !resp.Success {
-		return fmt.Errorf("тест соединения неудачен: %s", resp.Message)
-	}
-
-	return nil
 }
 
 // TestCoil тестирует запись в конкретный регистр

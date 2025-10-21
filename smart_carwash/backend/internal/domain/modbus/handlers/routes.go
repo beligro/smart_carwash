@@ -10,7 +10,6 @@ func (h *Handler) RegisterRoutes(router *gin.RouterGroup) {
 	adminModbus := router.Group("/admin/modbus")
 	{
 		// Тестирование и статус
-		adminModbus.POST("/test-connection", h.TestConnection)
 		adminModbus.POST("/test-coil", h.TestCoil)
 		adminModbus.GET("/status", h.GetStatus)
 		

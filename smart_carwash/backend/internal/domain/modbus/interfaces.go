@@ -10,6 +10,5 @@ type ModbusServiceInterface interface {
 	WriteLightCoil(boxID uuid.UUID, value bool) error
 	WriteChemistryCoil(boxID uuid.UUID, value bool) error
 	HandleModbusError(boxID uuid.UUID, operation string, sessionID uuid.UUID, err error) error
-	TestConnection(boxID uuid.UUID) error
 	TestCoil(boxID uuid.UUID, register string, value bool) error
 }

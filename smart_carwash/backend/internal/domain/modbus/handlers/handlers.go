@@ -23,23 +23,6 @@ func NewHandler(modbusService *service.ModbusService) *Handler {
 	}
 }
 
-// TestConnection тестирует соединение с Modbus устройством
-func (h *Handler) TestConnection(c *gin.Context) {
-	var req models.TestModbusConnectionRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Неверный формат запроса"})
-		return
-	}
-
-	response, err := h.modbusService.TestConnection(req.BoxID)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-		return
-	}
-
-	c.JSON(http.StatusOK, response)
-}
-
 // TestCoil тестирует запись в конкретный регистр
 func (h *Handler) TestCoil(c *gin.Context) {
 	var req models.TestModbusCoilRequest

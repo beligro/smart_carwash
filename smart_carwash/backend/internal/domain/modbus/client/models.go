@@ -39,17 +39,6 @@ type WriteChemistryCoilResponse struct {
 	Message string `json:"message"`
 }
 
-// TestConnectionRequest запрос на тестирование соединения
-type TestConnectionRequest struct {
-	BoxID uuid.UUID `json:"box_id"`
-}
-
-// TestConnectionResponse ответ на тестирование соединения
-type TestConnectionResponse struct {
-	Success bool   `json:"success"`
-	Message string `json:"message"`
-}
-
 // TestCoilRequest запрос на тестирование coil
 type TestCoilRequest struct {
 	BoxID    uuid.UUID `json:"box_id"`

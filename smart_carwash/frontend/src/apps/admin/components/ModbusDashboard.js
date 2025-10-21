@@ -78,6 +78,24 @@ const StatusIndicator = styled.div`
   margin-right: 8px;
 `;
 
+const CoilStatus = styled.div`
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 8px;
+  border-radius: 4px;
+  font-size: 12px;
+  font-weight: 500;
+  background-color: ${props => {
+    if (props.status === null || props.status === undefined) return '#E0E0E0';
+    return props.status ? '#E8F5E8' : '#FFEBEE';
+  }};
+  color: ${props => {
+    if (props.status === null || props.status === undefined) return '#757575';
+    return props.status ? '#2E7D32' : '#C62828';
+  }};
+`;
+
 const Section = styled.div`
   background: ${props => props.theme.backgroundSecondary};
   border: 1px solid ${props => props.theme.border};
@@ -91,6 +109,22 @@ const SectionTitle = styled.h2`
   font-size: 18px;
   font-weight: 600;
   margin: 0 0 16px 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+`;
+
+const ToggleButton = styled.button`
+  background: none;
+  border: none;
+  color: #000000;
+  cursor: pointer;
+  font-size: 14px;
+  padding: 4px 8px;
+  
+  &:hover {
+    opacity: 0.7;
+  }
 `;
 
 const BoxGrid = styled.div`
@@ -215,6 +249,7 @@ const ModbusDashboard = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [timeRange, setTimeRange] = useState('24h');
+  const [boxStatusesExpanded, setBoxStatusesExpanded] = useState(false);
 
   const fetchDashboardData = async () => {
     try {
@@ -346,54 +381,61 @@ const ModbusDashboard = () => {
 
       {/* Статус боксов */}
       <Section theme={theme}>
-        <SectionTitle theme={theme}>Статус боксов</SectionTitle>
-        <BoxGrid>
-          {box_statuses && box_statuses.length > 0 ? box_statuses.map(box => (
-            <BoxCard key={box.box_id} theme={theme}>
-              <BoxHeader>
-                <BoxTitle theme={theme}>
-                  <StatusIndicator connected={box.connected} />
-                  Бокс #{box.box_number}
-                </BoxTitle>
-              </BoxHeader>
-              
-              <BoxInfo theme={theme}>
-                <strong>Статус:</strong> {box.connected ? 'Подключен' : 'Отключен'}
-              </BoxInfo>
-              
-              {box.last_seen && (
+        <SectionTitle theme={theme}>
+          <span>Статус боксов</span>
+          <ToggleButton theme={theme} onClick={() => setBoxStatusesExpanded(!boxStatusesExpanded)}>
+            {boxStatusesExpanded ? '▲ Скрыть' : '▼ Показать'}
+          </ToggleButton>
+        </SectionTitle>
+        {boxStatusesExpanded && (
+          <BoxGrid>
+            {box_statuses && box_statuses.length > 0 ? 
+              // Сортируем боксы по номеру (по возрастанию)
+              [...box_statuses].sort((a, b) => a.box_number - b.box_number).map(box => (
+              <BoxCard key={box.box_id} theme={theme}>
+                <BoxHeader>
+                  <BoxTitle theme={theme}>
+                    <StatusIndicator connected={box.light_status === true} />
+                    Бокс #{box.box_number}
+                  </BoxTitle>
+                </BoxHeader>
+                
                 <BoxInfo theme={theme}>
-                  <strong>Последняя активность:</strong> {formatTime(box.last_seen)}
+                  <strong>Регистр света:</strong> {box.light_coil_register || 'Не настроен'}
                 </BoxInfo>
-              )}
-              
-              {box.last_error && (
-                <BoxInfo theme={theme} style={{ color: '#F44336' }}>
-                  <strong>Последняя ошибка:</strong> {box.last_error}
-                </BoxInfo>
-              )}
-              
-              <BoxInfo theme={theme}>
-                <strong>Регистр света:</strong> {box.light_coil_register || 'Не настроен'}
-              </BoxInfo>
-              
-              {box.chemistry_coil_register && (
-                <BoxInfo theme={theme}>
-                  <strong>Регистр химии:</strong> {box.chemistry_coil_register}
-                </BoxInfo>
-              )}
-              
-              <BoxInfo theme={theme}>
-                <strong>Операций:</strong> {box.operations_last_24h} 
-                ({formatSuccessRate(box.success_rate_last_24h)} успешных)
-              </BoxInfo>
-            </BoxCard>
-          )) : (
-            <div style={{ textAlign: 'center', color: '#666', padding: '40px' }}>
-              Нет боксов с настроенным Modbus
-            </div>
-          )}
-        </BoxGrid>
+                
+                {box.chemistry_coil_register && (
+                  <BoxInfo theme={theme}>
+                    <strong>Регистр химии:</strong> {box.chemistry_coil_register}
+                  </BoxInfo>
+                )}
+                
+                {/* Статусы света и химии */}
+                {(box.light_status !== null && box.light_status !== undefined) && (
+                  <BoxInfo theme={theme}>
+                    <strong>Свет:</strong>{' '}
+                    <CoilStatus status={box.light_status}>
+                      {box.light_status ? '💡 Включен' : '💡 Выключен'}
+                    </CoilStatus>
+                  </BoxInfo>
+                )}
+                
+                {(box.chemistry_status !== null && box.chemistry_status !== undefined) && (
+                  <BoxInfo theme={theme}>
+                    <strong>Химия:</strong>{' '}
+                    <CoilStatus status={box.chemistry_status}>
+                      {box.chemistry_status ? '🧪 Включена' : '🧪 Выключена'}
+                    </CoilStatus>
+                  </BoxInfo>
+                )}
+              </BoxCard>
+            )) : (
+              <div style={{ textAlign: 'center', color: '#666', padding: '40px' }}>
+                Нет боксов с настроенным Modbus
+              </div>
+            )}
+          </BoxGrid>
+        )}
       </Section>
 
       {/* Последние операции */}

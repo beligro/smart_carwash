@@ -90,21 +90,6 @@ func (c *ModbusHTTPClient) WriteChemistryCoil(boxID uuid.UUID, value bool) error
 	return nil
 }
 
-// TestConnection тестирует соединение с Modbus устройством
-func (c *ModbusHTTPClient) TestConnection(boxID uuid.UUID) (*TestConnectionResponse, error) {
-	req := TestConnectionRequest{
-		BoxID: boxID,
-	}
-
-	var resp TestConnectionResponse
-	err := c.makeRequest("POST", "/api/v1/modbus/test-connection", req, &resp)
-	if err != nil {
-		return nil, fmt.Errorf("ошибка HTTP запроса: %v", err)
-	}
-
-	return &resp, nil
-}
-
 // TestCoil тестирует запись в конкретный регистр
 func (c *ModbusHTTPClient) TestCoil(boxID uuid.UUID, register string, value bool) (*TestCoilResponse, error) {
 	req := TestCoilRequest{

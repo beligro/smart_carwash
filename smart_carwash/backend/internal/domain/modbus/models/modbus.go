@@ -8,7 +8,7 @@ import (
 
 // ModbusOperation представляет операцию Modbus
 type ModbusOperation struct {
-	ID        uuid.UUID `json:"id"`
+	ID        uuid.UUID `json:"id" gorm:"primaryKey;type:uuid;default:gen_random_uuid()"`
 	BoxID     uuid.UUID `json:"box_id"`
 	Operation string    `json:"operation"` // "light_on", "light_off", "chemistry_on", "chemistry_off"
 	Register  string    `json:"register"`  // hex формат
@@ -40,17 +40,6 @@ type ModbusError struct {
 	Operation string    `json:"operation"`
 	Error     string    `json:"error"`
 	SessionID uuid.UUID `json:"session_id,omitempty"`
-}
-
-// TestModbusConnectionRequest запрос на тестирование Modbus соединения
-type TestModbusConnectionRequest struct {
-	BoxID uuid.UUID `json:"box_id" binding:"required"`
-}
-
-// TestModbusConnectionResponse ответ на тестирование Modbus соединения
-type TestModbusConnectionResponse struct {
-	Success bool   `json:"success"`
-	Message string `json:"message"`
 }
 
 // TestModbusCoilRequest запрос на тестирование Modbus coil
@@ -97,13 +86,15 @@ type ModbusStats struct {
 
 // ModbusConnectionStatus представляет статус подключения Modbus для бокса
 type ModbusConnectionStatus struct {
-	ID        uuid.UUID `json:"id" gorm:"primaryKey;type:uuid;default:gen_random_uuid()"`
-	BoxID     uuid.UUID `json:"box_id" gorm:"uniqueIndex"`
-	Connected bool      `json:"connected"`
-	LastError string    `json:"last_error"`
-	LastSeen  time.Time `json:"last_seen"`
-	CreatedAt time.Time `json:"created_at"`
-	UpdatedAt time.Time `json:"updated_at"`
+	ID              uuid.UUID `json:"id" gorm:"primaryKey;type:uuid;default:gen_random_uuid()"`
+	BoxID           uuid.UUID `json:"box_id" gorm:"uniqueIndex"`
+	Connected       bool      `json:"connected"`
+	LastError       string    `json:"last_error"`
+	LastSeen        time.Time `json:"last_seen"`
+	LightStatus     *bool     `json:"light_status,omitempty"`     // Статус света: true - включен, false - выключен, nil - неизвестно
+	ChemistryStatus *bool     `json:"chemistry_status,omitempty"` // Статус химии: true - включена, false - выключена, nil - неизвестно
+	CreatedAt       time.Time `json:"created_at"`
+	UpdatedAt       time.Time `json:"updated_at"`
 }
 
 // ModbusDashboardData представляет данные для дашборда мониторинга
@@ -125,15 +116,14 @@ type ModbusDashboardOverview struct {
 
 // ModbusBoxStatus представляет статус конкретного бокса
 type ModbusBoxStatus struct {
-	BoxID                uuid.UUID `json:"box_id"`
-	BoxNumber            int       `json:"box_number"`
-	Connected            bool      `json:"connected"`
-	LastError            string    `json:"last_error,omitempty"`
-	LastSeen             time.Time `json:"last_seen,omitempty"`
-	LightCoilRegister    *string   `json:"light_coil_register,omitempty"`
-	ChemistryCoilRegister *string  `json:"chemistry_coil_register,omitempty"`
-	OperationsLast24h    int64     `json:"operations_last_24h"`
-	SuccessRateLast24h   float64   `json:"success_rate_last_24h"`
+	BoxID                 uuid.UUID `json:"box_id"`
+	BoxNumber             int       `json:"box_number"`
+	Connected             bool      `json:"connected"`
+	LastError             string    `json:"last_error,omitempty"`
+	LightCoilRegister     *string   `json:"light_coil_register,omitempty"`
+	ChemistryCoilRegister *string   `json:"chemistry_coil_register,omitempty"`
+	LightStatus           *bool     `json:"light_status,omitempty"`     // Статус света: true - включен, false - выключен, nil - неизвестно
+	ChemistryStatus       *bool     `json:"chemistry_status,omitempty"` // Статус химии: true - включена, false - выключена, nil - неизвестно
 }
 
 // GetModbusDashboardRequest запрос на получение данных дашборда

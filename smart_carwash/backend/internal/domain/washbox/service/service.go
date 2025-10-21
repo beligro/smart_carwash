@@ -1,6 +1,7 @@
 package service
 
 import (
+	modbusRepository "carwash_backend/internal/domain/modbus/repository"
 	"carwash_backend/internal/domain/settings/service"
 	"carwash_backend/internal/domain/washbox/models"
 	"carwash_backend/internal/domain/washbox/repository"
@@ -9,6 +10,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"gorm.io/gorm"
 )
 
 // Service интерфейс для бизнес-логики боксов мойки
@@ -52,6 +54,7 @@ type Service interface {
 type ServiceImpl struct {
 	repo            repository.Repository
 	settingsService service.Service
+	modbusRepo      *modbusRepository.ModbusRepository
 }
 
 // shuffleBoxesWithSamePriority перемешивает боксы с одинаковым приоритетом
@@ -84,10 +87,11 @@ func shuffleBoxesWithSamePriority(boxes []models.WashBox) []models.WashBox {
 }
 
 // NewService создает новый экземпляр Service
-func NewService(repo repository.Repository, settingsService service.Service) *ServiceImpl {
+func NewService(repo repository.Repository, settingsService service.Service, db *gorm.DB) *ServiceImpl {
 	return &ServiceImpl{
 		repo:            repo,
 		settingsService: settingsService,
+		modbusRepo:      modbusRepository.NewModbusRepository(db),
 	}
 }
 
@@ -295,6 +299,35 @@ func (s *ServiceImpl) AdminListWashBoxes(req *models.AdminListWashBoxesRequest) 
 	boxes, total, err := s.repo.GetWashBoxesWithFilters(req.Status, req.ServiceType, limit, offset)
 	if err != nil {
 		return nil, err
+	}
+
+	// Получаем статусы modbus для всех боксов
+	modbusStatuses, err := s.modbusRepo.GetAllModbusConnectionStatuses()
+	if err == nil && len(modbusStatuses) > 0 {
+		// Создаем мапу статусов для быстрого доступа
+		statusMap := make(map[uuid.UUID]*bool)
+		chemistryMap := make(map[uuid.UUID]*bool)
+		
+		for i := range modbusStatuses {
+			if modbusStatuses[i].LightStatus != nil {
+				lightStatus := *modbusStatuses[i].LightStatus
+				statusMap[modbusStatuses[i].BoxID] = &lightStatus
+			}
+			if modbusStatuses[i].ChemistryStatus != nil {
+				chemistryStatus := *modbusStatuses[i].ChemistryStatus
+				chemistryMap[modbusStatuses[i].BoxID] = &chemistryStatus
+			}
+		}
+		
+		// Мапим статусы на боксы
+		for i := range boxes {
+			if lightStatus, exists := statusMap[boxes[i].ID]; exists {
+				boxes[i].LightStatus = lightStatus
+			}
+			if chemistryStatus, exists := chemistryMap[boxes[i].ID]; exists {
+				boxes[i].ChemistryStatus = chemistryStatus
+			}
+		}
 	}
 
 	return &models.AdminListWashBoxesResponse{

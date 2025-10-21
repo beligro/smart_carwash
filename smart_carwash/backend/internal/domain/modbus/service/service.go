@@ -30,48 +30,12 @@ func NewModbusService(db *gorm.DB, config *config.Config) *ModbusService {
 	}
 }
 
-// TestConnection тестирует соединение с Modbus устройством через HTTP клиент
-func (s *ModbusService) TestConnection(boxID uuid.UUID) (*models.TestModbusConnectionResponse, error) {
-	logger.Printf("Тест подключения Modbus через HTTP клиент - box_id: %s", boxID)
-
-	// Проверяем, что бокс существует
-	_, err := s.repository.GetWashBoxByID(boxID)
-	if err != nil {
-		logger.Printf("Бокс не найден для теста подключения - box_id: %s, error: %v", boxID, err)
-		return nil, fmt.Errorf("не удалось найти бокс: %v", err)
-	}
-
-	// Используем HTTP клиент для тестирования
-	resp, err := s.httpClient.TestConnection(boxID)
-	if err != nil {
-		logger.Printf("Ошибка HTTP клиента для теста - box_id: %s, error: %v", boxID, err)
-		s.repository.UpdateModbusConnectionStatus(boxID, false, err.Error())
-		return &models.TestModbusConnectionResponse{
-			Success: false,
-			Message: fmt.Sprintf("Ошибка HTTP клиента: %v", err),
-		}, nil
-	}
-
-	// Обновляем статус подключения в БД
-	if resp.Success {
-		s.repository.UpdateModbusConnectionStatus(boxID, true, "")
-	} else {
-		s.repository.UpdateModbusConnectionStatus(boxID, false, resp.Message)
-	}
-
-	logger.Printf("Тест подключения Modbus через HTTP клиент завершен - box_id: %s, success: %v", boxID, resp.Success)
-	return &models.TestModbusConnectionResponse{
-		Success: resp.Success,
-		Message: resp.Message,
-	}, nil
-}
-
 // TestCoil тестирует запись в конкретный регистр через HTTP клиент
 func (s *ModbusService) TestCoil(boxID uuid.UUID, register string, value bool) (*models.TestModbusCoilResponse, error) {
 	logger.Printf("Тест записи coil через HTTP клиент - box_id: %s, register: %s, value: %v", boxID, register, value)
 
 	// Проверяем, что бокс существует
-	_, err := s.repository.GetWashBoxByID(boxID)
+	box, err := s.repository.GetWashBoxByID(boxID)
 	if err != nil {
 		logger.Printf("Бокс не найден для теста coil - box_id: %s, error: %v", boxID, err)
 		return nil, fmt.Errorf("не удалось найти бокс: %v", err)
@@ -79,12 +43,58 @@ func (s *ModbusService) TestCoil(boxID uuid.UUID, register string, value bool) (
 
 	// Используем HTTP клиент для тестирования
 	resp, err := s.httpClient.TestCoil(boxID, register, value)
+	
+	// Определяем тип операции по регистру
+	operation := "test_coil"
+	coilType := ""
+	if box.LightCoilRegister != nil && *box.LightCoilRegister == register {
+		operation = "test_light"
+		coilType = "light"
+	} else if box.ChemistryCoilRegister != nil && *box.ChemistryCoilRegister == register {
+		operation = "test_chemistry"
+		coilType = "chemistry"
+	}
+	
+	// Сохраняем операцию в БД
+	modbusOp := &models.ModbusOperation{
+		ID:        uuid.New(),
+		BoxID:     boxID,
+		Operation: operation,
+		Register:  register,
+		Value:     value,
+		Success:   err == nil && resp != nil && resp.Success,
+		CreatedAt: time.Now(),
+	}
+	
 	if err != nil {
+		modbusOp.Error = err.Error()
 		logger.Printf("Ошибка HTTP клиента для теста coil - box_id: %s, error: %v", boxID, err)
+		
+		// Сохраняем операцию с ошибкой
+		if saveErr := s.repository.SaveModbusOperation(modbusOp); saveErr != nil {
+			logger.Printf("Ошибка сохранения операции TestCoil - box_id: %s, error: %v", boxID, saveErr)
+		}
+		
 		return &models.TestModbusCoilResponse{
 			Success: false,
 			Message: fmt.Sprintf("Ошибка HTTP клиента: %v", err),
 		}, nil
+	}
+	
+	if !resp.Success {
+		modbusOp.Error = resp.Message
+	}
+	
+	// Сохраняем операцию
+	if saveErr := s.repository.SaveModbusOperation(modbusOp); saveErr != nil {
+		logger.Printf("Ошибка сохранения операции TestCoil - box_id: %s, error: %v", boxID, saveErr)
+	}
+	
+	// Если операция успешна и это известный койл, обновляем его статус
+	if resp.Success && coilType != "" {
+		if updateErr := s.repository.UpdateModbusCoilStatus(boxID, coilType, value); updateErr != nil {
+			logger.Printf("Ошибка обновления статуса койла при тесте - box_id: %s, coil_type: %s, error: %v", boxID, coilType, updateErr)
+		}
 	}
 
 	logger.Printf("Тест записи coil через HTTP клиент завершен - box_id: %s, success: %v", boxID, resp.Success)
@@ -188,12 +198,15 @@ func (s *ModbusService) GetDashboard(timeRange string) (*models.GetModbusDashboa
 			ChemistryCoilRegister: box.ChemistryCoilRegister,
 		}
 
-		// Добавляем информацию о подключении
+		// Добавляем информацию о подключении и статусы койлов
 		if status, exists := statusMap[box.ID]; exists {
 			boxStatus.Connected = status.Connected
 			boxStatus.LastError = status.LastError
-			boxStatus.LastSeen = status.LastSeen
-			if status.Connected {
+			boxStatus.LightStatus = status.LightStatus
+			boxStatus.ChemistryStatus = status.ChemistryStatus
+			
+			// Бокс считается подключенным, если у него включен свет
+			if status.LightStatus != nil && *status.LightStatus {
 				overview.ConnectedBoxes++
 			} else {
 				overview.DisconnectedBoxes++
@@ -202,15 +215,6 @@ func (s *ModbusService) GetDashboard(timeRange string) (*models.GetModbusDashboa
 			boxStatus.Connected = false
 			boxStatus.LastError = "Статус не определен"
 			overview.DisconnectedBoxes++
-		}
-
-		// Получаем статистику операций для бокса
-		stats, err := s.repository.GetModbusStats(&box.ID, since)
-		if err == nil {
-			boxStatus.OperationsLast24h = stats.TotalOperations
-			if stats.TotalOperations > 0 {
-				boxStatus.SuccessRateLast24h = float64(stats.SuccessfulOperations) / float64(stats.TotalOperations) * 100
-			}
 		}
 
 		boxStatuses = append(boxStatuses, boxStatus)
