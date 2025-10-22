@@ -6,3 +6,4 @@ ALTER TABLE modbus_connection_statuses ADD COLUMN chemistry_status BOOLEAN;
 CREATE INDEX IF NOT EXISTS idx_modbus_connection_statuses_light_status ON modbus_connection_statuses(light_status) WHERE light_status IS NOT NULL;
 CREATE INDEX IF NOT EXISTS idx_modbus_connection_statuses_chemistry_status ON modbus_connection_statuses(chemistry_status) WHERE chemistry_status IS NOT NULL;
 
+
