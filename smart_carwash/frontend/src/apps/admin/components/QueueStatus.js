@@ -308,7 +308,9 @@ const QueueStatus = () => {
         </div>
         
         <BoxesGrid>
-          {queue_status.wash_queue.boxes.map((box) => (
+          {queue_status.wash_queue.boxes
+            .sort((a, b) => a.number - b.number)
+            .map((box) => (
             <BoxCard key={box.id} status={box.status}>
               <BoxNumber>№{box.number}</BoxNumber>
               <BoxStatus>{getStatusText(box.status)}</BoxStatus>
@@ -384,7 +386,9 @@ const QueueStatus = () => {
         </div>
         
         <BoxesGrid>
-          {queue_status.air_dry_queue.boxes.map((box) => (
+          {queue_status.air_dry_queue.boxes
+            .sort((a, b) => a.number - b.number)
+            .map((box) => (
             <BoxCard key={box.id} status={box.status}>
               <BoxNumber>№{box.number}</BoxNumber>
               <BoxStatus>{getStatusText(box.status)}</BoxStatus>
@@ -460,7 +464,9 @@ const QueueStatus = () => {
         </div>
         
         <BoxesGrid>
-          {queue_status.vacuum_queue.boxes.map((box) => (
+          {queue_status.vacuum_queue.boxes
+            .sort((a, b) => a.number - b.number)
+            .map((box) => (
             <BoxCard key={box.id} status={box.status}>
               <BoxNumber>№{box.number}</BoxNumber>
               <BoxStatus>{getStatusText(box.status)}</BoxStatus>
