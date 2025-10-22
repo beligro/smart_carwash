@@ -1064,6 +1064,21 @@ func (s *ServiceImpl) ProcessQueue() error {
 		if err != nil {
 			return err
 		}
+
+		// Отправляем уведомление о назначении бокса
+		if s.userService != nil && s.telegramBot != nil {
+			// Получаем пользователя
+			user, err := s.userService.GetUserByID(session.UserID)
+			if err == nil {
+				// Отправляем уведомление с номером бокса
+				err = s.telegramBot.SendBoxAssignmentNotification(user.TelegramID, box.Number)
+				if err != nil {
+					logger.Printf("ProcessQueue: ошибка отправки уведомления о назначении бокса для сессии %s: %v", session.ID, err)
+				}
+			} else {
+				logger.Printf("ProcessQueue: ошибка получения пользователя для сессии %s: %v", session.ID, err)
+			}
+		}
 	}
 
 	return nil
