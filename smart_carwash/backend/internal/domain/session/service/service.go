@@ -292,10 +292,10 @@ func (s *ServiceImpl) GetUserSessionForPayment(req *models.GetUserSessionRequest
 		return nil, err
 	}
 
-	// Получаем основной платеж сессии, если сессия существует
+	// Получаем последний платеж сессии, если сессия существует
 	var payment *models.Payment
 	if session != nil {
-		paymentResp, err := s.paymentService.GetMainPaymentBySessionID(session.ID)
+		paymentResp, err := s.paymentService.GetLastPaymentBySessionID(session.ID)
 		if err == nil && paymentResp != nil {
 			payment = &models.Payment{
 				ID:             paymentResp.ID,
@@ -667,22 +667,31 @@ func (s *ServiceImpl) ExtendSessionWithPayment(req *models.ExtendSessionWithPaym
 		return nil, fmt.Errorf("время продления должно быть положительным числом")
 	}
 
-	// Сохраняем запрошенное время продления в сессии
-	if err := s.repo.UpdateSessionFields(session.ID, map[string]interface{}{
+	// Сохраняем запрошенное время продления и время химии в сессии
+	updateFields := map[string]interface{}{
 		"requested_extension_time_minutes": req.ExtensionTimeMinutes,
 		"updated_at":                       time.Now(),
-	}); err != nil {
+	}
+
+	// Если передано время химии при продлении, сохраняем его в запрошенное поле
+	if req.ExtensionChemistryTimeMinutes > 0 {
+		updateFields["requested_extension_chemistry_time_minutes"] = req.ExtensionChemistryTimeMinutes
+	}
+
+	if err := s.repo.UpdateSessionFields(session.ID, updateFields); err != nil {
 		return nil, fmt.Errorf("ошибка обновления сессии: %w", err)
 	}
 
 	// Обновляем локальную копию
 	session.RequestedExtensionTimeMinutes = req.ExtensionTimeMinutes
+	session.ExtensionChemistryTimeMinutes = req.ExtensionChemistryTimeMinutes
 
 	// Рассчитываем цену продления через Payment Service
 	priceResp, err := s.paymentService.CalculateExtensionPrice(&paymentModels.CalculateExtensionPriceRequest{
-		ServiceType:          session.ServiceType,
-		ExtensionTimeMinutes: req.ExtensionTimeMinutes,
-		WithChemistry:        session.WithChemistry,
+		ServiceType:                   session.ServiceType,
+		ExtensionTimeMinutes:          req.ExtensionTimeMinutes,
+		WithChemistry:                 session.WithChemistry,
+		ExtensionChemistryTimeMinutes: req.ExtensionChemistryTimeMinutes,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("ошибка расчета цены продления: %w", err)
@@ -1468,6 +1477,34 @@ func (s *ServiceImpl) UpdateSessionExtension(sessionID uuid.UUID, extensionTimeM
 	// Обновляем время продления сессии
 	session.ExtensionTimeMinutes += extensionTimeMinutes
 	session.RequestedExtensionTimeMinutes = 0 // Очищаем запрошенное время
+
+	// НОВАЯ ЛОГИКА: Обрабатываем химию при продлении
+	if session.WithChemistry && session.RequestedExtensionChemistryTimeMinutes > 0 {
+		// Применяем логику химии при продлении
+		if session.WasChemistryOn && session.ChemistryEndedAt == nil {
+			// Химия активна - продлеваем на докупленное время
+			session.ChemistryTimeMinutes += session.RequestedExtensionChemistryTimeMinutes
+			logger.Printf("UpdateSessionExtension: химия активна, продлеваем на %d минут, общее время %d минут, SessionID=%s",
+				session.RequestedExtensionChemistryTimeMinutes, session.ChemistryTimeMinutes, session.ID)
+		} else if session.ChemistryStartedAt == nil {
+			// Химия не использована - даем на первоначальное + докупленное время
+			totalChemistryTime := session.ChemistryTimeMinutes + session.RequestedExtensionChemistryTimeMinutes
+			session.ChemistryTimeMinutes = totalChemistryTime
+			logger.Printf("UpdateSessionExtension: химия не использована, общее время %d минут, SessionID=%s",
+				totalChemistryTime, session.ID)
+		} else {
+			// Химия уже использована - даем только на докупленное время и сбрасываем флаги
+			session.ChemistryTimeMinutes = session.RequestedExtensionChemistryTimeMinutes
+			session.ChemistryStartedAt = nil
+			session.ChemistryEndedAt = nil
+			session.WasChemistryOn = false
+			logger.Printf("UpdateSessionExtension: химия использована, новое время %d минут, сброшены флаги, SessionID=%s",
+				session.RequestedExtensionChemistryTimeMinutes, session.ID)
+		}
+
+		// Очищаем запрошенное время химии при продлении
+		session.RequestedExtensionChemistryTimeMinutes = 0
+	}
 
 	// Сохраняем изменения
 	err = s.repo.UpdateSession(session)

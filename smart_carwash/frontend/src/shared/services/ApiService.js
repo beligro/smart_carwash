@@ -364,12 +364,19 @@ const ApiService = {
   },
 
   // Продление сессии с оплатой
-  extendSessionWithPayment: async (sessionId, extensionTimeMinutes) => {
+  extendSessionWithPayment: async (sessionId, extensionTimeMinutes, extensionChemistryTimeMinutes = 0) => {
     try {
-      const response = await api.post('/sessions/extend-with-payment', { 
+      const requestData = { 
         session_id: sessionId,
         extension_time_minutes: extensionTimeMinutes
-      });
+      };
+      
+      // Добавляем время химии только если оно больше 0
+      if (extensionChemistryTimeMinutes > 0) {
+        requestData.extension_chemistry_time_minutes = extensionChemistryTimeMinutes;
+      }
+      
+      const response = await api.post('/sessions/extend-with-payment', requestData);
       return response.data;
     } catch (error) {
       console.error('Ошибка при продлении сессии с оплатой:', error);
@@ -384,6 +391,21 @@ const ApiService = {
       return response.data;
     } catch (error) {
       console.error('Ошибка при получении платежей сессии:', error);
+      throw error;
+    }
+  },
+
+  // Создание нового платежа для существующей сессии
+  createNewPayment: async (sessionId, amount, currency) => {
+    try {
+      const response = await api.post('/payments/create', {
+        session_id: sessionId,
+        amount: amount,
+        currency: currency
+      });
+      return response.data;
+    } catch (error) {
+      console.error('Ошибка при создании нового платежа:', error);
       throw error;
     }
   },

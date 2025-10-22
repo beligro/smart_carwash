@@ -534,8 +534,13 @@ const TelegramApp = () => {
   };
 
   const handlePaymentBack = () => {
-    // Возвращаемся на главную страницу
-    navigate('/telegram');
+    // Возвращаемся на страницу сессии, если есть sessionId в state
+    if (location?.state?.sessionId) {
+      navigate(`/telegram/session/${location.state.sessionId}`);
+    } else {
+      // Иначе возвращаемся на главную страницу
+      navigate('/telegram');
+    }
   };
 
     // Обработчик отмены сессии
