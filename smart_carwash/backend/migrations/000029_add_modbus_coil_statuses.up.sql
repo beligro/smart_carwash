@@ -7,3 +7,5 @@ CREATE INDEX IF NOT EXISTS idx_modbus_connection_statuses_light_status ON modbus
 CREATE INDEX IF NOT EXISTS idx_modbus_connection_statuses_chemistry_status ON modbus_connection_statuses(chemistry_status) WHERE chemistry_status IS NOT NULL;
 
 
+
+

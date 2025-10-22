@@ -1,6 +1,9 @@
 package service
 
 import (
+	"math"
+	"time"
+
 	"carwash_backend/internal/domain/queue/models"
 	sessionModels "carwash_backend/internal/domain/session/models"
 	sessionService "carwash_backend/internal/domain/session/service"
@@ -46,7 +49,7 @@ func (s *ServiceImpl) getServiceQueueInfo(serviceType string) (*models.ServiceQu
 	}
 
 	// Получаем сессии со статусом "created"
-	createdSessions, err := s.sessionService.GetSessionsByStatus(sessionModels.SessionStatusCreated)
+	createdSessions, err := s.sessionService.GetSessionsByStatus(sessionModels.SessionStatusInQueue)
 	if err != nil {
 		return nil, err
 	}
@@ -95,13 +98,57 @@ func (s *ServiceImpl) getServiceQueueInfo(serviceType string) (*models.ServiceQu
 	// Определяем, есть ли очередь
 	hasQueue := queueSize > len(freeBoxes)
 
+	// Вычисляем время ожидания, если есть очередь
+	var waitTimeMinutes *int
+	if hasQueue && queueSize > 0 {
+		// Получаем активные сессии для данного типа услуги
+		activeSessions, err := s.sessionService.GetSessionsByStatus(sessionModels.SessionStatusActive)
+		if err != nil {
+			return nil, err
+		}
+
+		// Фильтруем сессии по типу услуги и вычисляем оставшееся время
+		minRemainingTime := -1.0
+		now := time.Now()
+		
+		for _, session := range activeSessions {
+			if session.ServiceType == serviceType {
+				// Общее время сессии в минутах
+				totalTimeMinutes := session.RentalTimeMinutes + session.ExtensionTimeMinutes
+				
+				// Время старта активной сессии (когда статус стал "active")
+				sessionStartTime := session.StatusUpdatedAt
+				
+				// Прошедшее время с момента старта сессии в минутах
+				elapsedMinutes := now.Sub(sessionStartTime).Minutes()
+				
+				// Оставшееся время в минутах
+				remainingMinutes := float64(totalTimeMinutes) - elapsedMinutes
+				
+				// Если время еще осталось, учитываем его
+				if remainingMinutes > 0 {
+					if minRemainingTime == -1 || remainingMinutes < minRemainingTime {
+						minRemainingTime = remainingMinutes
+					}
+				}
+			}
+		}
+
+		// Если нашли хотя бы одну активную сессию с оставшимся временем, округляем вверх
+		if minRemainingTime > 0 {
+			roundedTime := int(math.Ceil(minRemainingTime))
+			waitTimeMinutes = &roundedTime
+		}
+	}
+
 	// Формируем ответ
 	return &models.ServiceQueueInfo{
-		ServiceType:  serviceType,
-		Boxes:        boxes,
-		QueueSize:    queueSize,
-		HasQueue:     hasQueue,
-		UsersInQueue: usersInQueue,
+		ServiceType:     serviceType,
+		Boxes:           boxes,
+		QueueSize:       queueSize,
+		HasQueue:        hasQueue,
+		UsersInQueue:    usersInQueue,
+		WaitTimeMinutes: waitTimeMinutes,
 	}, nil
 }
 

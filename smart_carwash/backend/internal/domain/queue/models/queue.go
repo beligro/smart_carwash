@@ -6,11 +6,12 @@ import (
 
 // ServiceQueueInfo представляет информацию об очереди для конкретного типа услуги
 type ServiceQueueInfo struct {
-	ServiceType  string                  `json:"service_type"`
-	Boxes        []washboxModels.WashBox `json:"boxes"`
-	QueueSize    int                     `json:"queue_size"`
-	HasQueue     bool                    `json:"has_queue"`
-	UsersInQueue []QueueUser             `json:"users_in_queue,omitempty"` // Список пользователей в очереди
+	ServiceType     string                  `json:"service_type"`
+	Boxes           []washboxModels.WashBox `json:"boxes"`
+	QueueSize       int                     `json:"queue_size"`
+	HasQueue        bool                    `json:"has_queue"`
+	UsersInQueue    []QueueUser             `json:"users_in_queue,omitempty"`    // Список пользователей в очереди
+	WaitTimeMinutes *int                    `json:"wait_time_minutes,omitempty"` // Время ожидания в минутах (если есть очередь)
 }
 
 // QueueStatus представляет статус очереди и боксов

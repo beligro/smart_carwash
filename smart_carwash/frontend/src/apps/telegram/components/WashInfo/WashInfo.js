@@ -132,6 +132,26 @@ const ChemistryEnableButton = ({ session, theme, onChemistryEnabled }) => {
 };
 
 /**
+ * Вспомогательная функция для форматирования текста очереди с временем ожидания
+ * @param {Object} queueInfo - Информация об очереди
+ * @returns {string} - Отформатированный текст
+ */
+const formatQueueText = (queueInfo) => {
+  if (!queueInfo.has_queue) {
+    return 'Нет очереди';
+  }
+  
+  const baseText = `В очереди: ${queueInfo.queue_size}`;
+  
+  // Если есть время ожидания, добавляем его
+  if (queueInfo.wait_time_minutes && queueInfo.wait_time_minutes > 0) {
+    return `${baseText} (ожидание ~${queueInfo.wait_time_minutes} мин)`;
+  }
+  
+  return baseText;
+};
+
+/**
  * Компонент WashInfo - отображает информацию о мойке
  * @param {Object} props - Свойства компонента
  * @param {Object} props.washInfo - Информация о мойке
@@ -244,7 +264,7 @@ const WashInfo = ({ washInfo, theme = 'light', onCreateSession, onViewHistory, o
               <StatusBadge 
                 status={washQueue.has_queue ? 'busy' : 'free'} 
                 theme={theme}
-                text={washQueue.has_queue ? `В очереди: ${washQueue.queue_size}` : 'Нет очереди'}
+                text={formatQueueText(washQueue)}
               />
             </div>
             <div className={styles.queueTypeItem}>
@@ -252,7 +272,7 @@ const WashInfo = ({ washInfo, theme = 'light', onCreateSession, onViewHistory, o
               <StatusBadge 
                 status={airDryQueue.has_queue ? 'busy' : 'free'} 
                 theme={theme}
-                text={airDryQueue.has_queue ? `В очереди: ${airDryQueue.queue_size}` : 'Нет очереди'}
+                text={formatQueueText(airDryQueue)}
               />
             </div>
             <div className={styles.queueTypeItem}>
@@ -260,7 +280,7 @@ const WashInfo = ({ washInfo, theme = 'light', onCreateSession, onViewHistory, o
               <StatusBadge 
                 status={vacuumQueue.has_queue ? 'busy' : 'free'} 
                 theme={theme}
-                text={vacuumQueue.has_queue ? `В очереди: ${vacuumQueue.queue_size}` : 'Нет очереди'}
+                text={formatQueueText(vacuumQueue)}
               />
             </div>
           </div>

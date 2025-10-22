@@ -6,3 +6,5 @@ ALTER TABLE modbus_connection_statuses DROP COLUMN IF EXISTS chemistry_status;
 ALTER TABLE modbus_connection_statuses DROP COLUMN IF EXISTS light_status;
 
 
+
+
