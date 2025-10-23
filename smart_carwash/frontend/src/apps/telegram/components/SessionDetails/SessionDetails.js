@@ -592,6 +592,140 @@ const SessionDetails = ({ theme = 'light', user }) => {
         <h2 className={`${styles.title} ${themeClass}`}>Информация о сессии</h2>
         <StatusBadge status={session.status} theme={theme} />
         
+        {/* Номер бокса с цветным фоном */}
+        {(session.box_id || session.box_number) && (
+          <div style={{
+            marginTop: '12px',
+            padding: '12px',
+            backgroundColor: '#E3F2FD',
+            borderRadius: '8px',
+            border: '2px solid #2196F3',
+            textAlign: 'center',
+            backgroundColor: boxChanged ? '#fff3cd' : '#E3F2FD',
+            border: boxChanged ? '2px solid #ffc107' : '2px solid #2196F3',
+            transition: 'all 0.3s ease'
+          }}>
+            <div style={{ fontSize: '24px', fontWeight: 'bold', color: '#1976D2' }}>
+              Бокс #{session.box_number || 'Неизвестный бокс'}
+              {boxChanged && <span style={{ color: '#856404', fontSize: '12px', marginLeft: '8px' }}>🔄 Обновлено!</span>}
+            </div>
+          </div>
+        )}
+        
+        {/* Таймеры и кнопки под статусом */}
+        {session.status === 'active' && timeLeft !== null && (
+          <>
+            <h2 className={`${styles.title} ${themeClass}`} style={{ marginTop: '20px' }}>Оставшееся время мойки</h2>
+            <Timer seconds={timeLeft} theme={theme} />
+            
+            {/* Таймер химии под таймером времени сессии */}
+            {session.with_chemistry && session.was_chemistry_on && (
+              <ChemistryStatus session={session} />
+            )}
+          </>
+        )}
+        
+        {session.status === 'assigned' && timeLeft !== null && (
+          <>
+            <h2 className={`${styles.title} ${themeClass}`} style={{ marginTop: '20px' }}>Время до истечения резерва</h2>
+            <Timer seconds={timeLeft} theme={theme} />
+            <p style={{ textAlign: 'center', marginTop: '10px', color: timeLeft <= 60 ? '#C62828' : 'inherit' }}>
+              Начните мойку до истечения времени, иначе резерв будет снят
+            </p>
+          </>
+        )}
+        
+        {/* Кнопки под таймерами */}
+        <div style={{ marginTop: '20px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+          {/* Кнопка включения химии для активной сессии - поднята над продлить время */}
+          {session.status === 'active' && 
+           session.with_chemistry && 
+           session.chemistry_time_minutes > 0 && 
+           !session.was_chemistry_on && (
+            <ChemistryEnableButton 
+              session={session} 
+              theme={theme} 
+              onChemistryEnabled={() => {
+                // Перезагружаем сессию после включения химии
+                fetchSessionDetails();
+              }}
+            />
+          )}
+          
+          {/* Кнопки для активной сессии */}
+          {session.status === 'active' && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+              {canExtendSession && (
+                <Button 
+                  theme={theme} 
+                  onClick={openExtendModal}
+                  disabled={actionLoading}
+                  loading={actionLoading}
+                  style={{ width: '100%' }}
+                >
+                  Продлить время
+                </Button>
+              )}
+              {canRetryExtension && (
+                <Button 
+                  theme={theme} 
+                  onClick={openExtendModal}
+                  disabled={actionLoading}
+                  loading={actionLoading}
+                  style={{ width: '100%', backgroundColor: '#FF9800' }}
+                >
+                  🔄 Повторить продление
+                </Button>
+              )}
+              <Button 
+                theme={theme} 
+                variant="danger"
+                onClick={handleCompleteSession}
+                disabled={actionLoading}
+                loading={actionLoading}
+                style={{ width: '100%' }}
+              >
+                Завершить мойку
+              </Button>
+            </div>
+          )}
+          
+          {/* Кнопка "Включить бокс" отображается только если сессия в статусе assigned */}
+          {session.status === 'assigned' && session.box_id && (
+            <Button 
+              theme={theme} 
+              onClick={handleStartSession}
+              disabled={actionLoading}
+              loading={actionLoading}
+              style={{ width: '100%' }}
+            >
+              Включить бокс
+            </Button>
+          )}
+
+          {/* Кнопка отмены сессии */}
+          {canCancelSession && (
+            <Button 
+              theme={theme} 
+              onClick={handleCancelSession}
+              disabled={isCanceling}
+              loading={isCanceling}
+              style={{ 
+                marginTop: '12px',
+                backgroundColor: '#F44336',
+                color: 'white'
+              }}
+            >
+              {isCanceling ? 'Отмена...' : 'Отменить сессию'}
+            </Button>
+          )}
+        </div>
+        
+        {/* Заголовок "Детали сессии" */}
+        <h3 className={`${styles.title} ${themeClass}`} style={{ marginTop: '20px', fontSize: '16px' }}>
+          Детали сессии
+        </h3>
+        
         <div className={`${styles.infoRow} ${themeClass}`}>
           <div className={`${styles.infoLabel} ${themeClass}`}>ID сессии:</div>
           <div className={`${styles.infoValue} ${themeClass}`}>{session.id}</div>
@@ -628,24 +762,6 @@ const SessionDetails = ({ theme = 'light', user }) => {
             {session.requested_extension_time_minutes > 0 && ` (запрошено продление на ${session.requested_extension_time_minutes} минут)`}
           </div>
         </div>
-        
-        {(session.box_id || session.box_number) && (
-          <div className={`${styles.infoRow} ${themeClass}`}>
-            <div className={`${styles.infoLabel} ${themeClass}`}>Назначенный бокс:</div>
-            <div className={`${styles.infoValue} ${themeClass}`} style={{
-              backgroundColor: boxChanged ? '#fff3cd' : 'transparent',
-              border: boxChanged ? '2px solid #ffc107' : 'none',
-              borderRadius: boxChanged ? '4px' : '0',
-              padding: boxChanged ? '4px 8px' : '0',
-              transition: 'all 0.3s ease'
-            }}>
-              {box ? `Бокс #${box.number}` : 
-               session.box_number ? `Бокс #${session.box_number}` : 
-               'Информация о боксе недоступна'}
-              {boxChanged && <span style={{ color: '#856404', fontSize: '12px', marginLeft: '8px' }}>🔄 Обновлено!</span>}
-            </div>
-          </div>
-        )}
         
         {/* Информация о платеже */}
         {payment && (
@@ -745,113 +861,8 @@ const SessionDetails = ({ theme = 'light', user }) => {
           </>
         )}
         
-        {/* Таймер отображается для активной сессии */}
-        {session.status === 'active' && timeLeft !== null && (
-          <>
-            <h2 className={`${styles.title} ${themeClass}`} style={{ marginTop: '20px' }}>Оставшееся время мойки</h2>
-            <Timer seconds={timeLeft} theme={theme} />
-          </>
-        )}
-        
-        {/* Таймер отображается для назначенной сессии */}
-        {session.status === 'assigned' && timeLeft !== null && (
-          <>
-            <h2 className={`${styles.title} ${themeClass}`} style={{ marginTop: '20px' }}>Время до истечения резерва</h2>
-            <Timer seconds={timeLeft} theme={theme} />
-            <p style={{ textAlign: 'center', marginTop: '10px', color: timeLeft <= 60 ? '#C62828' : 'inherit' }}>
-              Начните мойку до истечения времени, иначе резерв будет снят
-            </p>
-          </>
-        )}
-        
-        {/* Кнопка "Старт сессии" отображается только если сессия в статусе assigned */}
-        {session.status === 'assigned' && session.box_id && (
-          <Button 
-            theme={theme} 
-            onClick={handleStartSession}
-            disabled={actionLoading}
-            loading={actionLoading}
-          >
-            Начать мойку
-          </Button>
-        )}
-        
-        {/* Кнопки для активной сессии */}
-        {session.status === 'active' && (
-          <div className={styles.buttonGroup}>
-            {canExtendSession && (
-              <Button 
-                theme={theme} 
-                onClick={openExtendModal}
-                disabled={actionLoading}
-                loading={actionLoading}
-                style={{ marginTop: '10px', marginRight: '10px' }}
-              >
-                Продлить мойку
-              </Button>
-            )}
-            {canRetryExtension && (
-              <Button 
-                theme={theme} 
-                onClick={openExtendModal}
-                disabled={actionLoading}
-                loading={actionLoading}
-                style={{ marginTop: '10px', marginRight: '10px', backgroundColor: '#FF9800' }}
-              >
-                🔄 Повторить продление
-              </Button>
-            )}
-            <Button 
-              theme={theme} 
-              variant="danger"
-              onClick={handleCompleteSession}
-              disabled={actionLoading}
-              loading={actionLoading}
-              style={{ marginTop: '10px' }}
-            >
-              Завершить мойку
-            </Button>
-          </div>
-        )}
 
-        {/* Статус и таймер химии (если была включена) */}
-        {session.status === 'active' && 
-         session.with_chemistry && 
-         session.was_chemistry_on && (
-          <ChemistryStatus session={session} />
-        )}
 
-        {/* Кнопка включения химии для активной сессии */}
-        {session.status === 'active' && 
-         session.with_chemistry && 
-         session.chemistry_time_minutes > 0 && 
-         !session.was_chemistry_on && (
-          <ChemistryEnableButton 
-            session={session} 
-            theme={theme} 
-            onChemistryEnabled={() => {
-              // Перезагружаем сессию после включения химии
-              fetchSessionDetails();
-            }}
-          />
-        )}
-
-        {/* Кнопка отмены сессии */}
-        {canCancelSession && (
-          <Button 
-            theme={theme} 
-            onClick={handleCancelSession}
-            disabled={isCanceling}
-            loading={isCanceling}
-            style={{ 
-              marginTop: '12px',
-              backgroundColor: '#F44336',
-              color: 'white'
-            }}
-          >
-            {isCanceling ? 'Отмена...' : 'Отменить сессию'}
-          </Button>
-        )}
         
         {/* Модальное окно для продления сессии */}
         {showExtendModal && (

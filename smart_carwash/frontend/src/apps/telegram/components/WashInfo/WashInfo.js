@@ -123,6 +123,7 @@ const WashInfo = ({ washInfo, theme = 'light', onCreateSession, onViewHistory, o
   const [isCanceling, setIsCanceling] = useState(false);
   const [sessionPayments, setSessionPayments] = useState(null);
   const [loadingPayments, setLoadingPayments] = useState(false);
+  const [boxChanged, setBoxChanged] = useState(false);
   
   // Получаем данные из washInfo (поддерживаем оба формата)
   const allBoxes = washInfo?.allBoxes || washInfo?.all_boxes || [];
@@ -210,6 +211,251 @@ const WashInfo = ({ washInfo, theme = 'light', onCreateSession, onViewHistory, o
 
   return (
     <div className={styles.container}>
+      {/* Кнопка записи на мойку - показывается только если нет сессии */}
+      {!userSession && (
+        <section className={styles.section}>
+          <Card theme={theme}>
+            <Button 
+              theme={theme} 
+              onClick={handleCreateSessionClick}
+              className={styles.createSessionButton}
+              style={{ width: '100%' }}
+            >
+              Помыть машину/записаться в очередь
+            </Button>
+          </Card>
+        </section>
+      )}
+
+      {/* Информация о сессии пользователя - если есть сессия */}
+      {userSession && (
+        <section className={styles.section}>
+          <Card theme={theme}>
+            <StatusBadge status={userSession.status} theme={theme} />
+            
+            {/* Номер бокса с цветным фоном */}
+            {(userSession.boxId || userSession.box_id || userSession.boxNumber || userSession.box_number) && (
+              <div style={{
+                marginTop: '12px',
+                padding: '12px',
+                backgroundColor: '#E3F2FD',
+                borderRadius: '8px',
+                border: '2px solid #2196F3',
+                textAlign: 'center',
+                backgroundColor: boxChanged ? '#fff3cd' : '#E3F2FD',
+                border: boxChanged ? '2px solid #ffc107' : '2px solid #2196F3',
+                transition: 'all 0.3s ease'
+              }}>
+                <div style={{ fontSize: '24px', fontWeight: 'bold', color: '#1976D2' }}>
+                  Бокс #{
+                    userSession.boxNumber || userSession.box_number || 
+                    allBoxes.find(box => box.id === (userSession.boxId || userSession.box_id))?.number || 
+                    'Неизвестный бокс'
+                  }
+                  {boxChanged && <span style={{ color: '#856404', fontSize: '12px', marginLeft: '8px' }}>🔄 Обновлено!</span>}
+                </div>
+              </div>
+            )}
+            
+            {/* Таймеры для активной сессии */}
+            {userSession.status === 'active' && timeLeft !== null && (
+              <>
+                <p className={`${styles.sessionInfo} ${themeClass}`} style={{ marginTop: '12px', fontWeight: 'bold' }}>
+                  Оставшееся время мойки:
+                </p>
+                <Timer seconds={timeLeft} theme={theme} />
+                
+                {/* Статус и таймер химии (если была включена) */}
+                {(userSession.withChemistry || userSession.with_chemistry) && 
+                 (userSession.wasChemistryOn || userSession.was_chemistry_on) && (
+                  <ChemistryStatus session={userSession} />
+                )}
+              </>
+            )}
+            
+            {/* Таймеры для назначенной сессии */}
+            {userSession.status === 'assigned' && timeLeft !== null && (
+              <>
+                <p className={`${styles.sessionInfo} ${themeClass}`} style={{ marginTop: '12px', fontWeight: 'bold' }}>
+                  Время до истечения резерва:
+                </p>
+                <Timer seconds={timeLeft} theme={theme} />
+                <p className={`${styles.sessionInfo} ${themeClass}`} style={{ 
+                  color: timeLeft <= 60 ? '#C62828' : 'inherit', 
+                  textAlign: 'center' 
+                }}>
+                  Начните мойку до истечения времени, иначе резерв будет снят
+                </p>
+              </>
+            )}
+            
+            {/* Кнопки под таймерами */}
+            <div style={{ marginTop: '12px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+              <Button 
+                theme={theme} 
+                onClick={handleViewSessionDetails}
+                style={{ width: '100%' }}
+              >
+                Подробнее о сессии
+              </Button>
+              {canCancelSession && (
+                <Button 
+                  theme={theme} 
+                  onClick={handleCancelSession}
+                  disabled={isCanceling}
+                  style={{ 
+                    backgroundColor: '#F44336',
+                    color: 'white',
+                    width: '100%'
+                  }}
+                >
+                  {isCanceling ? 'Отмена...' : 'Отменить сессию'}
+                </Button>
+              )}
+            </div>
+            
+            {/* Информация о платеже */}
+            {payment && (
+              <div style={{ 
+                marginTop: '12px',
+                padding: '8px',
+                backgroundColor: '#E8F5E8',
+                borderRadius: '4px',
+                fontSize: '12px'
+              }}>
+                <p style={{ margin: '0 0 4px 0', color: '#2E7D32', fontWeight: 'bold' }}>
+                  💰 Стоимость: {loadingPayments ? 'Загрузка...' : sessionPayments ? formatSessionTotalCost(sessionPayments) : formatAmountWithRefund(payment)}
+                </p>
+                {refundInfo.hasRefund && (
+                  <>
+                    <p style={{ margin: '0 0 4px 0', color: '#1976D2', fontWeight: 'bold' }}>
+                      💸 Возвращено: {formatAmount(refundInfo.refundedAmount)}
+                      {refundInfo.refundType === 'partial' && ` (частично)`}
+                      {refundInfo.refundType === 'full' && ` (полностью)`}
+                    </p>
+                  </>
+                )}
+                <p style={{ margin: '0', color: '#2E7D32' }}>
+                  {payment.status === 'succeeded' ? '✅ Оплачено' :
+                   payment.status === 'pending' ? '⏳ Ожидает оплаты' :
+                   payment.status === 'failed' ? '❌ Ошибка оплаты' :
+                   payment.status === 'refunded' ? '💸 Полностью возвращено' : '❓ Неизвестный статус'}
+                </p>
+                {refundInfo.hasRefund && (
+                  <p style={{ margin: '4px 0 0 0', color: '#1976D2', fontWeight: 'bold' }}>
+                    💰 Итого: {formatAmount(refundInfo.finalAmount)}
+                  </p>
+                )}
+              </div>
+            )}
+            
+            {/* Показываем информацию для созданной сессии (ожидание оплаты) */}
+            {userSession.status === 'created' && (
+              <div className={`${styles.sessionInfo} ${themeClass}`} style={{ 
+                marginTop: '12px',
+                padding: '12px',
+                backgroundColor: '#FFF3E0',
+                borderRadius: '8px',
+                border: '1px solid #FFB74D'
+              }}>
+                <p style={{ margin: '0 0 12px 0', fontSize: '14px' }}>
+                  Сессия создана, но оплата еще не произведена. 
+                  После оплаты сессия будет добавлена в очередь.
+                </p>
+                
+                {/* Кнопка оплаты */}
+                <Button 
+                  theme={theme} 
+                  onClick={async () => {
+                    try {
+                      // Запрашиваем последний платеж по сессии
+                      const response = await ApiService.getUserSessionForPayment(userSession.user_id);
+                      
+                      navigate('/telegram/payment', {
+                        state: {
+                          session: response.session,
+                          payment: response.payment,
+                          sessionId: userSession.id
+                        }
+                      });
+                    } catch (error) {
+                      console.error('Ошибка получения платежа:', error);
+                      alert('Ошибка получения платежа: ' + error.message);
+                    }
+                  }}
+                  style={{ 
+                    marginTop: '8px',
+                    backgroundColor: '#FF9800',
+                    color: 'white',
+                    width: '100%'
+                  }}
+                >
+                  💳 Оплатить
+                </Button>
+              </div>
+            )}
+            
+            {/* Показываем информацию для сессии с ошибкой оплаты */}
+            {userSession.status === 'payment_failed' && (
+              <div className={`${styles.sessionInfo} ${themeClass}`} style={{ 
+                marginTop: '12px',
+                padding: '12px',
+                backgroundColor: '#FFEBEE',
+                borderRadius: '8px',
+                border: '1px solid #E57373'
+              }}>
+                <p style={{ margin: '0 0 8px 0', fontWeight: 'bold', color: '#C62828' }}>
+                  ❌ Ошибка оплаты
+                </p>
+                <p style={{ margin: '0 0 12px 0', fontSize: '14px' }}>
+                  Произошла ошибка при оплате. 
+                  Попробуйте создать новую сессию или повторить оплату.
+                </p>
+                
+                {/* Показываем информацию о платеже, если есть */}
+                {payment && (
+                  <div style={{ 
+                    marginBottom: '12px',
+                    padding: '8px',
+                    backgroundColor: '#FFCDD2',
+                    borderRadius: '4px',
+                    fontSize: '12px'
+                  }}>
+                    <p style={{ margin: '0 0 4px 0', color: '#C62828', fontWeight: 'bold' }}>
+                      💰 Стоимость: {loadingPayments ? 'Загрузка...' : sessionPayments ? formatSessionTotalCost(sessionPayments) : formatAmountWithRefund(payment)}
+                    </p>
+                    {refundInfo.hasRefund && (
+                      <p style={{ margin: '0 0 4px 0', color: '#1976D2', fontWeight: 'bold' }}>
+                        💸 Возвращено: {formatAmount(refundInfo.refundedAmount)}
+                      </p>
+                    )}
+                    <p style={{ margin: '0', color: '#C62828' }}>
+                      ❌ Статус: {getPaymentStatusText(payment.status)}
+                    </p>
+                    {refundInfo.hasRefund && (
+                      <p style={{ margin: '4px 0 0 0', color: '#1976D2', fontWeight: 'bold' }}>
+                        💰 Итого: {formatAmount(refundInfo.finalAmount)}
+                      </p>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
+            
+            {/* Показываем информацию, если таймер не отображается */}
+            {userSession.status === 'assigned' && timeLeft === null && (
+              <p className={`${styles.sessionInfo} ${themeClass}`} style={{ 
+                color: '#C62828', 
+                textAlign: 'center',
+                fontSize: '12px'
+              }}>
+                ⚠️ Таймер не отображается (timeLeft = null)
+              </p>
+            )}
+          </Card>
+        </section>
+      )}
+
       {/* Информация об очереди */}
       <section className={styles.section}>
         <h2 className={`${styles.title} ${themeClass}`}>Статус автомойки</h2>
@@ -241,248 +487,6 @@ const WashInfo = ({ washInfo, theme = 'light', onCreateSession, onViewHistory, o
               />
             </div>
           </div>
-        </Card>
-      </section>
-
-      {/* Информация о сессии пользователя */}
-      <section className={styles.section}>
-        <h2 className={`${styles.title} ${themeClass}`}>Ваша запись</h2>
-        <Card theme={theme}>
-          {userSession ? (
-            <>
-              <StatusBadge status={userSession.status} theme={theme} />
-              <p className={`${styles.sessionInfo} ${themeClass}`}>
-                Создана: {formatDate(userSession.createdAt || userSession.created_at)}
-              </p>
-              <p className={`${styles.sessionInfo} ${themeClass}`}>
-                Услуга: {getServiceTypeDescription(userSession.serviceType || userSession.service_type)}
-                {(userSession.withChemistry || userSession.with_chemistry) && ' (с химией)'}
-              </p>
-              <p className={`${styles.sessionInfo} ${themeClass}`}>
-                Номер машины: {userSession.carNumber || userSession.car_number || 'Не указан'}
-              </p>
-              {(userSession.boxId || userSession.box_id || userSession.boxNumber || userSession.box_number) && (
-                <p className={`${styles.sessionInfo} ${themeClass}`}>
-                  Назначен бокс: #{
-                    // Используем номер бокса из сессии, если он есть
-                    userSession.boxNumber || userSession.box_number || 
-                    // Иначе находим номер бокса по его ID
-                    allBoxes.find(box => box.id === (userSession.boxId || userSession.box_id))?.number || 
-                    'Неизвестный бокс'
-                  }
-                </p>
-              )}
-              <div className={`${styles.statusIndicator} ${themeClass}`}>
-                <div className={`${styles.statusDot} ${styles[userSession.status]}`}></div>
-                <span className={`${styles.statusText} ${themeClass}`}>
-                  {getSessionStatusDescription(userSession.status)}
-                </span>
-              </div>
-              
-              {/* Информация о платеже для активной сессии */}
-              {payment && (
-                <div style={{ 
-                  marginTop: '12px',
-                  padding: '8px',
-                  backgroundColor: '#E8F5E8',
-                  borderRadius: '4px',
-                  fontSize: '12px'
-                }}>
-                  <p style={{ margin: '0 0 4px 0', color: '#2E7D32', fontWeight: 'bold' }}>
-                    💰 Стоимость: {loadingPayments ? 'Загрузка...' : sessionPayments ? formatSessionTotalCost(sessionPayments) : formatAmountWithRefund(payment)}
-                  </p>
-                  {refundInfo.hasRefund && (
-                    <>
-                      <p style={{ margin: '0 0 4px 0', color: '#1976D2', fontWeight: 'bold' }}>
-                        💸 Возвращено: {formatAmount(refundInfo.refundedAmount)}
-                        {refundInfo.refundType === 'partial' && ` (частично)`}
-                        {refundInfo.refundType === 'full' && ` (полностью)`}
-                      </p>
-                    </>
-                  )}
-                  <p style={{ margin: '0', color: '#2E7D32' }}>
-                    {payment.status === 'succeeded' ? '✅ Оплачено' :
-                     payment.status === 'pending' ? '⏳ Ожидает оплаты' :
-                     payment.status === 'failed' ? '❌ Ошибка оплаты' :
-                     payment.status === 'refunded' ? '💸 Полностью возвращено' : '❓ Неизвестный статус'}
-                  </p>
-                  {refundInfo.hasRefund && (
-                    <p style={{ margin: '4px 0 0 0', color: '#1976D2', fontWeight: 'bold' }}>
-                      💰 Итого: {formatAmount(refundInfo.finalAmount)}
-                    </p>
-                  )}
-                </div>
-              )}
-              
-              {/* Отображаем таймер для активной сессии */}
-              {userSession.status === 'active' && timeLeft !== null && (
-                <>
-                  <p className={`${styles.sessionInfo} ${themeClass}`} style={{ marginTop: '12px', fontWeight: 'bold' }}>
-                    Оставшееся время мойки:
-                  </p>
-                  <Timer seconds={timeLeft} theme={theme} />
-                  
-                  {/* Статус и таймер химии (если была включена) */}
-                  {(userSession.withChemistry || userSession.with_chemistry) && 
-                   (userSession.wasChemistryOn || userSession.was_chemistry_on) && (
-                    <ChemistryStatus session={userSession} />
-                  )}
-                </>
-              )}
-              
-              {/* Отображаем таймер для назначенной сессии */}
-              {userSession.status === 'assigned' && timeLeft !== null && (
-                <>
-                  <p className={`${styles.sessionInfo} ${themeClass}`} style={{ marginTop: '12px', fontWeight: 'bold' }}>
-                    Время до истечения резерва:
-                  </p>
-                  <Timer seconds={timeLeft} theme={theme} />
-                  <p className={`${styles.sessionInfo} ${themeClass}`} style={{ 
-                    color: timeLeft <= 60 ? '#C62828' : 'inherit', 
-                    textAlign: 'center' 
-                  }}>
-                    Начните мойку до истечения времени, иначе резерв будет снят
-                  </p>
-                </>
-              )}
-              
-              {/* Показываем информацию для созданной сессии (ожидание оплаты) */}
-              {userSession.status === 'created' && (
-                <div className={`${styles.sessionInfo} ${themeClass}`} style={{ 
-                  marginTop: '12px',
-                  padding: '12px',
-                  backgroundColor: '#FFF3E0',
-                  borderRadius: '8px',
-                  border: '1px solid #FFB74D'
-                }}>
-                  <p style={{ margin: '0 0 12px 0', fontSize: '14px' }}>
-                    Сессия создана, но оплата еще не произведена. 
-                    После оплаты сессия будет добавлена в очередь.
-                  </p>
-                  
-                  {/* Кнопка оплаты */}
-                  <Button 
-                    theme={theme} 
-                    onClick={async () => {
-                      try {
-                        // Запрашиваем последний платеж по сессии
-                        const response = await ApiService.getUserSessionForPayment(userSession.user_id);
-                        
-                        navigate('/telegram/payment', {
-                          state: {
-                            session: response.session,
-                            payment: response.payment,
-                            sessionId: userSession.id
-                          }
-                        });
-                      } catch (error) {
-                        console.error('Ошибка получения платежа:', error);
-                        alert('Ошибка получения платежа: ' + error.message);
-                      }
-                    }}
-                    style={{ 
-                      marginTop: '8px',
-                      backgroundColor: '#FF9800',
-                      color: 'white'
-                    }}
-                  >
-                    💳 Оплатить
-                  </Button>
-                </div>
-              )}
-              
-              {/* Показываем информацию для сессии с ошибкой оплаты */}
-              {userSession.status === 'payment_failed' && (
-                <div className={`${styles.sessionInfo} ${themeClass}`} style={{ 
-                  marginTop: '12px',
-                  padding: '12px',
-                  backgroundColor: '#FFEBEE',
-                  borderRadius: '8px',
-                  border: '1px solid #E57373'
-                }}>
-                  <p style={{ margin: '0 0 8px 0', fontWeight: 'bold', color: '#C62828' }}>
-                    ❌ Ошибка оплаты
-                  </p>
-                  <p style={{ margin: '0 0 12px 0', fontSize: '14px' }}>
-                    Произошла ошибка при оплате. 
-                    Попробуйте создать новую сессию или повторить оплату.
-                  </p>
-                  
-                  {/* Показываем информацию о платеже, если есть */}
-                  {payment && (
-                    <div style={{ 
-                      marginBottom: '12px',
-                      padding: '8px',
-                      backgroundColor: '#FFCDD2',
-                      borderRadius: '4px',
-                      fontSize: '12px'
-                    }}>
-                      <p style={{ margin: '0 0 4px 0', color: '#C62828', fontWeight: 'bold' }}>
-                        💰 Стоимость: {loadingPayments ? 'Загрузка...' : sessionPayments ? formatSessionTotalCost(sessionPayments) : formatAmountWithRefund(payment)}
-                      </p>
-                      {refundInfo.hasRefund && (
-                        <p style={{ margin: '0 0 4px 0', color: '#1976D2', fontWeight: 'bold' }}>
-                          💸 Возвращено: {formatAmount(refundInfo.refundedAmount)}
-                        </p>
-                      )}
-                      <p style={{ margin: '0', color: '#C62828' }}>
-                        ❌ Статус: {getPaymentStatusText(payment.status)}
-                      </p>
-                      {refundInfo.hasRefund && (
-                        <p style={{ margin: '4px 0 0 0', color: '#1976D2', fontWeight: 'bold' }}>
-                          💰 Итого: {formatAmount(refundInfo.finalAmount)}
-                        </p>
-                      )}
-                    </div>
-                  )}
-                </div>
-              )}
-              
-              {/* Показываем информацию, если таймер не отображается */}
-              {userSession.status === 'assigned' && timeLeft === null && (
-                <p className={`${styles.sessionInfo} ${themeClass}`} style={{ 
-                  color: '#C62828', 
-                  textAlign: 'center',
-                  fontSize: '12px'
-                }}>
-                  ⚠️ Таймер не отображается (timeLeft = null)
-                </p>
-              )}
-              <Button 
-                theme={theme} 
-                onClick={handleViewSessionDetails}
-              >
-                Подробнее о сессии
-              </Button>
-              {canCancelSession && (
-                <Button 
-                  theme={theme} 
-                  onClick={handleCancelSession}
-                  disabled={isCanceling}
-                  style={{ 
-                    marginTop: '8px',
-                    backgroundColor: '#F44336',
-                    color: 'white'
-                  }}
-                >
-                  {isCanceling ? 'Отмена...' : 'Отменить сессию'}
-                </Button>
-              )}
-            </>
-          ) : (
-            <>
-              <p className={`${styles.sessionInfo} ${themeClass}`}>
-                У вас нет активной записи на мойку
-              </p>
-              <Button 
-                theme={theme} 
-                onClick={handleCreateSessionClick}
-                className={styles.createSessionButton}
-              >
-                Записаться на мойку
-              </Button>
-            </>
-          )}
         </Card>
       </section>
 
