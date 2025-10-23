@@ -9,6 +9,7 @@ import {
   getQuickFilterDates,
   formatDateForDisplay 
 } from '../../../shared/utils/dateUtils';
+import ReassignSessionModal from '../../../shared/components/UI/ReassignSessionModal/ReassignSessionModal';
 
 const Container = styled.div`
   padding: 20px;
@@ -441,6 +442,14 @@ const SessionManagement = () => {
   const [tempDateFrom, setTempDateFrom] = useState('');
   const [tempDateTo, setTempDateTo] = useState('');
 
+  // Состояние для модального окна переназначения сессии
+  const [reassignModal, setReassignModal] = useState({
+    isOpen: false,
+    sessionId: null,
+    serviceType: null
+  });
+  const [reassignLoading, setReassignLoading] = useState(false);
+
   // Инициализация фильтров из state (при переходе от пользователей)
   useEffect(() => {
     if (location.state?.filters) {
@@ -583,6 +592,38 @@ const SessionManagement = () => {
 
   const handlePageChange = (newOffset) => {
     setPagination(prev => ({ ...prev, offset: newOffset }));
+  };
+
+  // Обработчики переназначения сессии
+  const handleReassignSession = async (sessionId) => {
+    setReassignLoading(true);
+    
+    try {
+      await ApiService.adminReassignSession(sessionId);
+      await fetchSessions(); // Перезагружаем список
+      setReassignModal({ isOpen: false, sessionId: null, serviceType: null });
+    } catch (error) {
+      console.error('Ошибка переназначения сессии:', error);
+      setError('Ошибка переназначения сессии: ' + (error.response?.data?.error || error.message));
+    } finally {
+      setReassignLoading(false);
+    }
+  };
+
+  const openReassignModal = (sessionId, serviceType) => {
+    setReassignModal({
+      isOpen: true,
+      sessionId,
+      serviceType
+    });
+  };
+
+  const closeReassignModal = () => {
+    setReassignModal({
+      isOpen: false,
+      sessionId: null,
+      serviceType: null
+    });
   };
 
   const getStatusText = (status) => {
@@ -813,6 +854,18 @@ const SessionManagement = () => {
                 >
                   Платежи
                 </ActionButton>
+                
+                {/* Кнопка переназначения сессии */}
+                {(session.status === 'assigned' || session.status === 'active') && (
+                  <ActionButton 
+                    theme={theme} 
+                    onClick={() => openReassignModal(session.id, session.service_type)}
+                    style={{ marginLeft: '8px', backgroundColor: '#ff9800' }}
+                    disabled={reassignLoading}
+                  >
+                    {reassignLoading ? 'Переназначаем...' : '🔄 Переназначить'}
+                  </ActionButton>
+                )}
               </Td>
             </tr>
           ))}
@@ -1168,6 +1221,15 @@ const SessionManagement = () => {
           </ModalContent>
         </Modal>
       )}
+
+      <ReassignSessionModal
+        isOpen={reassignModal.isOpen}
+        onClose={closeReassignModal}
+        onConfirm={handleReassignSession}
+        sessionId={reassignModal.sessionId}
+        serviceType={reassignModal.serviceType}
+        isLoading={reassignLoading}
+      />
     </Container>
   );
 };

@@ -60,6 +60,9 @@ type Service interface {
 	// Методы для химии
 	EnableChemistry(req *models.EnableChemistryRequest) (*models.EnableChemistryResponse, error)
 	GetChemistryStats(req *models.GetChemistryStatsRequest) (*models.GetChemistryStatsResponse, error)
+
+	// Методы для переназначения сессий
+	ReassignSession(req *models.ReassignSessionRequest) (*models.ReassignSessionResponse, error)
 }
 
 // ServiceImpl реализация Service
@@ -1919,5 +1922,118 @@ func (s *ServiceImpl) GetChemistryStats(req *models.GetChemistryStatsRequest) (*
 
 	return &models.GetChemistryStatsResponse{
 		Stats: *stats,
+	}, nil
+}
+
+// ReassignSession переназначает сессию на другой бокс
+func (s *ServiceImpl) ReassignSession(req *models.ReassignSessionRequest) (*models.ReassignSessionResponse, error) {
+	logger.Printf("ReassignSession: начало переназначения сессии, SessionID=%s", req.SessionID)
+
+	// Получаем сессию по ID
+	session, err := s.repo.GetSessionByID(req.SessionID)
+	if err != nil {
+		logger.Printf("ReassignSession: ошибка получения сессии, SessionID=%s, error=%v", req.SessionID, err)
+		return nil, fmt.Errorf("не удалось найти сессию: %w", err)
+	}
+
+	// Проверяем, что сессия в подходящем статусе для переназначения
+	if session.Status != models.SessionStatusAssigned && session.Status != models.SessionStatusActive {
+		logger.Printf("ReassignSession: сессия не может быть переназначена, SessionID=%s, status=%s", req.SessionID, session.Status)
+		return &models.ReassignSessionResponse{
+			Success: false,
+			Message: "Сессия не может быть переназначена в текущем статусе",
+			Session: *session,
+		}, nil
+	}
+
+	// Если у сессии есть бокс, переводим его в статус maintenance и выключаем оборудование
+	if session.BoxID != nil {
+		logger.Printf("ReassignSession: перевод бокса в maintenance, SessionID=%s, BoxID=%s", req.SessionID, *session.BoxID)
+
+		// Переводим бокс в статус maintenance
+		if s.washboxService != nil {
+			err = s.washboxService.UpdateWashBoxStatus(*session.BoxID, washboxModels.StatusMaintenance)
+			if err != nil {
+				logger.Printf("ReassignSession: ошибка перевода бокса в maintenance, SessionID=%s, BoxID=%s, error=%v", req.SessionID, *session.BoxID, err)
+				return nil, fmt.Errorf("не удалось перевести бокс в статус обслуживания: %w", err)
+			}
+		}
+
+		// Выключаем свет и химию через Modbus
+		if s.modbusService != nil {
+			logger.Printf("ReassignSession: выключение оборудования, SessionID=%s, BoxID=%s", req.SessionID, *session.BoxID)
+
+			// Выключаем свет
+			if err := s.modbusService.WriteLightCoil(*session.BoxID, false); err != nil {
+				logger.Printf("ReassignSession: ошибка выключения света, SessionID=%s, BoxID=%s, error=%v", req.SessionID, *session.BoxID, err)
+				// Не прерываем выполнение, логируем ошибку
+			}
+
+			// Выключаем химию (если была включена)
+			if session.WasChemistryOn {
+				if err := s.modbusService.WriteChemistryCoil(*session.BoxID, false); err != nil {
+					logger.Printf("ReassignSession: ошибка выключения химии, SessionID=%s, BoxID=%s, error=%v", req.SessionID, *session.BoxID, err)
+					// Не прерываем выполнение, логируем ошибку
+				}
+			}
+		}
+
+		// Обнуляем связь с боксом
+		session.BoxID = nil
+		session.BoxNumber = nil
+	}
+
+	// Сбрасываем флаги химии - будто химия не была использована вообще
+	session.WasChemistryOn = false
+	session.ChemistryStartedAt = nil
+	session.ChemistryEndedAt = nil
+	session.ChemistryTimeMinutes = 0
+
+	// Возвращаем сессию в очередь
+	session.Status = models.SessionStatusInQueue
+	session.StatusUpdatedAt = time.Now() // Сбрасываем таймер
+
+	// Обновляем сессию в БД
+	err = s.repo.UpdateSession(session)
+	if err != nil {
+		logger.Printf("ReassignSession: ошибка обновления сессии, SessionID=%s, error=%v", req.SessionID, err)
+		return nil, fmt.Errorf("не удалось обновить сессию: %w", err)
+	}
+
+	logger.Printf("ReassignSession: сессия возвращена в очередь, SessionID=%s", req.SessionID)
+
+	// Запускаем обработку очереди для назначения на новый бокс
+	if s.washboxService != nil {
+		go func() {
+			err := s.ProcessQueue()
+			if err != nil {
+				logger.Printf("ReassignSession: ошибка обработки очереди после переназначения, SessionID=%s, error=%v", req.SessionID, err)
+			}
+
+			/*// Отправляем уведомление пользователю о переназначении ПОСЛЕ назначения нового бокса
+			if s.userService != nil && s.telegramBot != nil {
+				// Небольшая задержка, чтобы убедиться, что бокс назначен
+				time.Sleep(1 * time.Second)
+
+				user, err := s.userService.GetUserByID(session.UserID)
+				if err == nil {
+					err = s.telegramBot.SendSessionReassignmentNotification(user.TelegramID, session.ServiceType)
+					if err != nil {
+						logger.Printf("ReassignSession: ошибка отправки уведомления о переназначении, SessionID=%s, error=%v", req.SessionID, err)
+						// Не прерываем выполнение, логируем ошибку
+					}
+				} else {
+					logger.Printf("ReassignSession: ошибка получения пользователя для уведомления, SessionID=%s, error=%v", req.SessionID, err)
+				}
+			}*/
+		}()
+	}
+
+	logger.Printf("ReassignSession: успешно переназначена, SessionID=%s", req.SessionID)
+
+	return &models.ReassignSessionResponse{
+		Success: true,
+		Message: "Сессия успешно переназначена на другой бокс",
+		Session: *session,
 	}, nil
 }

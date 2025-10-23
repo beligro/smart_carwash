@@ -803,6 +803,32 @@ const ApiService = {
     }
   },
 
+  // Переназначение сессии на другой бокс (админка)
+  adminReassignSession: async (sessionId) => {
+    try {
+      const response = await api.post('/admin/sessions/reassign', {
+        session_id: sessionId,
+      });
+      return response.data;
+    } catch (error) {
+      console.error('Ошибка при переназначении сессии администратором:', error);
+      throw error;
+    }
+  },
+
+  // Переназначение сессии на другой бокс (кассир)
+  cashierReassignSession: async (sessionId) => {
+    try {
+      const response = await api.post('/cashier/sessions/reassign', {
+        session_id: sessionId,
+      });
+      return response.data;
+    } catch (error) {
+      console.error('Ошибка при переназначении сессии кассиром:', error);
+      throw error;
+    }
+  },
+
 };
 
 // Добавляем перехватчик для обработки ошибок

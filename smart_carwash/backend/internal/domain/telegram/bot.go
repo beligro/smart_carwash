@@ -28,6 +28,7 @@ const (
 type NotificationService interface {
 	SendSessionNotification(telegramID int64, notificationType NotificationType) error
 	SendBoxAssignmentNotification(telegramID int64, boxNumber int) error
+	SendSessionReassignmentNotification(telegramID int64, serviceType string) error
 }
 
 // Bot структура для работы с Telegram ботом
@@ -221,6 +222,34 @@ func (b *Bot) SendBoxAssignmentNotification(telegramID int64, boxNumber int) err
 	_, err := b.bot.Send(msg)
 	if err != nil {
 		return fmt.Errorf("ошибка отправки уведомления о назначении бокса: %v", err)
+	}
+
+	return nil
+}
+
+// SendSessionReassignmentNotification отправляет уведомление о переназначении сессии
+func (b *Bot) SendSessionReassignmentNotification(telegramID int64, serviceType string) error {
+	var serviceText string
+	switch serviceType {
+	case "wash":
+		serviceText = "мойки"
+	case "air_dry":
+		serviceText = "обдува"
+	case "vacuum":
+		serviceText = "пылесоса"
+	default:
+		serviceText = "услуги"
+	}
+
+	messageText := fmt.Sprintf("🔄 Ваша сессия %s была переназначена на другой бокс. Пожалуйста, ожидайте уведомления о новом боксе.", serviceText)
+
+	// Отправляем сообщение
+	msg := tgbotapi.NewMessage(telegramID, messageText)
+	msg.ParseMode = "HTML"
+
+	_, err := b.bot.Send(msg)
+	if err != nil {
+		return fmt.Errorf("ошибка отправки уведомления о переназначении сессии: %v", err)
 	}
 
 	return nil

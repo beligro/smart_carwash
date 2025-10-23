@@ -50,6 +50,18 @@ type Session struct {
 	DeletedAt                     gorm.DeletedAt `json:"-" gorm:"index"`
 }
 
+// ReassignSessionRequest запрос на переназначение сессии на другой бокс
+type ReassignSessionRequest struct {
+	SessionID uuid.UUID `json:"session_id" binding:"required"`
+}
+
+// ReassignSessionResponse ответ на переназначение сессии
+type ReassignSessionResponse struct {
+	Success bool    `json:"success"`
+	Message string  `json:"message"`
+	Session Session `json:"session"`
+}
+
 // CreateSessionRequest представляет запрос на создание сессии
 type CreateSessionRequest struct {
 	UserID               uuid.UUID `json:"user_id" binding:"required"`
