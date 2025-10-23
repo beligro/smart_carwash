@@ -2,6 +2,7 @@ package tinkoff
 
 import (
 	"bytes"
+	"carwash_backend/internal/logger"
 	"crypto/hmac"
 	"crypto/sha256"
 	"encoding/hex"
@@ -12,7 +13,6 @@ import (
 	"sort"
 	"strings"
 	"time"
-	"carwash_backend/internal/logger"
 
 	"carwash_backend/internal/domain/payment/service"
 )
@@ -42,7 +42,7 @@ func NewClient(terminalKey, secretKey, successURL, failURL string) service.Tinko
 }
 
 // CreatePayment создает платеж в Tinkoff
-func (c *Client) CreatePayment(orderID string, amount int, description string) (*service.TinkoffPaymentResponse, error) {
+func (c *Client) CreatePayment(orderID string, amount int, description string, receipt map[string]interface{}) (*service.TinkoffPaymentResponse, error) {
 	// Формируем параметры запроса
 	params := map[string]interface{}{
 		"TerminalKey": c.terminalKey,
@@ -55,6 +55,12 @@ func (c *Client) CreatePayment(orderID string, amount int, description string) (
 
 	// Добавляем подпись
 	params["Token"] = c.generateToken(params)
+
+	// Добавляем Receipt только если он не пустой
+	if receipt != nil && len(receipt) > 0 {
+		// Передаем Receipt как объект (согласно документации Tinkoff)
+		params["Receipt"] = receipt
+	}
 
 	// Отправляем запрос
 	resp, err := c.sendRequest("POST", "/Init", params)
@@ -182,56 +188,59 @@ func (c *Client) sendRequest(method, endpoint string, params map[string]interfac
 }
 
 func (c *Client) generateToken(params map[string]interface{}) string {
-    // Создаем копию параметров
-    tokenParams := make(map[string]interface{})
-    for k, v := range params {
-        tokenParams[k] = v
-    }
+	// Создаем копию параметров
+	tokenParams := make(map[string]interface{})
+	for k, v := range params {
+		tokenParams[k] = v
+	}
 
 	logger.Printf("tokenParams: %v", tokenParams)
 	logger.Printf("c.secretKey: %s", c.secretKey)
-    
-    // Добавляем пароль
-    tokenParams["Password"] = c.secretKey
-    
-    // Удаляем Token если есть
-    delete(tokenParams, "Token")
-    
-    // Получаем отсортированные ключи
-    keys := make([]string, 0, len(tokenParams))
-    for k := range tokenParams {
-        keys = append(keys, k)
-    }
-    sort.Strings(keys)
-    
-    // ОТЛАДКА: выводим что участвует в токене
-    logger.Printf("Token generation params (sorted):\n")
-    for _, key := range keys {
-        logger.Printf("%s: %v\n", key, tokenParams[key])
-    }
-    
-    // Конкатенируем значения
-    var values []string
-    for _, key := range keys {
-        valueStr := fmt.Sprintf("%v", tokenParams[key])
-        values = append(values, valueStr)
-    }
-    
-    concatenated := strings.Join(values, "")
-    logger.Printf("Concatenated string: %s\n", concatenated)
-    
-    hash := sha256.Sum256([]byte(concatenated))
-    token := fmt.Sprintf("%x", hash)
-    
-    logger.Printf("Generated token: %s\n", token)
-    return token
+
+	// Добавляем пароль
+	tokenParams["Password"] = c.secretKey
+
+	// Удаляем Token если есть
+	delete(tokenParams, "Token")
+
+	// Удаляем Receipt из формирования токена (согласно документации Tinkoff)
+	delete(tokenParams, "Receipt")
+
+	// Получаем отсортированные ключи
+	keys := make([]string, 0, len(tokenParams))
+	for k := range tokenParams {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+
+	// ОТЛАДКА: выводим что участвует в токене
+	logger.Printf("Token generation params (sorted):\n")
+	for _, key := range keys {
+		logger.Printf("%s: %v\n", key, tokenParams[key])
+	}
+
+	// Конкатенируем значения
+	var values []string
+	for _, key := range keys {
+		valueStr := fmt.Sprintf("%v", tokenParams[key])
+		values = append(values, valueStr)
+	}
+
+	concatenated := strings.Join(values, "")
+	logger.Printf("Concatenated string: %s\n", concatenated)
+
+	hash := sha256.Sum256([]byte(concatenated))
+	token := fmt.Sprintf("%x", hash)
+
+	logger.Printf("Generated token: %s\n", token)
+	return token
 }
 
 // buildReceipt формирует чек для фискализации
-func (c *Client) buildReceipt(amount int) string {
+func (c *Client) buildReceipt(amount int) map[string]interface{} {
 	receipt := map[string]interface{}{
-		"Email": "customer@example.com",
-		"Taxation": "usn_income",
+		"Email":    "yndx-aagrom-ijakag@yandex.ru",
+		"Taxation": "usn_income_outcome",
 		"Items": []map[string]interface{}{
 			{
 				"Name":     "Услуга автомойки",
@@ -243,6 +252,5 @@ func (c *Client) buildReceipt(amount int) string {
 		},
 	}
 
-	receiptJSON, _ := json.Marshal(receipt)
-	return string(receiptJSON)
-} 
+	return receipt
+}

@@ -29,7 +29,7 @@ type SessionExtensionUpdater interface {
 
 // TinkoffClient интерфейс для работы с Tinkoff API
 type TinkoffClient interface {
-	CreatePayment(orderID string, amount int, description string) (*TinkoffPaymentResponse, error)
+	CreatePayment(orderID string, amount int, description string, receipt map[string]interface{}) (*TinkoffPaymentResponse, error)
 	GetPaymentStatus(paymentID string) (*TinkoffPaymentStatusResponse, error)
 	RefundPayment(paymentID string, amount int) (*TinkoffRefundResponse, error)
 	VerifyWebhookSignature(data []byte, signature string) bool
@@ -251,7 +251,10 @@ func (s *service) CreatePayment(req *models.CreatePaymentRequest) (*models.Creat
 	orderID := fmt.Sprintf("main_%s", generateRandomString(12))
 	description := fmt.Sprintf("Оплата услуги автомойки (сессия: %s)", req.SessionID.String())
 
-	tinkoffResp, err := s.tinkoffClient.CreatePayment(orderID, req.Amount, description)
+	// Создаем чек для фискализации
+	receipt := s.buildReceipt(req.Amount)
+
+	tinkoffResp, err := s.tinkoffClient.CreatePayment(orderID, req.Amount, description, receipt)
 	if err != nil {
 		return nil, fmt.Errorf("ошибка создания платежа в Tinkoff: %w", err)
 	}
@@ -296,7 +299,10 @@ func (s *service) CreateExtensionPayment(req *models.CreateExtensionPaymentReque
 	orderID := fmt.Sprintf("ext_%s", generateRandomString(12))
 	description := fmt.Sprintf("Продление сессии автомойки (сессия: %s)", req.SessionID.String())
 
-	tinkoffResp, err := s.tinkoffClient.CreatePayment(orderID, req.Amount, description)
+	// Создаем чек для фискализации
+	receipt := s.buildReceipt(req.Amount)
+
+	tinkoffResp, err := s.tinkoffClient.CreatePayment(orderID, req.Amount, description, receipt)
 	if err != nil {
 		return nil, fmt.Errorf("ошибка создания платежа продления в Tinkoff: %w", err)
 	}
@@ -974,4 +980,23 @@ func (s *service) GetCashierLastShiftStatistics(req *models.CashierLastShiftStat
 	}
 
 	return statistics, nil
+}
+
+// buildReceipt формирует чек для фискализации
+func (s *service) buildReceipt(amount int) map[string]interface{} {
+	receipt := map[string]interface{}{
+		"Email": "yndx-aagrom-ijakag@yandex.ru",
+		"Taxation": "usn_income_outcome",
+		"Items": []map[string]interface{}{
+			{
+				"Name":     "Услуга автомойки",
+				"Price":    amount,
+				"Quantity": 1.00,
+				"Amount":   amount,
+				"Tax":      "none",
+			},
+		},
+	}
+
+	return receipt
 }

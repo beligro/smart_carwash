@@ -62,3 +62,4 @@ func (r *DahuaWebhookRequest) ParseCaptureTime() (time.Time, error) {
 	// Формат времени от Dahua: "2025-10-20T14:05:33"
 	return time.Parse("2006-01-02T15:04:05", r.CaptureTime)
 }
+
