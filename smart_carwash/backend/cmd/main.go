@@ -15,6 +15,8 @@ import (
 	authHandlers "carwash_backend/internal/domain/auth/handlers"
 	authRepo "carwash_backend/internal/domain/auth/repository"
 	authService "carwash_backend/internal/domain/auth/service"
+	dahuaHandlers "carwash_backend/internal/domain/dahua/handlers"
+	dahuaService "carwash_backend/internal/domain/dahua/service"
 	modbusAdapter "carwash_backend/internal/domain/modbus/adapter"
 	modbusHandlers "carwash_backend/internal/domain/modbus/handlers"
 	modbusService "carwash_backend/internal/domain/modbus/service"
@@ -144,6 +146,9 @@ func main() {
 		log.WithField("error", err).Warn("Ошибка установки вебхука")
 	}
 
+	// Создаем Dahua сервис
+	dahuaSvc := dahuaService.NewService(userSvc, sessionSvc)
+
 	// Создаем обработчики
 	userHandler := userHandlers.NewHandler(userSvc)
 	washboxHandler := washboxHandlers.NewHandler(washboxSvc)
@@ -153,6 +158,7 @@ func main() {
 	authHandler := authHandlers.NewHandler(authSvc)
 	paymentHandler := paymentHandlers.NewHandler(paymentSvc, authSvc)
 	modbusHandler := modbusHandlers.NewHandler(modbusSvc)
+	dahuaHandler := dahuaHandlers.NewHandler(dahuaSvc)
 
 	// Создаем роутер
 	router := gin.Default()
@@ -186,6 +192,7 @@ func main() {
 		authHandler.RegisterRoutes(api)
 		paymentHandler.RegisterRoutes(api)
 		modbusHandler.RegisterRoutes(api)
+		dahuaHandlers.SetupRoutes(api, dahuaHandler)
 
 		// Вебхук для Telegram бота
 		api.POST("/webhook", func(c *gin.Context) {

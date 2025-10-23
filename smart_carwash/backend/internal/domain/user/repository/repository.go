@@ -12,6 +12,7 @@ type Repository interface {
 	CreateUser(user *models.User) error
 	GetUserByTelegramID(telegramID int64) (*models.User, error)
 	GetUserByID(id uuid.UUID) (*models.User, error)
+	GetUserByCarNumber(carNumber string) (*models.User, error)
 	UpdateUser(user *models.User) error
 
 	// Административные методы
@@ -47,6 +48,16 @@ func (r *PostgresRepository) GetUserByTelegramID(telegramID int64) (*models.User
 func (r *PostgresRepository) GetUserByID(id uuid.UUID) (*models.User, error) {
 	var user models.User
 	err := r.db.Where("id = ?", id).First(&user).Error
+	if err != nil {
+		return nil, err
+	}
+	return &user, nil
+}
+
+// GetUserByCarNumber получает пользователя по номеру автомобиля
+func (r *PostgresRepository) GetUserByCarNumber(carNumber string) (*models.User, error) {
+	var user models.User
+	err := r.db.Where("car_number = ?", carNumber).First(&user).Error
 	if err != nil {
 		return nil, err
 	}

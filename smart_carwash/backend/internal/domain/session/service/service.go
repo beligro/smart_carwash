@@ -63,6 +63,10 @@ type Service interface {
 
 	// Методы для переназначения сессий
 	ReassignSession(req *models.ReassignSessionRequest) (*models.ReassignSessionResponse, error)
+
+	// Методы для Dahua интеграции
+	GetActiveSessionByUserID(userID uuid.UUID) (*models.Session, error)
+	CompleteSessionWithoutRefund(sessionID uuid.UUID) error
 }
 
 // ServiceImpl реализация Service
@@ -621,6 +625,123 @@ func (s *ServiceImpl) CompleteSession(req *models.CompleteSessionRequest) (*mode
 		Session: session,
 		Payment: session.Payment,
 	}, nil
+}
+
+// CompleteSessionWithoutRefund завершает сессию БЕЗ частичного возврата (для Dahua webhook)
+func (s *ServiceImpl) CompleteSessionWithoutRefund(sessionID uuid.UUID) error {
+	// Получаем сессию по ID
+	session, err := s.repo.GetSessionByID(sessionID)
+	if err != nil {
+		return err
+	}
+
+	// Проверяем, что сессия в статусе active
+	if session.Status != models.SessionStatusActive {
+		return nil // Возвращаем nil, если сессия уже не активна
+	}
+
+	// Проверяем, что у сессии есть назначенный бокс
+	if session.BoxID == nil {
+		return nil // Возвращаем nil, если бокс не назначен
+	}
+
+	// Если сервис боксов не инициализирован, просто обновляем статус сессии
+	if s.washboxService == nil {
+		// Обновляем статус сессии на complete
+		session.Status = models.SessionStatusComplete
+		err = s.repo.UpdateSession(session)
+		if err != nil {
+			return err
+		}
+		return nil
+	}
+
+	// Проверяем, есть ли резерв уборки для этого бокса
+	box, err := s.washboxService.GetWashBoxByID(*session.BoxID)
+	if err != nil {
+		return err
+	}
+
+	// Если есть резерв уборки, переводим бокс в статус cleaning
+	if box.CleaningReservedBy != nil {
+		err = s.washboxService.UpdateWashBoxStatus(*session.BoxID, washboxModels.StatusCleaning)
+		if err != nil {
+			return err
+		}
+		// Устанавливаем время начала уборки
+		now := time.Now()
+		err = s.washboxService.UpdateCleaningStartedAt(*session.BoxID, now)
+		if err != nil {
+			return err
+		}
+		// Очищаем резерв
+		err = s.washboxService.ClearCleaningReservation(*session.BoxID)
+		if err != nil {
+			return err
+		}
+	} else {
+		// Если нет резерва уборки, переводим в статус free
+		err = s.washboxService.UpdateWashBoxStatus(*session.BoxID, washboxModels.StatusFree)
+		if err != nil {
+			return err
+		}
+	}
+
+	// Обновляем статус сессии на complete, время обновления статуса и сбрасываем флаг уведомления
+	session.Status = models.SessionStatusComplete
+	session.StatusUpdatedAt = time.Now()         // Обновляем время изменения статуса
+	session.IsCompletingNotificationSent = false // Сбрасываем флаг, чтобы уведомление могло быть отправлено снова
+	err = s.repo.UpdateSession(session)
+	if err != nil {
+		return err
+	}
+
+	// Если химия была включена, но еще не выключена - выключаем ее
+	if session.ChemistryStartedAt != nil && session.ChemistryEndedAt == nil {
+		now := time.Now()
+
+		// Выключаем химию через Modbus
+		if s.modbusService != nil {
+			err = s.modbusService.WriteChemistryCoil(*session.BoxID, false)
+			if err != nil {
+				logger.Printf("CompleteSessionWithoutRefund: ошибка выключения химии в боксе %s: %v", *session.BoxID, err)
+			} else {
+				logger.Printf("CompleteSessionWithoutRefund: химия выключена в боксе %s, SessionID=%s", *session.BoxID, session.ID)
+			}
+		}
+
+		// Обновляем только поле chemistry_ended_at
+		err = s.repo.UpdateSessionFields(session.ID, map[string]interface{}{
+			"chemistry_ended_at": now,
+			"updated_at":         now,
+		})
+		if err != nil {
+			logger.Printf("CompleteSessionWithoutRefund: ошибка обновления времени выключения химии: %v", err)
+		}
+	}
+
+	// Выключаем свет в боксе через Modbus
+	if s.modbusService != nil {
+		err = s.modbusService.WriteLightCoil(*session.BoxID, false)
+		if err != nil {
+			logger.Printf("CompleteSessionWithoutRefund: ошибка выключения света в боксе %s: %v", *session.BoxID, err)
+		} else {
+			logger.Printf("CompleteSessionWithoutRefund: свет выключен в боксе %s, SessionID=%s", *session.BoxID, session.ID)
+		}
+	}
+
+	// Записываем метрику завершения сессии
+	if s.metrics != nil {
+		s.metrics.RecordSession("completed", session.ServiceType, strconv.FormatBool(session.WithChemistry))
+	}
+
+	logger.Printf("CompleteSessionWithoutRefund: сессия завершена БЕЗ возврата - SessionID=%s, BoxID=%s", session.ID, *session.BoxID)
+	return nil
+}
+
+// GetActiveSessionByUserID получает активную сессию пользователя
+func (s *ServiceImpl) GetActiveSessionByUserID(userID uuid.UUID) (*models.Session, error) {
+	return s.repo.GetActiveSessionByUserID(userID)
 }
 
 // ExtendSession продлевает сессию (добавляет время к активной сессии)

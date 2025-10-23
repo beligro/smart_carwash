@@ -43,6 +43,11 @@ type Config struct {
 	// Настройки Modbus HTTP сервера
 	ModbusServerHost string
 	ModbusServerPort int
+
+	// Настройки Dahua интеграции
+	DahuaWebhookUsername string
+	DahuaWebhookPassword string
+	DahuaAllowedIPs      string
 }
 
 // LoadConfig загружает конфигурацию из переменных окружения
@@ -107,6 +112,11 @@ func LoadConfig() (*Config, error) {
 		// Настройки Modbus HTTP сервера
 		ModbusServerHost: getEnv("MODBUS_SERVER_HOST", "localhost"),
 		ModbusServerPort: modbusServerPort,
+
+		// Настройки Dahua интеграции
+		DahuaWebhookUsername: getEnv("DAHUA_WEBHOOK_USERNAME", ""),
+		DahuaWebhookPassword: getEnv("DAHUA_WEBHOOK_PASSWORD", ""),
+		DahuaAllowedIPs:      getEnv("DAHUA_ALLOWED_IPS", ""),
 	}, nil
 }
 
