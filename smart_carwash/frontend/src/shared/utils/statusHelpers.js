@@ -195,16 +195,19 @@ export const calculateSessionTotalCost = (sessionPayments) => {
         });
     }
     
-    // Добавляем платежи продления
+    // Добавляем платежи продления (только успешные)
     extensionPayments.forEach((payment, index) => {
-        totalAmount += payment.amount || 0;
-        totalRefunded += payment.refunded_amount || 0;
-        breakdown.push({
-            type: 'extension',
-            description: `Продление ${index + 1}`,
-            amount: payment.amount || 0,
-            refunded: payment.refunded_amount || 0
-        });
+        // Не учитываем неуспешные платежи продления
+        if (payment.status === 'succeeded') {
+            totalAmount += payment.amount || 0;
+            totalRefunded += payment.refunded_amount || 0;
+            breakdown.push({
+                type: 'extension',
+                description: `Продление ${index + 1}`,
+                amount: payment.amount || 0,
+                refunded: payment.refunded_amount || 0
+            });
+        }
     });
     
     const finalAmount = totalAmount - totalRefunded;

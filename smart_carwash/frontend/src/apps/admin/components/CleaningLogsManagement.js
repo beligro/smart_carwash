@@ -230,6 +230,54 @@ const EmptyMessage = styled.div`
   font-style: italic;
 `;
 
+// Модальные окна для фильтров времени
+const Modal = styled.div`
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background-color: rgba(0, 0, 0, 0.5);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 1000;
+`;
+
+const ModalContent = styled.div`
+  background-color: white;
+  padding: 30px;
+  border-radius: 8px;
+  width: 500px;
+  max-width: 90%;
+  max-height: 80vh;
+  overflow-y: auto;
+`;
+
+const ModalHeader = styled.div`
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 20px;
+`;
+
+const ModalTitle = styled.h3`
+  margin: 0;
+  color: ${props => props.theme.textColor};
+`;
+
+const CloseButton = styled.button`
+  background: none;
+  border: none;
+  font-size: 24px;
+  cursor: pointer;
+  color: ${props => props.theme.textColor};
+  
+  &:hover {
+    color: ${props => props.theme.primaryColor};
+  }
+`;
+
 const CleaningLogsManagement = () => {
   const theme = getTheme('light');
   const [logs, setLogs] = useState([]);
@@ -250,6 +298,12 @@ const CleaningLogsManagement = () => {
     date_from: '',
     date_to: ''
   });
+
+  // Состояние для модальных окон фильтров времени
+  const [showDateFromModal, setShowDateFromModal] = useState(false);
+  const [showDateToModal, setShowDateToModal] = useState(false);
+  const [tempDateFrom, setTempDateFrom] = useState('');
+  const [tempDateTo, setTempDateTo] = useState('');
 
   const loadLogs = async () => {
     setLoading(true);
@@ -324,6 +378,39 @@ const CleaningLogsManagement = () => {
     setCurrentPage(1);
   };
 
+  // Функции для модальных окон фильтров времени
+  const openDateFromModal = () => {
+    setTempDateFrom(localDateFilters.date_from);
+    setShowDateFromModal(true);
+  };
+
+  const openDateToModal = () => {
+    setTempDateTo(localDateFilters.date_to);
+    setShowDateToModal(true);
+  };
+
+  const applyDateFromFilter = () => {
+    setLocalDateFilters(prev => ({ ...prev, date_from: tempDateFrom }));
+    setShowDateFromModal(false);
+    setCurrentPage(1);
+  };
+
+  const applyDateToFilter = () => {
+    setLocalDateFilters(prev => ({ ...prev, date_to: tempDateTo }));
+    setShowDateToModal(false);
+    setCurrentPage(1);
+  };
+
+  const cancelDateFromFilter = () => {
+    setTempDateFrom(localDateFilters.date_from);
+    setShowDateFromModal(false);
+  };
+
+  const cancelDateToFilter = () => {
+    setTempDateTo(localDateFilters.date_to);
+    setShowDateToModal(false);
+  };
+
   const formatDateTime = (dateString) => {
     if (!dateString) return '-';
     return formatDateForDisplay(dateString);
@@ -373,22 +460,42 @@ const CleaningLogsManagement = () => {
 
           <FilterGroup>
             <Label theme={theme}>Дата с</Label>
-            <Input
-              theme={theme}
-              type="datetime-local"
-              value={localDateFilters.date_from}
-              onChange={(e) => handleDateFilterChange('date_from', e.target.value)}
-            />
+            <Button 
+              theme={theme} 
+              onClick={openDateFromModal}
+              style={{ 
+                padding: '10px 20px', 
+                backgroundColor: localDateFilters.date_from ? theme.primaryColor : '#f5f5f5',
+                color: localDateFilters.date_from ? 'white' : theme.textColor,
+                border: '1px solid #ddd',
+                borderRadius: '4px',
+                cursor: 'pointer',
+                width: '100%',
+                textAlign: 'left'
+              }}
+            >
+              {localDateFilters.date_from ? `Дата с: ${localDateFilters.date_from}` : 'Выбрать дату с'}
+            </Button>
           </FilterGroup>
 
           <FilterGroup>
             <Label theme={theme}>Дата по</Label>
-            <Input
-              theme={theme}
-              type="datetime-local"
-              value={localDateFilters.date_to}
-              onChange={(e) => handleDateFilterChange('date_to', e.target.value)}
-            />
+            <Button 
+              theme={theme} 
+              onClick={openDateToModal}
+              style={{ 
+                padding: '10px 20px', 
+                backgroundColor: localDateFilters.date_to ? theme.primaryColor : '#f5f5f5',
+                color: localDateFilters.date_to ? 'white' : theme.textColor,
+                border: '1px solid #ddd',
+                borderRadius: '4px',
+                cursor: 'pointer',
+                width: '100%',
+                textAlign: 'left'
+              }}
+            >
+              {localDateFilters.date_to ? `Дата по: ${localDateFilters.date_to}` : 'Выбрать дату по'}
+            </Button>
           </FilterGroup>
 
           <FilterGroup>
@@ -475,6 +582,84 @@ const CleaningLogsManagement = () => {
           </>
         )}
       </Card>
+
+      {/* Модальное окно для выбора даты "с" */}
+      {showDateFromModal && (
+        <Modal>
+          <ModalContent>
+            <ModalHeader>
+              <ModalTitle theme={theme}>Выберите дату "с"</ModalTitle>
+              <CloseButton onClick={cancelDateFromFilter} theme={theme}>×</CloseButton>
+            </ModalHeader>
+            
+            <div style={{ marginBottom: '20px' }}>
+              <label style={{ display: 'block', marginBottom: '10px', fontWeight: '500' }}>
+                Дата и время:
+              </label>
+              <input
+                type="datetime-local"
+                value={tempDateFrom}
+                onChange={(e) => setTempDateFrom(e.target.value)}
+                style={{
+                  width: '100%',
+                  padding: '10px',
+                  border: '1px solid #ddd',
+                  borderRadius: '4px',
+                  fontSize: '16px'
+                }}
+              />
+            </div>
+
+            <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end' }}>
+              <Button theme={theme} onClick={cancelDateFromFilter} style={{ backgroundColor: '#6c757d' }}>
+                Отмена
+              </Button>
+              <Button theme={theme} onClick={applyDateFromFilter}>
+                Применить
+              </Button>
+            </div>
+          </ModalContent>
+        </Modal>
+      )}
+
+      {/* Модальное окно для выбора даты "по" */}
+      {showDateToModal && (
+        <Modal>
+          <ModalContent>
+            <ModalHeader>
+              <ModalTitle theme={theme}>Выберите дату "по"</ModalTitle>
+              <CloseButton onClick={cancelDateToFilter} theme={theme}>×</CloseButton>
+            </ModalHeader>
+            
+            <div style={{ marginBottom: '20px' }}>
+              <label style={{ display: 'block', marginBottom: '10px', fontWeight: '500' }}>
+                Дата и время:
+              </label>
+              <input
+                type="datetime-local"
+                value={tempDateTo}
+                onChange={(e) => setTempDateTo(e.target.value)}
+                style={{
+                  width: '100%',
+                  padding: '10px',
+                  border: '1px solid #ddd',
+                  borderRadius: '4px',
+                  fontSize: '16px'
+                }}
+              />
+            </div>
+
+            <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end' }}>
+              <Button theme={theme} onClick={cancelDateToFilter} style={{ backgroundColor: '#6c757d' }}>
+                Отмена
+              </Button>
+              <Button theme={theme} onClick={applyDateToFilter}>
+                Применить
+              </Button>
+            </div>
+          </ModalContent>
+        </Modal>
+      )}
     </Container>
   );
 };

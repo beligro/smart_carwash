@@ -88,49 +88,6 @@ const ChemistryStatus = ({ session }) => {
   return null;
 };
 
-// Компонент кнопки включения химии (только кнопка!)
-const ChemistryEnableButton = ({ session, theme, onChemistryEnabled }) => {
-  const [isEnabling, setIsEnabling] = useState(false);
-
-  const handleEnableChemistry = async () => {
-    if (isEnabling) return;
-
-    try {
-      setIsEnabling(true);
-      await ApiService.enableChemistry(session.id);
-      
-      if (onChemistryEnabled) {
-        onChemistryEnabled();
-      }
-    } catch (error) {
-      console.error('Ошибка включения химии:', error);
-      alert('Ошибка включения химии: ' + (error.response?.data?.error || error.message));
-    } finally {
-      setIsEnabling(false);
-    }
-  };
-
-  return (
-    <div style={{ marginTop: '12px' }}>
-      <p style={{ fontSize: '12px', color: '#666', marginBottom: '8px' }}>
-        Оплачено: {session.chemistry_time_minutes} мин. химии
-      </p>
-      <Button 
-        theme={theme} 
-        onClick={handleEnableChemistry}
-        disabled={isEnabling}
-        style={{ 
-          backgroundColor: '#4CAF50',
-          color: 'white',
-          width: '100%'
-        }}
-      >
-        {isEnabling ? 'Включение...' : '🧪 Включить химию'}
-      </Button>
-    </div>
-  );
-};
-
 /**
  * Вспомогательная функция для форматирования текста очереди с временем ожидания
  * @param {Object} queueInfo - Информация об очереди
@@ -370,16 +327,6 @@ const WashInfo = ({ washInfo, theme = 'light', onCreateSession, onViewHistory, o
                    (userSession.wasChemistryOn || userSession.was_chemistry_on) && (
                     <ChemistryStatus session={userSession} />
                   )}
-                  
-                  {/* Кнопка включения химии (если оплачена, но не включена) */}
-                  {(userSession.withChemistry || userSession.with_chemistry) && 
-                   !(userSession.wasChemistryOn || userSession.was_chemistry_on) && (
-                    <ChemistryEnableButton 
-                      session={userSession} 
-                      theme={theme} 
-                      onChemistryEnabled={onChemistryEnabled}
-                    />
-                  )}
                 </>
               )}
               
@@ -416,14 +363,22 @@ const WashInfo = ({ washInfo, theme = 'light', onCreateSession, onViewHistory, o
                   {/* Кнопка оплаты */}
                   <Button 
                     theme={theme} 
-                    onClick={() => {
-                      // Переходим на страницу оплаты с данными сессии
-                      navigate('/telegram/payment', {
-                        state: {
-                          session: userSession,
-                          payment: payment || null
-                        }
-                      });
+                    onClick={async () => {
+                      try {
+                        // Запрашиваем последний платеж по сессии
+                        const response = await ApiService.getUserSessionForPayment(userSession.user_id);
+                        
+                        navigate('/telegram/payment', {
+                          state: {
+                            session: response.session,
+                            payment: response.payment,
+                            sessionId: userSession.id
+                          }
+                        });
+                      } catch (error) {
+                        console.error('Ошибка получения платежа:', error);
+                        alert('Ошибка получения платежа: ' + error.message);
+                      }
                     }}
                     style={{ 
                       marginTop: '8px',

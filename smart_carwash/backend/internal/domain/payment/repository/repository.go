@@ -16,6 +16,7 @@ type Repository interface {
 	CreatePayment(payment *models.Payment) error
 	GetPaymentByID(id uuid.UUID) (*models.Payment, error)
 	GetPaymentBySessionID(sessionID uuid.UUID) (*models.Payment, error)
+	GetLastPaymentBySessionID(sessionID uuid.UUID) (*models.Payment, error)
 	GetPaymentsBySessionID(sessionID uuid.UUID) ([]models.Payment, error)
 	GetPaymentByTinkoffID(tinkoffID string) (*models.Payment, error)
 	UpdatePayment(payment *models.Payment) error
@@ -50,10 +51,20 @@ func (r *repository) GetPaymentByID(id uuid.UUID) (*models.Payment, error) {
 	return &payment, nil
 }
 
-// GetPaymentBySessionID получает основной платеж по ID сессии
+// GetPaymentBySessionID получает последний основной платеж по ID сессии
 func (r *repository) GetPaymentBySessionID(sessionID uuid.UUID) (*models.Payment, error) {
 	var payment models.Payment
-	err := r.db.Where("session_id = ? AND payment_type = ?", sessionID, models.PaymentTypeMain).First(&payment).Error
+	err := r.db.Where("session_id = ? AND payment_type = ?", sessionID, models.PaymentTypeMain).Order("created_at DESC").First(&payment).Error
+	if err != nil {
+		return nil, err
+	}
+	return &payment, nil
+}
+
+// GetLastPaymentBySessionID получает последний платеж по ID сессии (любого типа)
+func (r *repository) GetLastPaymentBySessionID(sessionID uuid.UUID) (*models.Payment, error) {
+	var payment models.Payment
+	err := r.db.Where("session_id = ?", sessionID).Order("created_at DESC").First(&payment).Error
 	if err != nil {
 		return nil, err
 	}

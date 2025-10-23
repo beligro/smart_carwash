@@ -72,6 +72,7 @@ type Service interface {
 	CreateExtensionPayment(req *models.CreateExtensionPaymentRequest) (*models.CreateExtensionPaymentResponse, error)
 	GetPaymentByID(paymentID uuid.UUID) (*models.Payment, error)
 	GetMainPaymentBySessionID(sessionID uuid.UUID) (*models.Payment, error)
+	GetLastPaymentBySessionID(sessionID uuid.UUID) (*models.Payment, error)
 	GetPaymentsBySessionID(sessionID uuid.UUID) (*models.GetPaymentsBySessionResponse, error)
 	GetPaymentStatus(req *models.GetPaymentStatusRequest) (*models.GetPaymentStatusResponse, error)
 	HandleWebhook(req *models.WebhookRequest) error
@@ -214,8 +215,8 @@ func (s *service) CalculateExtensionPrice(req *models.CalculateExtensionPriceReq
 		ChemistryPrice: 0,
 	}
 
-	// Если используется химия, добавляем стоимость химии
-	if req.WithChemistry {
+	// Если используется химия при продлении, добавляем стоимость химии только на докупленное время
+	if req.WithChemistry && req.ExtensionChemistryTimeMinutes > 0 {
 		chemistryPriceSetting, err := s.settingsRepo.GetServiceSetting(req.ServiceType, "chemistry_price_per_minute")
 		if err != nil {
 			return nil, fmt.Errorf("не удалось получить цену химии: %w", err)
@@ -231,7 +232,8 @@ func (s *service) CalculateExtensionPrice(req *models.CalculateExtensionPriceReq
 			return nil, fmt.Errorf("неверный формат цены химии в настройках: %w", err)
 		}
 
-		chemistryPrice := chemistryPricePerMinute * req.ExtensionTimeMinutes
+		// НОВАЯ ЛОГИКА: цена химии только на докупленное время при продлении
+		chemistryPrice := chemistryPricePerMinute * req.ExtensionChemistryTimeMinutes
 		breakdown.ChemistryPrice = chemistryPrice
 		totalPrice += chemistryPrice
 	}
@@ -360,6 +362,15 @@ func (s *service) GetMainPaymentBySessionID(sessionID uuid.UUID) (*models.Paymen
 	return payment, nil
 }
 
+// GetLastPaymentBySessionID получает последний платеж сессии
+func (s *service) GetLastPaymentBySessionID(sessionID uuid.UUID) (*models.Payment, error) {
+	payment, err := s.repository.GetLastPaymentBySessionID(sessionID)
+	if err != nil {
+		return nil, fmt.Errorf("ошибка получения последнего платежа сессии: %w", err)
+	}
+	return payment, nil
+}
+
 // GetPaymentsBySessionID получает все платежи сессии
 func (s *service) GetPaymentsBySessionID(sessionID uuid.UUID) (*models.GetPaymentsBySessionResponse, error) {
 	payments, err := s.repository.GetPaymentsBySessionID(sessionID)
@@ -481,28 +492,28 @@ func (s *service) HandleWebhook(req *models.WebhookRequest) error {
 
 // updateSessionStatus обновляет статус сессии в зависимости от статуса платежа
 func (s *service) updateSessionStatus(payment *models.Payment) error {
-	// Определяем новый статус сессии в зависимости от статуса платежа
-	var newSessionStatus string
-
+	// НОВАЯ ЛОГИКА: Обновляем статус сессии только для успешных платежей
+	// Неудачные платежи НЕ переводят сессию в payment_failed - пользователь остается на странице оплаты
+	
 	if payment.Status == models.PaymentStatusSucceeded {
-		newSessionStatus = "in_queue"
+		newSessionStatus := "in_queue"
 		logger.Printf("Платеж успешен, обновляем сессию %s в статус 'in_queue'", payment.SessionID)
+		
+		// Обновляем статус сессии через Session Status Updater
+		err := s.sessionUpdater.UpdateSessionStatus(payment.SessionID, newSessionStatus)
+		if err != nil {
+			return fmt.Errorf("ошибка обновления статуса сессии: %w", err)
+		}
+		
+		logger.Printf("Статус сессии %s успешно обновлен на '%s'", payment.SessionID, newSessionStatus)
 	} else if payment.Status == models.PaymentStatusFailed {
-		newSessionStatus = "payment_failed"
-		logger.Printf("Платеж неудачен, обновляем сессию %s в статус 'payment_failed'", payment.SessionID)
+		// НЕ переводим сессию в payment_failed - пользователь остается на странице оплаты
+		logger.Printf("Платеж неудачен, НЕ меняем статус сессии %s - пользователь остается на странице оплаты", payment.SessionID)
 	} else {
 		// Для других статусов платежа не меняем статус сессии
 		logger.Printf("Статус платежа %s, статус сессии не изменяется", payment.Status)
-		return nil
 	}
 
-	// Обновляем статус сессии через Session Status Updater
-	err := s.sessionUpdater.UpdateSessionStatus(payment.SessionID, newSessionStatus)
-	if err != nil {
-		return fmt.Errorf("ошибка обновления статуса сессии: %w", err)
-	}
-
-	logger.Printf("Статус сессии %s успешно обновлен на '%s'", payment.SessionID, newSessionStatus)
 	return nil
 }
 

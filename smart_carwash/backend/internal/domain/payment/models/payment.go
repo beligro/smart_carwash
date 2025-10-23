@@ -60,6 +60,7 @@ type CalculateExtensionPriceRequest struct {
 	ServiceType           string `json:"service_type" binding:"required"`
 	ExtensionTimeMinutes  int    `json:"extension_time_minutes" binding:"required"`
 	WithChemistry         bool   `json:"with_chemistry"`
+	ExtensionChemistryTimeMinutes int `json:"extension_chemistry_time_minutes"` // Время химии при продлении (опционально)
 }
 
 // CalculateExtensionPriceResponse представляет ответ на расчет цены продления

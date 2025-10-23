@@ -1,0 +1,1 @@
+ALTER TABLE sessions DROP COLUMN requested_extension_chemistry_time_minutes;

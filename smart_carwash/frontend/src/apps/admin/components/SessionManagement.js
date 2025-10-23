@@ -9,6 +9,7 @@ import {
   getQuickFilterDates,
   formatDateForDisplay 
 } from '../../../shared/utils/dateUtils';
+import ReassignSessionModal from '../../../shared/components/UI/ReassignSessionModal/ReassignSessionModal';
 
 const Container = styled.div`
   padding: 20px;
@@ -141,6 +142,27 @@ const ActionButton = styled.button`
   
   &:hover {
     text-decoration: underline;
+  }
+`;
+
+const Button = styled.button`
+  padding: 10px 20px;
+  background-color: ${props => props.theme.primaryColor};
+  color: white;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 0.9rem;
+  font-weight: 500;
+  transition: background-color 0.2s ease;
+
+  &:hover {
+    background-color: ${props => props.theme.primaryColorHover};
+  }
+
+  &:disabled {
+    background-color: ${props => props.theme.disabledColor};
+    cursor: not-allowed;
   }
 `;
 
@@ -414,6 +436,20 @@ const SessionManagement = () => {
   const [sessionDetails, setSessionDetails] = useState(null);
   const [sessionDetailsLoading, setSessionDetailsLoading] = useState(false);
 
+  // Состояние для модальных окон фильтров времени
+  const [showDateFromModal, setShowDateFromModal] = useState(false);
+  const [showDateToModal, setShowDateToModal] = useState(false);
+  const [tempDateFrom, setTempDateFrom] = useState('');
+  const [tempDateTo, setTempDateTo] = useState('');
+
+  // Состояние для модального окна переназначения сессии
+  const [reassignModal, setReassignModal] = useState({
+    isOpen: false,
+    sessionId: null,
+    serviceType: null
+  });
+  const [reassignLoading, setReassignLoading] = useState(false);
+
   // Инициализация фильтров из state (при переходе от пользователей)
   useEffect(() => {
     if (location.state?.filters) {
@@ -500,8 +536,94 @@ const SessionManagement = () => {
     setError('');
   };
 
+  // Обработка поиска
+  const handleSearch = () => {
+    setPagination(prev => ({ ...prev, offset: 0 }));
+    fetchSessions();
+  };
+
+  // Очистка фильтров
+  const handleClearFilters = () => {
+    setFilters({
+      status: '',
+      serviceType: '',
+      userId: '',
+      boxNumber: ''
+    });
+    setLocalDateFilters({
+      dateFrom: '',
+      dateTo: ''
+    });
+    setPagination(prev => ({ ...prev, offset: 0 }));
+  };
+
+  // Функции для модальных окон фильтров времени
+  const openDateFromModal = () => {
+    setTempDateFrom(localDateFilters.dateFrom);
+    setShowDateFromModal(true);
+  };
+
+  const openDateToModal = () => {
+    setTempDateTo(localDateFilters.dateTo);
+    setShowDateToModal(true);
+  };
+
+  const applyDateFromFilter = () => {
+    setLocalDateFilters(prev => ({ ...prev, dateFrom: tempDateFrom }));
+    setShowDateFromModal(false);
+    setPagination(prev => ({ ...prev, offset: 0 }));
+  };
+
+  const applyDateToFilter = () => {
+    setLocalDateFilters(prev => ({ ...prev, dateTo: tempDateTo }));
+    setShowDateToModal(false);
+    setPagination(prev => ({ ...prev, offset: 0 }));
+  };
+
+  const cancelDateFromFilter = () => {
+    setTempDateFrom(localDateFilters.dateFrom);
+    setShowDateFromModal(false);
+  };
+
+  const cancelDateToFilter = () => {
+    setTempDateTo(localDateFilters.dateTo);
+    setShowDateToModal(false);
+  };
+
   const handlePageChange = (newOffset) => {
     setPagination(prev => ({ ...prev, offset: newOffset }));
+  };
+
+  // Обработчики переназначения сессии
+  const handleReassignSession = async (sessionId) => {
+    setReassignLoading(true);
+    
+    try {
+      await ApiService.adminReassignSession(sessionId);
+      await fetchSessions(); // Перезагружаем список
+      setReassignModal({ isOpen: false, sessionId: null, serviceType: null });
+    } catch (error) {
+      console.error('Ошибка переназначения сессии:', error);
+      setError('Ошибка переназначения сессии: ' + (error.response?.data?.error || error.message));
+    } finally {
+      setReassignLoading(false);
+    }
+  };
+
+  const openReassignModal = (sessionId, serviceType) => {
+    setReassignModal({
+      isOpen: true,
+      sessionId,
+      serviceType
+    });
+  };
+
+  const closeReassignModal = () => {
+    setReassignModal({
+      isOpen: false,
+      sessionId: null,
+      serviceType: null
+    });
   };
 
   const getStatusText = (status) => {
@@ -615,21 +737,53 @@ const SessionManagement = () => {
         </div>
 
         <div className="filter-item">
-          <FilterInput
-            type="datetime-local"
-            value={localDateFilters.dateFrom}
-            onChange={(e) => setLocalDateFilters({ ...localDateFilters, dateFrom: e.target.value })}
-            placeholder="Дата от"
-          />
+          <Button 
+            theme={theme} 
+            onClick={openDateFromModal}
+            style={{ 
+              padding: '10px 20px', 
+              backgroundColor: localDateFilters.dateFrom ? theme.primaryColor : '#f5f5f5',
+              color: localDateFilters.dateFrom ? 'white' : theme.textColor,
+              border: '1px solid #ddd',
+              borderRadius: '4px',
+              cursor: 'pointer',
+              width: '100%',
+              textAlign: 'left'
+            }}
+          >
+            {localDateFilters.dateFrom ? `Дата от: ${localDateFilters.dateFrom}` : 'Выбрать дату от'}
+          </Button>
         </div>
 
         <div className="filter-item">
-          <FilterInput
-            type="datetime-local"
-            value={localDateFilters.dateTo}
-            onChange={(e) => setLocalDateFilters({ ...localDateFilters, dateTo: e.target.value })}
-            placeholder="Дата до"
-          />
+          <Button 
+            theme={theme} 
+            onClick={openDateToModal}
+            style={{ 
+              padding: '10px 20px', 
+              backgroundColor: localDateFilters.dateTo ? theme.primaryColor : '#f5f5f5',
+              color: localDateFilters.dateTo ? 'white' : theme.textColor,
+              border: '1px solid #ddd',
+              borderRadius: '4px',
+              cursor: 'pointer',
+              width: '100%',
+              textAlign: 'left'
+            }}
+          >
+            {localDateFilters.dateTo ? `Дата до: ${localDateFilters.dateTo}` : 'Выбрать дату до'}
+          </Button>
+        </div>
+
+        <div className="filter-item">
+          <Button theme={theme} onClick={handleSearch}>
+            Сохранить
+          </Button>
+        </div>
+
+        <div className="filter-item">
+          <Button theme={theme} onClick={handleClearFilters}>
+            Очистить
+          </Button>
         </div>
       </Filters>
 
@@ -700,6 +854,18 @@ const SessionManagement = () => {
                 >
                   Платежи
                 </ActionButton>
+                
+                {/* Кнопка переназначения сессии */}
+                {(session.status === 'assigned' || session.status === 'active') && (
+                  <ActionButton 
+                    theme={theme} 
+                    onClick={() => openReassignModal(session.id, session.service_type)}
+                    style={{ marginLeft: '8px', backgroundColor: '#ff9800' }}
+                    disabled={reassignLoading}
+                  >
+                    {reassignLoading ? 'Переназначаем...' : '🔄 Переназначить'}
+                  </ActionButton>
+                )}
               </Td>
             </tr>
           ))}
@@ -977,6 +1143,93 @@ const SessionManagement = () => {
           </ModalContent>
         </Modal>
       )}
+
+      {/* Модальное окно для выбора даты "от" */}
+      {showDateFromModal && (
+        <Modal>
+          <ModalContent>
+            <ModalHeader>
+              <ModalTitle theme={theme}>Выберите дату "от"</ModalTitle>
+              <CloseButton onClick={cancelDateFromFilter} theme={theme}>×</CloseButton>
+            </ModalHeader>
+            
+            <div style={{ marginBottom: '20px' }}>
+              <label style={{ display: 'block', marginBottom: '10px', fontWeight: '500' }}>
+                Дата и время:
+              </label>
+              <input
+                type="datetime-local"
+                value={tempDateFrom}
+                onChange={(e) => setTempDateFrom(e.target.value)}
+                style={{
+                  width: '100%',
+                  padding: '10px',
+                  border: '1px solid #ddd',
+                  borderRadius: '4px',
+                  fontSize: '16px'
+                }}
+              />
+            </div>
+
+            <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end' }}>
+              <Button theme={theme} onClick={cancelDateFromFilter} style={{ backgroundColor: '#6c757d' }}>
+                Отмена
+              </Button>
+              <Button theme={theme} onClick={applyDateFromFilter}>
+                Применить
+              </Button>
+            </div>
+          </ModalContent>
+        </Modal>
+      )}
+
+      {/* Модальное окно для выбора даты "до" */}
+      {showDateToModal && (
+        <Modal>
+          <ModalContent>
+            <ModalHeader>
+              <ModalTitle theme={theme}>Выберите дату "до"</ModalTitle>
+              <CloseButton onClick={cancelDateToFilter} theme={theme}>×</CloseButton>
+            </ModalHeader>
+            
+            <div style={{ marginBottom: '20px' }}>
+              <label style={{ display: 'block', marginBottom: '10px', fontWeight: '500' }}>
+                Дата и время:
+              </label>
+              <input
+                type="datetime-local"
+                value={tempDateTo}
+                onChange={(e) => setTempDateTo(e.target.value)}
+                style={{
+                  width: '100%',
+                  padding: '10px',
+                  border: '1px solid #ddd',
+                  borderRadius: '4px',
+                  fontSize: '16px'
+                }}
+              />
+            </div>
+
+            <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end' }}>
+              <Button theme={theme} onClick={cancelDateToFilter} style={{ backgroundColor: '#6c757d' }}>
+                Отмена
+              </Button>
+              <Button theme={theme} onClick={applyDateToFilter}>
+                Применить
+              </Button>
+            </div>
+          </ModalContent>
+        </Modal>
+      )}
+
+      <ReassignSessionModal
+        isOpen={reassignModal.isOpen}
+        onClose={closeReassignModal}
+        onConfirm={handleReassignSession}
+        sessionId={reassignModal.sessionId}
+        serviceType={reassignModal.serviceType}
+        isLoading={reassignLoading}
+      />
     </Container>
   );
 };

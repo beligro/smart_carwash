@@ -1,8 +1,8 @@
 package telegram
 
 import (
-	"fmt"
 	"carwash_backend/internal/logger"
+	"fmt"
 	"strings"
 
 	"carwash_backend/internal/config"
@@ -20,11 +20,15 @@ const (
 	NotificationTypeSessionExpiringSoon NotificationType = "session_expiring_soon"
 	// NotificationTypeSessionCompletingSoon уведомление о скором завершении сессии
 	NotificationTypeSessionCompletingSoon NotificationType = "session_completing_soon"
+	// NotificationTypeBoxAssigned уведомление о назначении бокса
+	NotificationTypeBoxAssigned NotificationType = "box_assigned"
 )
 
 // NotificationService интерфейс для отправки уведомлений
 type NotificationService interface {
 	SendSessionNotification(telegramID int64, notificationType NotificationType) error
+	SendBoxAssignmentNotification(telegramID int64, boxNumber int) error
+	SendSessionReassignmentNotification(telegramID int64, serviceType string) error
 }
 
 // Bot структура для работы с Telegram ботом
@@ -202,6 +206,50 @@ func (b *Bot) SendSessionNotification(telegramID int64, notificationType Notific
 	_, err := b.bot.Send(msg)
 	if err != nil {
 		return fmt.Errorf("ошибка отправки уведомления: %v", err)
+	}
+
+	return nil
+}
+
+// SendBoxAssignmentNotification отправляет уведомление о назначении бокса
+func (b *Bot) SendBoxAssignmentNotification(telegramID int64, boxNumber int) error {
+	messageText := fmt.Sprintf("Вам назначен бокс №%d! Пожалуйста, подъедьте к указанному боксу и начните мойку.", boxNumber)
+
+	// Отправляем сообщение
+	msg := tgbotapi.NewMessage(telegramID, messageText)
+	msg.ParseMode = "HTML"
+
+	_, err := b.bot.Send(msg)
+	if err != nil {
+		return fmt.Errorf("ошибка отправки уведомления о назначении бокса: %v", err)
+	}
+
+	return nil
+}
+
+// SendSessionReassignmentNotification отправляет уведомление о переназначении сессии
+func (b *Bot) SendSessionReassignmentNotification(telegramID int64, serviceType string) error {
+	var serviceText string
+	switch serviceType {
+	case "wash":
+		serviceText = "мойки"
+	case "air_dry":
+		serviceText = "обдува"
+	case "vacuum":
+		serviceText = "пылесоса"
+	default:
+		serviceText = "услуги"
+	}
+
+	messageText := fmt.Sprintf("🔄 Ваша сессия %s была переназначена на другой бокс. Пожалуйста, ожидайте уведомления о новом боксе.", serviceText)
+
+	// Отправляем сообщение
+	msg := tgbotapi.NewMessage(telegramID, messageText)
+	msg.ParseMode = "HTML"
+
+	_, err := b.bot.Send(msg)
+	if err != nil {
+		return fmt.Errorf("ошибка отправки уведомления о переназначении сессии: %v", err)
 	}
 
 	return nil

@@ -4,6 +4,7 @@ import { getTheme } from '../../../shared/styles/theme';
 import ApiService from '../../../shared/services/ApiService';
 import Timer from '../../../shared/components/UI/Timer';
 import useTimer from '../../../shared/hooks/useTimer';
+import ReassignSessionModal from '../../../shared/components/UI/ReassignSessionModal/ReassignSessionModal';
 
 const Container = styled.div`
   padding: 20px;
@@ -267,7 +268,7 @@ const ChemistryIcon = styled.span`
 /**
  * Компонент для отображения одной сессии
  */
-const SessionCardComponent = ({ session, onStart, onComplete, onCancel, onEnableChemistry, actionLoading, theme }) => {
+const SessionCardComponent = ({ session, onStart, onComplete, onCancel, onEnableChemistry, onReassign, actionLoading, theme }) => {
   const { timeLeft } = useTimer(session);
 
   const getChemistryStatus = () => {
@@ -403,6 +404,18 @@ const SessionCardComponent = ({ session, onStart, onComplete, onCancel, onEnable
             theme={theme}
           />
         )}
+
+        {/* Кнопка переназначения сессии */}
+        {(session.status === 'assigned' || session.status === 'active') && (
+          <ActionButton
+            className="reassign"
+            onClick={() => onReassign(session.id, session.service_type)}
+            disabled={actionLoading[session.id]}
+            style={{ backgroundColor: '#ff9800', color: 'white' }}
+          >
+            {actionLoading[session.id] ? 'Переназначаем...' : '🔄 Переназначить'}
+          </ActionButton>
+        )}
       </ActionButtons>
     </SessionCard>
   );
@@ -417,6 +430,11 @@ const ActiveSessions = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [actionLoading, setActionLoading] = useState({});
+  const [reassignModal, setReassignModal] = useState({
+    isOpen: false,
+    sessionId: null,
+    serviceType: null
+  });
 
   useEffect(() => {
     loadActiveSessions();
@@ -505,6 +523,37 @@ const ActiveSessions = () => {
     }
   };
 
+  const handleReassignSession = async (sessionId) => {
+    setActionLoading(prev => ({ ...prev, [sessionId]: true }));
+    
+    try {
+      await ApiService.cashierReassignSession(sessionId);
+      await loadActiveSessions(); // Перезагружаем список
+      setReassignModal({ isOpen: false, sessionId: null, serviceType: null });
+    } catch (error) {
+      console.error('Ошибка переназначения сессии:', error);
+      setError('Ошибка переназначения сессии: ' + (error.response?.data?.error || error.message));
+    } finally {
+      setActionLoading(prev => ({ ...prev, [sessionId]: false }));
+    }
+  };
+
+  const openReassignModal = (sessionId, serviceType) => {
+    setReassignModal({
+      isOpen: true,
+      sessionId,
+      serviceType
+    });
+  };
+
+  const closeReassignModal = () => {
+    setReassignModal({
+      isOpen: false,
+      sessionId: null,
+      serviceType: null
+    });
+  };
+
   if (loading) {
     return <LoadingSpinner theme={theme}>Загрузка активных сессий...</LoadingSpinner>;
   }
@@ -530,11 +579,21 @@ const ActiveSessions = () => {
             onComplete={handleCompleteSession}
             onCancel={handleCancelSession}
             onEnableChemistry={handleEnableChemistry}
+            onReassign={openReassignModal}
             actionLoading={actionLoading}
             theme={theme}
           />
         ))
       )}
+
+      <ReassignSessionModal
+        isOpen={reassignModal.isOpen}
+        onClose={closeReassignModal}
+        onConfirm={handleReassignSession}
+        sessionId={reassignModal.sessionId}
+        serviceType={reassignModal.serviceType}
+        isLoading={actionLoading[reassignModal.sessionId] || false}
+      />
     </Container>
   );
 };

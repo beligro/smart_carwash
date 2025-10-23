@@ -77,33 +77,7 @@ const HomePage = () => {
 
   return (
     <HomeContainer theme={theme}>
-      <Title>Автомойка H2O</Title>
-      <Description>
-        Добро пожаловать в систему умной автомойки H2O! Наша система позволяет удобно управлять процессом мойки автомобиля, 
-        отслеживать статус боксов и очереди, а также просматривать историю ваших сессий.
-      </Description>
-      
-      <ButtonContainer>
-        <StyledButton 
-          href="https://t.me/carwash_grom_test_bot?start=webapp" 
-          target="_blank" 
-          rel="noopener noreferrer"
-        >
-          Открыть в Telegram
-        </StyledButton>
-        
-        <StyledLink to="/cashier/login">
-          Интерфейс кассира
-        </StyledLink>
-        
-        <StyledLink to="/admin/login">
-          Интерфейс администратора
-        </StyledLink>
-
-        <StyledLink to="/cleaner/login">
-          Интерфейс уборщика
-        </StyledLink>
-      </ButtonContainer>
+      {/* Пустая страница */}
     </HomeContainer>
   );
 };

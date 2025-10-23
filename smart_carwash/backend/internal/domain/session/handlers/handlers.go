@@ -63,6 +63,7 @@ func (h *Handler) RegisterRoutes(router *gin.RouterGroup) {
 		adminRoutes.GET("", h.adminListSessions)
 		adminRoutes.GET("/by-id", h.adminGetSession)
 		adminRoutes.GET("/chemistry-stats", h.getChemistryStats) // статистика химии
+		adminRoutes.POST("/reassign", h.adminReassignSession) // переназначение сессии администратором
 	}
 
 	// Маршруты для кассира
@@ -74,6 +75,7 @@ func (h *Handler) RegisterRoutes(router *gin.RouterGroup) {
 		cashierRoutes.POST("/complete", h.cashierCompleteSession)
 		cashierRoutes.POST("/cancel", h.cashierCancelSession)
 		cashierRoutes.POST("/enable-chemistry", h.cashierEnableChemistry) // включение химии кассиром
+		cashierRoutes.POST("/reassign", h.cashierReassignSession) // переназначение сессии кассиром
 	}
 
 	// 1C webhook маршруты
@@ -926,5 +928,55 @@ func (h *Handler) getChemistryStats(c *gin.Context) {
 	}
 
 	logger.WithContext(c).Infof("Успешно получена статистика химии")
+	c.JSON(http.StatusOK, response)
+}
+
+// adminReassignSession обработчик для переназначения сессии администратором
+func (h *Handler) adminReassignSession(c *gin.Context) {
+	var req models.ReassignSessionRequest
+
+	// Парсим JSON из тела запроса
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	// Логируем мета-параметр для поиска
+	logger.WithContext(c).Infof("Запрос на переназначение сессии администратором: SessionID=%s", req.SessionID)
+
+	// Переназначаем сессию
+	response, err := h.service.ReassignSession(&req)
+	if err != nil {
+		logger.WithContext(c).Errorf("Ошибка переназначения сессии администратором: %v", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	logger.WithContext(c).Infof("Успешно переназначена сессия администратором: SessionID=%s", req.SessionID)
+	c.JSON(http.StatusOK, response)
+}
+
+// cashierReassignSession обработчик для переназначения сессии кассиром
+func (h *Handler) cashierReassignSession(c *gin.Context) {
+	var req models.ReassignSessionRequest
+
+	// Парсим JSON из тела запроса
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	// Логируем мета-параметр для поиска
+	logger.WithContext(c).Infof("Запрос на переназначение сессии кассиром: SessionID=%s", req.SessionID)
+
+	// Переназначаем сессию
+	response, err := h.service.ReassignSession(&req)
+	if err != nil {
+		logger.WithContext(c).Errorf("Ошибка переназначения сессии кассиром: %v", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	logger.WithContext(c).Infof("Успешно переназначена сессия кассиром: SessionID=%s", req.SessionID)
 	c.JSON(http.StatusOK, response)
 }
