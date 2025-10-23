@@ -47,6 +47,34 @@ export const getPaymentStatusText = (status) => {
 };
 
 /**
+ * Получает отображаемый статус платежа на основе статуса сессии
+ * @param {Object} session - Объект сессии
+ * @returns {string} - Отображаемый статус платежа
+ */
+export const getDisplayPaymentStatus = (session) => {
+    if (!session || !session.status) {
+        return 'Неизвестно';
+    }
+
+    switch (session.status) {
+        case 'created':
+            return 'Ожидает оплаты';
+        case 'in_queue':
+        case 'assigned':
+        case 'active':
+        case 'complete':
+            return 'Оплачен';
+        case 'canceled':
+        case 'expired':
+            return 'Возвращен';
+        case 'payment_failed':
+            return 'Ошибка оплаты';
+        default:
+            return 'Неизвестно';
+    }
+};
+
+/**
  * Получает цвет для статуса платежа
  * @param {string} status - Статус платежа
  * @returns {string} - CSS класс цвета

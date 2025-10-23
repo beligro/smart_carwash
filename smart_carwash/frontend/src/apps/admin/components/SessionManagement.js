@@ -633,6 +633,7 @@ const SessionManagement = () => {
       active: 'Активна',
       complete: 'Завершена',
       canceled: 'Отменена',
+      in_queue: 'В очереди',
       expired: 'Истекла'
     };
     return statusMap[status] || status;

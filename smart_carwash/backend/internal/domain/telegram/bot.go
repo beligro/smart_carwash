@@ -131,7 +131,7 @@ func (b *Bot) handleMessage(message *tgbotapi.Message) {
 // handleStartCommand обрабатывает команду /start
 func (b *Bot) handleStartCommand(message *tgbotapi.Message) {
 	// Создаем пользователя
-	user, err := b.service.CreateUser(&models.CreateUserRequest{
+	_, err := b.service.CreateUser(&models.CreateUserRequest{
 		TelegramID: message.From.ID,
 		Username:   message.From.UserName,
 		FirstName:  message.From.FirstName,
@@ -145,13 +145,24 @@ func (b *Bot) handleStartCommand(message *tgbotapi.Message) {
 	}
 
 	// Формируем приветственное сообщение
-	var messageText strings.Builder
-	messageText.WriteString(fmt.Sprintf("Привет, %s!\n\n", user.FirstName))
-	messageText.WriteString("Добро пожаловать в бота умной автомойки.")
+	messageText := "Помыть машину/записаться в очередь."
+
+	// Создаем inline клавиатуру с кнопкой для mini app
+	// Используем специальный формат URL для Telegram Mini App
+	miniAppURL := fmt.Sprintf("https://t.me/%s?startapp=carwash", b.config.TelegramUsername)
+	keyboard := tgbotapi.NewInlineKeyboardMarkup(
+		tgbotapi.NewInlineKeyboardRow(
+			tgbotapi.InlineKeyboardButton{
+				Text: "→ НАЖМИТЕ СЮДА",
+				URL:  &miniAppURL,
+			},
+		),
+	)
 
 	// Отправляем сообщение с клавиатурой
-	msg := tgbotapi.NewMessage(message.Chat.ID, messageText.String())
+	msg := tgbotapi.NewMessage(message.Chat.ID, messageText)
 	msg.ParseMode = "HTML"
+	msg.ReplyMarkup = keyboard
 
 	_, err = b.bot.Send(msg)
 	if err != nil {
@@ -192,9 +203,9 @@ func (b *Bot) SendSessionNotification(telegramID int64, notificationType Notific
 
 	switch notificationType {
 	case NotificationTypeSessionExpiringSoon:
-		messageText = "⚠️ Внимание! Через 1 минуту истечет время ожидания начала мойки. Пожалуйста, начните мойку, иначе ваша сессия будет отменена."
+		messageText = "Внимание! Через 1 минуту истечет время ожидания начала мойки. Пожалуйста, начните мойку, иначе ваша сессия будет отменена. Деньги возвращены, очередь аннулирована."
 	case NotificationTypeSessionCompletingSoon:
-		messageText = "⚠️ Внимание! Через 1 минуту завершится время мойки. Пожалуйста, завершите мойку."
+		messageText = "⚠️ Внимание! Через 5 минут завершится время мойки. Самое время продлить оплаченное время или поторопиться."
 	default:
 		return fmt.Errorf("неизвестный тип уведомления: %s", notificationType)
 	}
@@ -213,11 +224,24 @@ func (b *Bot) SendSessionNotification(telegramID int64, notificationType Notific
 
 // SendBoxAssignmentNotification отправляет уведомление о назначении бокса
 func (b *Bot) SendBoxAssignmentNotification(telegramID int64, boxNumber int) error {
-	messageText := fmt.Sprintf("Вам назначен бокс №%d! Пожалуйста, подъедьте к указанному боксу и начните мойку.", boxNumber)
+	messageText := fmt.Sprintf("Вам назначен бокс №%d! Добро пожаловать. Будьте осторожны и заезжайте в бокс! У вас 3 минуты для начала мойки в мини приложении.", boxNumber)
 
-	// Отправляем сообщение
+	// Создаем inline клавиатуру с кнопкой для mini app
+	// Используем специальный формат URL для Telegram Mini App
+	miniAppURL := fmt.Sprintf("https://t.me/%s?startapp=carwash", b.config.TelegramUsername)
+	keyboard := tgbotapi.NewInlineKeyboardMarkup(
+		tgbotapi.NewInlineKeyboardRow(
+			tgbotapi.InlineKeyboardButton{
+				Text: "→ НАЖМИТЕ СЮДА",
+				URL:  &miniAppURL,
+			},
+		),
+	)
+
+	// Отправляем сообщение с клавиатурой
 	msg := tgbotapi.NewMessage(telegramID, messageText)
 	msg.ParseMode = "HTML"
+	msg.ReplyMarkup = keyboard
 
 	_, err := b.bot.Send(msg)
 	if err != nil {

@@ -231,7 +231,7 @@ const QueueStatus = () => {
       free: 'Свободен',
       busy: 'Занят',
       reserved: 'Зарезервирован',
-      maintenance: 'Обслуживание'
+      maintenance: 'Сервис'
     };
     return statusMap[status] || status;
   };

@@ -384,7 +384,7 @@ func (s *ServiceImpl) CashierSetMaintenance(req *models.CashierSetMaintenanceReq
 		return nil, errors.New("бокс не найден")
 	}
 
-	// Проверяем, что бокс свободен (только свободные боксы можно переводить в обслуживание)
+	// Проверяем, что бокс свободен (только свободные боксы можно переводить на сервис)
 	if washBox.Status != models.StatusFree {
 		return nil, errors.New("в режим обслуживания можно переводить только свободные боксы")
 	}

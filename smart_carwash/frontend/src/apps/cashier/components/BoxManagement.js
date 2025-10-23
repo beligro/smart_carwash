@@ -202,7 +202,7 @@ const BoxCardComponent = ({ box, onSetMaintenance, actionLoading, theme }) => {
           onClick={() => onSetMaintenance(box.id)}
           disabled={actionLoading[box.id]}
         >
-          {actionLoading[box.id] ? 'Переводим...' : 'Перевести в обслуживание'}
+          {actionLoading[box.id] ? 'Переводим...' : 'Перевести на сервис'}
         </ActionButton>
       )}
     </BoxCard>
@@ -253,8 +253,8 @@ const BoxManagement = () => {
       await ApiService.setCashierMaintenance(boxId);
       await loadBoxes(); // Перезагружаем список
     } catch (error) {
-      console.error('Ошибка перевода бокса в обслуживание:', error);
-      setError('Ошибка перевода бокса в обслуживание: ' + (error.response?.data?.error || error.message));
+      console.error('Ошибка перевода бокса на сервис:', error);
+      setError('Ошибка перевода бокса на сервис: ' + (error.response?.data?.error || error.message));
     } finally {
       setActionLoading(prev => ({ ...prev, [boxId]: false }));
     }

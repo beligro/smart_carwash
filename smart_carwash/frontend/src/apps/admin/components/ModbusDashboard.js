@@ -349,7 +349,7 @@ const ModbusDashboard = () => {
         </StatCard>
         
         <StatCard theme={theme}>
-          <StatTitle theme={theme}>Подключенные</StatTitle>
+          <StatTitle theme={theme}>Включенные</StatTitle>
           <StatValue theme={theme} style={{ color: '#4CAF50' }}>
             {overview.connected_boxes || 0}
           </StatValue>
@@ -357,7 +357,7 @@ const ModbusDashboard = () => {
         </StatCard>
         
         <StatCard theme={theme}>
-          <StatTitle theme={theme}>Отключенные</StatTitle>
+          <StatTitle theme={theme}>Выключенные</StatTitle>
           <StatValue theme={theme} style={{ color: '#F44336' }}>
             {overview.disconnected_boxes || 0}
           </StatValue>

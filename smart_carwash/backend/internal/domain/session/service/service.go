@@ -1245,9 +1245,8 @@ func (s *ServiceImpl) CheckAndNotifyCompletingSessions() error {
 		// Учитываем время продления, если оно есть
 		totalTime := rentalTime + session.ExtensionTimeMinutes
 
-		// Проверяем, прошло ли время с момента начала сессии (за 1 минуту до завершения)
-		if now.Sub(startTime) >= time.Duration(totalTime-1)*time.Minute && now.Sub(startTime) < time.Duration(totalTime)*time.Minute {
-			// Если прошло 4 минуты и уведомление еще не отправлено, отправляем его
+		// Проверяем, прошло ли время с момента начала сессии (за 5 минут до завершения)
+		if now.Sub(startTime) >= time.Duration(totalTime-5)*time.Minute && now.Sub(startTime) < time.Duration(totalTime)*time.Minute {
 			if !session.IsCompletingNotificationSent {
 				// Получаем пользователя
 				user, err := s.userService.GetUserByID(session.UserID)

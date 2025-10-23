@@ -3,7 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import styles from './SessionDetails.module.css';
 import { Card, Button, StatusBadge, Timer } from '../../../../shared/components/UI';
 import { formatDate } from '../../../../shared/utils/formatters';
-import { getServiceTypeDescription, formatRefundInfo, formatSessionRefundInfo, formatAmount, formatAmountWithRefund, getPaymentStatusText, getPaymentStatusColor, formatSessionDetailedCost } from '../../../../shared/utils/statusHelpers';
+import { getServiceTypeDescription, formatRefundInfo, formatSessionRefundInfo, formatAmount, formatAmountWithRefund, getPaymentStatusText, getPaymentStatusColor, formatSessionDetailedCost, getDisplayPaymentStatus } from '../../../../shared/utils/statusHelpers';
 import ApiService from '../../../../shared/services/ApiService';
 import useTimer from '../../../../shared/hooks/useTimer';
 
@@ -655,15 +655,15 @@ const SessionDetails = ({ theme = 'light', user }) => {
             </h3>
             
             <div className={`${styles.infoRow} ${themeClass}`}>
-              <div className={`${styles.infoLabel} ${themeClass}`}>Статус последнего платежа:</div>
+              <div className={`${styles.infoLabel} ${themeClass}`}>Статус платежа:</div>
               <div className={`${styles.infoValue} ${themeClass}`}>
                 <span style={{ 
-                  color: payment.status === 'succeeded' ? '#4CAF50' : 
-                         payment.status === 'pending' ? '#FF9800' : 
-                         payment.status === 'refunded' ? '#2196F3' : '#F44336',
+                  color: getDisplayPaymentStatus(session) === 'Оплачен' ? '#4CAF50' : 
+                         getDisplayPaymentStatus(session) === 'Ожидает оплаты' ? '#FF9800' : 
+                         getDisplayPaymentStatus(session) === 'Возвращен' ? '#2196F3' : '#F44336',
                   fontWeight: 'bold'
                 }}>
-                  {getPaymentStatusText(payment.status)}
+                  {getDisplayPaymentStatus(session)}
                 </span>
               </div>
             </div>
