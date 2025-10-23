@@ -794,7 +794,7 @@ const WashBoxManagement = () => {
       free: 'Свободен',
       busy: 'Занят',
       reserved: 'Зарезервирован',
-      maintenance: 'Обслуживание'
+      maintenance: 'Сервис'
     };
     return statusMap[status] || status;
   };
@@ -835,7 +835,7 @@ const WashBoxManagement = () => {
           <option value="free">Свободен</option>
           <option value="busy">Занят</option>
           <option value="reserved">Зарезервирован</option>
-          <option value="maintenance">Обслуживание</option>
+          <option value="maintenance">Сервис</option>
         </FilterSelect>
 
         <FilterSelect
@@ -1185,7 +1185,7 @@ const WashBoxManagement = () => {
                   <option value="free">Свободен</option>
                   <option value="busy">Занят</option>
                   <option value="reserved">Зарезервирован</option>
-                  <option value="maintenance">Обслуживание</option>
+                  <option value="maintenance">Сервис</option>
                 </Select>
               </FormGroup>
               
@@ -1328,7 +1328,7 @@ const WashBoxManagement = () => {
                     <option value="free">Свободен</option>
                     <option value="busy">Занят</option>
                     <option value="reserved">Зарезервирован</option>
-                    <option value="maintenance">Обслуживание</option>
+                    <option value="maintenance">Сервис</option>
                   </Select>
                 </FormGroup>
                 

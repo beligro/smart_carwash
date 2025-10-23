@@ -666,7 +666,7 @@ const ApiService = {
       const response = await api.post('/cashier/washboxes/maintenance', { id: boxId });
       return response.data;
     } catch (error) {
-      console.error('Ошибка перевода бокса в обслуживание:', error);
+      console.error('Ошибка перевода бокса на сервис:', error);
       throw error;
     }
   },

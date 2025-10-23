@@ -15,6 +15,7 @@ type Service interface {
 	CreateUser(req *models.CreateUserRequest) (*models.User, error)
 	GetUserByTelegramID(telegramID int64) (*models.User, error)
 	GetUserByID(id uuid.UUID) (*models.User, error)
+	GetUserByCarNumber(carNumber string) (*models.User, error)
 	UpdateCarNumber(req *models.UpdateCarNumberRequest) (*models.UpdateCarNumberResponse, error)
 
 	// Административные методы
@@ -67,6 +68,11 @@ func (s *ServiceImpl) GetUserByTelegramID(telegramID int64) (*models.User, error
 // GetUserByID получает пользователя по ID
 func (s *ServiceImpl) GetUserByID(id uuid.UUID) (*models.User, error) {
 	return s.repo.GetUserByID(id)
+}
+
+// GetUserByCarNumber получает пользователя по номеру автомобиля
+func (s *ServiceImpl) GetUserByCarNumber(carNumber string) (*models.User, error) {
+	return s.repo.GetUserByCarNumber(carNumber)
 }
 
 // AdminListUsers получает список пользователей для администратора
