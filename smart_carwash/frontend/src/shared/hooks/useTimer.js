@@ -20,7 +20,7 @@ const useTimer = (session) => {
       
       const now = new Date();
       
-      // Получаем выбранное время аренды в минутах (по умолчанию 5 минут)
+      // Получаем выбранное время мойки в минутах (по умолчанию 5 минут)
       const rentalTimeMinutes = sessionData.rental_time_minutes || 5;
       
       // Учитываем время продления, если оно есть

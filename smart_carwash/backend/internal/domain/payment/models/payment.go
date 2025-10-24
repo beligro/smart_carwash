@@ -213,7 +213,7 @@ type GetPaymentsBySessionResponse struct {
 type CalculateSessionRefundRequest struct {
 	SessionID         uuid.UUID `json:"session_id" binding:"required"`
 	ServiceType       string    `json:"service_type" binding:"required"`
-	RentalTimeMinutes int       `json:"rental_time_minutes" binding:"required"` // время аренды в минутах
+	RentalTimeMinutes int       `json:"rental_time_minutes" binding:"required"` // время мойки в минутах
 	ExtensionTimeMinutes int    `json:"extension_time_minutes"` // время продления в минутах
 	UsedTimeSeconds   int       `json:"used_time_seconds" binding:"required"` // использованное время в секундах
 }

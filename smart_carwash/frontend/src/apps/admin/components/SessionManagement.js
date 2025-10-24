@@ -649,8 +649,8 @@ const SessionManagement = () => {
     
     const serviceMap = {
       wash: 'Мойка',
-      air_dry: 'Обдув',
-      vacuum: 'Пылесос'
+      air_dry: 'Воздух для продувки',
+      vacuum: 'Пылеводосос'
     };
     
     const result = serviceMap[serviceType];
@@ -799,7 +799,7 @@ const SessionManagement = () => {
             <Th theme={theme}>Тип услуги</Th>
             <Th theme={theme}>Химия</Th>
             <Th theme={theme}>Время химии</Th>
-            <Th theme={theme}>Время аренды</Th>
+            <Th theme={theme}>Время мойки</Th>
             <Th theme={theme}>Дата создания</Th>
             <Th theme={theme}>Действия</Th>
           </tr>
@@ -932,7 +932,7 @@ const SessionManagement = () => {
               </MobileCardDetail>
               
               <MobileCardDetail>
-                <MobileCardLabel theme={theme}>Время аренды</MobileCardLabel>
+                <MobileCardLabel theme={theme}>Время мойки</MobileCardLabel>
                 <MobileCardValue theme={theme}>
                   {session.rental_time_minutes} мин
                 </MobileCardValue>
@@ -1062,7 +1062,7 @@ const SessionManagement = () => {
                   </DetailGroup>
                   
                   <DetailGroup>
-                    <DetailLabel theme={theme}>Время аренды:</DetailLabel>
+                    <DetailLabel theme={theme}>Время мойки:</DetailLabel>
                     <DetailValue theme={theme}>{sessionDetails.rental_time_minutes} минут</DetailValue>
                   </DetailGroup>
                   

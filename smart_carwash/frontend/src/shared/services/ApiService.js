@@ -169,13 +169,13 @@ const ApiService = {
 
   // === МЕТОДЫ ДЛЯ TELEGRAM ПРИЛОЖЕНИЯ ===
 
-  // Получение доступного времени аренды для определенного типа услуги
+  // Получение доступного времени мойки для определенного типа услуги
   getAvailableRentalTimes: async (serviceType) => {
     try {
       const response = await api.get(`/settings/rental-times?service_type=${serviceType}`);
       return response.data;
     } catch (error) {
-      console.error('Ошибка при получении доступного времени аренды:', error);
+      console.error('Ошибка при получении доступного времени мойки:', error);
       return { availableTimes: [5] }; // Значение по умолчанию
     }
   },
@@ -484,7 +484,7 @@ const ApiService = {
     return response.data;
   },
 
-  // Обновление времени аренды (админка)
+  // Обновление времени мойки (админка)
   updateRentalTimes: async (data) => {
     const snakeData = toSnakeCase(data);
     const response = await api.put('/admin/settings/rental-times', snakeData);
@@ -799,6 +799,30 @@ const ApiService = {
       return response.data;
     } catch (error) {
       console.error('Ошибка при обновлении времени уборки:', error);
+      throw error;
+    }
+  },
+
+  // Получение времени ожидания старта мойки (админка)
+  getSessionTimeout: async () => {
+    try {
+      const response = await api.get('/admin/settings/session-timeout');
+      return response.data;
+    } catch (error) {
+      console.error('Ошибка при получении времени ожидания старта мойки:', error);
+      throw error;
+    }
+  },
+
+  // Обновление времени ожидания старта мойки (админка)
+  updateSessionTimeout: async (timeoutMinutes) => {
+    try {
+      const response = await api.put('/admin/settings/session-timeout', {
+        timeout_minutes: timeoutMinutes,
+      });
+      return response.data;
+    } catch (error) {
+      console.error('Ошибка при обновлении времени ожидания старта мойки:', error);
       throw error;
     }
   },

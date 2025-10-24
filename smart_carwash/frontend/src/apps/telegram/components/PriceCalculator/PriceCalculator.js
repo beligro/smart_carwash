@@ -8,7 +8,7 @@ import ApiService from '../../../../shared/services/ApiService';
  * @param {string} props.serviceType - Тип услуги
  * @param {boolean} props.withChemistry - Использование химии
  * @param {number} props.chemistryTimeMinutes - Время химии в минутах
- * @param {number} props.rentalTimeMinutes - Время аренды в минутах
+ * @param {number} props.rentalTimeMinutes - Время мойки в минутах
  * @param {string} props.theme - Тема оформления ('light' или 'dark')
  */
 const PriceCalculator = ({ serviceType, withChemistry, chemistryTimeMinutes, rentalTimeMinutes, theme = 'light' }) => {

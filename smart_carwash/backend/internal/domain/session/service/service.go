@@ -621,6 +621,21 @@ func (s *ServiceImpl) CompleteSession(req *models.CompleteSessionRequest) (*mode
 		s.metrics.RecordSession("completed", session.ServiceType, strconv.FormatBool(session.WithChemistry))
 	}
 
+	// Отправляем уведомление о завершении сессии
+	if s.telegramBot != nil {
+		user, err := s.userService.GetUserByID(session.UserID)
+		if err == nil && user != nil {
+			err = s.telegramBot.SendSessionNotification(user.TelegramID, telegram.NotificationTypeSessionCompleted)
+			if err != nil {
+				logger.Printf("CompleteSession: ошибка отправки уведомления о завершении сессии: %v", err)
+			} else {
+				logger.Printf("CompleteSession: уведомление о завершении сессии отправлено пользователю %d, SessionID=%s", user.TelegramID, session.ID)
+			}
+		} else {
+			logger.Printf("CompleteSession: не удалось получить данные пользователя для отправки уведомления: %v", err)
+		}
+	}
+
 	return &models.CompleteSessionResponse{
 		Session: session,
 		Payment: session.Payment,
@@ -733,6 +748,21 @@ func (s *ServiceImpl) CompleteSessionWithoutRefund(sessionID uuid.UUID) error {
 	// Записываем метрику завершения сессии
 	if s.metrics != nil {
 		s.metrics.RecordSession("completed", session.ServiceType, strconv.FormatBool(session.WithChemistry))
+	}
+
+	// Отправляем уведомление о завершении сессии
+	if s.telegramBot != nil {
+		user, err := s.userService.GetUserByID(session.UserID)
+		if err == nil && user != nil {
+			err = s.telegramBot.SendSessionNotification(user.TelegramID, telegram.NotificationTypeSessionCompleted)
+			if err != nil {
+				logger.Printf("CompleteSessionWithoutRefund: ошибка отправки уведомления о завершении сессии: %v", err)
+			} else {
+				logger.Printf("CompleteSessionWithoutRefund: уведомление о завершении сессии отправлено пользователю %d, SessionID=%s", user.TelegramID, session.ID)
+			}
+		} else {
+			logger.Printf("CompleteSessionWithoutRefund: не удалось получить данные пользователя для отправки уведомления: %v", err)
+		}
 	}
 
 	logger.Printf("CompleteSessionWithoutRefund: сессия завершена БЕЗ возврата - SessionID=%s, BoxID=%s", session.ID, *session.BoxID)
@@ -1032,6 +1062,21 @@ func (s *ServiceImpl) CancelSession(req *models.CancelSessionRequest) (*models.C
 		}
 	}
 
+	// Отправляем уведомление о возврате денег при отмене сессии
+	if s.telegramBot != nil {
+		user, err := s.userService.GetUserByID(session.UserID)
+		if err == nil && user != nil {
+			err = s.telegramBot.SendSessionNotification(user.TelegramID, telegram.NotificationTypeSessionExpiredOrCanceled)
+			if err != nil {
+				logger.Printf("CancelSession: ошибка отправки уведомления о возврате денег: %v", err)
+			} else {
+				logger.Printf("CancelSession: уведомление о возврате денег отправлено пользователю %d, SessionID=%s", user.TelegramID, session.ID)
+			}
+		} else {
+			logger.Printf("CancelSession: не удалось получить данные пользователя для отправки уведомления: %v", err)
+		}
+	}
+
 	// Обновляем сессию в ответе
 	response.Session = *session
 
@@ -1059,7 +1104,7 @@ func (s *ServiceImpl) CheckAndCompleteExpiredSessions() error {
 		// Время начала сессии - это время последнего обновления статуса на active
 		startTime := session.StatusUpdatedAt
 
-		// Получаем время аренды в минутах (по умолчанию 5 минут)
+		// Получаем время мойки в минутах (по умолчанию 5 минут)
 		rentalTime := session.RentalTimeMinutes
 		if rentalTime <= 0 {
 			rentalTime = 5
@@ -1210,6 +1255,13 @@ func (s *ServiceImpl) ProcessQueue() error {
 
 // CheckAndExpireReservedSessions проверяет и истекает сессии, которые не были стартованы в течение 3 минут
 func (s *ServiceImpl) CheckAndExpireReservedSessions() error {
+	// Получаем время ожидания старта мойки из настроек
+	sessionTimeout, err := s.settingsService.GetSessionTimeout()
+	if err != nil {
+		// Если не удалось получить настройку, используем значение по умолчанию
+		sessionTimeout = 3
+	}
+
 	// Получаем все сессии со статусом "assigned"
 	assignedSessions, err := s.repo.GetSessionsByStatus(models.SessionStatusAssigned)
 	if err != nil {
@@ -1229,8 +1281,8 @@ func (s *ServiceImpl) CheckAndExpireReservedSessions() error {
 		// Время назначения сессии - это время последнего обновления статуса на assigned
 		assignedTime := session.StatusUpdatedAt
 
-		// Проверяем, прошло ли 3 минуты с момента назначения сессии
-		if now.Sub(assignedTime) >= 3*time.Minute {
+		// Проверяем, прошло ли время ожидания с момента назначения сессии
+		if now.Sub(assignedTime) >= time.Duration(sessionTimeout)*time.Minute {
 			// Если прошло 3 минуты, истекаем сессию
 			if session.BoxID != nil && s.washboxService != nil {
 				// Обновляем статус бокса на free
@@ -1267,6 +1319,21 @@ func (s *ServiceImpl) CheckAndExpireReservedSessions() error {
 			if err != nil {
 				return err
 			}
+
+			// Отправляем уведомление о возврате денег при истечении сессии
+			if s.telegramBot != nil {
+				user, err := s.userService.GetUserByID(session.UserID)
+				if err == nil && user != nil {
+					err = s.telegramBot.SendSessionNotification(user.TelegramID, telegram.NotificationTypeSessionExpiredOrCanceled)
+					if err != nil {
+						logger.Printf("CheckAndExpireReservedSessions: ошибка отправки уведомления о возврате денег: %v", err)
+					} else {
+						logger.Printf("CheckAndExpireReservedSessions: уведомление о возврате денег отправлено пользователю %d, SessionID=%s", user.TelegramID, session.ID)
+					}
+				} else {
+					logger.Printf("CheckAndExpireReservedSessions: не удалось получить данные пользователя для отправки уведомления: %v", err)
+				}
+			}
 		}
 	}
 
@@ -1278,6 +1345,13 @@ func (s *ServiceImpl) CheckAndNotifyExpiringReservedSessions() error {
 	// Если сервис пользователей или телеграм бот не инициализированы, выходим
 	if s.userService == nil || s.telegramBot == nil {
 		return nil
+	}
+
+	// Получаем время ожидания старта мойки из настроек
+	sessionTimeout, err := s.settingsService.GetSessionTimeout()
+	if err != nil {
+		// Если не удалось получить настройку, используем значение по умолчанию
+		sessionTimeout = 3
 	}
 
 	// Получаем все сессии со статусом "assigned"
@@ -1299,8 +1373,9 @@ func (s *ServiceImpl) CheckAndNotifyExpiringReservedSessions() error {
 		// Время назначения сессии - это время последнего обновления статуса на assigned
 		assignedTime := session.StatusUpdatedAt
 
-		// Проверяем, прошло ли 2 минуты с момента назначения сессии (за 1 минуту до истечения)
-		if now.Sub(assignedTime) >= 2*time.Minute && now.Sub(assignedTime) < 3*time.Minute {
+		// Проверяем, прошло ли время для отправки уведомления (за 1 минуту до истечения)
+		notificationTime := sessionTimeout - 1
+		if now.Sub(assignedTime) >= time.Duration(notificationTime)*time.Minute && now.Sub(assignedTime) < time.Duration(sessionTimeout)*time.Minute {
 			// Если прошло 2 минуты и уведомление еще не отправлено, отправляем его
 			if !session.IsExpiringNotificationSent {
 				// Получаем пользователя
@@ -1357,7 +1432,7 @@ func (s *ServiceImpl) CheckAndNotifyCompletingSessions() error {
 		// Время начала сессии - это время последнего обновления статуса на active
 		startTime := session.StatusUpdatedAt
 
-		// Получаем время аренды в минутах (по умолчанию 5 минут)
+		// Получаем время мойки в минутах (по умолчанию 5 минут)
 		rentalTime := session.RentalTimeMinutes
 		if rentalTime <= 0 {
 			rentalTime = 5

@@ -471,19 +471,19 @@ const WashInfo = ({ washInfo, theme = 'light', onCreateSession, onViewHistory, o
               />
             </div>
             <div className={styles.queueTypeItem}>
-              <h4 className={`${styles.queueTypeTitle} ${themeClass}`}>Обдув</h4>
-              <StatusBadge 
-                status={airDryQueue.has_queue ? 'busy' : 'free'} 
-                theme={theme}
-                text={formatQueueText(airDryQueue)}
-              />
-            </div>
-            <div className={styles.queueTypeItem}>
               <h4 className={`${styles.queueTypeTitle} ${themeClass}`}>Пылесос</h4>
               <StatusBadge 
                 status={vacuumQueue.has_queue ? 'busy' : 'free'} 
                 theme={theme}
                 text={formatQueueText(vacuumQueue)}
+              />
+            </div>
+            <div className={styles.queueTypeItem}>
+              <h4 className={`${styles.queueTypeTitle} ${themeClass}`}>Воздух</h4>
+              <StatusBadge 
+                status={airDryQueue.has_queue ? 'busy' : 'free'} 
+                theme={theme}
+                text={formatQueueText(airDryQueue)}
               />
             </div>
           </div>

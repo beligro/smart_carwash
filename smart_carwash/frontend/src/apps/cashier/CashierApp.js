@@ -659,7 +659,7 @@ const CashierApp = () => {
                             <Th theme={theme}>Номер машины</Th>
                             <Th theme={theme}>Номер бокса</Th>
                             <Th theme={theme}>Химия</Th>
-                            <Th theme={theme}>Время аренды</Th>
+                            <Th theme={theme}>Время мойки</Th>
                             <Th theme={theme}>Создана</Th>
                             <Th theme={theme}>Действия</Th>
                           </tr>
@@ -753,7 +753,7 @@ const CashierApp = () => {
                               </MobileCardDetail>
                               
                               <MobileCardDetail>
-                                <MobileCardLabel theme={theme}>Время аренды</MobileCardLabel>
+                                <MobileCardLabel theme={theme}>Время мойки</MobileCardLabel>
                                 <MobileCardValue theme={theme}>
                                   {session.rental_time_minutes} мин
                                 </MobileCardValue>

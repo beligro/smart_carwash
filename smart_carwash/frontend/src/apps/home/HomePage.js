@@ -424,7 +424,7 @@ const HomePage = () => {
             
             <ContactItem>
               <ContactLabel>Телефон</ContactLabel>
-              <ContactValue>+7 (3838) 287-03-78</ContactValue>
+              <ContactValue>+7 (383) 287-03-78</ContactValue>
             </ContactItem>
             
             <ContactItem>
@@ -531,7 +531,7 @@ const HomePage = () => {
           </TelegramLink>
         </p>
         <p style={{marginTop: '15px', fontSize: '0.85rem'}}>
-          <TelegramLink href="/oferta.pdf" target="_blank" rel="noopener noreferrer">
+          <TelegramLink href="/oferta.html" target="_blank" rel="noopener noreferrer">
             Публичная оферта
           </TelegramLink>
         </p>

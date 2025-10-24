@@ -22,6 +22,10 @@ type Service interface {
 	// Методы для управления временем уборки
 	GetCleaningTimeout() (int, error)
 	UpdateCleaningTimeout(timeoutMinutes int) error
+
+	// Методы для управления временем ожидания старта мойки
+	GetSessionTimeout() (int, error)
+	UpdateSessionTimeout(timeoutMinutes int) error
 }
 
 // ServiceImpl реализация Service
@@ -36,7 +40,7 @@ func NewService(repo repository.Repository) *ServiceImpl {
 	}
 }
 
-// GetAvailableRentalTimes получает доступное время аренды для определенного типа услуги
+// GetAvailableRentalTimes получает доступное время мойки для определенного типа услуги
 func (s *ServiceImpl) GetAvailableRentalTimes(req *models.GetAvailableRentalTimesRequest) (*models.GetAvailableRentalTimesResponse, error) {
 	times, err := s.repo.GetAvailableRentalTimes(req.ServiceType)
 	if err != nil {
@@ -48,7 +52,7 @@ func (s *ServiceImpl) GetAvailableRentalTimes(req *models.GetAvailableRentalTime
 	}, nil
 }
 
-// UpdateAvailableRentalTimes обновляет доступное время аренды для определенного типа услуги
+// UpdateAvailableRentalTimes обновляет доступное время мойки для определенного типа услуги
 func (s *ServiceImpl) UpdateAvailableRentalTimes(req *models.UpdateAvailableRentalTimesRequest) (*models.UpdateAvailableRentalTimesResponse, error) {
 	err := s.repo.UpdateAvailableRentalTimes(req.ServiceType, req.AvailableTimes)
 	if err != nil {
@@ -88,7 +92,7 @@ func (s *ServiceImpl) GetSettings(req *models.AdminGetSettingsRequest) (*models.
 		}
 	}
 
-	// Получаем доступное время аренды
+	// Получаем доступное время мойки
 	availableTimes, err := s.repo.GetAvailableRentalTimes(req.ServiceType)
 	if err != nil {
 		return nil, err
@@ -126,6 +130,30 @@ func (s *ServiceImpl) UpdateCleaningTimeout(timeoutMinutes int) error {
 	return s.repo.UpdateServiceSetting("cleaner", "cleaning_timeout_minutes", timeoutMinutes)
 }
 
+// GetSessionTimeout получает время ожидания старта мойки в минутах
+func (s *ServiceImpl) GetSessionTimeout() (int, error) {
+	setting, err := s.repo.GetServiceSetting("session", "session_timeout_minutes")
+	if err != nil {
+		return 3, err // По умолчанию 3 минуты
+	}
+
+	if setting == nil {
+		return 3, nil // По умолчанию 3 минуты
+	}
+
+	var timeout int
+	if err := json.Unmarshal(setting.SettingValue, &timeout); err != nil {
+		return 3, err // По умолчанию 3 минуты
+	}
+
+	return timeout, nil
+}
+
+// UpdateSessionTimeout обновляет время ожидания старта мойки в минутах
+func (s *ServiceImpl) UpdateSessionTimeout(timeoutMinutes int) error {
+	return s.repo.UpdateServiceSetting("session", "session_timeout_minutes", timeoutMinutes)
+}
+
 // UpdatePrices обновляет цены сервиса (админка)
 func (s *ServiceImpl) UpdatePrices(req *models.AdminUpdatePricesRequest) (*models.AdminUpdatePricesResponse, error) {
 	// Обновляем цену за минуту
@@ -146,7 +174,7 @@ func (s *ServiceImpl) UpdatePrices(req *models.AdminUpdatePricesRequest) (*model
 	}, nil
 }
 
-// UpdateRentalTimes обновляет доступное время аренды (админка)
+// UpdateRentalTimes обновляет доступное время мойки (админка)
 func (s *ServiceImpl) UpdateRentalTimes(req *models.AdminUpdateRentalTimesRequest) (*models.AdminUpdateRentalTimesResponse, error) {
 	if err := s.repo.UpdateAvailableRentalTimes(req.ServiceType, req.AvailableRentalTimes); err != nil {
 		return nil, err
@@ -154,7 +182,7 @@ func (s *ServiceImpl) UpdateRentalTimes(req *models.AdminUpdateRentalTimesReques
 
 	return &models.AdminUpdateRentalTimesResponse{
 		Success: true,
-		Message: "Время аренды успешно обновлено",
+		Message: "Время мойки успешно обновлено",
 	}, nil
 }
 

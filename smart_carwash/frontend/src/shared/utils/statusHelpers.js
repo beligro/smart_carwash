@@ -393,9 +393,9 @@ export const getSessionStatusDescription = (status) => {
     case 'wash':
       return 'Мойка';
     case 'air_dry':
-      return 'Обдув воздухом';
+      return 'Воздух для продувки';
     case 'vacuum':
-      return 'Пылесос';
+      return 'Пылеводосос';
     default:
       console.warn('getServiceTypeDescription: unknown serviceType =', serviceType);
       // Возвращаем исходное значение вместо "Неизвестная услуга"

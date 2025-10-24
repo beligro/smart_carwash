@@ -89,7 +89,7 @@
   margin: 20px 0;
 }
 
-/* Сетка времени аренды */
+/* Сетка времени мойки */
 .rentalTimeGrid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(70px, 1fr));

@@ -152,8 +152,8 @@ const ReassignSessionModal = ({
   const getServiceText = (type) => {
     switch (type) {
       case 'wash': return 'мойки';
-      case 'air_dry': return 'обдува';
-      case 'vacuum': return 'пылесоса';
+      case 'air_dry': return 'воздуха для продувки';
+      case 'vacuum': return 'пылеводососа';
       default: return 'услуги';
     }
   };

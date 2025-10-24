@@ -267,6 +267,8 @@ const SettingsManagement = () => {
   const [newChemistryTime, setNewChemistryTime] = useState('');
   const [cleaningTimeout, setCleaningTimeout] = useState('');
   const [cleaningTimeoutLoading, setCleaningTimeoutLoading] = useState(false);
+  const [sessionTimeout, setSessionTimeout] = useState('');
+  const [sessionTimeoutLoading, setSessionTimeoutLoading] = useState(false);
 
   const serviceOptions = [
     { value: 'wash', label: 'Мойка' },
@@ -313,6 +315,7 @@ const SettingsManagement = () => {
   useEffect(() => {
     loadSettings();
     loadCleaningTimeout();
+    loadSessionTimeout();
   }, [selectedService]);
 
   const loadCleaningTimeout = async () => {
@@ -325,6 +328,19 @@ const SettingsManagement = () => {
       setCleaningTimeout(''); // Значение по умолчанию
     } finally {
       setCleaningTimeoutLoading(false);
+    }
+  };
+
+  const loadSessionTimeout = async () => {
+    setSessionTimeoutLoading(true);
+    try {
+      const response = await ApiService.getSessionTimeout();
+      setSessionTimeout(response.timeout_minutes?.toString() || '');
+    } catch (err) {
+      console.warn('Не удалось загрузить время ожидания старта мойки:', err);
+      setSessionTimeout(''); // Значение по умолчанию
+    } finally {
+      setSessionTimeoutLoading(false);
     }
   };
 
@@ -357,6 +373,32 @@ const SettingsManagement = () => {
       setError('Ошибка при обновлении времени уборки: ' + (err.message || 'Неизвестная ошибка'));
     } finally {
       setCleaningTimeoutLoading(false);
+    }
+  };
+
+  const handleSessionTimeoutSave = async () => {
+    // Проверяем, что поле не пустое
+    if (!sessionTimeout || sessionTimeout.trim() === '') {
+      setError('Время ожидания старта мойки не может быть пустым');
+      return;
+    }
+
+    const timeoutValue = parseInt(sessionTimeout);
+    if (isNaN(timeoutValue) || timeoutValue < 1 || timeoutValue > 60) {
+      setError('Время ожидания старта мойки должно быть числом от 1 до 60 минут');
+      return;
+    }
+
+    setSessionTimeoutLoading(true);
+    setError('');
+
+    try {
+      await ApiService.updateSessionTimeout(timeoutValue);
+      setSuccess('Время ожидания старта мойки успешно обновлено');
+    } catch (err) {
+      setError('Ошибка при обновлении времени ожидания старта мойки: ' + (err.message || 'Неизвестная ошибка'));
+    } finally {
+      setSessionTimeoutLoading(false);
     }
   };
 
@@ -428,9 +470,9 @@ const SettingsManagement = () => {
         serviceType: selectedService,
         availableRentalTimes: settings.available_rental_times
       });
-      setSuccess('Время аренды успешно обновлено');
+      setSuccess('Время мойки успешно обновлено');
     } catch (err) {
-      setError('Ошибка при обновлении времени аренды: ' + (err.message || 'Неизвестная ошибка'));
+      setError('Ошибка при обновлении времени мойки: ' + (err.message || 'Неизвестная ошибка'));
     } finally {
       setSaving(false);
     }
@@ -545,10 +587,10 @@ const SettingsManagement = () => {
           </SettingsContainer>
 
           <SettingsContainer theme={theme}>
-            <SettingsTitle theme={theme}>Доступное время аренды</SettingsTitle>
+            <SettingsTitle theme={theme}>Доступное время мойки</SettingsTitle>
             
             <RentalTimesContainer>
-              <RentalTimesTitle theme={theme}>Текущее время аренды (в минутах):</RentalTimesTitle>
+              <RentalTimesTitle theme={theme}>Текущее время мойки (в минутах):</RentalTimesTitle>
               
               <RentalTimesList>
                 {settings.available_rental_times.map(time => (
@@ -582,7 +624,7 @@ const SettingsManagement = () => {
 
             <ButtonGroup>
               <Button theme={theme} onClick={handleSaveRentalTimes} disabled={saving}>
-                {saving ? 'Сохранение...' : 'Сохранить время аренды'}
+                {saving ? 'Сохранение...' : 'Сохранить время мойки'}
               </Button>
             </ButtonGroup>
           </SettingsContainer>
@@ -662,6 +704,36 @@ const SettingsManagement = () => {
                 disabled={cleaningTimeoutLoading}
               >
                 {cleaningTimeoutLoading ? 'Сохранение...' : 'Сохранить время уборки'}
+              </Button>
+            </ButtonGroup>
+          </SettingsContainer>
+
+          <SettingsContainer theme={theme}>
+            <SettingsTitle theme={theme}>Настройки сессий</SettingsTitle>
+            
+            <SettingsField>
+              <SettingsLabel theme={theme}>Время ожидания старта мойки (в минутах):</SettingsLabel>
+              <SettingsInput
+                theme={theme}
+                type="number"
+                value={sessionTimeout}
+                onChange={(e) => setSessionTimeout(e.target.value)}
+                min="1"
+                max="60"
+                disabled={sessionTimeoutLoading}
+              />
+              <SettingsDescription theme={theme}>
+                Время, которое пользователь имеет для старта мойки после назначения бокса (от 1 до 60 минут)
+              </SettingsDescription>
+            </SettingsField>
+
+            <ButtonGroup>
+              <Button 
+                theme={theme} 
+                onClick={handleSessionTimeoutSave} 
+                disabled={sessionTimeoutLoading}
+              >
+                {sessionTimeoutLoading ? 'Сохранение...' : 'Сохранить время ожидания старта мойки'}
               </Button>
             </ButtonGroup>
           </SettingsContainer>

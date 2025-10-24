@@ -22,6 +22,10 @@ const (
 	NotificationTypeSessionCompletingSoon NotificationType = "session_completing_soon"
 	// NotificationTypeBoxAssigned уведомление о назначении бокса
 	NotificationTypeBoxAssigned NotificationType = "box_assigned"
+	// NotificationTypeSessionCompleted уведомление о завершении мойки
+	NotificationTypeSessionCompleted NotificationType = "session_completed"
+	// NotificationTypeSessionExpiredOrCanceled уведомление о возврате денег при отмене/истечении
+	NotificationTypeSessionExpiredOrCanceled NotificationType = "session_expired_or_canceled"
 )
 
 // NotificationService интерфейс для отправки уведомлений
@@ -206,6 +210,10 @@ func (b *Bot) SendSessionNotification(telegramID int64, notificationType Notific
 		messageText = "Внимание! Через 1 минуту истечет время ожидания начала мойки. Пожалуйста, начните мойку, иначе ваша сессия будет отменена. Деньги возвращены, очередь аннулирована."
 	case NotificationTypeSessionCompletingSoon:
 		messageText = "⚠️ Внимание! Через 5 минут завершится время мойки. Самое время продлить оплаченное время или поторопиться."
+	case NotificationTypeSessionCompleted:
+		messageText = "Ваша мойка закончена, спасибо! Надеюсь, что вам все понравилось! Всегда рады видеть вас снова!"
+	case NotificationTypeSessionExpiredOrCanceled:
+		messageText = "Мы вернули вашу оплату на ваш банковский счет. Обычно деньги поступают быстро, но это зависит от вашего банка"
 	default:
 		return fmt.Errorf("неизвестный тип уведомления: %s", notificationType)
 	}

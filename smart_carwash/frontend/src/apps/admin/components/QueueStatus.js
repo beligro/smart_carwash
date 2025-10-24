@@ -239,8 +239,8 @@ const QueueStatus = () => {
   const getServiceTypeText = (serviceType) => {
     const serviceMap = {
       wash: 'Мойка',
-      air_dry: 'Обдув',
-      vacuum: 'Пылесос'
+      air_dry: 'Воздух для продувки',
+      vacuum: 'Пылеводосос'
     };
     return serviceMap[serviceType] || serviceType;
   };

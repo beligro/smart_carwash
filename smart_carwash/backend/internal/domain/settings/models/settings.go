@@ -19,23 +19,23 @@ type ServiceSetting struct {
 	DeletedAt    gorm.DeletedAt  `json:"-" gorm:"index"`
 }
 
-// GetAvailableRentalTimesRequest представляет запрос на получение доступного времени аренды
+// GetAvailableRentalTimesRequest представляет запрос на получение доступного времени мойки
 type GetAvailableRentalTimesRequest struct {
 	ServiceType string `json:"service_type" binding:"required"`
 }
 
-// GetAvailableRentalTimesResponse представляет ответ на получение доступного времени аренды
+// GetAvailableRentalTimesResponse представляет ответ на получение доступного времени мойки
 type GetAvailableRentalTimesResponse struct {
 	AvailableTimes []int `json:"available_times"`
 }
 
-// UpdateAvailableRentalTimesRequest представляет запрос на обновление доступного времени аренды
+// UpdateAvailableRentalTimesRequest представляет запрос на обновление доступного времени мойки
 type UpdateAvailableRentalTimesRequest struct {
 	ServiceType    string `json:"service_type" binding:"required"`
 	AvailableTimes []int  `json:"available_times" binding:"required"`
 }
 
-// UpdateAvailableRentalTimesResponse представляет ответ на обновление времени аренды
+// UpdateAvailableRentalTimesResponse представляет ответ на обновление времени мойки
 type UpdateAvailableRentalTimesResponse struct {
 	Success bool `json:"success"`
 }
@@ -66,13 +66,13 @@ type AdminUpdatePricesResponse struct {
 	Message string `json:"message"`
 }
 
-// AdminUpdateRentalTimesRequest запрос на обновление времени аренды (админка)
+// AdminUpdateRentalTimesRequest запрос на обновление времени мойки (админка)
 type AdminUpdateRentalTimesRequest struct {
 	ServiceType          string `json:"service_type" binding:"required"`
 	AvailableRentalTimes []int  `json:"available_rental_times" binding:"required"`
 }
 
-// AdminUpdateRentalTimesResponse ответ на обновление времени аренды (админка)
+// AdminUpdateRentalTimesResponse ответ на обновление времени мойки (админка)
 type AdminUpdateRentalTimesResponse struct {
 	Success bool   `json:"success"`
 	Message string `json:"message"`
@@ -126,5 +126,23 @@ type AdminUpdateCleaningTimeoutRequest struct {
 
 // AdminUpdateCleaningTimeoutResponse ответ на обновление времени уборки (админка)
 type AdminUpdateCleaningTimeoutResponse struct {
+	Success bool `json:"success"`
+}
+
+// AdminGetSessionTimeoutRequest запрос на получение времени ожидания старта мойки (админка)
+type AdminGetSessionTimeoutRequest struct{}
+
+// AdminGetSessionTimeoutResponse ответ на получение времени ожидания старта мойки (админка)
+type AdminGetSessionTimeoutResponse struct {
+	TimeoutMinutes int `json:"timeout_minutes"`
+}
+
+// AdminUpdateSessionTimeoutRequest запрос на обновление времени ожидания старта мойки (админка)
+type AdminUpdateSessionTimeoutRequest struct {
+	TimeoutMinutes int `json:"timeout_minutes" binding:"required,min=1,max=60"`
+}
+
+// AdminUpdateSessionTimeoutResponse ответ на обновление времени ожидания старта мойки (админка)
+type AdminUpdateSessionTimeoutResponse struct {
 	Success bool `json:"success"`
 }

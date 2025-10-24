@@ -277,7 +277,7 @@ const SessionDetails = ({ theme = 'light', user }) => {
     }, pollInterval);
   };
   
-  // Функция для загрузки доступного времени аренды
+  // Функция для загрузки доступного времени мойки
   const fetchAvailableRentalTimes = async (serviceType) => {
     try {
       setLoadingRentalTimes(true);
@@ -290,8 +290,8 @@ const SessionDetails = ({ theme = 'light', user }) => {
         }
       }
     } catch (err) {
-      alert('Ошибка при загрузке доступного времени аренды: ' + err.message);
-      setError('Не удалось загрузить доступное время аренды');
+      alert('Ошибка при загрузке доступного времени мойки: ' + err.message);
+      setError('Не удалось загрузить доступное время мойки');
     } finally {
       setLoadingRentalTimes(false);
     }
@@ -755,7 +755,7 @@ const SessionDetails = ({ theme = 'light', user }) => {
         </div>
         
         <div className={`${styles.infoRow} ${themeClass}`}>
-          <div className={`${styles.infoLabel} ${themeClass}`}>Время аренды:</div>
+          <div className={`${styles.infoLabel} ${themeClass}`}>Время мойки:</div>
           <div className={`${styles.infoValue} ${themeClass}`}>
             {session.rental_time_minutes || 5} минут
             {session.extension_time_minutes > 0 && ` (продлено на ${session.extension_time_minutes} минут)`}

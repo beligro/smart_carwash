@@ -33,7 +33,7 @@ type Session struct {
 	ChemistryStartedAt            *time.Time     `json:"chemistry_started_at,omitempty"`                    // Когда была включена химия
 	ChemistryEndedAt              *time.Time     `json:"chemistry_ended_at,omitempty"`                      // Когда была выключена химия
 	CarNumber                     string         `json:"car_number"`                                        // Номер машины в сессии
-	RentalTimeMinutes             int            `json:"rental_time_minutes" gorm:"default:5"`              // Время аренды в минутах
+	RentalTimeMinutes             int            `json:"rental_time_minutes" gorm:"default:5"`              // Время мойки в минутах
 	ExtensionTimeMinutes          int            `json:"extension_time_minutes" gorm:"default:0"`           // Время продления в минутах
 	RequestedExtensionTimeMinutes int            `json:"requested_extension_time_minutes" gorm:"default:0"` // Запрошенное время продления в минутах
 	RequestedExtensionChemistryTimeMinutes int `json:"requested_extension_chemistry_time_minutes" gorm:"default:0"` // Запрошенное время химии при продлении в минутах

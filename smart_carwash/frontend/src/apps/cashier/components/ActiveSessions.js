@@ -338,7 +338,7 @@ const SessionCardComponent = ({ session, onStart, onComplete, onCancel, onEnable
         </DetailItem>
 
         <DetailItem>
-          <DetailLabel theme={theme}>Время аренды</DetailLabel>
+          <DetailLabel theme={theme}>Время мойки</DetailLabel>
           <DetailValue theme={theme}>
             {session.rental_time_minutes} мин
             {session.extension_time_minutes > 0 && ` + ${session.extension_time_minutes} мин`}

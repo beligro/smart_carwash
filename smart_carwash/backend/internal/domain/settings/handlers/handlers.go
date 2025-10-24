@@ -39,12 +39,14 @@ func (h *Handler) RegisterRoutes(router gin.IRouter) {
 		adminSettingsGroup.PUT("/available-chemistry-times", h.AdminUpdateAvailableChemistryTimes)
 		adminSettingsGroup.GET("/cleaning-timeout", h.AdminGetCleaningTimeout)
 		adminSettingsGroup.PUT("/cleaning-timeout", h.AdminUpdateCleaningTimeout)
+		adminSettingsGroup.GET("/session-timeout", h.AdminGetSessionTimeout)
+		adminSettingsGroup.PUT("/session-timeout", h.AdminUpdateSessionTimeout)
 	}
 }
 
-// GetAvailableRentalTimes получает доступное время аренды для определенного типа услуги
-// @Summary Получить доступное время аренды
-// @Description Получает список доступного времени аренды для определенного типа услуги
+// GetAvailableRentalTimes получает доступное время мойки для определенного типа услуги
+// @Summary Получить доступное время мойки
+// @Description Получает список доступного времени мойки для определенного типа услуги
 // @Tags settings
 // @Accept json
 // @Produce json
@@ -73,13 +75,13 @@ func (h *Handler) GetAvailableRentalTimes(c *gin.Context) {
 	c.JSON(http.StatusOK, resp)
 }
 
-// UpdateAvailableRentalTimes обновляет доступное время аренды для определенного типа услуги
-// @Summary Обновить доступное время аренды
-// @Description Обновляет список доступного времени аренды для определенного типа услуги
+// UpdateAvailableRentalTimes обновляет доступное время мойки для определенного типа услуги
+// @Summary Обновить доступное время мойки
+// @Description Обновляет список доступного времени мойки для определенного типа услуги
 // @Tags settings
 // @Accept json
 // @Produce json
-// @Param request body models.UpdateAvailableRentalTimesRequest true "Запрос на обновление времени аренды"
+// @Param request body models.UpdateAvailableRentalTimesRequest true "Запрос на обновление времени мойки"
 // @Success 200 {object} models.UpdateAvailableRentalTimesResponse
 // @Failure 400 {object} map[string]string
 // @Failure 500 {object} map[string]string
@@ -139,7 +141,7 @@ func (h *Handler) AdminUpdatePrices(c *gin.Context) {
 	c.JSON(http.StatusOK, resp)
 }
 
-// AdminUpdateRentalTimes обновляет доступное время аренды (админка)
+// AdminUpdateRentalTimes обновляет доступное время мойки (админка)
 func (h *Handler) AdminUpdateRentalTimes(c *gin.Context) {
 	var req models.AdminUpdateRentalTimesRequest
 
@@ -258,6 +260,43 @@ func (h *Handler) AdminUpdateCleaningTimeout(c *gin.Context) {
 	}
 
 	resp := &models.AdminUpdateCleaningTimeoutResponse{
+		Success: true,
+	}
+
+	c.JSON(http.StatusOK, resp)
+}
+
+// AdminGetSessionTimeout получает время ожидания старта мойки (админка)
+func (h *Handler) AdminGetSessionTimeout(c *gin.Context) {
+	timeout, err := h.service.GetSessionTimeout()
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	resp := &models.AdminGetSessionTimeoutResponse{
+		TimeoutMinutes: timeout,
+	}
+
+	c.JSON(http.StatusOK, resp)
+}
+
+// AdminUpdateSessionTimeout обновляет время ожидания старта мойки (админка)
+func (h *Handler) AdminUpdateSessionTimeout(c *gin.Context) {
+	var req models.AdminUpdateSessionTimeoutRequest
+
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	err := h.service.UpdateSessionTimeout(req.TimeoutMinutes)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	resp := &models.AdminUpdateSessionTimeoutResponse{
 		Success: true,
 	}
 

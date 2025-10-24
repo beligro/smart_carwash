@@ -41,11 +41,11 @@ const ServiceSelector = ({ onSelect, theme = 'light', user }) => {
   // Типы услуг
   const serviceTypes = [
     { id: 'wash', name: 'Мойка', description: 'Стандартная мойка автомобиля', hasChemistry: true },
-    { id: 'air_dry', name: 'Обдув воздухом', description: 'Сушка автомобиля воздухом', hasChemistry: false },
-    { id: 'vacuum', name: 'Пылесос', description: 'Уборка салона пылесосом', hasChemistry: false }
+    { id: 'vacuum', name: 'Пылеводосос', description: 'Уборка салона пылеводососом', hasChemistry: false },
+    { id: 'air_dry', name: 'Воздух для продувки', description: 'Сушка автомобиля воздухом', hasChemistry: false }
   ];
   
-  // Загрузка доступного времени аренды при выборе услуги
+  // Загрузка доступного времени мойки при выборе услуги
   useEffect(() => {
     try {
       if (selectedService) {
@@ -56,7 +56,7 @@ const ServiceSelector = ({ onSelect, theme = 'light', user }) => {
             setSelectedRentalTime(data.available_times && data.available_times.length > 0 ? data.available_times[0] : 5);
           })
           .catch(error => {
-            console.error('Ошибка при загрузке времени аренды:', error);
+            console.error('Ошибка при загрузке времени мойки:', error);
             setRentalTimes([5]);
             setSelectedRentalTime(5);
           })
@@ -68,7 +68,7 @@ const ServiceSelector = ({ onSelect, theme = 'light', user }) => {
         setSelectedRentalTime(null);
       }
     } catch (error) {
-      console.error('Ошибка в useEffect для загрузки времени аренды:', error);
+      console.error('Ошибка в useEffect для загрузки времени мойки:', error);
       setRentalTimes([5]);
       setSelectedRentalTime(5);
       setLoading(false);
@@ -76,12 +76,30 @@ const ServiceSelector = ({ onSelect, theme = 'light', user }) => {
   }, [selectedService]);
 
   // Обработчик выбора услуги
-  const handleServiceSelect = (serviceType) => {
+  const handleServiceSelect = async (serviceType) => {
     try {
       setSelectedService(serviceType);
-      // Если выбрана услуга без химии, сбрасываем флаг
-      if (!serviceType.hasChemistry) {
+      // Если выбрана мойка, включаем химию по умолчанию
+      if (serviceType.id === 'wash') {
+        setWithChemistry(true);
+        // Загружаем доступное время химии для мойки
+        setLoadingChemistryTimes(true);
+        try {
+          const data = await ApiService.getAvailableChemistryTimes(serviceType.id);
+          setChemistryTimes(data.available_chemistry_times || [3, 4, 5]);
+          setSelectedChemistryTime(data.available_chemistry_times ? data.available_chemistry_times[0] : 3);
+        } catch (error) {
+          console.error('Ошибка при загрузке времени химии для мойки:', error);
+          setChemistryTimes([3, 4, 5]);
+          setSelectedChemistryTime(3);
+        } finally {
+          setLoadingChemistryTimes(false);
+        }
+      } else if (!serviceType.hasChemistry) {
+        // Если выбрана услуга без химии, сбрасываем флаг
         setWithChemistry(false);
+        setChemistryTimes([]);
+        setSelectedChemistryTime(null);
       }
     } catch (error) {
       console.error('Ошибка в handleServiceSelect:', error);
@@ -118,7 +136,7 @@ const ServiceSelector = ({ onSelect, theme = 'light', user }) => {
     }
   };
   
-  // Обработчик выбора времени аренды
+  // Обработчик выбора времени мойки
   const handleRentalTimeSelect = (time) => {
     try {
       setSelectedRentalTime(time);
@@ -333,7 +351,7 @@ const ServiceSelector = ({ onSelect, theme = 'light', user }) => {
           )}
           
           <Card theme={theme} className={styles.optionCard}>
-            <h3 className={`${styles.optionTitle} ${themeClass}`}>Выберите время аренды</h3>
+            <h3 className={`${styles.optionTitle} ${themeClass}`}>Выберите время мойки</h3>
             {loading ? (
               <p className={`${styles.loadingText} ${themeClass}`}>Загрузка доступного времени...</p>
             ) : (
