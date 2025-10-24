@@ -820,9 +820,9 @@ func (s *ServiceImpl) ExtendSessionWithPayment(req *models.ExtendSessionWithPaym
 		return nil, fmt.Errorf("сессия должна быть в статусе active для продления")
 	}
 
-	// Проверяем, что время продления положительное
-	if req.ExtensionTimeMinutes <= 0 {
-		return nil, fmt.Errorf("время продления должно быть положительным числом")
+	// Проверяем, что время продления не отрицательное (разрешаем 0 для докупки только химии)
+	if req.ExtensionTimeMinutes < 0 {
+		return nil, fmt.Errorf("время продления не может быть отрицательным")
 	}
 
 	// Сохраняем запрошенное время продления и время химии в сессии
@@ -848,7 +848,7 @@ func (s *ServiceImpl) ExtendSessionWithPayment(req *models.ExtendSessionWithPaym
 	priceResp, err := s.paymentService.CalculateExtensionPrice(&paymentModels.CalculateExtensionPriceRequest{
 		ServiceType:                   session.ServiceType,
 		ExtensionTimeMinutes:          req.ExtensionTimeMinutes,
-		WithChemistry:                 session.WithChemistry,
+		WithChemistry:                 session.WithChemistry || req.ExtensionChemistryTimeMinutes > 0,
 		ExtensionChemistryTimeMinutes: req.ExtensionChemistryTimeMinutes,
 	})
 	if err != nil {
@@ -1717,27 +1717,36 @@ func (s *ServiceImpl) UpdateSessionExtension(sessionID uuid.UUID, extensionTimeM
 	session.RequestedExtensionTimeMinutes = 0 // Очищаем запрошенное время
 
 	// НОВАЯ ЛОГИКА: Обрабатываем химию при продлении
-	if session.WithChemistry && session.RequestedExtensionChemistryTimeMinutes > 0 {
-		// Применяем логику химии при продлении
-		if session.WasChemistryOn && session.ChemistryEndedAt == nil {
-			// Химия активна - продлеваем на докупленное время
-			session.ChemistryTimeMinutes += session.RequestedExtensionChemistryTimeMinutes
-			logger.Printf("UpdateSessionExtension: химия активна, продлеваем на %d минут, общее время %d минут, SessionID=%s",
-				session.RequestedExtensionChemistryTimeMinutes, session.ChemistryTimeMinutes, session.ID)
-		} else if session.ChemistryStartedAt == nil {
-			// Химия не использована - даем на первоначальное + докупленное время
-			totalChemistryTime := session.ChemistryTimeMinutes + session.RequestedExtensionChemistryTimeMinutes
-			session.ChemistryTimeMinutes = totalChemistryTime
-			logger.Printf("UpdateSessionExtension: химия не использована, общее время %d минут, SessionID=%s",
-				totalChemistryTime, session.ID)
-		} else {
-			// Химия уже использована - даем только на докупленное время и сбрасываем флаги
+	if session.RequestedExtensionChemistryTimeMinutes > 0 {
+		// Если это докупка химии (ExtensionTimeMinutes = 0) и изначально химия не была куплена
+		if extensionTimeMinutes == 0 && !session.WithChemistry {
+			// Докупка химии для мойки без химии - добавляем химию
+			session.WithChemistry = true
 			session.ChemistryTimeMinutes = session.RequestedExtensionChemistryTimeMinutes
-			session.ChemistryStartedAt = nil
-			session.ChemistryEndedAt = nil
-			session.WasChemistryOn = false
-			logger.Printf("UpdateSessionExtension: химия использована, новое время %d минут, сброшены флаги, SessionID=%s",
+			logger.Printf("UpdateSessionExtension: докупка химии для мойки без химии, время %d минут, SessionID=%s",
 				session.RequestedExtensionChemistryTimeMinutes, session.ID)
+		} else if session.WithChemistry {
+			// Применяем логику химии при продлении для существующей химии
+			if session.WasChemistryOn && session.ChemistryEndedAt == nil {
+				// Химия активна - продлеваем на докупленное время
+				session.ChemistryTimeMinutes += session.RequestedExtensionChemistryTimeMinutes
+				logger.Printf("UpdateSessionExtension: химия активна, продлеваем на %d минут, общее время %d минут, SessionID=%s",
+					session.RequestedExtensionChemistryTimeMinutes, session.ChemistryTimeMinutes, session.ID)
+			} else if session.ChemistryStartedAt == nil {
+				// Химия не использована - даем на первоначальное + докупленное время
+				totalChemistryTime := session.ChemistryTimeMinutes + session.RequestedExtensionChemistryTimeMinutes
+				session.ChemistryTimeMinutes = totalChemistryTime
+				logger.Printf("UpdateSessionExtension: химия не использована, общее время %d минут, SessionID=%s",
+					totalChemistryTime, session.ID)
+			} else {
+				// Химия уже использована - даем только на докупленное время и сбрасываем флаги
+				session.ChemistryTimeMinutes = session.RequestedExtensionChemistryTimeMinutes
+				session.ChemistryStartedAt = nil
+				session.ChemistryEndedAt = nil
+				session.WasChemistryOn = false
+				logger.Printf("UpdateSessionExtension: химия использована, новое время %d минут, сброшены флаги, SessionID=%s",
+					session.RequestedExtensionChemistryTimeMinutes, session.ID)
+			}
 		}
 
 		// Очищаем запрошенное время химии при продлении
@@ -2272,4 +2281,98 @@ func (s *ServiceImpl) ReassignSession(req *models.ReassignSessionRequest) (*mode
 		Message: "Сессия успешно переназначена на другой бокс",
 		Session: *session,
 	}, nil
+}
+
+// CheckAndAutoEnableChemistry проверяет и автоматически включает химию для сессий, где время подходит к концу
+func (s *ServiceImpl) CheckAndAutoEnableChemistry() error {
+	// Если сервис пользователей или телеграм бот не инициализированы, выходим
+	if s.userService == nil || s.telegramBot == nil {
+		return nil
+	}
+
+	// Получаем все сессии со статусом "active"
+	activeSessions, err := s.repo.GetSessionsByStatus(models.SessionStatusActive)
+	if err != nil {
+		return err
+	}
+
+	// Если нет активных сессий, выходим
+	if len(activeSessions) == 0 {
+		return nil
+	}
+
+	// Текущее время
+	now := time.Now()
+
+	// Проверяем каждую активную сессию
+	for _, session := range activeSessions {
+		// Проверяем, что это мойка с химией
+		if session.ServiceType != "wash" || !session.WithChemistry {
+			continue
+		}
+
+		// Проверяем, что химия еще не была включена
+		if session.WasChemistryOn {
+			continue
+		}
+
+		// Проверяем, что есть время химии для использования
+		if session.ChemistryTimeMinutes <= 0 {
+			continue
+		}
+
+		// Время начала сессии - это время последнего обновления статуса на active
+		startTime := session.StatusUpdatedAt
+
+		// Получаем время мойки в минутах (по умолчанию 5 минут)
+		rentalTime := session.RentalTimeMinutes
+		if rentalTime <= 0 {
+			rentalTime = 5
+		}
+
+		// Учитываем время продления, если оно есть
+		totalTime := rentalTime + session.ExtensionTimeMinutes
+
+		// Прошедшее время с момента начала сессии
+		elapsedTime := now.Sub(startTime)
+
+		// Оставшееся время мойки
+		remainingTime := time.Duration(totalTime)*time.Minute - elapsedTime
+
+		// Если оставшегося времени меньше чем время химии, включаем химию автоматически
+		if remainingTime < time.Duration(session.ChemistryTimeMinutes)*time.Minute {
+			logger.Printf("CheckAndAutoEnableChemistry: автоматическое включение химии - SessionID=%s, оставшееся время=%v, время химии=%d минут", 
+				session.ID, remainingTime, session.ChemistryTimeMinutes)
+
+			// Включаем химию
+			enableReq := &models.EnableChemistryRequest{
+				SessionID: session.ID,
+			}
+
+			_, err := s.EnableChemistry(enableReq)
+			if err != nil {
+				logger.Printf("CheckAndAutoEnableChemistry: ошибка автоматического включения химии - SessionID=%s, error=%v", session.ID, err)
+				continue
+			}
+
+			// Отправляем уведомление пользователю
+			user, err := s.userService.GetUserByID(session.UserID)
+			if err != nil {
+				logger.Printf("CheckAndAutoEnableChemistry: ошибка получения пользователя для уведомления - UserID=%s, error=%v", session.UserID, err)
+				continue
+			}
+
+			// Отправляем уведомление через Telegram
+			err = s.telegramBot.SendSessionNotification(user.TelegramID, "chemistry_auto_enabled")
+			if err != nil {
+				logger.Printf("CheckAndAutoEnableChemistry: ошибка отправки уведомления - UserID=%s, TelegramID=%s, error=%v", 
+					user.ID, user.TelegramID, err)
+			} else {
+				logger.Printf("CheckAndAutoEnableChemistry: уведомление отправлено - UserID=%s, TelegramID=%s", 
+					user.ID, user.TelegramID)
+			}
+		}
+	}
+
+	return nil
 }

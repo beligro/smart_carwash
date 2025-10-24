@@ -174,7 +174,8 @@ const PaymentPage = ({ session, payment: initialPayment, onPaymentComplete, onPa
         
         if (paymentType === 'extension') {
           // Для продления проверяем, что requested_extension_time_minutes стал 0
-          if (updatedSession.session.requested_extension_time_minutes === 0) {
+          // И что платеж действительно успешен
+          if (updatedSession.session.requested_extension_time_minutes === 0 && updatedSession.session.requested_extension_chemistry_time_minutes === 0) {
             // Продление успешно применено
             clearInterval(checkInterval);
             setLoading(false);

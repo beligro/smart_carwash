@@ -28,6 +28,8 @@ const (
 	NotificationTypeSessionExpiredOrCanceled NotificationType = "session_expired_or_canceled"
 	// NotificationTypeSessionAutoStarted уведомление об автоматическом запуске сессии
 	NotificationTypeSessionAutoStarted NotificationType = "session_auto_started"
+	// NotificationTypeChemistryAutoEnabled уведомление об автоматическом включении химии
+	NotificationTypeChemistryAutoEnabled NotificationType = "chemistry_auto_enabled"
 )
 
 // NotificationService интерфейс для отправки уведомлений
@@ -205,6 +207,8 @@ func (b *Bot) SendSessionNotification(telegramID int64, notificationType Notific
 		messageText = "Мы вернули вашу оплату на ваш банковский счет. Обычно деньги поступают быстро, но это зависит от вашего банка"
 	case NotificationTypeSessionAutoStarted:
 		messageText = "Ваша сессия автоматически началась! Перейдите в мини приложение по кнопке в левом нижнем углу ↙️↙️↙️"
+	case NotificationTypeChemistryAutoEnabled:
+		messageText = "⚠️ Внимание! Химия была включена автоматически, так как ваше время подходит к концу."
 	default:
 		return fmt.Errorf("неизвестный тип уведомления: %s", notificationType)
 	}

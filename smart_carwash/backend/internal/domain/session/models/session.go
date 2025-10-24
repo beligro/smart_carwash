@@ -181,7 +181,7 @@ type ExtendSessionResponse struct {
 // ExtendSessionWithPaymentRequest представляет запрос на продление сессии с оплатой
 type ExtendSessionWithPaymentRequest struct {
 	SessionID                     uuid.UUID `json:"session_id" binding:"required"`
-	ExtensionTimeMinutes          int       `json:"extension_time_minutes" binding:"required"`
+	ExtensionTimeMinutes          int       `json:"extension_time_minutes"`
 	ExtensionChemistryTimeMinutes int       `json:"extension_chemistry_time_minutes"` // Время химии при продлении (опционально)
 }
 

@@ -38,13 +38,9 @@ const ChemistryStatus = ({ session }) => {
     return () => clearInterval(interval);
   }, [session]);
 
-  // Если химия выключена
+  // Если химия выключена - не показываем информацию, просто возвращаем null
   if (session.was_chemistry_on && session.chemistry_ended_at) {
-    return (
-      <div style={{ marginTop: '8px', padding: '10px', backgroundColor: '#f5f5f5', borderRadius: '6px', fontSize: '12px', color: '#666' }}>
-        ✓ Химия была использована ({session.chemistry_time_minutes} мин)
-      </div>
-    );
+    return null;
   }
 
   // Если химия активна - показываем отдельный таймер
@@ -149,6 +145,7 @@ const SessionDetails = ({ theme = 'light', user }) => {
   const [actionLoading, setActionLoading] = useState(false);
   const [boxChanged, setBoxChanged] = useState(false);
   const [showExtendModal, setShowExtendModal] = useState(false);
+  const [showBuyChemistryModal, setShowBuyChemistryModal] = useState(false);
   const [availableRentalTimes, setAvailableRentalTimes] = useState([]);
   const [selectedExtensionTime, setSelectedExtensionTime] = useState(null);
   const [loadingRentalTimes, setLoadingRentalTimes] = useState(false);
@@ -168,7 +165,7 @@ const SessionDetails = ({ theme = 'light', user }) => {
   // Проверяем, можно ли отменить сессию
   const canCancelSession = session && ['created', 'in_queue', 'assigned'].includes(session.status);
   
-  // Проверяем, можно ли продлить сессию (только за 3 минуты до конца и если не запрошено продление)
+  // Проверяем, можно ли продлить сессию (всегда когда сессия активна и время не истекло)
   const canExtendSession = session && 
     session.status === 'active' && 
     timeLeft !== null && 
@@ -180,6 +177,11 @@ const SessionDetails = ({ theme = 'light', user }) => {
     session.requested_extension_time_minutes > 0 && // Запрошено продление
     payment && 
     (payment.status === 'failed' || payment.status === 'pending'); // Но оплата неуспешна
+  
+  // Проверяем, можно ли докупить химию (химия не была куплена или полностью использована)
+  const canBuyChemistry = session && 
+    session.status === 'active' && 
+    session.service_type === 'wash';
   
   // Получаем информацию о возврате
   const refundInfo = sessionPayments ? formatSessionRefundInfo(sessionPayments) : formatRefundInfo(payment);
@@ -345,6 +347,40 @@ const SessionDetails = ({ theme = 'light', user }) => {
     }
   };
 
+  // Функция для докупки химии
+  const handleBuyChemistry = async () => {
+    if (!selectedChemistryTime) {
+      setError('Выберите время химии');
+      return;
+    }
+
+    try {
+      setActionLoading(true);
+      setError(null);
+      
+      // Вызываем API для докупки химии (ExtensionTimeMinutes = 0, ExtensionChemistryTimeMinutes = selectedChemistryTime)
+      const response = await ApiService.extendSessionWithPayment(sessionId, 0, selectedChemistryTime);
+      
+      if (response && response.payment) {
+        setPayment(response.payment);
+        // Перенаправляем на страницу оплаты
+        navigate('/telegram/payment', { 
+          state: { 
+            session: response.session,
+            payment: response.payment,
+            paymentType: 'extension',
+            sessionId: sessionId
+          } 
+        });
+      }
+    } catch (err) {
+      alert('Ошибка при создании платежа докупки химии: ' + err.message);
+      setError('Не удалось создать платеж докупки химии. Пожалуйста, попробуйте еще раз.');
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
   // Функция для открытия модального окна продления
   const openExtendModal = () => {
     if (session && session.service_type) {
@@ -364,6 +400,23 @@ const SessionDetails = ({ theme = 'light', user }) => {
   // Функция для закрытия модального окна продления
   const closeExtendModal = () => {
     setShowExtendModal(false);
+  };
+
+  // Функция для открытия модального окна докупки химии
+  const openBuyChemistryModal = () => {
+    if (session && session.service_type === 'wash') {
+      // Сбрасываем предыдущие значения
+      setSelectedChemistryTime(null);
+      
+      // Загружаем доступное время химии
+      fetchAvailableChemistryTimes(session.service_type);
+      setShowBuyChemistryModal(true);
+    }
+  };
+
+  // Функция для закрытия модального окна докупки химии
+  const closeBuyChemistryModal = () => {
+    setShowBuyChemistryModal(false);
   };
 
   // Функция для выбора времени продления
@@ -672,6 +725,17 @@ const SessionDetails = ({ theme = 'light', user }) => {
                   🔄 Повторить продление
                 </Button>
               )}
+              {canBuyChemistry && (
+                <Button 
+                  theme={theme} 
+                  onClick={openBuyChemistryModal}
+                  disabled={actionLoading}
+                  loading={actionLoading}
+                  style={{ width: '100%', backgroundColor: '#9C27B0' }}
+                >
+                  🧪 Докупить химию
+                </Button>
+              )}
               <Button 
                 theme={theme} 
                 variant="danger"
@@ -893,13 +957,6 @@ const SessionDetails = ({ theme = 'light', user }) => {
                         <p className={`${styles.loadingText} ${themeClass}`}>Загрузка времени химии...</p>
                       ) : (
                         <div className={styles.rentalTimeGrid}>
-                          <div 
-                            className={`${styles.rentalTimeItem} ${selectedChemistryTime === 0 ? styles.selectedTime : ''}`}
-                            onClick={() => handleChemistryTimeSelect(0)}
-                          >
-                            <span className={`${styles.rentalTimeValue} ${themeClass}`}>0</span>
-                            <span className={`${styles.rentalTimeUnit} ${themeClass}`}>мин</span>
-                          </div>
                           {availableChemistryTimes.map((time) => (
                             <div 
                               key={time} 
@@ -931,6 +988,56 @@ const SessionDetails = ({ theme = 'light', user }) => {
                       loading={actionLoading}
                     >
                       Продлить
+                    </Button>
+                  </div>
+                </>
+              )}
+              
+              {error && <div className={`${styles.errorMessage} ${themeClass}`}>{error}</div>}
+            </Card>
+          </div>
+        )}
+        
+        {/* Модальное окно для докупки химии */}
+        {showBuyChemistryModal && (
+          <div className={styles.modalOverlay}>
+            <Card theme={theme} className={styles.modal}>
+              <h3 className={`${styles.modalTitle} ${themeClass}`}>Докупка химии</h3>
+              
+              {loadingChemistryTimes ? (
+                <p className={`${styles.loadingText} ${themeClass}`}>Загрузка доступного времени химии...</p>
+              ) : (
+                <>
+                  <p className={`${styles.modalText} ${themeClass}`}>Выберите время химии:</p>
+                  <div className={styles.rentalTimeGrid}>
+                    {availableChemistryTimes.map((time) => (
+                      <div 
+                        key={time} 
+                        className={`${styles.rentalTimeItem} ${selectedChemistryTime === time ? styles.selectedTime : ''}`}
+                        onClick={() => handleChemistryTimeSelect(time)}
+                      >
+                        <span className={`${styles.rentalTimeValue} ${themeClass}`}>{time}</span>
+                        <span className={`${styles.rentalTimeUnit} ${themeClass}`}>мин</span>
+                      </div>
+                    ))}
+                  </div>
+                  
+                  <div className={styles.modalButtons}>
+                    <Button 
+                      theme={theme} 
+                      variant="secondary"
+                      onClick={closeBuyChemistryModal}
+                      disabled={actionLoading}
+                    >
+                      Отмена
+                    </Button>
+                    <Button 
+                      theme={theme} 
+                      onClick={handleBuyChemistry}
+                      disabled={actionLoading || !selectedChemistryTime}
+                      loading={actionLoading}
+                    >
+                      Докупить
                     </Button>
                   </div>
                 </>

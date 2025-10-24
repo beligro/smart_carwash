@@ -294,8 +294,14 @@ func (h *Handler) extendSessionWithPayment(c *gin.Context) {
 		return
 	}
 
+	// Валидация: хотя бы одно из полей должно быть больше 0
+	if req.ExtensionTimeMinutes <= 0 && req.ExtensionChemistryTimeMinutes <= 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "должно быть указано время продления или время химии"})
+		return
+	}
+
 	// Логируем мета-параметр для поиска
-	logger.WithContext(c).Infof("Запрос на продление сессии с оплатой: SessionID=%s, ExtensionTime=%d", req.SessionID, req.ExtensionTimeMinutes)
+	logger.WithContext(c).Infof("Запрос на продление сессии с оплатой: SessionID=%s, ExtensionTime=%d, ExtensionChemistryTime=%d", req.SessionID, req.ExtensionTimeMinutes, req.ExtensionChemistryTimeMinutes)
 
 	// Продлеваем сессию с оплатой
 	response, err := h.service.ExtendSessionWithPayment(&req)

@@ -276,6 +276,23 @@ func main() {
 		}
 	}()
 
+	// Запускаем периодическую задачу для автоматического включения химии каждые 5 секунд
+	go func() {
+		ticker := time.NewTicker(5 * time.Second)
+		defer ticker.Stop()
+
+		for {
+			select {
+			case <-ticker.C:
+				if err := sessionSvc.CheckAndAutoEnableChemistry(); err != nil {
+					log.WithField("error", err).Error("Ошибка автоматического включения химии")
+				}
+			case <-quit:
+				return
+			}
+		}
+	}()
+
 	// Запускаем периодическую задачу для проверки и истечения зарезервированных сессий
 	go func() {
 		ticker := time.NewTicker(5 * time.Second)
