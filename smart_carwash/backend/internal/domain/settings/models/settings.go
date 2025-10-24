@@ -146,3 +146,21 @@ type AdminUpdateSessionTimeoutRequest struct {
 type AdminUpdateSessionTimeoutResponse struct {
 	Success bool `json:"success"`
 }
+
+// AdminGetCooldownTimeoutRequest запрос на получение времени блокировки бокса после завершения сессии (админка)
+type AdminGetCooldownTimeoutRequest struct{}
+
+// AdminGetCooldownTimeoutResponse ответ на получение времени блокировки бокса после завершения сессии (админка)
+type AdminGetCooldownTimeoutResponse struct {
+	TimeoutMinutes int `json:"timeout_minutes"`
+}
+
+// AdminUpdateCooldownTimeoutRequest запрос на обновление времени блокировки бокса после завершения сессии (админка)
+type AdminUpdateCooldownTimeoutRequest struct {
+	TimeoutMinutes int `json:"timeout_minutes" binding:"required,min=1,max=60"`
+}
+
+// AdminUpdateCooldownTimeoutResponse ответ на обновление времени блокировки бокса после завершения сессии (админка)
+type AdminUpdateCooldownTimeoutResponse struct {
+	Success bool `json:"success"`
+}

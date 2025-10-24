@@ -176,7 +176,7 @@ const ApiService = {
       return response.data;
     } catch (error) {
       console.error('Ошибка при получении доступного времени мойки:', error);
-      return { availableTimes: [5] }; // Значение по умолчанию
+      return { availableTimes: [15, 20, 30, 60, 90] }; // Значение по умолчанию
     }
   },
 
@@ -187,7 +187,7 @@ const ApiService = {
       return response.data;
     } catch (error) {
       console.error('Ошибка при получении доступного времени химии:', error);
-      return { available_chemistry_times: [3, 4, 5] }; // Значение по умолчанию
+      return { available_chemistry_times: [3, 4, 10] }; // Значение по умолчанию
     }
   },
 
@@ -823,6 +823,30 @@ const ApiService = {
       return response.data;
     } catch (error) {
       console.error('Ошибка при обновлении времени ожидания старта мойки:', error);
+      throw error;
+    }
+  },
+
+  // Получение времени блокировки бокса после завершения сессии (админка)
+  getCooldownTimeout: async () => {
+    try {
+      const response = await api.get('/admin/settings/cooldown-timeout');
+      return response.data;
+    } catch (error) {
+      console.error('Ошибка при получении времени блокировки бокса:', error);
+      throw error;
+    }
+  },
+
+  // Обновление времени блокировки бокса после завершения сессии (админка)
+  updateCooldownTimeout: async (timeoutMinutes) => {
+    try {
+      const response = await api.put('/admin/settings/cooldown-timeout', {
+        timeout_minutes: timeoutMinutes,
+      });
+      return response.data;
+    } catch (error) {
+      console.error('Ошибка при обновлении времени блокировки бокса:', error);
       throw error;
     }
   },

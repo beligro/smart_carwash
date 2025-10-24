@@ -277,15 +277,9 @@ const WashInfo = ({ washInfo, theme = 'light', onCreateSession, onViewHistory, o
             {userSession.status === 'assigned' && timeLeft !== null && (
               <>
                 <p className={`${styles.sessionInfo} ${themeClass}`} style={{ marginTop: '12px', fontWeight: 'bold' }}>
-                  Время до истечения резерва:
+                  Время до старта мойки:
                 </p>
                 <Timer seconds={timeLeft} theme={theme} />
-                <p className={`${styles.sessionInfo} ${themeClass}`} style={{ 
-                  color: timeLeft <= 60 ? '#C62828' : 'inherit', 
-                  textAlign: 'center' 
-                }}>
-                  Начните мойку до истечения времени, иначе резерв будет снят
-                </p>
               </>
             )}
             

@@ -293,6 +293,23 @@ func main() {
 		}
 	}()
 
+	// Запускаем периодическую задачу для очистки истекших cooldown'ов
+	go func() {
+		ticker := time.NewTicker(1 * time.Minute) // Проверяем каждую минуту
+		defer ticker.Stop()
+
+		for {
+			select {
+			case <-ticker.C:
+				if err := washboxSvc.CheckCooldownExpired(); err != nil {
+					log.WithField("error", err).Error("Ошибка очистки истекших cooldown'ов")
+				}
+			case <-quit:
+				return
+			}
+		}
+	}()
+
 	// Запускаем периодическую задачу для автоматического завершения просроченных уборок
 	go func() {
 		ticker := time.NewTicker(30 * time.Second) // Проверяем каждые 30 секунд

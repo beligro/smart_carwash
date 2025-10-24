@@ -41,6 +41,8 @@ func (h *Handler) RegisterRoutes(router gin.IRouter) {
 		adminSettingsGroup.PUT("/cleaning-timeout", h.AdminUpdateCleaningTimeout)
 		adminSettingsGroup.GET("/session-timeout", h.AdminGetSessionTimeout)
 		adminSettingsGroup.PUT("/session-timeout", h.AdminUpdateSessionTimeout)
+		adminSettingsGroup.GET("/cooldown-timeout", h.AdminGetCooldownTimeout)
+		adminSettingsGroup.PUT("/cooldown-timeout", h.AdminUpdateCooldownTimeout)
 	}
 }
 
@@ -297,6 +299,43 @@ func (h *Handler) AdminUpdateSessionTimeout(c *gin.Context) {
 	}
 
 	resp := &models.AdminUpdateSessionTimeoutResponse{
+		Success: true,
+	}
+
+	c.JSON(http.StatusOK, resp)
+}
+
+// AdminGetCooldownTimeout получает время блокировки бокса после завершения сессии (админка)
+func (h *Handler) AdminGetCooldownTimeout(c *gin.Context) {
+	timeout, err := h.service.GetCooldownTimeout()
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	resp := &models.AdminGetCooldownTimeoutResponse{
+		TimeoutMinutes: timeout,
+	}
+
+	c.JSON(http.StatusOK, resp)
+}
+
+// AdminUpdateCooldownTimeout обновляет время блокировки бокса после завершения сессии (админка)
+func (h *Handler) AdminUpdateCooldownTimeout(c *gin.Context) {
+	var req models.AdminUpdateCooldownTimeoutRequest
+
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	err := h.service.UpdateCooldownTimeout(req.TimeoutMinutes)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	resp := &models.AdminUpdateCooldownTimeoutResponse{
 		Success: true,
 	}
 

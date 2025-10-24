@@ -172,9 +172,7 @@ const SessionDetails = ({ theme = 'light', user }) => {
   const canExtendSession = session && 
     session.status === 'active' && 
     timeLeft !== null && 
-    timeLeft <= 1000 && // 5 минут для тестирования
-    timeLeft > 0 && // Время еще не истекло
-    session.requested_extension_time_minutes === 0; // Не запрошено продление
+    timeLeft > 0; // Время еще не истекло
   
   // Проверяем, можно ли продлить сессию при неуспешной оплате продления
   const canRetryExtension = session && 
@@ -627,11 +625,8 @@ const SessionDetails = ({ theme = 'light', user }) => {
         
         {session.status === 'assigned' && timeLeft !== null && (
           <>
-            <h2 className={`${styles.title} ${themeClass}`} style={{ marginTop: '20px' }}>Время до истечения резерва</h2>
+            <h2 className={`${styles.title} ${themeClass}`} style={{ marginTop: '20px' }}>Время до старта мойки</h2>
             <Timer seconds={timeLeft} theme={theme} />
-            <p style={{ textAlign: 'center', marginTop: '10px', color: timeLeft <= 60 ? '#C62828' : 'inherit' }}>
-              Начните мойку до истечения времени, иначе резерв будет снят
-            </p>
           </>
         )}
         

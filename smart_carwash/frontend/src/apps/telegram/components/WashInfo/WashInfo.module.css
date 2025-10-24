@@ -110,10 +110,6 @@
   background-color: #F44336;
 }
 
-.statusDot.expired {
-  background-color: #795548;
-}
-
 .statusText {
   font-size: 14px;
 }

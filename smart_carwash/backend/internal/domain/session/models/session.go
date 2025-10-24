@@ -16,7 +16,6 @@ const (
 	SessionStatusActive        = "active"         // Активна (клиент приступил к мойке)
 	SessionStatusComplete      = "complete"       // Завершена
 	SessionStatusCanceled      = "canceled"       // Отменена
-	SessionStatusExpired       = "expired"        // Истек срок резервирования
 )
 
 // Session представляет сессию мойки
@@ -47,6 +46,7 @@ type Session struct {
 	CreatedAt                     time.Time      `json:"created_at"`
 	UpdatedAt                     time.Time      `json:"updated_at"`
 	StatusUpdatedAt               time.Time      `json:"status_updated_at"` // Время последнего обновления статуса
+	SessionTimeoutMinutes         int            `json:"session_timeout_minutes" gorm:"-"` // Время ожидания старта мойки в минутах (виртуальное поле)
 	DeletedAt                     gorm.DeletedAt `json:"-" gorm:"index"`
 }
 
@@ -232,7 +232,7 @@ type AdminListSessionsRequest struct {
 	UserID      *uuid.UUID `json:"user_id"`
 	BoxID       *uuid.UUID `json:"box_id"`
 	BoxNumber   *int       `json:"box_number"`
-	Status      *string    `json:"status" binding:"omitempty,oneof=created in_queue payment_failed assigned active complete canceled expired"`
+	Status      *string    `json:"status" binding:"omitempty,oneof=created in_queue payment_failed assigned active complete canceled"`
 	ServiceType *string    `json:"service_type" binding:"omitempty,oneof=wash air_dry vacuum"`
 	DateFrom    *time.Time `json:"date_from"`
 	DateTo      *time.Time `json:"date_to"`

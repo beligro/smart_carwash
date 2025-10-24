@@ -41,8 +41,9 @@ const useTimer = (session) => {
       
       const now = new Date();
       
-      // Общая продолжительность резерва - 3 минуты (180 секунд)
-      const totalDuration = 180; // в секундах
+      // Получаем время ожидания старта мойки из настроек (по умолчанию 3 минуты)
+      const sessionTimeoutMinutes = sessionData.session_timeout_minutes || 3;
+      const totalDuration = sessionTimeoutMinutes * 60; // в секундах
       
       // Прошедшее время в секундах
       const elapsedSeconds = differenceInSeconds(now, assignedTime);

@@ -45,22 +45,22 @@ func DahuaAuthMiddleware() gin.HandlerFunc {
 			return
 		}
 
-		// 2. Проверка IP whitelist
-		clientIP := getClientIP(c)
-		allowedIPs := getAllowedIPs()
+		// 2. Проверка IP whitelist (временно отключена)
+		// clientIP := getClientIP(c)
+		// allowedIPs := getAllowedIPs()
 
-		if !isIPAllowed(clientIP, allowedIPs) {
-			c.JSON(403, gin.H{
-				"success": false,
-				"message": "IP адрес не разрешен",
-			})
-			c.Abort()
-			return
-		}
+		// if !isIPAllowed(clientIP, allowedIPs) {
+		// 	c.JSON(403, gin.H{
+		// 		"success": false,
+		// 		"message": "IP адрес не разрешен",
+		// 	})
+		// 	c.Abort()
+		// 	return
+		// }
 
 		// Добавляем информацию об аутентификации в контекст
 		c.Set("dahua_authenticated", true)
-		c.Set("dahua_client_ip", clientIP)
+		// c.Set("dahua_client_ip", clientIP) // временно отключено
 		c.Set("dahua_username", username)
 
 		c.Next()

@@ -183,7 +183,6 @@ const MobileSessionCard = styled.div`
       case 'active': return '#28a745';
       case 'complete': return '#6c757d';
       case 'canceled': return '#dc3545';
-      case 'expired': return '#6c757d';
       default: return '#6c757d';
     }
   }};
@@ -253,7 +252,6 @@ const StatusBadge = styled.span`
       case 'active': return '#28a745';
       case 'complete': return '#6c757d';
       case 'canceled': return '#dc3545';
-      case 'expired': return '#6c757d';
       default: return '#6c757d';
     }
   }};

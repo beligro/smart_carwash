@@ -26,6 +26,10 @@ type Service interface {
 	// Методы для управления временем ожидания старта мойки
 	GetSessionTimeout() (int, error)
 	UpdateSessionTimeout(timeoutMinutes int) error
+
+	// Методы для управления временем блокировки бокса после завершения сессии
+	GetCooldownTimeout() (int, error)
+	UpdateCooldownTimeout(timeoutMinutes int) error
 }
 
 // ServiceImpl реализация Service
@@ -152,6 +156,30 @@ func (s *ServiceImpl) GetSessionTimeout() (int, error) {
 // UpdateSessionTimeout обновляет время ожидания старта мойки в минутах
 func (s *ServiceImpl) UpdateSessionTimeout(timeoutMinutes int) error {
 	return s.repo.UpdateServiceSetting("session", "session_timeout_minutes", timeoutMinutes)
+}
+
+// GetCooldownTimeout получает время блокировки бокса после завершения сессии в минутах
+func (s *ServiceImpl) GetCooldownTimeout() (int, error) {
+	setting, err := s.repo.GetServiceSetting("session", "cooldown_timeout_minutes")
+	if err != nil {
+		return 5, err // По умолчанию 5 минут
+	}
+
+	if setting == nil {
+		return 5, nil // По умолчанию 5 минут
+	}
+
+	var timeout int
+	if err := json.Unmarshal(setting.SettingValue, &timeout); err != nil {
+		return 5, err // По умолчанию 5 минут
+	}
+
+	return timeout, nil
+}
+
+// UpdateCooldownTimeout обновляет время блокировки бокса после завершения сессии в минутах
+func (s *ServiceImpl) UpdateCooldownTimeout(timeoutMinutes int) error {
+	return s.repo.UpdateServiceSetting("session", "cooldown_timeout_minutes", timeoutMinutes)
 }
 
 // UpdatePrices обновляет цены сервиса (админка)

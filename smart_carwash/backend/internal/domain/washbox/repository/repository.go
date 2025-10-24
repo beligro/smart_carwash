@@ -44,6 +44,11 @@ type Repository interface {
 	GetActiveCleaningLogByCleaner(cleanerID uuid.UUID) (*models.CleaningLog, error)
 	GetLastCleaningLogByBox(washBoxID uuid.UUID) (*models.CleaningLog, error)
 	GetExpiredCleaningLogs(timeoutMinutes int) ([]models.CleaningLog, error)
+
+	// Методы для работы с cooldown
+	SetCooldown(boxID uuid.UUID, userID uuid.UUID, cooldownUntil time.Time) error
+	GetCooldownBoxesForUser(userID uuid.UUID) ([]models.WashBox, error)
+	CheckCooldownExpired() error
 }
 
 // PostgresRepository реализация Repository для PostgreSQL
@@ -390,4 +395,38 @@ func (r *PostgresRepository) GetExpiredCleaningLogs(timeoutMinutes int) ([]model
 		models.CleaningLogStatusInProgress, timeout).
 		Find(&logs).Error
 	return logs, err
+}
+
+// SetCooldown устанавливает cooldown для бокса после завершения сессии
+func (r *PostgresRepository) SetCooldown(boxID uuid.UUID, userID uuid.UUID, cooldownUntil time.Time) error {
+	return r.db.Model(&models.WashBox{}).
+		Where("id = ?", boxID).
+		Updates(map[string]interface{}{
+			"last_completed_session_user_id": userID,
+			"last_completed_at":              time.Now(),
+			"cooldown_until":                 cooldownUntil,
+		}).Error
+}
+
+// GetCooldownBoxesForUser получает боксы в cooldown для конкретного пользователя
+func (r *PostgresRepository) GetCooldownBoxesForUser(userID uuid.UUID) ([]models.WashBox, error) {
+	var boxes []models.WashBox
+	now := time.Now()
+
+	err := r.db.Where("last_completed_session_user_id = ? AND cooldown_until > ?",
+		userID, now).
+		Find(&boxes).Error
+	return boxes, err
+}
+
+// CheckCooldownExpired очищает истекшие cooldown'ы
+func (r *PostgresRepository) CheckCooldownExpired() error {
+	now := time.Now()
+	return r.db.Model(&models.WashBox{}).
+		Where("cooldown_until IS NOT NULL AND cooldown_until <= ?", now).
+		Updates(map[string]interface{}{
+			"last_completed_session_user_id": nil,
+			"last_completed_at":              nil,
+			"cooldown_until":                 nil,
+		}).Error
 }

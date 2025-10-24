@@ -104,10 +104,6 @@ const StatusBadge = styled.span`
     color: #c62828;
   }
   
-  &.expired {
-    background-color: #fafafa;
-    color: #616161;
-  }
 `;
 
 const ServiceTypeBadge = styled.span`
@@ -633,8 +629,7 @@ const SessionManagement = () => {
       active: 'Активна',
       complete: 'Завершена',
       canceled: 'Отменена',
-      in_queue: 'В очереди',
-      expired: 'Истекла'
+      in_queue: 'В очереди'
     };
     return statusMap[status] || status;
   };

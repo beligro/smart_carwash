@@ -269,6 +269,8 @@ const SettingsManagement = () => {
   const [cleaningTimeoutLoading, setCleaningTimeoutLoading] = useState(false);
   const [sessionTimeout, setSessionTimeout] = useState('');
   const [sessionTimeoutLoading, setSessionTimeoutLoading] = useState(false);
+  const [cooldownTimeout, setCooldownTimeout] = useState('');
+  const [cooldownTimeoutLoading, setCooldownTimeoutLoading] = useState(false);
 
   const serviceOptions = [
     { value: 'wash', label: 'Мойка' },
@@ -316,6 +318,7 @@ const SettingsManagement = () => {
     loadSettings();
     loadCleaningTimeout();
     loadSessionTimeout();
+    loadCooldownTimeout();
   }, [selectedService]);
 
   const loadCleaningTimeout = async () => {
@@ -341,6 +344,19 @@ const SettingsManagement = () => {
       setSessionTimeout(''); // Значение по умолчанию
     } finally {
       setSessionTimeoutLoading(false);
+    }
+  };
+
+  const loadCooldownTimeout = async () => {
+    setCooldownTimeoutLoading(true);
+    try {
+      const response = await ApiService.getCooldownTimeout();
+      setCooldownTimeout(response.timeout_minutes?.toString() || '');
+    } catch (err) {
+      console.warn('Не удалось загрузить время блокировки бокса:', err);
+      setCooldownTimeout(''); // Значение по умолчанию
+    } finally {
+      setCooldownTimeoutLoading(false);
     }
   };
 
@@ -399,6 +415,32 @@ const SettingsManagement = () => {
       setError('Ошибка при обновлении времени ожидания старта мойки: ' + (err.message || 'Неизвестная ошибка'));
     } finally {
       setSessionTimeoutLoading(false);
+    }
+  };
+
+  const handleCooldownTimeoutSave = async () => {
+    // Проверяем, что поле не пустое
+    if (!cooldownTimeout || cooldownTimeout.trim() === '') {
+      setError('Время блокировки бокса не может быть пустым');
+      return;
+    }
+
+    const timeoutValue = parseInt(cooldownTimeout);
+    if (isNaN(timeoutValue) || timeoutValue < 1 || timeoutValue > 60) {
+      setError('Время блокировки бокса должно быть числом от 1 до 60 минут');
+      return;
+    }
+
+    setCooldownTimeoutLoading(true);
+    setError('');
+
+    try {
+      await ApiService.updateCooldownTimeout(timeoutValue);
+      setSuccess('Время блокировки бокса успешно обновлено');
+    } catch (err) {
+      setError('Ошибка при обновлении времени блокировки бокса: ' + (err.message || 'Неизвестная ошибка'));
+    } finally {
+      setCooldownTimeoutLoading(false);
     }
   };
 
@@ -734,6 +776,36 @@ const SettingsManagement = () => {
                 disabled={sessionTimeoutLoading}
               >
                 {sessionTimeoutLoading ? 'Сохранение...' : 'Сохранить время ожидания старта мойки'}
+              </Button>
+            </ButtonGroup>
+          </SettingsContainer>
+
+          <SettingsContainer theme={theme}>
+            <SettingsTitle theme={theme}>Настройки блокировки боксов</SettingsTitle>
+            
+            <SettingsField>
+              <SettingsLabel theme={theme}>Время блокировки бокса после завершения сессии по времени (в минутах):</SettingsLabel>
+              <SettingsInput
+                theme={theme}
+                type="number"
+                value={cooldownTimeout}
+                onChange={(e) => setCooldownTimeout(e.target.value)}
+                min="1"
+                max="60"
+                disabled={cooldownTimeoutLoading}
+              />
+              <SettingsDescription theme={theme}>
+                Время, на которое бокс блокируется для других пользователей после завершения сессии по времени (от 1 до 60 минут)
+              </SettingsDescription>
+            </SettingsField>
+
+            <ButtonGroup>
+              <Button 
+                theme={theme} 
+                onClick={handleCooldownTimeoutSave} 
+                disabled={cooldownTimeoutLoading}
+              >
+                {cooldownTimeoutLoading ? 'Сохранение...' : 'Сохранить время блокировки бокса'}
               </Button>
             </ButtonGroup>
           </SettingsContainer>
