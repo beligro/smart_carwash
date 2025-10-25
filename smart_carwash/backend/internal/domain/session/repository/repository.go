@@ -119,6 +119,34 @@ func (r *PostgresRepository) GetUserSessionForPayment(userID uuid.UUID) (*models
 	return &session, nil
 }
 
+// CheckActiveSessionWithLock проверяет активную сессию пользователя с учетом временной блокировки
+func (r *PostgresRepository) CheckActiveSessionWithLock(userID uuid.UUID) (*models.Session, error) {
+	var session models.Session
+	err := r.db.Where("user_id = ? AND status IN (?, ?, ?, ?) AND created_at > ?",
+		userID,
+		models.SessionStatusCreated,
+		models.SessionStatusInQueue,
+		models.SessionStatusAssigned,
+		models.SessionStatusActive,
+		time.Now().Add(-30*time.Second)). // Проверяем сессии созданные в последние 30 секунд
+		Order("created_at DESC").
+		First(&session).Error
+	if err != nil {
+		return nil, err
+	}
+
+	// Если у сессии есть BoxID, получаем номер бокса
+	if session.BoxID != nil {
+		var boxNumber int
+		err = r.db.Table("wash_boxes").Where("id = ?", *session.BoxID).Select("number").Scan(&boxNumber).Error
+		if err == nil {
+			session.BoxNumber = &boxNumber
+		}
+	}
+
+	return &session, nil
+}
+
 // GetSessionByIdempotencyKey получает сессию по ключу идемпотентности
 func (r *PostgresRepository) GetSessionByIdempotencyKey(key string) (*models.Session, error) {
 	var session models.Session

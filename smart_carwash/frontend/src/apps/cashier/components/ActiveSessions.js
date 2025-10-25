@@ -85,6 +85,12 @@ const DetailValue = styled.span`
   font-weight: 500;
 `;
 
+const BoxNumberValue = styled.span`
+  font-size: 1.5rem;
+  color: ${props => props.theme.textColor};
+  font-weight: 700;
+`;
+
 const ActionButtons = styled.div`
   display: flex;
   gap: 8px;
@@ -176,6 +182,8 @@ const getStatusText = (status) => {
     case 'in_queue': return 'В очереди';
     case 'assigned': return 'Назначена';
     case 'active': return 'Активна';
+    case 'complete': return 'Завершена';
+    case 'canceled': return 'Отменена';
     default: return status;
   }
 };
@@ -324,9 +332,9 @@ const SessionCardComponent = ({ session, onStart, onComplete, onCancel, onEnable
 
         <DetailItem>
           <DetailLabel theme={theme}>Номер бокса</DetailLabel>
-          <DetailValue theme={theme}>
+          <BoxNumberValue theme={theme}>
             {session.box_number ? `Бокс ${session.box_number}` : 'Не назначен'}
-          </DetailValue>
+          </BoxNumberValue>
         </DetailItem>
 
         <DetailItem>
@@ -438,6 +446,11 @@ const ActiveSessions = () => {
 
   useEffect(() => {
     loadActiveSessions();
+    
+    // Поллинг каждые 3 секунды без показа загрузки
+    const interval = setInterval(pollActiveSessions, 3000);
+    
+    return () => clearInterval(interval);
   }, []);
 
   const loadActiveSessions = async () => {
@@ -452,6 +465,16 @@ const ActiveSessions = () => {
       setError('Ошибка загрузки активных сессий');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const pollActiveSessions = async () => {
+    try {
+      const response = await ApiService.getCashierActiveSessions();
+      setSessions(response.sessions || []);
+    } catch (error) {
+      console.error('Ошибка поллинга активных сессий:', error);
+      // Не показываем ошибку при поллинге, чтобы не мешать пользователю
     }
   };
 

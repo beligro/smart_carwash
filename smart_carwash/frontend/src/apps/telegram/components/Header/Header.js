@@ -16,20 +16,8 @@ const Header = ({ theme = 'light', onBack }) => {
         <button 
           onClick={onBack} 
           className={`${styles.backButton} ${themeClass}`}
-          style={{
-            background: 'none',
-            border: 'none',
-            fontSize: '24px',
-            cursor: 'pointer',
-            padding: '8px',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            position: 'absolute',
-            left: '16px',
-            top: '50%',
-            transform: 'translateY(-50%)'
-          }}
+          type="button"
+          aria-label="Назад"
         >
           ←
         </button>

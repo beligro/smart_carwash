@@ -95,8 +95,18 @@ const ChemistryEnableButton = ({ session, theme, onChemistryEnabled }) => {
       setIsEnabling(true);
       await ApiService.enableChemistry(session.id);
       
-      if (onChemistryEnabled) {
-        onChemistryEnabled();
+      // Немедленно обновляем данные сессии для мгновенного отображения изменений
+      try {
+        const updatedSessionData = await ApiService.getSessionById(session.id);
+        if (updatedSessionData && updatedSessionData.session) {
+          // Обновляем данные через callback, если он передан
+          if (onChemistryEnabled) {
+            onChemistryEnabled(updatedSessionData.session, updatedSessionData.payment);
+          }
+        }
+      } catch (refreshError) {
+        console.error('Ошибка при обновлении данных сессии:', refreshError);
+        // Не показываем ошибку пользователю, поллинг все равно обновит данные
       }
     } catch (error) {
       console.error('Ошибка включения химии:', error);
@@ -221,8 +231,8 @@ const SessionDetails = ({ theme = 'light', user }) => {
     // Очищаем старый интервал, если он существует
     clearPollingInterval();
     
-    // Устанавливаем интервал для поллинга (каждые 5 секунд, но каждую секунду если сессия в очереди)
-    const pollInterval = session?.status === 'in_queue' ? 1000 : 5000;
+    // Устанавливаем интервал для поллинга (каждые 2 секунды, но каждую секунду если сессия в очереди)
+    const pollInterval = session?.status === 'in_queue' ? 1000 : 2000;
     
     pollingInterval.current = setInterval(async () => {
       try {
@@ -566,18 +576,36 @@ const SessionDetails = ({ theme = 'light', user }) => {
       const response = await ApiService.startSession(sessionId);
       
       if (response && response.session) {
-        setSession(response.session);
-        
-        // Если у сессии есть номер бокса, используем его
-        if (response.session.box_number) {
-          setBox({ number: response.session.box_number });
-        }
-        // Иначе, если у сессии есть назначенный бокс, получаем информацию о нем
-        else if (response.session.box_id) {
-          const queueStatus = await ApiService.getQueueStatus();
-          const boxInfo = queueStatus.boxes.find(b => b.id === response.session.box_id);
-          if (boxInfo) {
-            setBox(boxInfo);
+        // Немедленно обновляем данные сессии для мгновенного отображения изменений
+        try {
+          const updatedSessionData = await ApiService.getSessionById(sessionId);
+          if (updatedSessionData && updatedSessionData.session) {
+            setSession(updatedSessionData.session);
+            
+            // Обновляем информацию о платеже, если она есть
+            if (updatedSessionData.payment) {
+              setPayment(updatedSessionData.payment);
+            }
+            
+            // Если у сессии есть номер бокса, используем его
+            if (updatedSessionData.session.box_number) {
+              setBox({ number: updatedSessionData.session.box_number });
+            }
+            // Иначе, если у сессии есть назначенный бокс, получаем информацию о нем
+            else if (updatedSessionData.session.box_id) {
+              const queueStatus = await ApiService.getQueueStatus();
+              const boxInfo = queueStatus.boxes.find(b => b.id === updatedSessionData.session.box_id);
+              if (boxInfo) {
+                setBox(boxInfo);
+              }
+            }
+          }
+        } catch (refreshError) {
+          console.error('Ошибка при обновлении данных сессии:', refreshError);
+          // Fallback к данным из ответа API
+          setSession(response.session);
+          if (response.session.box_number) {
+            setBox({ number: response.session.box_number });
           }
         }
       }
@@ -709,9 +737,14 @@ const SessionDetails = ({ theme = 'light', user }) => {
             <ChemistryEnableButton 
               session={session} 
               theme={theme} 
-              onChemistryEnabled={() => {
-                // Перезагружаем сессию после включения химии
-                fetchSessionDetails();
+              onChemistryEnabled={(updatedSession, updatedPayment) => {
+                // Немедленно обновляем данные сессии
+                if (updatedSession) {
+                  setSession(updatedSession);
+                }
+                if (updatedPayment) {
+                  setPayment(updatedPayment);
+                }
               }}
             />
           )}

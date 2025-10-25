@@ -119,7 +119,7 @@ const formatQueueText = (queueInfo) => {
  * @param {Function} props.onCancelSession - Функция для отмены сессии
  * @param {Object} props.user - Данные пользователя
  */
-const WashInfo = ({ washInfo, theme = 'light', onCreateSession, onViewHistory, onCancelSession, onChemistryEnabled, onCompleteSession, user }) => {
+const WashInfo = ({ washInfo, theme = 'light', onCreateSession, onViewHistory, onCancelSession, onChemistryEnabled, onCompleteSession, onStartSession, user }) => {
   const navigate = useNavigate();
   const [isCanceling, setIsCanceling] = useState(false);
   const [sessionPayments, setSessionPayments] = useState(null);
@@ -539,8 +539,19 @@ const WashInfo = ({ washInfo, theme = 'light', onCreateSession, onViewHistory, o
       const response = await ApiService.startSession(userSession.id);
       
       if (response && response.session) {
-        // Поллинг автоматически обновит данные через несколько секунд
-        // Не нужно перезагружать страницу
+        // Немедленно обновляем данные сессии для мгновенного отображения изменений
+        try {
+          const updatedSessionData = await ApiService.getSessionById(userSession.id);
+          if (updatedSessionData && updatedSessionData.session) {
+            // Обновляем данные через callback, если он передан
+            if (onStartSession) {
+              onStartSession(updatedSessionData.session, updatedSessionData.payment);
+            }
+          }
+        } catch (refreshError) {
+          console.error('Ошибка при обновлении данных сессии:', refreshError);
+          // Не показываем ошибку пользователю, поллинг все равно обновит данные
+        }
       }
     } catch (err) {
       alert('Ошибка при запуске сессии: ' + err.message);
@@ -653,8 +664,20 @@ const WashInfo = ({ washInfo, theme = 'light', onCreateSession, onViewHistory, o
                   onClick={async () => {
                     try {
                       await ApiService.enableChemistry(userSession.id);
-                      // Поллинг автоматически обновит данные через несколько секунд
-                      // Не нужно перезагружать страницу
+                      
+                      // Немедленно обновляем данные сессии для мгновенного отображения изменений
+                      try {
+                        const updatedSessionData = await ApiService.getSessionById(userSession.id);
+                        if (updatedSessionData && updatedSessionData.session) {
+                          // Обновляем данные через callback, если он передан
+                          if (onChemistryEnabled) {
+                            onChemistryEnabled(updatedSessionData.session, updatedSessionData.payment);
+                          }
+                        }
+                      } catch (refreshError) {
+                        console.error('Ошибка при обновлении данных сессии:', refreshError);
+                        // Не показываем ошибку пользователю, поллинг все равно обновит данные
+                      }
                     } catch (error) {
                       console.error('Ошибка включения химии:', error);
                       alert('Ошибка включения химии: ' + (error.response?.data?.error || error.message));

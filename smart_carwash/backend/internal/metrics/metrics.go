@@ -22,6 +22,7 @@ type Metrics struct {
 	PaymentMetrics        *prometheus.CounterVec
 	QueueMetrics          *prometheus.GaugeVec
 	ErrorMetrics          *prometheus.CounterVec
+	MultipleSessionMetrics *prometheus.CounterVec
 }
 
 // NewMetrics создает новый экземпляр метрик
@@ -99,6 +100,13 @@ func NewMetrics() *Metrics {
 			},
 			[]string{"type", "service", "error_code"},
 		),
+		MultipleSessionMetrics: promauto.NewCounterVec(
+			prometheus.CounterOpts{
+				Name: "multiple_sessions_total",
+				Help: "Total number of multiple session attempts",
+			},
+			[]string{"type", "user_id", "time_diff"},
+		),
 	}
 }
 
@@ -161,6 +169,11 @@ func (m *Metrics) UpdateQueueSize(serviceType string, size float64) {
 // RecordError записывает метрику ошибки
 func (m *Metrics) RecordError(errorType, service, errorCode string) {
 	m.ErrorMetrics.WithLabelValues(errorType, service, errorCode).Inc()
+}
+
+// RecordMultipleSession записывает метрику попытки создания множественных сессий
+func (m *Metrics) RecordMultipleSession(sessionType, userID, timeDiff string) {
+	m.MultipleSessionMetrics.WithLabelValues(sessionType, userID, timeDiff).Inc()
 }
 
 // UpdateDatabaseConnections обновляет метрики подключений к БД

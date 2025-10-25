@@ -126,6 +126,18 @@ type GetUserSessionResponse struct {
 	Payment *Payment `json:"payment,omitempty"`
 }
 
+// CheckActiveSessionRequest представляет запрос на проверку активной сессии
+type CheckActiveSessionRequest struct {
+	UserID uuid.UUID `json:"user_id" binding:"required"`
+}
+
+// CheckActiveSessionResponse представляет ответ на проверку активной сессии
+type CheckActiveSessionResponse struct {
+	HasActiveSession bool     `json:"has_active_session"`
+	Session          *Session `json:"session,omitempty"`
+	Payment          *Payment `json:"payment,omitempty"`
+}
+
 // GetSessionRequest представляет запрос на получение сессии по ID
 type GetSessionRequest struct {
 	SessionID uuid.UUID `json:"session_id" binding:"required"`

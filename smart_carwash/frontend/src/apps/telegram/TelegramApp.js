@@ -305,8 +305,31 @@ const TelegramApp = () => {
         setError('Ошибка при создании сессии с платежом');
       }
     } catch (err) {
-      alert('Ошибка при создании сессии с платежом: ' + err.message);
-      setError('Не удалось создать сессию с платежом. Пожалуйста, попробуйте еще раз.');
+      // Проверяем, является ли ошибка сообщением о существующей сессии
+      if (err.message && err.message.includes('у вас уже есть активная сессия')) {
+        alert('У вас уже есть активная сессия');
+        
+        // Загружаем существующую сессию и перенаправляем на главную
+        try {
+          const sessionResponse = await ApiService.getUserSession(user.id);
+          if (sessionResponse && sessionResponse.session) {
+            // Обновляем данные сессии пользователя
+            setWashInfo(prevInfo => ({
+              ...prevInfo,
+              userSession: sessionResponse.session,
+              payment: sessionResponse.payment
+            }));
+            
+            // Перенаправляем на главную страницу
+            navigate('/telegram');
+          }
+        } catch (loadErr) {
+          console.error('Ошибка при загрузке существующей сессии:', loadErr);
+        }
+      } else {
+        alert('Ошибка при создании сессии с платежом: ' + err.message);
+        setError('Не удалось создать сессию с платежом. Пожалуйста, попробуйте еще раз.');
+      }
     } finally {
       setLoading(false);
     }
@@ -340,7 +363,7 @@ const TelegramApp = () => {
       sessionResetTimer.current = null;
     }
     
-    // Устанавливаем интервал для поллинга (каждые 5 секунд)
+    // Устанавливаем интервал для поллинга (каждые 2 секунды для быстрого обнаружения изменений)
     sessionPollingInterval.current = setInterval(async () => {
       try {
         const sessionData = await ApiService.getSessionById(sessionId);
@@ -382,7 +405,7 @@ const TelegramApp = () => {
         console.error('Ошибка при получении статуса сессии:', err);
         // Не показываем alert, просто логируем ошибку
       }
-    }, 5000);
+    }, 2000);
     
     return sessionPollingInterval.current;
   };
@@ -401,7 +424,48 @@ const TelegramApp = () => {
           // Загружаем информацию о сессии пользователя по user_id и запускаем поллинг по session_id
           const loadUserSessionAndStartPolling = async () => {
             try {
-              // Сначала пробуем получить сессию напрямую через getUserSession
+              // Сначала проверяем активные сессии с временной блокировкой
+              const activeSessionCheck = await ApiService.checkActiveSession(user.id);
+              
+              if (activeSessionCheck.hasActiveSession && activeSessionCheck.session) {
+                const existingSession = activeSessionCheck.session;
+                
+                // Если сессия создана недавно (в последние 30 секунд), это может быть попытка создания множественных сессий
+                const now = new Date();
+                const sessionCreatedAt = new Date(existingSession.created_at);
+                const timeDiff = (now - sessionCreatedAt) / 1000; // разница в секундах
+                
+                if (timeDiff < 30) {
+                  console.warn('Обнаружена попытка создания множественных сессий в разных окнах');
+                }
+                
+                // Обновляем данные сессии пользователя
+                setWashInfo(prevInfo => {
+                  return {
+                    ...prevInfo,
+                    userSession: existingSession,
+                    payment: activeSessionCheck.payment
+                  };
+                });
+                
+                // Проверяем, нужно ли запускать поллинг или сброс
+                const session = existingSession;
+                if (
+                  session.status === 'complete' || 
+                  session.status === 'canceled' ||
+                  session.status === 'expired' ||
+                  session.status === 'payment_failed'
+                ) {
+                  // Сессия в терминальном статусе, проверяем нужно ли сбросить
+                  checkAndResetTerminalSession(session);
+                } else {
+                  // Сессия активна, запускаем поллинг
+                  startSessionPolling(session.id);
+                }
+                return;
+              }
+              
+              // Если активной сессии нет, пробуем получить сессию через getUserSession
               const sessionResponse = await ApiService.getUserSession(user.id);
               
               if (sessionResponse && sessionResponse.session) {
@@ -592,6 +656,26 @@ const TelegramApp = () => {
     }));
   };
 
+  // Обработчик запуска сессии
+  const handleStartSession = (updatedSession, updatedPayment) => {
+    // Обновляем информацию о сессии с актуальными данными
+    setWashInfo(prevInfo => ({
+      ...prevInfo,
+      userSession: updatedSession,
+      payment: updatedPayment
+    }));
+  };
+
+  // Обработчик включения химии
+  const handleChemistryEnabled = (updatedSession, updatedPayment) => {
+    // Обновляем информацию о сессии с актуальными данными
+    setWashInfo(prevInfo => ({
+      ...prevInfo,
+      userSession: updatedSession,
+      payment: updatedPayment
+    }));
+  };
+
   const themeObject = getTheme(theme);
 
   // Обработка ошибок рендеринга
@@ -624,6 +708,8 @@ const TelegramApp = () => {
                       onViewHistory={handleViewHistory}
                       onCancelSession={handleCancelSession}
                       onCompleteSession={handleCompleteSession}
+                      onStartSession={handleStartSession}
+                      onChemistryEnabled={handleChemistryEnabled}
                       user={user}
                     />
                   ) : (

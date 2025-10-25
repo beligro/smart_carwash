@@ -14,12 +14,14 @@ import (
 	washboxService "carwash_backend/internal/domain/washbox/service"
 	"carwash_backend/internal/logger"
 	"carwash_backend/internal/metrics"
+	"errors"
 	"fmt"
 	"sort"
 	"strconv"
 	"time"
 
 	"github.com/google/uuid"
+	"gorm.io/gorm"
 )
 
 // Service интерфейс для бизнес-логики сессий
@@ -28,6 +30,7 @@ type Service interface {
 	CreateSessionWithPayment(req *models.CreateSessionWithPaymentRequest) (*models.CreateSessionWithPaymentResponse, error)
 	GetUserSession(req *models.GetUserSessionRequest) (*models.GetUserSessionResponse, error)
 	GetUserSessionForPayment(req *models.GetUserSessionRequest) (*models.GetUserSessionResponse, error)
+	CheckActiveSession(req *models.CheckActiveSessionRequest) (*models.CheckActiveSessionResponse, error)
 	GetSession(req *models.GetSessionRequest) (*models.GetSessionResponse, error)
 	StartSession(req *models.StartSessionRequest) (*models.Session, error)
 	CompleteSession(req *models.CompleteSessionRequest) (*models.CompleteSessionResponse, error)
@@ -158,8 +161,23 @@ func (s *ServiceImpl) CreateSession(req *models.CreateSessionRequest) (*models.S
 	existingSession, err := s.repo.GetActiveSessionByUserID(req.UserID)
 	if err == nil && existingSession != nil {
 		// У пользователя уже есть активная сессия
-		logger.Printf("Service - CreateSession: у пользователя уже есть активная сессия, session_id: %s, user_id: %s", existingSession.ID.String(), req.UserID.String())
-		return existingSession, nil
+		logger.Printf("Service - CreateSession: у пользователя уже есть активная сессия, session_id: %s, user_id: %s, status: %s", existingSession.ID.String(), req.UserID.String(), existingSession.Status)
+		
+		// Дополнительная проверка: если сессия создана недавно (в последние 30 секунд), 
+		// это может быть попытка создания множественных сессий
+		now := time.Now()
+		if now.Sub(existingSession.CreatedAt) < 30*time.Second {
+			logger.Printf("Service - CreateSession: обнаружена попытка создания множественных сессий, session_id: %s, user_id: %s, created_at: %s", existingSession.ID.String(), req.UserID.String(), existingSession.CreatedAt.Format(time.RFC3339))
+			
+			// Записываем метрику попытки создания множественных сессий
+			if s.metrics != nil {
+				timeDiff := strconv.FormatFloat(now.Sub(existingSession.CreatedAt).Seconds(), 'f', 0, 64)
+				s.metrics.RecordMultipleSession("attempt", req.UserID.String(), timeDiff)
+			}
+		}
+		
+		// Возвращаем ошибку вместо существующей сессии
+		return nil, fmt.Errorf("у вас уже есть активная сессия")
 	}
 
 	// Создаем новую сессию
@@ -255,6 +273,55 @@ func (s *ServiceImpl) CreateSessionWithPayment(req *models.CreateSessionWithPaym
 	return &models.CreateSessionWithPaymentResponse{
 		Session: *session,
 		Payment: payment,
+	}, nil
+}
+
+// CheckActiveSession проверяет активную сессию пользователя с учетом временной блокировки
+func (s *ServiceImpl) CheckActiveSession(req *models.CheckActiveSessionRequest) (*models.CheckActiveSessionResponse, error) {
+	logger.Printf("Service - CheckActiveSession: проверка активной сессии, user_id: %s", req.UserID.String())
+	
+	// Проверяем активную сессию
+	session, err := s.repo.GetActiveSessionByUserID(req.UserID)
+	if err != nil {
+		// Если сессии нет, это нормально
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			logger.Printf("Service - CheckActiveSession: активных сессий не найдено, user_id: %s", req.UserID.String())
+			return &models.CheckActiveSessionResponse{
+				HasActiveSession: false,
+				Session:          nil,
+			}, nil
+		}
+		return nil, err
+	}
+
+	// Если сессия найдена, получаем информацию о платеже
+	var payment *models.Payment
+	if session != nil {
+		paymentResp, err := s.paymentService.GetMainPaymentBySessionID(session.ID)
+		if err == nil && paymentResp != nil {
+			payment = &models.Payment{
+				ID:             paymentResp.ID,
+				SessionID:      paymentResp.SessionID,
+				Amount:         paymentResp.Amount,
+				RefundedAmount: paymentResp.RefundedAmount,
+				Currency:       paymentResp.Currency,
+				Status:         paymentResp.Status,
+				PaymentType:    paymentResp.PaymentType,
+				PaymentURL:     paymentResp.PaymentURL,
+				TinkoffID:      paymentResp.TinkoffID,
+				ExpiresAt:      paymentResp.ExpiresAt,
+				CreatedAt:      paymentResp.CreatedAt,
+				UpdatedAt:      paymentResp.UpdatedAt,
+			}
+		}
+	}
+
+	logger.Printf("Service - CheckActiveSession: найдена активная сессия, session_id: %s, user_id: %s, status: %s", session.ID.String(), req.UserID.String(), session.Status)
+
+	return &models.CheckActiveSessionResponse{
+		HasActiveSession: true,
+		Session:          session,
+		Payment:          payment,
 	}, nil
 }
 
@@ -406,11 +473,13 @@ func (s *ServiceImpl) StartSession(req *models.StartSessionRequest) (*models.Ses
 
 	// Проверяем, что сессия в статусе assigned
 	if session.Status != models.SessionStatusAssigned {
+		logger.Printf("StartSessionError: сессия не в статусе assigned %s", session.ID)
 		return session, nil // Возвращаем сессию без изменений
 	}
 
 	// Проверяем, что у сессии есть назначенный бокс
 	if session.BoxID == nil {
+		logger.Printf("StartSessionError: сессия не имеет назначенного бокса %s", session.ID)
 		return session, nil // Возвращаем сессию без изменений
 	}
 
@@ -420,6 +489,7 @@ func (s *ServiceImpl) StartSession(req *models.StartSessionRequest) (*models.Ses
 		session.Status = models.SessionStatusActive
 		err = s.repo.UpdateSession(session)
 		if err != nil {
+			logger.Printf("StartSessionError: ошибка обновления статуса сессии %s", session.ID)
 			return nil, err
 		}
 		return session, nil
@@ -428,12 +498,14 @@ func (s *ServiceImpl) StartSession(req *models.StartSessionRequest) (*models.Ses
 	// Получаем информацию о боксе
 	box, err := s.washboxService.GetWashBoxByID(*session.BoxID)
 	if err != nil {
+		logger.Printf("StartSessionError: ошибка получения информации о боксе %s", *session.BoxID)
 		return nil, err
 	}
 
 	// Обновляем статус бокса на busy
 	err = s.washboxService.UpdateWashBoxStatus(*session.BoxID, washboxModels.StatusBusy)
 	if err != nil {
+		logger.Printf("StartSessionError: ошибка обновления статуса бокса %s", *session.BoxID)
 		return nil, err
 	}
 
@@ -445,6 +517,7 @@ func (s *ServiceImpl) StartSession(req *models.StartSessionRequest) (*models.Ses
 	if err != nil {
 		// Если не удалось обновить сессию, возвращаем статус бокса обратно
 		s.washboxService.UpdateWashBoxStatus(*session.BoxID, box.Status)
+		logger.Printf("StartSessionError: ошибка обновления статуса сессии %s", session.ID)
 		return nil, err
 	}
 
@@ -454,8 +527,10 @@ func (s *ServiceImpl) StartSession(req *models.StartSessionRequest) (*models.Ses
 		if err != nil {
 			// Логируем ошибку (HandleModbusError теперь только логирует, не продлевает время)
 			s.modbusService.HandleModbusError(*session.BoxID, "light_on", session.ID, err)
-			logger.Printf("Ошибка включения света в боксе %s: %v", *session.BoxID, err)
+			logger.Printf("StartSessionError: ошибка включения света в боксе %s: %v", *session.BoxID, err)
 		}
+	} else {
+		logger.Printf("StartSessionError: ModbusService не инициализирован, не включаем свет в боксе %s", *session.BoxID)
 	}
 
 	// Получаем основной платеж сессии

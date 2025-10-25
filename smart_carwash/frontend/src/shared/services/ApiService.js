@@ -274,6 +274,13 @@ const ApiService = {
       return response.data;
     } catch (error) {
       console.error('Ошибка при создании сессии с платежом:', error);
+      
+      // Извлекаем сообщение об ошибке из ответа бэкенда
+      if (error.response && error.response.data && error.response.data.error) {
+        const backendError = new Error(error.response.data.error);
+        throw backendError;
+      }
+      
       throw error;
     }
   },
@@ -327,6 +334,17 @@ const ApiService = {
     } catch (error) {
       console.error('Ошибка при получении сессии пользователя для PaymentPage:', error);
       return { session: null };
+    }
+  },
+
+  // Проверка активной сессии пользователя
+  checkActiveSession: async (userId) => {
+    try {
+      const response = await api.get(`/sessions/check-active?user_id=${userId}`);
+      return response.data;
+    } catch (error) {
+      console.error('Ошибка при проверке активной сессии:', error);
+      return { hasActiveSession: false, session: null };
     }
   },
   

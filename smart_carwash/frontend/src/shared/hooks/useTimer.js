@@ -64,7 +64,7 @@ const useTimer = (session) => {
       const remaining = calculateTimeLeft(session);
       setTimeLeft(remaining);
       
-      // Обновляем таймер каждую секунду
+      // Обновляем таймер каждую секунду для плавности
       const timerId = setInterval(() => {
         const remaining = calculateTimeLeft(session);
         setTimeLeft(remaining);
