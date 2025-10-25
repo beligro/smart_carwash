@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import styles from './ServiceSelector.module.css';
 import { Card, Button } from '../../../../shared/components/UI';
 import CarNumberInput from '../CarNumberInput';
+import EmailInput from '../EmailInput';
 import PriceCalculator from '../PriceCalculator';
 import ApiService from '../../../../shared/services/ApiService';
 
@@ -19,33 +20,43 @@ const ServiceSelector = ({ onSelect, theme = 'light', user }) => {
   const [selectedRentalTime, setSelectedRentalTime] = useState(null);
   const [chemistryTimes, setChemistryTimes] = useState([]);
   const [selectedChemistryTime, setSelectedChemistryTime] = useState(null);
+  const [filteredChemistryTimes, setFilteredChemistryTimes] = useState([]);
   const [loading, setLoading] = useState(false);
   const [loadingChemistryTimes, setLoadingChemistryTimes] = useState(false);
   const [carNumber, setCarNumber] = useState('');
   const [rememberCarNumber, setRememberCarNumber] = useState(false);
   const [savingCarNumber, setSavingCarNumber] = useState(false);
+  const [email, setEmail] = useState('');
+  const [rememberEmail, setRememberEmail] = useState(false);
+  const [savingEmail, setSavingEmail] = useState(false);
+  const [wantReceipt, setWantReceipt] = useState(false);
   
   const themeClass = theme === 'dark' ? styles.dark : styles.light;
   
-  // Инициализация номера машины из данных пользователя
+  // Инициализация номера машины и email из данных пользователя
   useEffect(() => {
     try {
-      if (user && user.car_number) {
-        setCarNumber(user.car_number);
+      if (user) {
+        if (user.car_number) {
+          setCarNumber(user.car_number);
+        }
+        if (user.email) {
+          setEmail(user.email);
+        }
       }
     } catch (error) {
-      console.error('Ошибка при инициализации номера машины:', error);
+      console.error('Ошибка при инициализации данных пользователя:', error);
     }
   }, [user]);
   
   // Типы услуг
   const serviceTypes = [
     { id: 'wash', name: 'Мойка', description: 'Стандартная мойка автомобиля', hasChemistry: true },
-    { id: 'air_dry', name: 'Обдув воздухом', description: 'Сушка автомобиля воздухом', hasChemistry: false },
-    { id: 'vacuum', name: 'Пылесос', description: 'Уборка салона пылесосом', hasChemistry: false }
+    { id: 'vacuum', name: 'Пылеводосос', description: 'Уборка салона пылеводососом', hasChemistry: false },
+    { id: 'air_dry', name: 'Воздух для продувки', description: 'Сушка автомобиля воздухом', hasChemistry: false }
   ];
   
-  // Загрузка доступного времени аренды при выборе услуги
+  // Загрузка доступного времени мойки при выборе услуги
   useEffect(() => {
     try {
       if (selectedService) {
@@ -56,7 +67,7 @@ const ServiceSelector = ({ onSelect, theme = 'light', user }) => {
             setSelectedRentalTime(data.available_times && data.available_times.length > 0 ? data.available_times[0] : 5);
           })
           .catch(error => {
-            console.error('Ошибка при загрузке времени аренды:', error);
+            console.error('Ошибка при загрузке времени мойки:', error);
             setRentalTimes([5]);
             setSelectedRentalTime(5);
           })
@@ -68,23 +79,71 @@ const ServiceSelector = ({ onSelect, theme = 'light', user }) => {
         setSelectedRentalTime(null);
       }
     } catch (error) {
-      console.error('Ошибка в useEffect для загрузки времени аренды:', error);
+      console.error('Ошибка в useEffect для загрузки времени мойки:', error);
       setRentalTimes([5]);
       setSelectedRentalTime(5);
       setLoading(false);
     }
   }, [selectedService]);
+  
+  // Фильтрация времени химии по выбранному времени мойки
+  useEffect(() => {
+    if (chemistryTimes.length > 0 && selectedRentalTime) {
+      const filtered = chemistryTimes.filter(time => time <= selectedRentalTime);
+      setFilteredChemistryTimes(filtered);
+      
+      // Если текущее выбранное время химии больше выбранного времени мойки, сбрасываем выбор
+      if (selectedChemistryTime && selectedChemistryTime > selectedRentalTime) {
+        const firstAvailable = filtered.length > 0 ? filtered[0] : null;
+        setSelectedChemistryTime(firstAvailable);
+      }
+    } else {
+      setFilteredChemistryTimes(chemistryTimes);
+    }
+  }, [chemistryTimes, selectedRentalTime, selectedChemistryTime]);
 
   // Обработчик выбора услуги
-  const handleServiceSelect = (serviceType) => {
+  const handleServiceSelect = async (serviceType) => {
     try {
       setSelectedService(serviceType);
-      // Если выбрана услуга без химии, сбрасываем флаг
-      if (!serviceType.hasChemistry) {
+      // Если выбрана мойка, включаем химию по умолчанию
+      if (serviceType.id === 'wash') {
+        setWithChemistry(true);
+        // Загружаем доступное время химии для мойки
+        setLoadingChemistryTimes(true);
+        try {
+          const data = await ApiService.getAvailableChemistryTimes(serviceType.id);
+          setChemistryTimes(data.available_chemistry_times || [3, 4, 5]);
+          setSelectedChemistryTime(data.available_chemistry_times ? data.available_chemistry_times[0] : 3);
+        } catch (error) {
+          console.error('Ошибка при загрузке времени химии для мойки:', error);
+          setChemistryTimes([3, 4, 5]);
+          setSelectedChemistryTime(3);
+        } finally {
+          setLoadingChemistryTimes(false);
+        }
+      } else if (!serviceType.hasChemistry) {
+        // Если выбрана услуга без химии, сбрасываем флаг
         setWithChemistry(false);
+        setChemistryTimes([]);
+        setSelectedChemistryTime(null);
       }
     } catch (error) {
       console.error('Ошибка в handleServiceSelect:', error);
+    }
+  };
+
+  // Обработчик отмены выбора услуги
+  const handleServiceDeselect = () => {
+    try {
+      setSelectedService(null);
+      setWithChemistry(false);
+      setChemistryTimes([]);
+      setSelectedChemistryTime(null);
+      setRentalTimes([]);
+      setSelectedRentalTime(null);
+    } catch (error) {
+      console.error('Ошибка в handleServiceDeselect:', error);
     }
   };
   
@@ -118,7 +177,7 @@ const ServiceSelector = ({ onSelect, theme = 'light', user }) => {
     }
   };
   
-  // Обработчик выбора времени аренды
+  // Обработчик выбора времени мойки
   const handleRentalTimeSelect = (time) => {
     try {
       setSelectedRentalTime(time);
@@ -152,6 +211,39 @@ const ServiceSelector = ({ onSelect, theme = 'light', user }) => {
       setRememberCarNumber(checked);
     } catch (error) {
       console.error('Ошибка в handleRememberCarNumberChange:', error);
+    }
+  };
+
+  // Обработчик изменения email
+  const handleEmailChange = (value) => {
+    try {
+      setEmail(value || '');
+    } catch (error) {
+      console.error('Ошибка в handleEmailChange:', error);
+      setEmail('');
+    }
+  };
+
+  // Обработчик изменения чекбокса "запомнить email"
+  const handleRememberEmailChange = (checked) => {
+    try {
+      setRememberEmail(checked);
+    } catch (error) {
+      console.error('Ошибка в handleRememberEmailChange:', error);
+    }
+  };
+
+  // Обработчик изменения галочки "Хочу получить чек"
+  const handleWantReceiptChange = (checked) => {
+    try {
+      setWantReceipt(checked);
+      // Если галочка выключена, очищаем email
+      if (!checked) {
+        setEmail('');
+      }
+    } catch (error) {
+      console.error('Ошибка в handleWantReceiptChange:', error);
+      setWantReceipt(false);
     }
   };
 
@@ -201,6 +293,23 @@ const ServiceSelector = ({ onSelect, theme = 'light', user }) => {
     }
   };
 
+  // Сохранение email пользователя
+  const saveEmail = async () => {
+    if (!user || !email || !rememberEmail) {
+      return;
+    }
+
+    setSavingEmail(true);
+    try {
+      await ApiService.updateEmail(user.id, email);
+      console.log('Email сохранен');
+    } catch (error) {
+      console.error('Ошибка при сохранении email:', error);
+    } finally {
+      setSavingEmail(false);
+    }
+  };
+
   // Обработчик подтверждения выбора
   const handleConfirm = async () => {
     try {
@@ -208,6 +317,11 @@ const ServiceSelector = ({ onSelect, theme = 'light', user }) => {
         // Если пользователь хочет запомнить номер, сохраняем его
         if (rememberCarNumber) {
           await saveCarNumber();
+        }
+
+        // Если пользователь хочет запомнить email, сохраняем его
+        if (rememberEmail) {
+          await saveEmail();
         }
 
         // Определяем время химии
@@ -227,7 +341,8 @@ const ServiceSelector = ({ onSelect, theme = 'light', user }) => {
           withChemistry: selectedService.hasChemistry ? withChemistry : false,
           chemistryTimeMinutes: chemistryTime,
           rentalTimeMinutes: selectedRentalTime,
-          carNumber: carNumber
+          carNumber: carNumber,
+          email: wantReceipt ? email : null // Передаем email только если галочка включена
         };
         
         onSelect(serviceData);
@@ -243,7 +358,8 @@ const ServiceSelector = ({ onSelect, theme = 'light', user }) => {
     carNumber && 
     carNumber.length >= 6 && 
     isValidCarNumber(carNumber) &&
-    (!withChemistry || selectedChemistryTime); // Если химия включена, должно быть выбрано время
+    (!withChemistry || selectedChemistryTime) && // Если химия включена, должно быть выбрано время
+    (!wantReceipt || (email && email.length > 0)); // Если галочка включена, email должен быть заполнен
 
   // Определяем, нужно ли показывать чекбокс "запомнить номер"
   const showRememberCheckbox = user && 
@@ -256,20 +372,41 @@ const ServiceSelector = ({ onSelect, theme = 'light', user }) => {
       <h2 className={`${styles.title} ${themeClass}`}>Выберите услугу</h2>
       
       <div className={styles.serviceGrid}>
-        {serviceTypes.map((service) => (
+        {selectedService ? (
+          // Показываем только выбранную услугу с крестиком
           <Card 
-            key={service.id} 
             theme={theme} 
-            className={`${styles.serviceCard} ${selectedService?.id === service.id ? styles.selected : ''}`}
-            onClick={() => handleServiceSelect(service)}
+            className={`${styles.serviceCard} ${styles.selected} ${styles.singleSelected}`}
           >
-            <h3 className={`${styles.serviceName} ${themeClass}`}>{service.name}</h3>
-            <p className={`${styles.serviceDescription} ${themeClass}`}>{service.description}</p>
-            {selectedService?.id === service.id && (
-              <div className={styles.selectedIndicator}></div>
-            )}
+            <div className={styles.selectedServiceContent}>
+              <h3 className={`${styles.serviceName} ${themeClass}`}>{selectedService.name}</h3>
+              <p className={`${styles.serviceDescription} ${themeClass}`}>{selectedService.description}</p>
+            </div>
+            <button 
+              className={styles.deselectButton}
+              onClick={(e) => {
+                e.stopPropagation();
+                handleServiceDeselect();
+              }}
+              title="Отменить выбор"
+            >
+              ✕
+            </button>
           </Card>
-        ))}
+        ) : (
+          // Показываем все услуги для выбора
+          serviceTypes.map((service) => (
+            <Card 
+              key={service.id} 
+              theme={theme} 
+              className={styles.serviceCard}
+              onClick={() => handleServiceSelect(service)}
+            >
+              <h3 className={`${styles.serviceName} ${themeClass}`}>{service.name}</h3>
+              <p className={`${styles.serviceDescription} ${themeClass}`}>{service.description}</p>
+            </Card>
+          ))
+        )}
       </div>
       
       {selectedService && (
@@ -284,6 +421,7 @@ const ServiceSelector = ({ onSelect, theme = 'light', user }) => {
             onRememberChange={handleRememberCarNumberChange}
             savedCarNumber={user?.car_number || ''}
           />
+
 
           {selectedService.hasChemistry && (
             <>
@@ -313,9 +451,13 @@ const ServiceSelector = ({ onSelect, theme = 'light', user }) => {
                   </p>
                   {loadingChemistryTimes ? (
                     <p className={`${styles.loadingText} ${themeClass}`}>Загрузка доступного времени...</p>
+                  ) : filteredChemistryTimes.length === 0 ? (
+                    <p className={`${styles.optionDescription} ${themeClass}`}>
+                      Нет доступных вариантов химии для выбранного времени мойки
+                    </p>
                   ) : (
                     <div className={styles.rentalTimeGrid}>
-                      {chemistryTimes.map((time) => (
+                      {filteredChemistryTimes.map((time) => (
                         <div 
                           key={time} 
                           className={`${styles.rentalTimeItem} ${selectedChemistryTime === time ? styles.selectedTime : ''}`}
@@ -333,7 +475,7 @@ const ServiceSelector = ({ onSelect, theme = 'light', user }) => {
           )}
           
           <Card theme={theme} className={styles.optionCard}>
-            <h3 className={`${styles.optionTitle} ${themeClass}`}>Выберите время аренды</h3>
+            <h3 className={`${styles.optionTitle} ${themeClass}`}>Выберите время мойки</h3>
             {loading ? (
               <p className={`${styles.loadingText} ${themeClass}`}>Загрузка доступного времени...</p>
             ) : (
@@ -362,6 +504,43 @@ const ServiceSelector = ({ onSelect, theme = 'light', user }) => {
               theme={theme}
             />
           )}
+
+          {/* Галочка "Хочу получить чек" */}
+          {selectedService && selectedRentalTime && (
+            <Card theme={theme} className={styles.optionCard}>
+              <div className={styles.optionRow}>
+                <label className={`${styles.optionLabel} ${themeClass}`}>
+                  <input 
+                    type="checkbox" 
+                    checked={wantReceipt} 
+                    onChange={(e) => handleWantReceiptChange(e.target.checked)}
+                    className={styles.checkbox}
+                  />
+                  <span className={styles.checkmark}></span>
+                  Хочу получить чек
+                </label>
+              </div>
+              <p className={`${styles.optionDescription} ${themeClass}`}>
+                Чек будет отправлен на указанный email после оплаты
+              </p>
+            </Card>
+          )}
+
+          {/* Ввод email - показывается только если галочка включена */}
+          {selectedService && selectedRentalTime && wantReceipt && (
+            <EmailInput
+              value={email || ''}
+              onChange={handleEmailChange}
+              theme={theme}
+              showRememberCheckbox={user && 
+                email && 
+                email !== user.email && 
+                email.length > 0}
+              rememberChecked={rememberEmail}
+              onRememberChange={handleRememberEmailChange}
+              savedEmail={user?.email || ''}
+            />
+          )}
         </div>
       )}
       
@@ -369,10 +548,10 @@ const ServiceSelector = ({ onSelect, theme = 'light', user }) => {
         <Button 
           theme={theme} 
           onClick={handleConfirm}
-          disabled={!canConfirm || loading || savingCarNumber}
+          disabled={!canConfirm || loading || savingCarNumber || savingEmail}
           className={styles.confirmButton}
         >
-          {savingCarNumber ? 'Сохранение...' : 'Подтвердить выбор'}
+          {savingCarNumber || savingEmail ? 'Сохранение...' : 'Подтвердить выбор'}
         </Button>
       </div>
     </div>

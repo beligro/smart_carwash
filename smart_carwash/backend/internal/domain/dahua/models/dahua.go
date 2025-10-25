@@ -7,11 +7,11 @@ import (
 // DahuaWebhookRequest представляет входящий webhook от камеры Dahua
 type DahuaWebhookRequest struct {
 	LicensePlate string `json:"licensePlate" binding:"required"` // Номер автомобиля
-	Confidence   int    `json:"confidence"`                     // Уровень уверенности распознавания
-	Direction    string `json:"direction" binding:"required"`   // Направление движения (in/out)
-	EventType    string `json:"eventType"`                      // Тип события (ANPR)
-	CaptureTime  string `json:"captureTime"`                    // Время захвата
-	ImagePath    string `json:"imagePath"`                      // Путь к изображению
+	Confidence   int    `json:"confidence"`                      // Уровень уверенности распознавания
+	Direction    string `json:"direction" binding:"required"`    // Направление движения (in/out)
+	EventType    string `json:"eventType"`                       // Тип события (ANPR)
+	CaptureTime  string `json:"captureTime"`                     // Время захвата
+	ImagePath    string `json:"imagePath"`                       // Путь к изображению
 }
 
 // DahuaWebhookResponse представляет ответ на webhook от Dahua
@@ -62,4 +62,3 @@ func (r *DahuaWebhookRequest) ParseCaptureTime() (time.Time, error) {
 	// Формат времени от Dahua: "2025-10-20T14:05:33"
 	return time.Parse("2006-01-02T15:04:05", r.CaptureTime)
 }
-

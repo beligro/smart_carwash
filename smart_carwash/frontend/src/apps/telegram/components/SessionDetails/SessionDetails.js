@@ -38,13 +38,9 @@ const ChemistryStatus = ({ session }) => {
     return () => clearInterval(interval);
   }, [session]);
 
-  // Если химия выключена
+  // Если химия выключена - не показываем информацию, просто возвращаем null
   if (session.was_chemistry_on && session.chemistry_ended_at) {
-    return (
-      <div style={{ marginTop: '8px', padding: '10px', backgroundColor: '#f5f5f5', borderRadius: '6px', fontSize: '12px', color: '#666' }}>
-        ✓ Химия была использована ({session.chemistry_time_minutes} мин)
-      </div>
-    );
+    return null;
   }
 
   // Если химия активна - показываем отдельный таймер
@@ -99,8 +95,18 @@ const ChemistryEnableButton = ({ session, theme, onChemistryEnabled }) => {
       setIsEnabling(true);
       await ApiService.enableChemistry(session.id);
       
-      if (onChemistryEnabled) {
-        onChemistryEnabled();
+      // Немедленно обновляем данные сессии для мгновенного отображения изменений
+      try {
+        const updatedSessionData = await ApiService.getSessionById(session.id);
+        if (updatedSessionData && updatedSessionData.session) {
+          // Обновляем данные через callback, если он передан
+          if (onChemistryEnabled) {
+            onChemistryEnabled(updatedSessionData.session, updatedSessionData.payment);
+          }
+        }
+      } catch (refreshError) {
+        console.error('Ошибка при обновлении данных сессии:', refreshError);
+        // Не показываем ошибку пользователю, поллинг все равно обновит данные
       }
     } catch (error) {
       console.error('Ошибка включения химии:', error);
@@ -149,6 +155,7 @@ const SessionDetails = ({ theme = 'light', user }) => {
   const [actionLoading, setActionLoading] = useState(false);
   const [boxChanged, setBoxChanged] = useState(false);
   const [showExtendModal, setShowExtendModal] = useState(false);
+  const [showBuyChemistryModal, setShowBuyChemistryModal] = useState(false);
   const [availableRentalTimes, setAvailableRentalTimes] = useState([]);
   const [selectedExtensionTime, setSelectedExtensionTime] = useState(null);
   const [loadingRentalTimes, setLoadingRentalTimes] = useState(false);
@@ -168,13 +175,11 @@ const SessionDetails = ({ theme = 'light', user }) => {
   // Проверяем, можно ли отменить сессию
   const canCancelSession = session && ['created', 'in_queue', 'assigned'].includes(session.status);
   
-  // Проверяем, можно ли продлить сессию (только за 3 минуты до конца и если не запрошено продление)
+  // Проверяем, можно ли продлить сессию (всегда когда сессия активна и время не истекло)
   const canExtendSession = session && 
     session.status === 'active' && 
     timeLeft !== null && 
-    timeLeft <= 1000 && // 5 минут для тестирования
-    timeLeft > 0 && // Время еще не истекло
-    session.requested_extension_time_minutes === 0; // Не запрошено продление
+    timeLeft > 0; // Время еще не истекло
   
   // Проверяем, можно ли продлить сессию при неуспешной оплате продления
   const canRetryExtension = session && 
@@ -182,6 +187,11 @@ const SessionDetails = ({ theme = 'light', user }) => {
     session.requested_extension_time_minutes > 0 && // Запрошено продление
     payment && 
     (payment.status === 'failed' || payment.status === 'pending'); // Но оплата неуспешна
+  
+  // Проверяем, можно ли докупить химию (химия не была куплена или полностью использована)
+  const canBuyChemistry = session && 
+    session.status === 'active' && 
+    session.service_type === 'wash';
   
   // Получаем информацию о возврате
   const refundInfo = sessionPayments ? formatSessionRefundInfo(sessionPayments) : formatRefundInfo(payment);
@@ -221,8 +231,8 @@ const SessionDetails = ({ theme = 'light', user }) => {
     // Очищаем старый интервал, если он существует
     clearPollingInterval();
     
-    // Устанавливаем интервал для поллинга (каждые 5 секунд, но каждую секунду если сессия в очереди)
-    const pollInterval = session?.status === 'in_queue' ? 1000 : 5000;
+    // Устанавливаем интервал для поллинга (каждые 2 секунды, но каждую секунду если сессия в очереди)
+    const pollInterval = session?.status === 'in_queue' ? 1000 : 2000;
     
     pollingInterval.current = setInterval(async () => {
       try {
@@ -277,7 +287,7 @@ const SessionDetails = ({ theme = 'light', user }) => {
     }, pollInterval);
   };
   
-  // Функция для загрузки доступного времени аренды
+  // Функция для загрузки доступного времени мойки
   const fetchAvailableRentalTimes = async (serviceType) => {
     try {
       setLoadingRentalTimes(true);
@@ -290,8 +300,8 @@ const SessionDetails = ({ theme = 'light', user }) => {
         }
       }
     } catch (err) {
-      alert('Ошибка при загрузке доступного времени аренды: ' + err.message);
-      setError('Не удалось загрузить доступное время аренды');
+      alert('Ошибка при загрузке доступного времени мойки: ' + err.message);
+      setError('Не удалось загрузить доступное время мойки');
     } finally {
       setLoadingRentalTimes(false);
     }
@@ -347,6 +357,40 @@ const SessionDetails = ({ theme = 'light', user }) => {
     }
   };
 
+  // Функция для докупки химии
+  const handleBuyChemistry = async () => {
+    if (!selectedChemistryTime) {
+      setError('Выберите время химии');
+      return;
+    }
+
+    try {
+      setActionLoading(true);
+      setError(null);
+      
+      // Вызываем API для докупки химии (ExtensionTimeMinutes = 0, ExtensionChemistryTimeMinutes = selectedChemistryTime)
+      const response = await ApiService.extendSessionWithPayment(sessionId, 0, selectedChemistryTime);
+      
+      if (response && response.payment) {
+        setPayment(response.payment);
+        // Перенаправляем на страницу оплаты
+        navigate('/telegram/payment', { 
+          state: { 
+            session: response.session,
+            payment: response.payment,
+            paymentType: 'extension',
+            sessionId: sessionId
+          } 
+        });
+      }
+    } catch (err) {
+      alert('Ошибка при создании платежа докупки химии: ' + err.message);
+      setError('Не удалось создать платеж докупки химии. Пожалуйста, попробуйте еще раз.');
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
   // Функция для открытия модального окна продления
   const openExtendModal = () => {
     if (session && session.service_type) {
@@ -366,6 +410,23 @@ const SessionDetails = ({ theme = 'light', user }) => {
   // Функция для закрытия модального окна продления
   const closeExtendModal = () => {
     setShowExtendModal(false);
+  };
+
+  // Функция для открытия модального окна докупки химии
+  const openBuyChemistryModal = () => {
+    if (session && session.service_type === 'wash') {
+      // Сбрасываем предыдущие значения
+      setSelectedChemistryTime(null);
+      
+      // Загружаем доступное время химии
+      fetchAvailableChemistryTimes(session.service_type);
+      setShowBuyChemistryModal(true);
+    }
+  };
+
+  // Функция для закрытия модального окна докупки химии
+  const closeBuyChemistryModal = () => {
+    setShowBuyChemistryModal(false);
   };
 
   // Функция для выбора времени продления
@@ -388,23 +449,39 @@ const SessionDetails = ({ theme = 'light', user }) => {
       const response = await ApiService.completeSession(sessionId);
       
       if (response && response.session) {
-        setSession(response.session);
-        
-        // Обновляем информацию о платеже, если она есть
-        if (response.payment) {
-          setPayment(response.payment);
-        }
-        
-        // Если у сессии есть номер бокса, используем его
-        if (response.session.box_number) {
-          setBox({ number: response.session.box_number });
-        }
-        // Иначе, если у сессии есть назначенный бокс, получаем информацию о нем
-        else if (response.session.box_id) {
-          const queueStatus = await ApiService.getQueueStatus();
-          const boxInfo = queueStatus.boxes.find(b => b.id === response.session.box_id);
-          if (boxInfo) {
-            setBox(boxInfo);
+        // Немедленно обновляем данные сессии для мгновенного отображения изменений
+        try {
+          const updatedSessionData = await ApiService.getSessionById(sessionId);
+          if (updatedSessionData && updatedSessionData.session) {
+            setSession(updatedSessionData.session);
+            
+            // Обновляем информацию о платеже, если она есть
+            if (updatedSessionData.payment) {
+              setPayment(updatedSessionData.payment);
+            }
+            
+            // Если у сессии есть номер бокса, используем его
+            if (updatedSessionData.session.box_number) {
+              setBox({ number: updatedSessionData.session.box_number });
+            }
+            // Иначе, если у сессии есть назначенный бокс, получаем информацию о нем
+            else if (updatedSessionData.session.box_id) {
+              const queueStatus = await ApiService.getQueueStatus();
+              const boxInfo = queueStatus.boxes.find(b => b.id === updatedSessionData.session.box_id);
+              if (boxInfo) {
+                setBox(boxInfo);
+              }
+            }
+          }
+        } catch (refreshError) {
+          console.error('Ошибка при обновлении данных сессии:', refreshError);
+          // Fallback к данным из ответа API
+          setSession(response.session);
+          if (response.payment) {
+            setPayment(response.payment);
+          }
+          if (response.session.box_number) {
+            setBox({ number: response.session.box_number });
           }
         }
       }
@@ -499,18 +576,36 @@ const SessionDetails = ({ theme = 'light', user }) => {
       const response = await ApiService.startSession(sessionId);
       
       if (response && response.session) {
-        setSession(response.session);
-        
-        // Если у сессии есть номер бокса, используем его
-        if (response.session.box_number) {
-          setBox({ number: response.session.box_number });
-        }
-        // Иначе, если у сессии есть назначенный бокс, получаем информацию о нем
-        else if (response.session.box_id) {
-          const queueStatus = await ApiService.getQueueStatus();
-          const boxInfo = queueStatus.boxes.find(b => b.id === response.session.box_id);
-          if (boxInfo) {
-            setBox(boxInfo);
+        // Немедленно обновляем данные сессии для мгновенного отображения изменений
+        try {
+          const updatedSessionData = await ApiService.getSessionById(sessionId);
+          if (updatedSessionData && updatedSessionData.session) {
+            setSession(updatedSessionData.session);
+            
+            // Обновляем информацию о платеже, если она есть
+            if (updatedSessionData.payment) {
+              setPayment(updatedSessionData.payment);
+            }
+            
+            // Если у сессии есть номер бокса, используем его
+            if (updatedSessionData.session.box_number) {
+              setBox({ number: updatedSessionData.session.box_number });
+            }
+            // Иначе, если у сессии есть назначенный бокс, получаем информацию о нем
+            else if (updatedSessionData.session.box_id) {
+              const queueStatus = await ApiService.getQueueStatus();
+              const boxInfo = queueStatus.boxes.find(b => b.id === updatedSessionData.session.box_id);
+              if (boxInfo) {
+                setBox(boxInfo);
+              }
+            }
+          }
+        } catch (refreshError) {
+          console.error('Ошибка при обновлении данных сессии:', refreshError);
+          // Fallback к данным из ответа API
+          setSession(response.session);
+          if (response.session.box_number) {
+            setBox({ number: response.session.box_number });
           }
         }
       }
@@ -627,11 +722,8 @@ const SessionDetails = ({ theme = 'light', user }) => {
         
         {session.status === 'assigned' && timeLeft !== null && (
           <>
-            <h2 className={`${styles.title} ${themeClass}`} style={{ marginTop: '20px' }}>Время до истечения резерва</h2>
+            <h2 className={`${styles.title} ${themeClass}`} style={{ marginTop: '20px' }}>Время до старта мойки</h2>
             <Timer seconds={timeLeft} theme={theme} />
-            <p style={{ textAlign: 'center', marginTop: '10px', color: timeLeft <= 60 ? '#C62828' : 'inherit' }}>
-              Начните мойку до истечения времени, иначе резерв будет снят
-            </p>
           </>
         )}
         
@@ -645,9 +737,14 @@ const SessionDetails = ({ theme = 'light', user }) => {
             <ChemistryEnableButton 
               session={session} 
               theme={theme} 
-              onChemistryEnabled={() => {
-                // Перезагружаем сессию после включения химии
-                fetchSessionDetails();
+              onChemistryEnabled={(updatedSession, updatedPayment) => {
+                // Немедленно обновляем данные сессии
+                if (updatedSession) {
+                  setSession(updatedSession);
+                }
+                if (updatedPayment) {
+                  setPayment(updatedPayment);
+                }
               }}
             />
           )}
@@ -675,6 +772,17 @@ const SessionDetails = ({ theme = 'light', user }) => {
                   style={{ width: '100%', backgroundColor: '#FF9800' }}
                 >
                   🔄 Повторить продление
+                </Button>
+              )}
+              {canBuyChemistry && (
+                <Button 
+                  theme={theme} 
+                  onClick={openBuyChemistryModal}
+                  disabled={actionLoading}
+                  loading={actionLoading}
+                  style={{ width: '100%', backgroundColor: '#9C27B0' }}
+                >
+                  🧪 Докупить химию
                 </Button>
               )}
               <Button 
@@ -755,7 +863,7 @@ const SessionDetails = ({ theme = 'light', user }) => {
         </div>
         
         <div className={`${styles.infoRow} ${themeClass}`}>
-          <div className={`${styles.infoLabel} ${themeClass}`}>Время аренды:</div>
+          <div className={`${styles.infoLabel} ${themeClass}`}>Время мойки:</div>
           <div className={`${styles.infoValue} ${themeClass}`}>
             {session.rental_time_minutes || 5} минут
             {session.extension_time_minutes > 0 && ` (продлено на ${session.extension_time_minutes} минут)`}
@@ -898,13 +1006,6 @@ const SessionDetails = ({ theme = 'light', user }) => {
                         <p className={`${styles.loadingText} ${themeClass}`}>Загрузка времени химии...</p>
                       ) : (
                         <div className={styles.rentalTimeGrid}>
-                          <div 
-                            className={`${styles.rentalTimeItem} ${selectedChemistryTime === 0 ? styles.selectedTime : ''}`}
-                            onClick={() => handleChemistryTimeSelect(0)}
-                          >
-                            <span className={`${styles.rentalTimeValue} ${themeClass}`}>0</span>
-                            <span className={`${styles.rentalTimeUnit} ${themeClass}`}>мин</span>
-                          </div>
                           {availableChemistryTimes.map((time) => (
                             <div 
                               key={time} 
@@ -936,6 +1037,56 @@ const SessionDetails = ({ theme = 'light', user }) => {
                       loading={actionLoading}
                     >
                       Продлить
+                    </Button>
+                  </div>
+                </>
+              )}
+              
+              {error && <div className={`${styles.errorMessage} ${themeClass}`}>{error}</div>}
+            </Card>
+          </div>
+        )}
+        
+        {/* Модальное окно для докупки химии */}
+        {showBuyChemistryModal && (
+          <div className={styles.modalOverlay}>
+            <Card theme={theme} className={styles.modal}>
+              <h3 className={`${styles.modalTitle} ${themeClass}`}>Докупка химии</h3>
+              
+              {loadingChemistryTimes ? (
+                <p className={`${styles.loadingText} ${themeClass}`}>Загрузка доступного времени химии...</p>
+              ) : (
+                <>
+                  <p className={`${styles.modalText} ${themeClass}`}>Выберите время химии:</p>
+                  <div className={styles.rentalTimeGrid}>
+                    {availableChemistryTimes.map((time) => (
+                      <div 
+                        key={time} 
+                        className={`${styles.rentalTimeItem} ${selectedChemistryTime === time ? styles.selectedTime : ''}`}
+                        onClick={() => handleChemistryTimeSelect(time)}
+                      >
+                        <span className={`${styles.rentalTimeValue} ${themeClass}`}>{time}</span>
+                        <span className={`${styles.rentalTimeUnit} ${themeClass}`}>мин</span>
+                      </div>
+                    ))}
+                  </div>
+                  
+                  <div className={styles.modalButtons}>
+                    <Button 
+                      theme={theme} 
+                      variant="secondary"
+                      onClick={closeBuyChemistryModal}
+                      disabled={actionLoading}
+                    >
+                      Отмена
+                    </Button>
+                    <Button 
+                      theme={theme} 
+                      onClick={handleBuyChemistry}
+                      disabled={actionLoading || !selectedChemistryTime}
+                      loading={actionLoading}
+                    >
+                      Докупить
                     </Button>
                   </div>
                 </>

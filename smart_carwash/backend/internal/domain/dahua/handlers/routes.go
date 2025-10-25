@@ -17,4 +17,7 @@ func SetupRoutes(router *gin.RouterGroup, handler *Handler) {
 
 	// Health check (без аутентификации для мониторинга)
 	router.GET("/dahua/health", handler.HealthCheck)
+
+	// Heartbeat endpoint для камер Dahua (без аутентификации)
+	router.POST("/NotificationInfo/DeviceInfo", handler.DeviceInfo)
 }

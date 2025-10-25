@@ -20,7 +20,7 @@ const useTimer = (session) => {
       
       const now = new Date();
       
-      // Получаем выбранное время аренды в минутах (по умолчанию 5 минут)
+      // Получаем выбранное время мойки в минутах (по умолчанию 5 минут)
       const rentalTimeMinutes = sessionData.rental_time_minutes || 5;
       
       // Учитываем время продления, если оно есть
@@ -41,8 +41,9 @@ const useTimer = (session) => {
       
       const now = new Date();
       
-      // Общая продолжительность резерва - 3 минуты (180 секунд)
-      const totalDuration = 180; // в секундах
+      // Получаем время ожидания старта мойки из настроек (по умолчанию 3 минуты)
+      const sessionTimeoutMinutes = sessionData.session_timeout_minutes || 3;
+      const totalDuration = sessionTimeoutMinutes * 60; // в секундах
       
       // Прошедшее время в секундах
       const elapsedSeconds = differenceInSeconds(now, assignedTime);
@@ -63,7 +64,7 @@ const useTimer = (session) => {
       const remaining = calculateTimeLeft(session);
       setTimeLeft(remaining);
       
-      // Обновляем таймер каждую секунду
+      // Обновляем таймер каждую секунду для плавности
       const timerId = setInterval(() => {
         const remaining = calculateTimeLeft(session);
         setTimeLeft(remaining);

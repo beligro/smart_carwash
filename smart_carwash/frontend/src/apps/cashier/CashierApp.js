@@ -8,6 +8,9 @@ import ActiveSessions from './components/ActiveSessions';
 import LastShiftStatistics from './components/LastShiftStatistics';
 import BoxManagement from './components/BoxManagement';
 import MobileTable from '../../shared/components/MobileTable';
+import Timer from '../../shared/components/UI/Timer';
+import useTimer from '../../shared/hooks/useTimer';
+import ReassignSessionModal from '../../shared/components/UI/ReassignSessionModal/ReassignSessionModal';
 
 const CashierContainer = styled.div`
   display: flex;
@@ -167,6 +170,13 @@ const Td = styled.td`
   border-bottom: 1px solid ${props => props.theme.borderColor};
 `;
 
+const BoxNumberTd = styled.td`
+  padding: 12px;
+  border-bottom: 1px solid ${props => props.theme.borderColor};
+  font-size: 1.4rem;
+  font-weight: 700;
+`;
+
 // Мобильные карточки для кассира
 const MobileSessionCard = styled.div`
   display: none;
@@ -183,7 +193,6 @@ const MobileSessionCard = styled.div`
       case 'active': return '#28a745';
       case 'complete': return '#6c757d';
       case 'canceled': return '#dc3545';
-      case 'expired': return '#6c757d';
       default: return '#6c757d';
     }
   }};
@@ -234,6 +243,29 @@ const MobileCardValue = styled.span`
   font-weight: 500;
 `;
 
+const MobileBoxNumberValue = styled.span`
+  font-size: 1.4rem;
+  color: ${props => props.theme.textColor};
+  font-weight: 700;
+`;
+
+// Компонент для отображения таймера сессии
+const SessionTimer = React.memo(({ session }) => {
+  const { timeLeft } = useTimer(session);
+  
+  if (!timeLeft || timeLeft <= 0) {
+    return null;
+  }
+  
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+      <span style={{ fontSize: '0.8rem', color: '#666' }}>⏱️</span>
+      <Timer seconds={timeLeft} theme="light" />
+    </div>
+  );
+});
+
+
 const MobileCardActions = styled.div`
   display: flex;
   gap: 8px;
@@ -253,7 +285,6 @@ const StatusBadge = styled.span`
       case 'active': return '#28a745';
       case 'complete': return '#6c757d';
       case 'canceled': return '#dc3545';
-      case 'expired': return '#6c757d';
       default: return '#6c757d';
     }
   }};
@@ -335,6 +366,11 @@ const CashierApp = () => {
   const [error, setError] = useState(null);
   const [showLastShiftStatistics, setShowLastShiftStatistics] = useState(false);
   const [actionLoading, setActionLoading] = useState({});
+  const [reassignModal, setReassignModal] = useState({
+    isOpen: false,
+    sessionId: null,
+    serviceType: null
+  });
 
   useEffect(() => {
     // Проверяем авторизацию при загрузке компонента
@@ -373,6 +409,15 @@ const CashierApp = () => {
     console.log('useEffect для loadData:', { hasActiveShift, shiftInfo, activeTab });
     if (hasActiveShift && shiftInfo) {
       loadData();
+    }
+  }, [hasActiveShift, shiftInfo, activeTab]);
+
+  // Поллинг для сессий каждые 3 секунды без показа загрузки
+  useEffect(() => {
+    if (hasActiveShift && shiftInfo && activeTab === 'sessions') {
+      const interval = setInterval(pollSessions, 3000);
+      
+      return () => clearInterval(interval);
     }
   }, [hasActiveShift, shiftInfo, activeTab]);
 
@@ -437,8 +482,11 @@ const CashierApp = () => {
     
     try {
       if (activeTab === 'sessions') {
-        console.log('Загружаем сессии для кассира, shiftStartedAt:', shiftInfo.started_at);
-        const sessionsResponse = await ApiService.getCashierSessions(shiftInfo.started_at);
+        console.log('Загружаем все сессии для кассира с начала смены:', shiftInfo.started_at);
+        const sessionsResponse = await ApiService.getSessions({ 
+          limit: 100,
+          date_from: shiftInfo.started_at
+        });
         console.log('Получены сессии:', sessionsResponse);
         setSessions(sessionsResponse.sessions || []);
       } else if (activeTab === 'payments') {
@@ -452,6 +500,24 @@ const CashierApp = () => {
       setError('Ошибка загрузки данных');
     } finally {
       setLoadingData(false);
+    }
+  };
+
+  const pollSessions = async () => {
+    if (!shiftInfo || activeTab !== 'sessions') {
+      return;
+    }
+    
+    try {
+      console.log('Поллинг сессий для кассира с начала смены:', shiftInfo.started_at);
+      const sessionsResponse = await ApiService.getSessions({ 
+        limit: 100,
+        date_from: shiftInfo.started_at
+      });
+      setSessions(sessionsResponse.sessions || []);
+    } catch (error) {
+      console.error('Ошибка поллинга сессий:', error);
+      // Не показываем ошибку при поллинге, чтобы не мешать пользователю
     }
   };
 
@@ -470,6 +536,18 @@ const CashierApp = () => {
       currency: 'RUB',
       minimumFractionDigits: 0
     }).format(amount / 100);
+  };
+
+  const getStatusText = (status) => {
+    switch (status) {
+      case 'created': return 'Создана';
+      case 'in_queue': return 'В очереди';
+      case 'assigned': return 'Назначена';
+      case 'active': return 'Активна';
+      case 'complete': return 'Завершена';
+      case 'canceled': return 'Отменена';
+      default: return status;
+    }
   };
 
   const getServiceTypeText = (serviceType) => {
@@ -508,6 +586,40 @@ const CashierApp = () => {
     } finally {
       setActionLoading(prev => ({ ...prev, [sessionId]: false }));
     }
+  };
+
+  // Обработчик переназначения сессии
+  const handleReassignSession = async (sessionId) => {
+    setActionLoading(prev => ({ ...prev, [sessionId]: true }));
+    
+    try {
+      await ApiService.cashierReassignSession(sessionId);
+      await loadData(); // Перезагружаем данные
+      setReassignModal({ isOpen: false, sessionId: null, serviceType: null });
+    } catch (error) {
+      console.error('Ошибка переназначения сессии:', error);
+      setError('Ошибка переназначения сессии: ' + (error.response?.data?.error || error.message));
+    } finally {
+      setActionLoading(prev => ({ ...prev, [sessionId]: false }));
+    }
+  };
+
+  // Открытие модального окна переназначения
+  const openReassignModal = (sessionId, serviceType) => {
+    setReassignModal({
+      isOpen: true,
+      sessionId,
+      serviceType
+    });
+  };
+
+  // Закрытие модального окна переназначения
+  const closeReassignModal = () => {
+    setReassignModal({
+      isOpen: false,
+      sessionId: null,
+      serviceType: null
+    });
   };
 
   // Обработчик выхода из системы
@@ -659,7 +771,8 @@ const CashierApp = () => {
                             <Th theme={theme}>Номер машины</Th>
                             <Th theme={theme}>Номер бокса</Th>
                             <Th theme={theme}>Химия</Th>
-                            <Th theme={theme}>Время аренды</Th>
+                            <Th theme={theme}>Время мойки</Th>
+                            <Th theme={theme}>Таймер</Th>
                             <Th theme={theme}>Создана</Th>
                             <Th theme={theme}>Действия</Th>
                           </tr>
@@ -672,12 +785,12 @@ const CashierApp = () => {
                                 <Td theme={theme}>{session.id}</Td>
                                 <Td theme={theme}>
                                   <StatusBadge status={session.status}>
-                                    {session.status}
+                                    {getStatusText(session.status)}
                                   </StatusBadge>
                                 </Td>
                                 <Td theme={theme}>{getServiceTypeText(session.service_type)}</Td>
                                 <Td theme={theme}>{session.car_number || 'Не указан'}</Td>
-                                <Td theme={theme}>{session.box_number ? `Бокс ${session.box_number}` : 'Не назначен'}</Td>
+                                <BoxNumberTd theme={theme}>{session.box_number ? `№${session.box_number}` : 'Не назначен'}</BoxNumberTd>
                                 <Td theme={theme}>
                                   <ChemistryStatus theme={theme} style={{ color: chemistryStatus.color }}>
                                     <ChemistryIcon>{chemistryStatus.icon}</ChemistryIcon>
@@ -685,18 +798,33 @@ const CashierApp = () => {
                                   </ChemistryStatus>
                                 </Td>
                                 <Td theme={theme}>{session.rental_time_minutes} мин</Td>
+                                <Td theme={theme}>
+                                  <SessionTimer session={session} />
+                                </Td>
                                 <Td theme={theme}>{formatDateTime(session.created_at)}</Td>
                                 <Td theme={theme}>
-                                  {session.status === 'active' && (
-                                    <ActionButton
-                                      className="complete"
-                                      onClick={() => handleCompleteSessionFromTable(session.id)}
-                                      disabled={actionLoading[session.id]}
-                                      style={{ padding: '4px 8px', fontSize: '0.8rem' }}
-                                    >
-                                      {actionLoading[session.id] ? 'Завершаем...' : 'Завершить'}
-                                    </ActionButton>
-                                  )}
+                                  <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap' }}>
+                                    {session.status === 'active' && (
+                                      <ActionButton
+                                        className="complete"
+                                        onClick={() => handleCompleteSessionFromTable(session.id)}
+                                        disabled={actionLoading[session.id]}
+                                        style={{ padding: '4px 8px', fontSize: '0.8rem' }}
+                                      >
+                                        {actionLoading[session.id] ? 'Завершаем...' : 'Завершить'}
+                                      </ActionButton>
+                                    )}
+                                    {(session.status === 'assigned' || session.status === 'active') && (
+                                      <ActionButton
+                                        className="reassign"
+                                        onClick={() => openReassignModal(session.id, session.service_type)}
+                                        disabled={actionLoading[session.id]}
+                                        style={{ padding: '4px 8px', fontSize: '0.8rem', backgroundColor: '#ff9800', color: 'white' }}
+                                      >
+                                        {actionLoading[session.id] ? 'Переназначаем...' : '🔄 Переназначить'}
+                                      </ActionButton>
+                                    )}
+                                  </div>
                                 </Td>
                               </tr>
                             );
@@ -715,7 +843,7 @@ const CashierApp = () => {
                               </MobileCardTitle>
                               <MobileCardStatus>
                                 <StatusBadge status={session.status}>
-                                  {session.status}
+                                  {getStatusText(session.status)}
                                 </StatusBadge>
                               </MobileCardStatus>
                             </MobileCardHeader>
@@ -737,9 +865,9 @@ const CashierApp = () => {
                               
                               <MobileCardDetail>
                                 <MobileCardLabel theme={theme}>Номер бокса</MobileCardLabel>
-                                <MobileCardValue theme={theme}>
-                                  {session.box_number ? `Бокс ${session.box_number}` : 'Не назначен'}
-                                </MobileCardValue>
+                                <MobileBoxNumberValue theme={theme}>
+                                  {session.box_number ? `№${session.box_number}` : 'Не назначен'}
+                                </MobileBoxNumberValue>
                               </MobileCardDetail>
                               
                               <MobileCardDetail>
@@ -753,9 +881,16 @@ const CashierApp = () => {
                               </MobileCardDetail>
                               
                               <MobileCardDetail>
-                                <MobileCardLabel theme={theme}>Время аренды</MobileCardLabel>
+                                <MobileCardLabel theme={theme}>Время мойки</MobileCardLabel>
                                 <MobileCardValue theme={theme}>
                                   {session.rental_time_minutes} мин
+                                </MobileCardValue>
+                              </MobileCardDetail>
+                              
+                              <MobileCardDetail>
+                                <MobileCardLabel theme={theme}>Таймер</MobileCardLabel>
+                                <MobileCardValue theme={theme}>
+                                  <SessionTimer session={session} />
                                 </MobileCardValue>
                               </MobileCardDetail>
                               
@@ -776,6 +911,16 @@ const CashierApp = () => {
                                   style={{ padding: '8px 16px', fontSize: '0.9rem', minHeight: '44px' }}
                                 >
                                   {actionLoading[session.id] ? 'Завершаем...' : 'Завершить'}
+                                </ActionButton>
+                              )}
+                              {(session.status === 'assigned' || session.status === 'active') && (
+                                <ActionButton
+                                  className="reassign"
+                                  onClick={() => openReassignModal(session.id, session.service_type)}
+                                  disabled={actionLoading[session.id]}
+                                  style={{ padding: '8px 16px', fontSize: '0.9rem', minHeight: '44px', backgroundColor: '#ff9800', color: 'white' }}
+                                >
+                                  {actionLoading[session.id] ? 'Переназначаем...' : '🔄 Переназначить'}
                                 </ActionButton>
                               )}
                             </MobileCardActions>
@@ -857,6 +1002,16 @@ const CashierApp = () => {
           </>
         )}
       </Content>
+
+      {/* Модальное окно переназначения сессии */}
+      <ReassignSessionModal
+        isOpen={reassignModal.isOpen}
+        onClose={closeReassignModal}
+        onConfirm={handleReassignSession}
+        sessionId={reassignModal.sessionId}
+        serviceType={reassignModal.serviceType}
+        isLoading={actionLoading[reassignModal.sessionId] || false}
+      />
     </CashierContainer>
   );
 };

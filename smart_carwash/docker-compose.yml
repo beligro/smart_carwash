@@ -58,6 +58,11 @@ services:
       REACT_APP_API_URL: ${REACT_APP_API_URL}
     networks:
       - carwash_network
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
 
   nginx:
     build:
@@ -77,6 +82,11 @@ services:
       - /var/log/ssl_check.log:/var/log/ssl_check.log:ro
     networks:
       - carwash_network
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
 
   postgres-backup:
     image: postgres:latest
@@ -111,6 +121,11 @@ services:
     command: -config.file=/etc/loki/local-config.yaml
     networks:
       - carwash_network
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
 
   # Promtail для сбора логов
   promtail:
@@ -125,6 +140,11 @@ services:
       - carwash_network
     depends_on:
       - loki
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
 
   # Prometheus для метрик
   prometheus:
@@ -142,10 +162,19 @@ services:
       - '--storage.tsdb.path=/prometheus'
       - '--web.console.libraries=/etc/prometheus/console_libraries'
       - '--web.console.templates=/etc/prometheus/consoles'
-      - '--storage.tsdb.retention.time=30d'
+      - '--storage.tsdb.retention.time=7d'
+      - '--storage.tsdb.retention.size=1GB'
       - '--web.enable-lifecycle'
+      - '--storage.tsdb.wal-compression'
+      - '--storage.tsdb.min-block-duration=2h'
+      - '--storage.tsdb.max-block-duration=2h'
     networks:
       - carwash_network
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
 
   # Node Exporter для системных метрик
   node-exporter:
@@ -165,6 +194,11 @@ services:
       - '--collector.filesystem.mount-points-exclude=^/(sys|proc|dev|host|etc)($$|/)'
     networks:
       - carwash_network
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
 
   # PostgreSQL Exporter для метрик БД
   postgres-exporter:
@@ -179,6 +213,11 @@ services:
       - carwash_network
     depends_on:
       - postgres
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
 
   # Grafana для визуализации
   grafana:
@@ -200,6 +239,11 @@ services:
     depends_on:
       - loki
       - prometheus
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
 
 networks:
   carwash_network:

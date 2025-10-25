@@ -83,6 +83,47 @@
   background-color: #4CAF50;
 }
 
+/* Стили для выбранной услуги */
+.singleSelected {
+  position: relative;
+  border: 2px solid #4CAF50 !important;
+  box-shadow: 0 4px 8px rgba(76, 175, 80, 0.2) !important;
+}
+
+.selectedServiceContent {
+  flex: 1;
+  padding-right: 40px; /* Место для кнопки отмены */
+}
+
+.deselectButton {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  width: 32px;
+  height: 32px;
+  border: none;
+  border-radius: 50%;
+  background-color: #f44336;
+  color: white;
+  font-size: 18px;
+  font-weight: bold;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s;
+  z-index: 10;
+}
+
+.deselectButton:hover {
+  background-color: #d32f2f;
+  transform: scale(1.1);
+}
+
+.deselectButton:active {
+  transform: scale(0.95);
+}
+
 .optionsContainer {
   margin-bottom: 24px;
   display: flex;
@@ -288,6 +329,12 @@
     padding: 16px;
   }
   
+  .deselectButton {
+    width: 28px;
+    height: 28px;
+    font-size: 16px;
+  }
+  
   .serviceName {
     font-size: 16px;
   }
@@ -334,6 +381,12 @@
   
   .serviceCard {
     padding: 12px;
+  }
+  
+  .deselectButton {
+    width: 24px;
+    height: 24px;
+    font-size: 14px;
   }
   
   .serviceName {

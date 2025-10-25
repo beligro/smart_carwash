@@ -37,7 +37,6 @@ func (h *Handler) RegisterRoutes(router *gin.RouterGroup) {
 		paymentRoutes.POST("/create", h.createPayment)
 		paymentRoutes.GET("/status", h.getPaymentStatus)
 		paymentRoutes.POST("/webhook", h.handleWebhook)
-		paymentRoutes.POST("/calculate-session-refund", h.calculateSessionRefund)
 	}
 
 	// Административные маршруты
@@ -288,32 +287,6 @@ func (h *Handler) adminRefundPayment(c *gin.Context) {
 
 	c.JSON(http.StatusOK, adminResponse)
 }
-
-// calculateSessionRefund обработчик для расчета возврата по всем платежам сессии
-func (h *Handler) calculateSessionRefund(c *gin.Context) {
-	var req models.CalculateSessionRefundRequest
-
-	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-		return
-	}
-
-	// Логируем запрос с мета-параметрами
-	logger.WithContext(c).Infof("Запрос на расчет возврата по сессии: SessionID=%s, ServiceType=%s, UsedTime=%ds", 
-		req.SessionID, req.ServiceType, req.UsedTimeSeconds)
-
-	response, err := h.service.CalculateSessionRefund(&req)
-	if err != nil {
-		logger.WithContext(c).Errorf("Ошибка расчета возврата по сессии: %v", err)
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-		return
-	}
-
-	logger.WithContext(c).Infof("Рассчитан возврат по сессии: SessionID=%s, TotalRefundAmount=%d", 
-		req.SessionID, response.TotalRefundAmount)
-
-	c.JSON(http.StatusOK, response)
-} 
 
 // adminGetPaymentStatistics обработчик для получения статистики платежей
 func (h *Handler) adminGetPaymentStatistics(c *gin.Context) {

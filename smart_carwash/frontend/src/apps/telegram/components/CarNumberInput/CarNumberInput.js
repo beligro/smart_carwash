@@ -179,7 +179,7 @@ const CarNumberInput = ({
           <div className={styles.errorMessage}>{errorMessage}</div>
         )}
         <div className={styles.helpText}>
-          Введите номер машины (минимум 6 символов, буквы и цифры)
+          Введите номер машины с регионом
         </div>
       </div>
 

@@ -276,6 +276,23 @@ func main() {
 		}
 	}()
 
+	// Запускаем периодическую задачу для автоматического включения химии каждые 5 секунд
+	go func() {
+		ticker := time.NewTicker(5 * time.Second)
+		defer ticker.Stop()
+
+		for {
+			select {
+			case <-ticker.C:
+				if err := sessionSvc.CheckAndAutoEnableChemistry(); err != nil {
+					log.WithField("error", err).Error("Ошибка автоматического включения химии")
+				}
+			case <-quit:
+				return
+			}
+		}
+	}()
+
 	// Запускаем периодическую задачу для проверки и истечения зарезервированных сессий
 	go func() {
 		ticker := time.NewTicker(5 * time.Second)
@@ -286,6 +303,23 @@ func main() {
 			case <-ticker.C:
 				if err := sessionSvc.CheckAndExpireReservedSessions(); err != nil {
 					log.WithField("error", err).Error("Ошибка проверки зарезервированных сессий")
+				}
+			case <-quit:
+				return
+			}
+		}
+	}()
+
+	// Запускаем периодическую задачу для очистки истекших cooldown'ов
+	go func() {
+		ticker := time.NewTicker(5 * time.Second) // Проверяем каждые 5 секунд
+		defer ticker.Stop()
+
+		for {
+			select {
+			case <-ticker.C:
+				if err := washboxSvc.CheckCooldownExpired(); err != nil {
+					log.WithField("error", err).Error("Ошибка очистки истекших cooldown'ов")
 				}
 			case <-quit:
 				return

@@ -17,6 +17,7 @@ type Service interface {
 	GetUserByID(id uuid.UUID) (*models.User, error)
 	GetUserByCarNumber(carNumber string) (*models.User, error)
 	UpdateCarNumber(req *models.UpdateCarNumberRequest) (*models.UpdateCarNumberResponse, error)
+	UpdateEmail(req *models.UpdateEmailRequest) (*models.UpdateEmailResponse, error)
 
 	// Административные методы
 	AdminListUsers(req *models.AdminListUsersRequest) (*models.AdminListUsersResponse, error)
@@ -136,6 +137,33 @@ func (s *ServiceImpl) UpdateCarNumber(req *models.UpdateCarNumberRequest) (*mode
 	}
 
 	return &models.UpdateCarNumberResponse{
+		Success: true,
+		User:    *user,
+	}, nil
+}
+
+// UpdateEmail обновляет email пользователя
+func (s *ServiceImpl) UpdateEmail(req *models.UpdateEmailRequest) (*models.UpdateEmailResponse, error) {
+	// Валидация email
+	emailRegex := regexp.MustCompile(`^[^\s@]+@[^\s@]+\.[^\s@]+$`)
+	if !emailRegex.MatchString(req.Email) {
+		return nil, fmt.Errorf("неверный формат email")
+	}
+
+	// Получаем пользователя
+	user, err := s.repo.GetUserByID(req.UserID)
+	if err != nil {
+		return nil, err
+	}
+
+	// Обновляем email
+	user.Email = req.Email
+	err = s.repo.UpdateUser(user)
+	if err != nil {
+		return nil, err
+	}
+
+	return &models.UpdateEmailResponse{
 		Success: true,
 		User:    *user,
 	}, nil

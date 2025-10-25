@@ -36,11 +36,11 @@ schema_config:
 ruler:
   alertmanager_url: http://localhost:9093
 
-# Настройки хранения - 14 дней
+# Настройки хранения - 2 дня
 limits_config:
   enforce_metric_name: false
   reject_old_samples: true
-  reject_old_samples_max_age: 168h
+  reject_old_samples_max_age: 48h
   max_cache_freshness_per_query: 10m
   split_queries_by_interval: 15m
   max_query_parallelism: 32
@@ -49,7 +49,7 @@ limits_config:
   max_entries_limit_per_query: 5000
   max_query_series: 500
   max_query_lookback: 0s
-  max_query_length: 721h
+  max_query_length: 48h
   cardinality_limit: 100000
   max_streams_matchers_per_query: 1000
   max_concurrent_tail_requests: 10
@@ -60,15 +60,15 @@ limits_config:
   per_stream_rate_limit_burst: 15MB
   max_global_streams_per_user: 0
   max_chunks_per_query: 2000000
-  # 14 дней хранения
-  retention_period: 336h
+  # 2 дня хранения
+  retention_period: 48h
 
 chunk_store_config:
   max_look_back_period: 0s
 
 table_manager:
   retention_deletes_enabled: true
-  retention_period: 336h
+  retention_period: 48h
 
 compactor:
   working_directory: /loki/compactor

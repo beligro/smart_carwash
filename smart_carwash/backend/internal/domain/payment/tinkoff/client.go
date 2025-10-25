@@ -237,9 +237,15 @@ func (c *Client) generateToken(params map[string]interface{}) string {
 }
 
 // buildReceipt формирует чек для фискализации
-func (c *Client) buildReceipt(amount int) map[string]interface{} {
+func (c *Client) buildReceipt(amount int, email string) map[string]interface{} {
+	// Используем переданный email или фоллбек на хардкод
+	receiptEmail := email
+	if receiptEmail == "" {
+		receiptEmail = "yndx-aagrom-ijakag@yandex.ru"
+	}
+	
 	receipt := map[string]interface{}{
-		"Email":    "yndx-aagrom-ijakag@yandex.ru",
+		"Email":    receiptEmail,
 		"Taxation": "usn_income_outcome",
 		"Items": []map[string]interface{}{
 			{

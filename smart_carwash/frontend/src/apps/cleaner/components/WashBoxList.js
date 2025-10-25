@@ -246,8 +246,8 @@ const WashBoxList = ({ onCleaningAction }) => {
   const getServiceTypeText = (serviceType) => {
     switch (serviceType) {
       case 'wash': return 'Мойка';
-      case 'air_dry': return 'Сушка';
-      case 'vacuum': return 'Пылесос';
+      case 'air_dry': return 'Воздух для продувки';
+      case 'vacuum': return 'Пылеводосос';
       default: return serviceType;
     }
   };

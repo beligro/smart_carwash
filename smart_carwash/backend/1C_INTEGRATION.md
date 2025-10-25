@@ -59,7 +59,7 @@ Authorization: Bearer your-secret-api-key-here
 | `with_chemistry` | boolean | Нет | Использование химии (только для `wash`) |
 | `payment_time` | string (ISO 8601) | Да | Время платежа |
 | `amount` | integer | Да | Сумма в копейках |
-| `rental_time_minutes` | integer | Да | Время аренды в минутах |
+| `rental_time_minutes` | integer | Да | Время мойки в минутах |
 
 #### Response
 

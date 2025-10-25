@@ -16,7 +16,6 @@ const (
 	SessionStatusActive        = "active"         // Активна (клиент приступил к мойке)
 	SessionStatusComplete      = "complete"       // Завершена
 	SessionStatusCanceled      = "canceled"       // Отменена
-	SessionStatusExpired       = "expired"        // Истек срок резервирования
 )
 
 // Session представляет сессию мойки
@@ -33,7 +32,8 @@ type Session struct {
 	ChemistryStartedAt            *time.Time     `json:"chemistry_started_at,omitempty"`                    // Когда была включена химия
 	ChemistryEndedAt              *time.Time     `json:"chemistry_ended_at,omitempty"`                      // Когда была выключена химия
 	CarNumber                     string         `json:"car_number"`                                        // Номер машины в сессии
-	RentalTimeMinutes             int            `json:"rental_time_minutes" gorm:"default:5"`              // Время аренды в минутах
+	Email                         string         `json:"email"`                                             // Email для чека
+	RentalTimeMinutes             int            `json:"rental_time_minutes" gorm:"default:5"`              // Время мойки в минутах
 	ExtensionTimeMinutes          int            `json:"extension_time_minutes" gorm:"default:0"`           // Время продления в минутах
 	RequestedExtensionTimeMinutes int            `json:"requested_extension_time_minutes" gorm:"default:0"` // Запрошенное время продления в минутах
 	RequestedExtensionChemistryTimeMinutes int `json:"requested_extension_chemistry_time_minutes" gorm:"default:0"` // Запрошенное время химии при продлении в минутах
@@ -47,6 +47,7 @@ type Session struct {
 	CreatedAt                     time.Time      `json:"created_at"`
 	UpdatedAt                     time.Time      `json:"updated_at"`
 	StatusUpdatedAt               time.Time      `json:"status_updated_at"` // Время последнего обновления статуса
+	SessionTimeoutMinutes         int            `json:"session_timeout_minutes" gorm:"-"` // Время ожидания старта мойки в минутах (виртуальное поле)
 	DeletedAt                     gorm.DeletedAt `json:"-" gorm:"index"`
 }
 
@@ -69,6 +70,7 @@ type CreateSessionRequest struct {
 	WithChemistry        bool      `json:"with_chemistry"`
 	ChemistryTimeMinutes int       `json:"chemistry_time_minutes"` // Выбранное время химии в минутах
 	CarNumber            string    `json:"car_number" binding:"required"`
+	Email                string    `json:"email"`                   // Email для чека
 	RentalTimeMinutes    int       `json:"rental_time_minutes" binding:"required"`
 	IdempotencyKey       string    `json:"idempotency_key" binding:"required"`
 }
@@ -85,6 +87,7 @@ type CreateSessionWithPaymentRequest struct {
 	WithChemistry        bool      `json:"with_chemistry"`
 	ChemistryTimeMinutes int       `json:"chemistry_time_minutes"` // Выбранное время химии в минутах
 	CarNumber            string    `json:"car_number" binding:"required"`
+	Email                string    `json:"email"`                   // Email для чека
 	RentalTimeMinutes    int       `json:"rental_time_minutes" binding:"required"`
 	IdempotencyKey       string    `json:"idempotency_key" binding:"required"`
 }
@@ -121,6 +124,18 @@ type GetUserSessionRequest struct {
 type GetUserSessionResponse struct {
 	Session *Session `json:"session"`
 	Payment *Payment `json:"payment,omitempty"`
+}
+
+// CheckActiveSessionRequest представляет запрос на проверку активной сессии
+type CheckActiveSessionRequest struct {
+	UserID uuid.UUID `json:"user_id" binding:"required"`
+}
+
+// CheckActiveSessionResponse представляет ответ на проверку активной сессии
+type CheckActiveSessionResponse struct {
+	HasActiveSession bool     `json:"has_active_session"`
+	Session          *Session `json:"session,omitempty"`
+	Payment          *Payment `json:"payment,omitempty"`
 }
 
 // GetSessionRequest представляет запрос на получение сессии по ID
@@ -181,7 +196,7 @@ type ExtendSessionResponse struct {
 // ExtendSessionWithPaymentRequest представляет запрос на продление сессии с оплатой
 type ExtendSessionWithPaymentRequest struct {
 	SessionID                     uuid.UUID `json:"session_id" binding:"required"`
-	ExtensionTimeMinutes          int       `json:"extension_time_minutes" binding:"required"`
+	ExtensionTimeMinutes          int       `json:"extension_time_minutes"`
 	ExtensionChemistryTimeMinutes int       `json:"extension_chemistry_time_minutes"` // Время химии при продлении (опционально)
 }
 
@@ -232,7 +247,7 @@ type AdminListSessionsRequest struct {
 	UserID      *uuid.UUID `json:"user_id"`
 	BoxID       *uuid.UUID `json:"box_id"`
 	BoxNumber   *int       `json:"box_number"`
-	Status      *string    `json:"status" binding:"omitempty,oneof=created in_queue payment_failed assigned active complete canceled expired"`
+	Status      *string    `json:"status" binding:"omitempty,oneof=created in_queue payment_failed assigned active complete canceled"`
 	ServiceType *string    `json:"service_type" binding:"omitempty,oneof=wash air_dry vacuum"`
 	DateFrom    *time.Time `json:"date_from"`
 	DateTo      *time.Time `json:"date_to"`

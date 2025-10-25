@@ -19,8 +19,6 @@ export const getSessionStatusText = (status) => {
         return 'Завершена';
       case 'canceled':
         return 'Отменена';
-      case 'expired':
-        return 'Истекла';
       default:
         return 'Неизвестно';
     }
@@ -65,7 +63,6 @@ export const getDisplayPaymentStatus = (session) => {
         case 'complete':
             return 'Оплачен';
         case 'canceled':
-        case 'expired':
             return 'Возвращен';
         case 'payment_failed':
             return 'Ошибка оплаты';
@@ -368,8 +365,6 @@ export const getSessionStatusDescription = (status) => {
         return 'Мойка завершена';
       case 'canceled':
         return 'Сессия отменена';
-      case 'expired':
-        return 'Время сессии истекло';
       default:
         return 'Неизвестный статус';
     }
@@ -393,9 +388,9 @@ export const getSessionStatusDescription = (status) => {
     case 'wash':
       return 'Мойка';
     case 'air_dry':
-      return 'Обдув воздухом';
+      return 'Воздух для продувки';
     case 'vacuum':
-      return 'Пылесос';
+      return 'Пылеводосос';
     default:
       console.warn('getServiceTypeDescription: unknown serviceType =', serviceType);
       // Возвращаем исходное значение вместо "Неизвестная услуга"

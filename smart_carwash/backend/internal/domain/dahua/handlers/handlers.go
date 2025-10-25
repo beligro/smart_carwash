@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"net/http"
+	"time"
 
 	"github.com/gin-gonic/gin"
 
@@ -89,5 +90,18 @@ func (h *Handler) HealthCheck(c *gin.Context) {
 		"success": true,
 		"message": "Dahua интеграция работает",
 		"service": "dahua",
+	})
+}
+
+// DeviceInfo heartbeat endpoint для камер Dahua
+// POST /NotificationInfo/DeviceInfo
+func (h *Handler) DeviceInfo(c *gin.Context) {
+	// Логируем heartbeat от камеры
+	c.Set("dahua_heartbeat", true)
+	
+	c.JSON(http.StatusOK, gin.H{
+		"success": true,
+		"message": "Device heartbeat received",
+		"timestamp": time.Now().Format("2006-01-02T15:04:05"),
 	})
 }

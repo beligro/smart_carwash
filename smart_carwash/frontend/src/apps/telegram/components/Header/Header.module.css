@@ -6,6 +6,7 @@
     box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
     transition: background-color 0.3s ease, color 0.3s ease;
     position: relative;
+    min-height: 56px;
   }
   
   .light {
@@ -31,11 +32,34 @@
   }
 
   .backButton {
-    transition: opacity 0.2s ease;
+    background: none;
+    border: none;
+    font-size: 28px;
+    cursor: pointer;
+    padding: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    position: absolute;
+    left: 8px;
+    top: 0;
+    bottom: 0;
+    width: 48px;
+    height: 100%;
+    z-index: 10;
+    user-select: none;
+    -webkit-tap-highlight-color: transparent;
+    touch-action: manipulation;
+    -webkit-user-select: none;
+    margin: 0;
   }
 
   .backButton:hover {
-    opacity: 0.7;
+    opacity: 0.6;
+  }
+
+  .backButton:active {
+    opacity: 0.4;
   }
 
   .light .backButton {

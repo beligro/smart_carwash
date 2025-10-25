@@ -10,6 +10,8 @@ import {
   formatDateForDisplay 
 } from '../../../shared/utils/dateUtils';
 import ReassignSessionModal from '../../../shared/components/UI/ReassignSessionModal/ReassignSessionModal';
+import Timer from '../../../shared/components/UI/Timer';
+import useTimer from '../../../shared/hooks/useTimer';
 
 const Container = styled.div`
   padding: 20px;
@@ -104,10 +106,6 @@ const StatusBadge = styled.span`
     color: #c62828;
   }
   
-  &.expired {
-    background-color: #fafafa;
-    color: #616161;
-  }
 `;
 
 const ServiceTypeBadge = styled.span`
@@ -407,6 +405,22 @@ const MobileActionButton = styled.button`
   }
 `;
 
+// Компонент для отображения таймера сессии
+const SessionTimer = React.memo(({ session }) => {
+  const { timeLeft } = useTimer(session);
+  
+  if (!timeLeft || timeLeft <= 0) {
+    return null;
+  }
+  
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+      <span style={{ fontSize: '0.8rem', color: '#666' }}>⏱️</span>
+      <Timer seconds={timeLeft} theme="light" />
+    </div>
+  );
+});
+
 const SessionManagement = () => {
   const theme = getTheme('light');
   const location = useLocation();
@@ -498,8 +512,51 @@ const SessionManagement = () => {
     }
   };
 
+  // Поллинг сессий без показа загрузки
+  const pollSessions = async () => {
+    try {
+      // Исправляем названия полей для API
+      const filtersData = {
+        limit: pagination.limit,
+        offset: pagination.offset
+      };
+      
+      // Добавляем фильтры с правильными названиями полей
+      if (filters.status) filtersData.status = filters.status;
+      if (filters.serviceType) filtersData.service_type = filters.serviceType;
+      if (filters.userId) filtersData.user_id = filters.userId;
+      if (filters.boxNumber) filtersData.box_number = filters.boxNumber;
+      
+      // Конвертируем локальные даты в UTC перед отправкой
+      if (localDateFilters.dateFrom) {
+        filtersData.date_from = convertDateTimeLocalToUTC(localDateFilters.dateFrom);
+      }
+      if (localDateFilters.dateTo) {
+        filtersData.date_to = convertDateTimeLocalToUTC(localDateFilters.dateTo);
+      }
+      
+      const response = await ApiService.getSessions(filtersData);
+      
+      setSessions(response.sessions || []);
+      setPagination(prev => ({
+        ...prev,
+        total: response.total || 0
+      }));
+    } catch (err) {
+      console.error('Ошибка поллинга сессий:', err);
+      // Не показываем ошибку при поллинге, чтобы не мешать пользователю
+    }
+  };
+
   useEffect(() => {
     fetchSessions();
+  }, [filters, localDateFilters, pagination.limit, pagination.offset]);
+
+  // Поллинг для сессий каждые 3 секунды без показа загрузки
+  useEffect(() => {
+    const interval = setInterval(pollSessions, 3000);
+    
+    return () => clearInterval(interval);
   }, [filters, localDateFilters, pagination.limit, pagination.offset]);
 
   // Сброс пагинации при изменении фильтров
@@ -633,8 +690,7 @@ const SessionManagement = () => {
       active: 'Активна',
       complete: 'Завершена',
       canceled: 'Отменена',
-      in_queue: 'В очереди',
-      expired: 'Истекла'
+      in_queue: 'В очереди'
     };
     return statusMap[status] || status;
   };
@@ -649,8 +705,8 @@ const SessionManagement = () => {
     
     const serviceMap = {
       wash: 'Мойка',
-      air_dry: 'Обдув',
-      vacuum: 'Пылесос'
+      air_dry: 'Воздух для продувки',
+      vacuum: 'Пылеводосос'
     };
     
     const result = serviceMap[serviceType];
@@ -799,7 +855,8 @@ const SessionManagement = () => {
             <Th theme={theme}>Тип услуги</Th>
             <Th theme={theme}>Химия</Th>
             <Th theme={theme}>Время химии</Th>
-            <Th theme={theme}>Время аренды</Th>
+            <Th theme={theme}>Время мойки</Th>
+            <Th theme={theme}>Таймер</Th>
             <Th theme={theme}>Дата создания</Th>
             <Th theme={theme}>Действия</Th>
           </tr>
@@ -843,6 +900,9 @@ const SessionManagement = () => {
                 )}
               </Td>
               <Td>{session.rental_time_minutes} мин</Td>
+              <Td>
+                <SessionTimer session={session} />
+              </Td>
               <Td>{formatDate(session.created_at)}</Td>
               <Td>
                 <ActionButton theme={theme} onClick={() => openSessionModal(session)}>
@@ -932,9 +992,16 @@ const SessionManagement = () => {
               </MobileCardDetail>
               
               <MobileCardDetail>
-                <MobileCardLabel theme={theme}>Время аренды</MobileCardLabel>
+                <MobileCardLabel theme={theme}>Время мойки</MobileCardLabel>
                 <MobileCardValue theme={theme}>
                   {session.rental_time_minutes} мин
+                </MobileCardValue>
+              </MobileCardDetail>
+              
+              <MobileCardDetail>
+                <MobileCardLabel theme={theme}>Таймер</MobileCardLabel>
+                <MobileCardValue theme={theme}>
+                  <SessionTimer session={session} />
                 </MobileCardValue>
               </MobileCardDetail>
               
@@ -1062,7 +1129,7 @@ const SessionManagement = () => {
                   </DetailGroup>
                   
                   <DetailGroup>
-                    <DetailLabel theme={theme}>Время аренды:</DetailLabel>
+                    <DetailLabel theme={theme}>Время мойки:</DetailLabel>
                     <DetailValue theme={theme}>{sessionDetails.rental_time_minutes} минут</DetailValue>
                   </DetailGroup>
                   

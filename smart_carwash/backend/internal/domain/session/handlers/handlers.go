@@ -46,6 +46,7 @@ func (h *Handler) RegisterRoutes(router *gin.RouterGroup) {
 		sessionRoutes.POST("/with-payment", h.createSessionWithPayment) // создание сессии с платежом
 		sessionRoutes.GET("", h.getUserSession)                // user_id в query параметре
 		sessionRoutes.GET("/for-payment", h.getUserSessionForPayment) // user_id в query параметре, включает payment_failed
+		sessionRoutes.GET("/check-active", h.checkActiveSession) // user_id в query параметре, проверка активной сессии
 		sessionRoutes.GET("/by-id", h.getSessionByID)          // session_id в query параметре
 		sessionRoutes.POST("/start", h.startSession)           // session_id в теле запроса
 		sessionRoutes.POST("/complete", h.completeSession)     // session_id в теле запроса
@@ -159,6 +160,37 @@ func (h *Handler) getUserSession(c *gin.Context) {
 	}
 
 	// Возвращаем сессию пользователя
+	c.JSON(http.StatusOK, response)
+}
+
+// checkActiveSession обработчик для проверки активной сессии пользователя
+func (h *Handler) checkActiveSession(c *gin.Context) {
+	// Получаем ID пользователя из query параметра
+	userIDStr := c.Query("user_id")
+	if userIDStr == "" {
+		logger.WithContext(c).Errorf("API Error - checkActiveSession: не указан ID пользователя")
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Не указан ID пользователя"})
+		return
+	}
+
+	userID, err := uuid.Parse(userIDStr)
+	if err != nil {
+		logger.WithContext(c).Errorf("API Error - checkActiveSession: некорректный ID пользователя '%s', error: %v", userIDStr, err)
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Некорректный ID пользователя"})
+		return
+	}
+
+	// Проверяем активную сессию пользователя
+	response, err := h.service.CheckActiveSession(&models.CheckActiveSessionRequest{
+		UserID: userID,
+	})
+	if err != nil {
+		logger.WithContext(c).Errorf("API Error - checkActiveSession: ошибка проверки активной сессии для user_id: %s, error: %v", userID.String(), err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Ошибка проверки активной сессии"})
+		return
+	}
+
+	// Возвращаем результат проверки
 	c.JSON(http.StatusOK, response)
 }
 
@@ -294,8 +326,14 @@ func (h *Handler) extendSessionWithPayment(c *gin.Context) {
 		return
 	}
 
+	// Валидация: хотя бы одно из полей должно быть больше 0
+	if req.ExtensionTimeMinutes <= 0 && req.ExtensionChemistryTimeMinutes <= 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "должно быть указано время продления или время химии"})
+		return
+	}
+
 	// Логируем мета-параметр для поиска
-	logger.WithContext(c).Infof("Запрос на продление сессии с оплатой: SessionID=%s, ExtensionTime=%d", req.SessionID, req.ExtensionTimeMinutes)
+	logger.WithContext(c).Infof("Запрос на продление сессии с оплатой: SessionID=%s, ExtensionTime=%d, ExtensionChemistryTime=%d", req.SessionID, req.ExtensionTimeMinutes, req.ExtensionChemistryTimeMinutes)
 
 	// Продлеваем сессию с оплатой
 	response, err := h.service.ExtendSessionWithPayment(&req)

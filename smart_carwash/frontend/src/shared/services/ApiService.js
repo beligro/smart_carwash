@@ -167,16 +167,30 @@ const ApiService = {
     }
   },
 
+  // Обновление email пользователя
+  updateEmail: async (userId, email) => {
+    try {
+      const response = await api.put('/users/email', {
+        user_id: userId,
+        email: email
+      });
+      return response.data;
+    } catch (error) {
+      console.error('Ошибка при обновлении email:', error);
+      throw error;
+    }
+  },
+
   // === МЕТОДЫ ДЛЯ TELEGRAM ПРИЛОЖЕНИЯ ===
 
-  // Получение доступного времени аренды для определенного типа услуги
+  // Получение доступного времени мойки для определенного типа услуги
   getAvailableRentalTimes: async (serviceType) => {
     try {
       const response = await api.get(`/settings/rental-times?service_type=${serviceType}`);
       return response.data;
     } catch (error) {
-      console.error('Ошибка при получении доступного времени аренды:', error);
-      return { availableTimes: [5] }; // Значение по умолчанию
+      console.error('Ошибка при получении доступного времени мойки:', error);
+      return { availableTimes: [15, 20, 30, 60, 90] }; // Значение по умолчанию
     }
   },
 
@@ -187,7 +201,7 @@ const ApiService = {
       return response.data;
     } catch (error) {
       console.error('Ошибка при получении доступного времени химии:', error);
-      return { available_chemistry_times: [3, 4, 5] }; // Значение по умолчанию
+      return { available_chemistry_times: [3, 4, 10] }; // Значение по умолчанию
     }
   },
 
@@ -260,6 +274,13 @@ const ApiService = {
       return response.data;
     } catch (error) {
       console.error('Ошибка при создании сессии с платежом:', error);
+      
+      // Извлекаем сообщение об ошибке из ответа бэкенда
+      if (error.response && error.response.data && error.response.data.error) {
+        const backendError = new Error(error.response.data.error);
+        throw backendError;
+      }
+      
       throw error;
     }
   },
@@ -313,6 +334,17 @@ const ApiService = {
     } catch (error) {
       console.error('Ошибка при получении сессии пользователя для PaymentPage:', error);
       return { session: null };
+    }
+  },
+
+  // Проверка активной сессии пользователя
+  checkActiveSession: async (userId) => {
+    try {
+      const response = await api.get(`/sessions/check-active?user_id=${userId}`);
+      return response.data;
+    } catch (error) {
+      console.error('Ошибка при проверке активной сессии:', error);
+      return { hasActiveSession: false, session: null };
     }
   },
   
@@ -484,7 +516,7 @@ const ApiService = {
     return response.data;
   },
 
-  // Обновление времени аренды (админка)
+  // Обновление времени мойки (админка)
   updateRentalTimes: async (data) => {
     const snakeData = toSnakeCase(data);
     const response = await api.put('/admin/settings/rental-times', snakeData);
@@ -799,6 +831,54 @@ const ApiService = {
       return response.data;
     } catch (error) {
       console.error('Ошибка при обновлении времени уборки:', error);
+      throw error;
+    }
+  },
+
+  // Получение времени ожидания старта мойки (админка)
+  getSessionTimeout: async () => {
+    try {
+      const response = await api.get('/admin/settings/session-timeout');
+      return response.data;
+    } catch (error) {
+      console.error('Ошибка при получении времени ожидания старта мойки:', error);
+      throw error;
+    }
+  },
+
+  // Обновление времени ожидания старта мойки (админка)
+  updateSessionTimeout: async (timeoutMinutes) => {
+    try {
+      const response = await api.put('/admin/settings/session-timeout', {
+        timeout_minutes: timeoutMinutes,
+      });
+      return response.data;
+    } catch (error) {
+      console.error('Ошибка при обновлении времени ожидания старта мойки:', error);
+      throw error;
+    }
+  },
+
+  // Получение времени блокировки бокса после завершения сессии (админка)
+  getCooldownTimeout: async () => {
+    try {
+      const response = await api.get('/admin/settings/cooldown-timeout');
+      return response.data;
+    } catch (error) {
+      console.error('Ошибка при получении времени блокировки бокса:', error);
+      throw error;
+    }
+  },
+
+  // Обновление времени блокировки бокса после завершения сессии (админка)
+  updateCooldownTimeout: async (timeoutMinutes) => {
+    try {
+      const response = await api.put('/admin/settings/cooldown-timeout', {
+        timeout_minutes: timeoutMinutes,
+      });
+      return response.data;
+    } catch (error) {
+      console.error('Ошибка при обновлении времени блокировки бокса:', error);
       throw error;
     }
   },

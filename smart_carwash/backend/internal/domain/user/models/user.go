@@ -15,6 +15,7 @@ type User struct {
 	FirstName  string         `json:"first_name"`
 	LastName   string         `json:"last_name"`
 	CarNumber  string         `json:"car_number"`
+	Email      string         `json:"email"`
 	IsAdmin    bool           `json:"is_admin" gorm:"default:false"`
 	CreatedAt  time.Time      `json:"created_at"`
 	UpdatedAt  time.Time      `json:"updated_at"`
@@ -79,6 +80,18 @@ type UpdateCarNumberRequest struct {
 
 // UpdateCarNumberResponse ответ на обновление номера машины
 type UpdateCarNumberResponse struct {
+	Success bool `json:"success"`
+	User    User `json:"user"`
+}
+
+// UpdateEmailRequest запрос на обновление email
+type UpdateEmailRequest struct {
+	UserID uuid.UUID `json:"user_id" binding:"required"`
+	Email  string    `json:"email" binding:"required"`
+}
+
+// UpdateEmailResponse ответ на обновление email
+type UpdateEmailResponse struct {
 	Success bool `json:"success"`
 	User    User `json:"user"`
 }

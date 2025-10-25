@@ -74,7 +74,7 @@ func (r *RepositoryImpl) UpdateServiceSetting(serviceType, settingKey string, se
 	return result.Error
 }
 
-// GetAvailableRentalTimes получает доступное время аренды для определенного типа услуги
+// GetAvailableRentalTimes получает доступное время мойки для определенного типа услуги
 func (r *RepositoryImpl) GetAvailableRentalTimes(serviceType string) ([]int, error) {
 	setting, err := r.GetServiceSetting(serviceType, "available_rental_times")
 	if err != nil {
@@ -95,7 +95,7 @@ func (r *RepositoryImpl) GetAvailableRentalTimes(serviceType string) ([]int, err
 	return times, nil
 }
 
-// UpdateAvailableRentalTimes обновляет доступное время аренды для определенного типа услуги
+// UpdateAvailableRentalTimes обновляет доступное время мойки для определенного типа услуги
 func (r *RepositoryImpl) UpdateAvailableRentalTimes(serviceType string, times []int) error {
 	return r.UpdateServiceSetting(serviceType, "available_rental_times", times)
 }

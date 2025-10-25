@@ -48,6 +48,11 @@ type Service interface {
 
 	// Методы для логов уборки (админка)
 	AdminListCleaningLogs(req *models.AdminListCleaningLogsRequest) (*models.AdminListCleaningLogsResponse, error)
+
+	// Методы для работы с cooldown
+	SetCooldown(boxID uuid.UUID, userID uuid.UUID, cooldownUntil time.Time) error
+	GetAvailableBoxesByServiceType(serviceType string, userID uuid.UUID) ([]models.WashBox, error)
+	CheckCooldownExpired() error
 }
 
 // ServiceImpl реализация Service
@@ -705,4 +710,44 @@ func (s *ServiceImpl) UpdateCleaningStartedAt(washBoxID uuid.UUID, startedAt tim
 // ClearCleaningReservation очищает резерв уборки
 func (s *ServiceImpl) ClearCleaningReservation(washBoxID uuid.UUID) error {
 	return s.repo.CancelCleaning(washBoxID)
+}
+
+// SetCooldown устанавливает cooldown для бокса после завершения сессии
+func (s *ServiceImpl) SetCooldown(boxID uuid.UUID, userID uuid.UUID, cooldownUntil time.Time) error {
+	return s.repo.SetCooldown(boxID, userID, cooldownUntil)
+}
+
+// GetAvailableBoxesByServiceType получает доступные боксы с учетом cooldown и приоритетов
+func (s *ServiceImpl) GetAvailableBoxesByServiceType(serviceType string, userID uuid.UUID) ([]models.WashBox, error) {
+	// 1. ПРИОРИТЕТ: Боксы в cooldown для того же пользователя
+	cooldownBoxes, err := s.repo.GetCooldownBoxesForUser(userID)
+	if err != nil {
+		return nil, err
+	}
+
+	// Фильтруем по типу услуги
+	var availableBoxes []models.WashBox
+	for _, box := range cooldownBoxes {
+		if box.ServiceType == serviceType {
+			availableBoxes = append(availableBoxes, box)
+		}
+	}
+
+	// Если есть боксы в cooldown для пользователя - возвращаем их
+	if len(availableBoxes) > 0 {
+		return availableBoxes, nil
+	}
+
+	// 2. Если нет боксов в cooldown - берем свободные боксы
+	freeBoxes, err := s.repo.GetFreeWashBoxesByServiceType(serviceType)
+	if err != nil {
+		return nil, err
+	}
+
+	return freeBoxes, nil
+}
+
+// CheckCooldownExpired очищает истекшие cooldown'ы
+func (s *ServiceImpl) CheckCooldownExpired() error {
+	return s.repo.CheckCooldownExpired()
 }
