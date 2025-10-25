@@ -40,23 +40,11 @@ func (a *ModbusAdapter) WriteCoil(boxID uuid.UUID, register string, value bool) 
 }
 
 // WriteLightCoil включает или выключает свет для бокса
-func (a *ModbusAdapter) WriteLightCoil(boxID uuid.UUID, value bool) error {
-	logger.Printf("ModbusAdapter WriteLightCoil - box_id: %s, value: %v", boxID, value)
-	
-	// Получаем информацию о боксе для регистра
-	box, err := a.repository.GetWashBoxByID(boxID)
-	if err != nil {
-		logger.Printf("Ошибка получения бокса для WriteLightCoil - box_id: %s, error: %v", boxID, err)
-		return fmt.Errorf("не удалось найти бокс: %v", err)
-	}
-	
-	register := ""
-	if box.LightCoilRegister != nil {
-		register = *box.LightCoilRegister
-	}
+func (a *ModbusAdapter) WriteLightCoil(boxID uuid.UUID, register string, value bool) error {
+	logger.Printf("ModbusAdapter WriteLightCoil - box_id: %s, register: %s, value: %v", boxID, register, value)
 	
 	// Выполняем операцию через HTTP клиент
-	err = a.httpClient.WriteLightCoil(boxID, value)
+	err := a.httpClient.WriteLightCoil(boxID, register, value)
 	
 	// Определяем операцию
 	operation := "light_off"
@@ -95,23 +83,11 @@ func (a *ModbusAdapter) WriteLightCoil(boxID uuid.UUID, value bool) error {
 }
 
 // WriteChemistryCoil включает или выключает химию для бокса
-func (a *ModbusAdapter) WriteChemistryCoil(boxID uuid.UUID, value bool) error {
-	logger.Printf("ModbusAdapter WriteChemistryCoil - box_id: %s, value: %v", boxID, value)
-	
-	// Получаем информацию о боксе для регистра
-	box, err := a.repository.GetWashBoxByID(boxID)
-	if err != nil {
-		logger.Printf("Ошибка получения бокса для WriteChemistryCoil - box_id: %s, error: %v", boxID, err)
-		return fmt.Errorf("не удалось найти бокс: %v", err)
-	}
-	
-	register := ""
-	if box.ChemistryCoilRegister != nil {
-		register = *box.ChemistryCoilRegister
-	}
+func (a *ModbusAdapter) WriteChemistryCoil(boxID uuid.UUID, register string, value bool) error {
+	logger.Printf("ModbusAdapter WriteChemistryCoil - box_id: %s, register: %s, value: %v", boxID, register, value)
 	
 	// Выполняем операцию через HTTP клиент
-	err = a.httpClient.WriteChemistryCoil(boxID, value)
+	err := a.httpClient.WriteChemistryCoil(boxID, register, value)
 	
 	// Определяем операцию
 	operation := "chemistry_off"

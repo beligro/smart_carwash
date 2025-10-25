@@ -523,11 +523,16 @@ func (s *ServiceImpl) StartSession(req *models.StartSessionRequest) (*models.Ses
 
 	// Включаем свет в боксе через Modbus
 	if s.modbusService != nil {
-		err = s.modbusService.WriteLightCoil(*session.BoxID, true)
-		if err != nil {
-			// Логируем ошибку (HandleModbusError теперь только логирует, не продлевает время)
-			s.modbusService.HandleModbusError(*session.BoxID, "light_on", session.ID, err)
-			logger.Printf("StartSessionError: ошибка включения света в боксе %s: %v", *session.BoxID, err)
+		// Используем уже полученную информацию о боксе
+		if box.LightCoilRegister != nil {
+			err = s.modbusService.WriteLightCoil(*session.BoxID, *box.LightCoilRegister, true)
+			if err != nil {
+				// Логируем ошибку (HandleModbusError теперь только логирует, не продлевает время)
+				s.modbusService.HandleModbusError(*session.BoxID, "light_on", session.ID, err)
+				logger.Printf("StartSessionError: ошибка включения света в боксе %s: %v", *session.BoxID, err)
+			}
+		} else {
+			logger.Printf("StartSessionError: не найден регистр света для бокса %s", *session.BoxID)
 		}
 	} else {
 		logger.Printf("StartSessionError: ModbusService не инициализирован, не включаем свет в боксе %s", *session.BoxID)
@@ -636,11 +641,16 @@ func (s *ServiceImpl) CompleteSession(req *models.CompleteSessionRequest) (*mode
 
 		// Выключаем химию через Modbus
 		if s.modbusService != nil {
-			err = s.modbusService.WriteChemistryCoil(*session.BoxID, false)
-			if err != nil {
-				logger.Printf("CompleteSession: ошибка выключения химии в боксе %s: %v", *session.BoxID, err)
+			// Используем уже полученную информацию о боксе
+			if box.ChemistryCoilRegister != nil {
+				err = s.modbusService.WriteChemistryCoil(*session.BoxID, *box.ChemistryCoilRegister, false)
+				if err != nil {
+					logger.Printf("CompleteSession: ошибка выключения химии в боксе %s: %v", *session.BoxID, err)
+				} else {
+					logger.Printf("CompleteSession: химия выключена в боксе %s, SessionID=%s", *session.BoxID, session.ID)
+				}
 			} else {
-				logger.Printf("CompleteSession: химия выключена в боксе %s, SessionID=%s", *session.BoxID, session.ID)
+				logger.Printf("CompleteSession: не найден регистр химии для бокса %s", *session.BoxID)
 			}
 		}
 
@@ -656,9 +666,14 @@ func (s *ServiceImpl) CompleteSession(req *models.CompleteSessionRequest) (*mode
 
 	// Выключаем свет в боксе через Modbus
 	if s.modbusService != nil {
-		err = s.modbusService.WriteLightCoil(*session.BoxID, false)
-		if err != nil {
-			logger.Printf("Ошибка выключения света в боксе %s: %v", *session.BoxID, err)
+		// Используем уже полученную информацию о боксе
+		if box.LightCoilRegister != nil {
+			err = s.modbusService.WriteLightCoil(*session.BoxID, *box.LightCoilRegister, false)
+			if err != nil {
+				logger.Printf("Ошибка выключения света в боксе %s: %v", *session.BoxID, err)
+			}
+		} else {
+			logger.Printf("CompleteSession: не найден регистр света для бокса %s", *session.BoxID)
 		}
 	}
 
@@ -798,11 +813,16 @@ func (s *ServiceImpl) CompleteSessionWithoutRefund(sessionID uuid.UUID) error {
 
 		// Выключаем химию через Modbus
 		if s.modbusService != nil {
-			err = s.modbusService.WriteChemistryCoil(*session.BoxID, false)
-			if err != nil {
-				logger.Printf("CompleteSessionWithoutRefund: ошибка выключения химии в боксе %s: %v", *session.BoxID, err)
+			// Используем уже полученную информацию о боксе
+			if box.ChemistryCoilRegister != nil {
+				err = s.modbusService.WriteChemistryCoil(*session.BoxID, *box.ChemistryCoilRegister, false)
+				if err != nil {
+					logger.Printf("CompleteSessionWithoutRefund: ошибка выключения химии в боксе %s: %v", *session.BoxID, err)
+				} else {
+					logger.Printf("CompleteSessionWithoutRefund: химия выключена в боксе %s, SessionID=%s", *session.BoxID, session.ID)
+				}
 			} else {
-				logger.Printf("CompleteSessionWithoutRefund: химия выключена в боксе %s, SessionID=%s", *session.BoxID, session.ID)
+				logger.Printf("CompleteSessionWithoutRefund: не найден регистр химии для бокса %s", *session.BoxID)
 			}
 		}
 
@@ -818,11 +838,16 @@ func (s *ServiceImpl) CompleteSessionWithoutRefund(sessionID uuid.UUID) error {
 
 	// Выключаем свет в боксе через Modbus
 	if s.modbusService != nil {
-		err = s.modbusService.WriteLightCoil(*session.BoxID, false)
-		if err != nil {
-			logger.Printf("CompleteSessionWithoutRefund: ошибка выключения света в боксе %s: %v", *session.BoxID, err)
+		// Используем уже полученную информацию о боксе
+		if box.LightCoilRegister != nil {
+			err = s.modbusService.WriteLightCoil(*session.BoxID, *box.LightCoilRegister, false)
+			if err != nil {
+				logger.Printf("CompleteSessionWithoutRefund: ошибка выключения света в боксе %s: %v", *session.BoxID, err)
+			} else {
+				logger.Printf("CompleteSessionWithoutRefund: свет выключен в боксе %s, SessionID=%s", *session.BoxID, session.ID)
+			}
 		} else {
-			logger.Printf("CompleteSessionWithoutRefund: свет выключен в боксе %s, SessionID=%s", *session.BoxID, session.ID)
+			logger.Printf("CompleteSessionWithoutRefund: не найден регистр света для бокса %s", *session.BoxID)
 		}
 	}
 
@@ -1130,16 +1155,26 @@ func (s *ServiceImpl) CancelSession(req *models.CancelSessionRequest) (*models.C
 		logger.Printf("Выключение всех койлов для отмененной сессии - session_id: %s, box_id: %s", session.ID, *session.BoxID)
 
 		// Выключаем свет
-		if err := s.modbusService.WriteLightCoil(*session.BoxID, false); err != nil {
-			logger.Printf("Ошибка выключения света при отмене сессии - session_id: %s, box_id: %s, error: %v",
-				session.ID, *session.BoxID, err)
+		lightRegister := s.getLightRegisterForBox(*session.BoxID)
+		if lightRegister != "" {
+			if err := s.modbusService.WriteLightCoil(*session.BoxID, lightRegister, false); err != nil {
+				logger.Printf("Ошибка выключения света при отмене сессии - session_id: %s, box_id: %s, error: %v",
+					session.ID, *session.BoxID, err)
+			}
+		} else {
+			logger.Printf("CancelSession: не найден регистр света для бокса %s", *session.BoxID)
 		}
 
 		// Выключаем химию (если была включена)
 		if session.WasChemistryOn {
-			if err := s.modbusService.WriteChemistryCoil(*session.BoxID, false); err != nil {
-				logger.Printf("Ошибка выключения химии при отмене сессии - session_id: %s, box_id: %s, error: %v",
-					session.ID, *session.BoxID, err)
+			chemistryRegister := s.getChemistryRegisterForBox(*session.BoxID)
+			if chemistryRegister != "" {
+				if err := s.modbusService.WriteChemistryCoil(*session.BoxID, chemistryRegister, false); err != nil {
+					logger.Printf("Ошибка выключения химии при отмене сессии - session_id: %s, box_id: %s, error: %v",
+						session.ID, *session.BoxID, err)
+				}
+			} else {
+				logger.Printf("CancelSession: не найден регистр химии для бокса %s", *session.BoxID)
 			}
 		}
 	}
@@ -1219,16 +1254,26 @@ func (s *ServiceImpl) CheckAndCompleteExpiredSessions() error {
 				logger.Printf("Выключение всех койлов для истекшей сессии - session_id: %s, box_id: %s", session.ID, *session.BoxID)
 
 				// Выключаем свет
-				if err := s.modbusService.WriteLightCoil(*session.BoxID, false); err != nil {
-					logger.Printf("Ошибка выключения света при истечении сессии - session_id: %s, box_id: %s, error: %v",
-						session.ID, *session.BoxID, err)
+				lightRegister := s.getLightRegisterForBox(*session.BoxID)
+				if lightRegister != "" {
+					if err := s.modbusService.WriteLightCoil(*session.BoxID, lightRegister, false); err != nil {
+						logger.Printf("Ошибка выключения света при истечении сессии - session_id: %s, box_id: %s, error: %v",
+							session.ID, *session.BoxID, err)
+					}
+				} else {
+					logger.Printf("ExpireSession: не найден регистр света для бокса %s", *session.BoxID)
 				}
 
 				// Выключаем химию (если была включена)
 				if session.WasChemistryOn {
-					if err := s.modbusService.WriteChemistryCoil(*session.BoxID, false); err != nil {
-						logger.Printf("Ошибка выключения химии при истечении сессии - session_id: %s, box_id: %s, error: %v",
-							session.ID, *session.BoxID, err)
+					chemistryRegister := s.getChemistryRegisterForBox(*session.BoxID)
+					if chemistryRegister != "" {
+						if err := s.modbusService.WriteChemistryCoil(*session.BoxID, chemistryRegister, false); err != nil {
+							logger.Printf("Ошибка выключения химии при истечении сессии - session_id: %s, box_id: %s, error: %v",
+								session.ID, *session.BoxID, err)
+						}
+					} else {
+						logger.Printf("ExpireSession: не найден регистр химии для бокса %s", *session.BoxID)
 					}
 				}
 			}
@@ -2166,11 +2211,17 @@ func (s *ServiceImpl) EnableChemistry(req *models.EnableChemistryRequest) (*mode
 
 	// Включаем химию в боксе через Modbus
 	if s.modbusService != nil && session.BoxID != nil {
-		err = s.modbusService.WriteChemistryCoil(*session.BoxID, true)
-		if err != nil {
-			// Логируем ошибку (HandleModbusError теперь только логирует, не продлевает время)
-			s.modbusService.HandleModbusError(*session.BoxID, "chemistry_on", session.ID, err)
-			logger.Printf("Ошибка включения химии в боксе %s: %v", *session.BoxID, err)
+		// Получаем регистр химии для бокса
+		chemistryRegister := s.getChemistryRegisterForBox(*session.BoxID)
+		if chemistryRegister != "" {
+			err = s.modbusService.WriteChemistryCoil(*session.BoxID, chemistryRegister, true)
+			if err != nil {
+				// Логируем ошибку (HandleModbusError теперь только логирует, не продлевает время)
+				s.modbusService.HandleModbusError(*session.BoxID, "chemistry_on", session.ID, err)
+				logger.Printf("Ошибка включения химии в боксе %s: %v", *session.BoxID, err)
+			}
+		} else {
+			logger.Printf("EnableChemistry: не найден регистр химии для бокса %s", *session.BoxID)
 		}
 	}
 
@@ -2206,11 +2257,17 @@ func (s *ServiceImpl) AutoDisableChemistry(sessionID uuid.UUID, chemistryTimeMin
 		if session.ChemistryStartedAt != nil && session.ChemistryEndedAt == nil {
 			// Выключаем химию через Modbus
 			if s.modbusService != nil && session.BoxID != nil {
-				err := s.modbusService.WriteChemistryCoil(*session.BoxID, false)
-				if err != nil {
-					logger.Printf("AutoDisableChemistry: ошибка автовыключения химии через Modbus: %v, SessionID=%s, BoxID=%s", err, sessionID, *session.BoxID)
+				// Получаем регистр химии для бокса
+				chemistryRegister := s.getChemistryRegisterForBox(*session.BoxID)
+				if chemistryRegister != "" {
+					err := s.modbusService.WriteChemistryCoil(*session.BoxID, chemistryRegister, false)
+					if err != nil {
+						logger.Printf("AutoDisableChemistry: ошибка автовыключения химии через Modbus: %v, SessionID=%s, BoxID=%s", err, sessionID, *session.BoxID)
+					} else {
+						logger.Printf("AutoDisableChemistry: химия успешно выключена через Modbus, SessionID=%s, BoxID=%s", sessionID, *session.BoxID)
+					}
 				} else {
-					logger.Printf("AutoDisableChemistry: химия успешно выключена через Modbus, SessionID=%s, BoxID=%s", sessionID, *session.BoxID)
+					logger.Printf("AutoDisableChemistry: не найден регистр химии для бокса %s", *session.BoxID)
 				}
 			}
 
@@ -2287,16 +2344,26 @@ func (s *ServiceImpl) ReassignSession(req *models.ReassignSessionRequest) (*mode
 			logger.Printf("ReassignSession: выключение оборудования, SessionID=%s, BoxID=%s", req.SessionID, *session.BoxID)
 
 			// Выключаем свет
-			if err := s.modbusService.WriteLightCoil(*session.BoxID, false); err != nil {
-				logger.Printf("ReassignSession: ошибка выключения света, SessionID=%s, BoxID=%s, error=%v", req.SessionID, *session.BoxID, err)
-				// Не прерываем выполнение, логируем ошибку
+			lightRegister := s.getLightRegisterForBox(*session.BoxID)
+			if lightRegister != "" {
+				if err := s.modbusService.WriteLightCoil(*session.BoxID, lightRegister, false); err != nil {
+					logger.Printf("ReassignSession: ошибка выключения света, SessionID=%s, BoxID=%s, error=%v", req.SessionID, *session.BoxID, err)
+					// Не прерываем выполнение, логируем ошибку
+				}
+			} else {
+				logger.Printf("ReassignSession: не найден регистр света для бокса %s", *session.BoxID)
 			}
 
 			// Выключаем химию (если была включена)
 			if session.WasChemistryOn {
-				if err := s.modbusService.WriteChemistryCoil(*session.BoxID, false); err != nil {
-					logger.Printf("ReassignSession: ошибка выключения химии, SessionID=%s, BoxID=%s, error=%v", req.SessionID, *session.BoxID, err)
-					// Не прерываем выполнение, логируем ошибку
+				chemistryRegister := s.getChemistryRegisterForBox(*session.BoxID)
+				if chemistryRegister != "" {
+					if err := s.modbusService.WriteChemistryCoil(*session.BoxID, chemistryRegister, false); err != nil {
+						logger.Printf("ReassignSession: ошибка выключения химии, SessionID=%s, BoxID=%s, error=%v", req.SessionID, *session.BoxID, err)
+						// Не прерываем выполнение, логируем ошибку
+					}
+				} else {
+					logger.Printf("ReassignSession: не найден регистр химии для бокса %s", *session.BoxID)
 				}
 			}
 		}
@@ -2332,23 +2399,6 @@ func (s *ServiceImpl) ReassignSession(req *models.ReassignSessionRequest) (*mode
 			if err != nil {
 				logger.Printf("ReassignSession: ошибка обработки очереди после переназначения, SessionID=%s, error=%v", req.SessionID, err)
 			}
-
-			/*// Отправляем уведомление пользователю о переназначении ПОСЛЕ назначения нового бокса
-			if s.userService != nil && s.telegramBot != nil {
-				// Небольшая задержка, чтобы убедиться, что бокс назначен
-				time.Sleep(1 * time.Second)
-
-				user, err := s.userService.GetUserByID(session.UserID)
-				if err == nil {
-					err = s.telegramBot.SendSessionReassignmentNotification(user.TelegramID, session.ServiceType)
-					if err != nil {
-						logger.Printf("ReassignSession: ошибка отправки уведомления о переназначении, SessionID=%s, error=%v", req.SessionID, err)
-						// Не прерываем выполнение, логируем ошибку
-					}
-				} else {
-					logger.Printf("ReassignSession: ошибка получения пользователя для уведомления, SessionID=%s, error=%v", req.SessionID, err)
-				}
-			}*/
 		}()
 	}
 
@@ -2453,4 +2503,42 @@ func (s *ServiceImpl) CheckAndAutoEnableChemistry() error {
 	}
 
 	return nil
+}
+
+// getLightRegisterForBox получает регистр света для бокса
+func (s *ServiceImpl) getLightRegisterForBox(boxID uuid.UUID) string {
+	if s.washboxService == nil {
+		return ""
+	}
+	
+	box, err := s.washboxService.GetWashBoxByID(boxID)
+	if err != nil {
+		logger.Printf("getLightRegisterForBox: ошибка получения бокса %s: %v", boxID, err)
+		return ""
+	}
+	
+	if box.LightCoilRegister != nil {
+		return *box.LightCoilRegister
+	}
+	
+	return ""
+}
+
+// getChemistryRegisterForBox получает регистр химии для бокса
+func (s *ServiceImpl) getChemistryRegisterForBox(boxID uuid.UUID) string {
+	if s.washboxService == nil {
+		return ""
+	}
+	
+	box, err := s.washboxService.GetWashBoxByID(boxID)
+	if err != nil {
+		logger.Printf("getChemistryRegisterForBox: ошибка получения бокса %s: %v", boxID, err)
+		return ""
+	}
+	
+	if box.ChemistryCoilRegister != nil {
+		return *box.ChemistryCoilRegister
+	}
+	
+	return ""
 }

@@ -17,8 +17,9 @@ type WriteCoilResponse struct {
 
 // WriteLightCoilRequest запрос на управление светом
 type WriteLightCoilRequest struct {
-	BoxID uuid.UUID `json:"box_id"`
-	Value bool      `json:"value"`
+	BoxID    uuid.UUID `json:"box_id"`
+	Register string    `json:"register"`
+	Value    bool      `json:"value"`
 }
 
 // WriteLightCoilResponse ответ на управление светом
@@ -29,8 +30,9 @@ type WriteLightCoilResponse struct {
 
 // WriteChemistryCoilRequest запрос на управление химией
 type WriteChemistryCoilRequest struct {
-	BoxID uuid.UUID `json:"box_id"`
-	Value bool      `json:"value"`
+	BoxID    uuid.UUID `json:"box_id"`
+	Register string    `json:"register"`
+	Value    bool      `json:"value"`
 }
 
 // WriteChemistryCoilResponse ответ на управление химией

@@ -101,25 +101,29 @@ func (s *ModbusService) WriteCoil(req *models.WriteCoilRequest) *models.WriteCoi
 
 // WriteLightCoil включает или выключает свет для бокса
 func (s *ModbusService) WriteLightCoil(req *models.WriteLightCoilRequest) *models.WriteLightCoilResponse {
-	log.Printf("WriteLightCoil - box_id: %s, value: %v", req.BoxID, req.Value)
+	log.Printf("WriteLightCoil - box_id: %s, register: %s, value: %v", req.BoxID, req.Register, req.Value)
 
 	// Проверяем, включен ли Modbus
 	if !s.config.ModbusEnabled {
-		log.Printf("Modbus отключен, пропускаем управление светом - box_id: %s, value: %v", req.BoxID, req.Value)
+		log.Printf("Modbus отключен, пропускаем управление светом - box_id: %s, register: %s, value: %v", req.BoxID, req.Register, req.Value)
 		return &models.WriteLightCoilResponse{
 			Success: true,
 			Message: "Modbus отключен в конфигурации",
 		}
 	}
 
-	// Для управления светом нужен регистр, но в упрощенной версии
-	// мы будем использовать фиксированный регистр или получать его из конфигурации
-	// Пока используем регистр по умолчанию для света
-	defaultLightRegister := "0x001"
+	// Проверяем формат регистра
+	if !s.isValidHexRegister(req.Register) {
+		log.Printf("Неверный формат регистра для света - box_id: %s, register: %s", req.BoxID, req.Register)
+		return &models.WriteLightCoilResponse{
+			Success: false,
+			Message: fmt.Sprintf("Неверный формат регистра: %s", req.Register),
+		}
+	}
 
 	coilReq := &models.WriteCoilRequest{
 		BoxID:    req.BoxID,
-		Register: defaultLightRegister,
+		Register: req.Register,
 		Value:    req.Value,
 	}
 
@@ -133,23 +137,29 @@ func (s *ModbusService) WriteLightCoil(req *models.WriteLightCoilRequest) *model
 
 // WriteChemistryCoil включает или выключает химию для бокса
 func (s *ModbusService) WriteChemistryCoil(req *models.WriteChemistryCoilRequest) *models.WriteChemistryCoilResponse {
-	log.Printf("WriteChemistryCoil - box_id: %s, value: %v", req.BoxID, req.Value)
+	log.Printf("WriteChemistryCoil - box_id: %s, register: %s, value: %v", req.BoxID, req.Register, req.Value)
 
 	// Проверяем, включен ли Modbus
 	if !s.config.ModbusEnabled {
-		log.Printf("Modbus отключен, пропускаем управление химией - box_id: %s, value: %v", req.BoxID, req.Value)
+		log.Printf("Modbus отключен, пропускаем управление химией - box_id: %s, register: %s, value: %v", req.BoxID, req.Register, req.Value)
 		return &models.WriteChemistryCoilResponse{
 			Success: true,
 			Message: "Modbus отключен в конфигурации",
 		}
 	}
 
-	// Для управления химией используем фиксированный регистр
-	defaultChemistryRegister := "0x002"
+	// Проверяем формат регистра
+	if !s.isValidHexRegister(req.Register) {
+		log.Printf("Неверный формат регистра для химии - box_id: %s, register: %s", req.BoxID, req.Register)
+		return &models.WriteChemistryCoilResponse{
+			Success: false,
+			Message: fmt.Sprintf("Неверный формат регистра: %s", req.Register),
+		}
+	}
 
 	coilReq := &models.WriteCoilRequest{
 		BoxID:    req.BoxID,
-		Register: defaultChemistryRegister,
+		Register: req.Register,
 		Value:    req.Value,
 	}
 

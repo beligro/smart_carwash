@@ -51,10 +51,11 @@ func (c *ModbusHTTPClient) WriteCoil(boxID uuid.UUID, register string, value boo
 }
 
 // WriteLightCoil включает или выключает свет для бокса
-func (c *ModbusHTTPClient) WriteLightCoil(boxID uuid.UUID, value bool) error {
+func (c *ModbusHTTPClient) WriteLightCoil(boxID uuid.UUID, register string, value bool) error {
 	req := WriteLightCoilRequest{
-		BoxID: boxID,
-		Value: value,
+		BoxID:    boxID,
+		Register: register,
+		Value:    value,
 	}
 
 	var resp WriteLightCoilResponse
@@ -71,10 +72,11 @@ func (c *ModbusHTTPClient) WriteLightCoil(boxID uuid.UUID, value bool) error {
 }
 
 // WriteChemistryCoil включает или выключает химию для бокса
-func (c *ModbusHTTPClient) WriteChemistryCoil(boxID uuid.UUID, value bool) error {
+func (c *ModbusHTTPClient) WriteChemistryCoil(boxID uuid.UUID, register string, value bool) error {
 	req := WriteChemistryCoilRequest{
-		BoxID: boxID,
-		Value: value,
+		BoxID:    boxID,
+		Register: register,
+		Value:    value,
 	}
 
 	var resp WriteChemistryCoilResponse
