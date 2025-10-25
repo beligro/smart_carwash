@@ -8,7 +8,7 @@ services:
     environment:
       - SERVER_PORT=8081
       - MODBUS_ENABLED=true
-      - MODBUS_HOST=192.168.1.100
+      - MODBUS_HOST=192.168.88.10
       - MODBUS_PORT=502
       - LOG_LEVEL=info
     volumes:
