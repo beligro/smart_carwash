@@ -171,6 +171,7 @@ func (s *ServiceImpl) CreateSession(req *models.CreateSessionRequest) (*models.S
 		WithChemistry:        req.WithChemistry,
 		ChemistryTimeMinutes: req.ChemistryTimeMinutes, // Сохраняем выбранное время химии
 		CarNumber:            req.CarNumber,
+		Email:                req.Email, // Сохраняем email для чека
 		RentalTimeMinutes:    req.RentalTimeMinutes,
 		IdempotencyKey:       req.IdempotencyKey,
 		StatusUpdatedAt:      now, // Инициализируем время изменения статуса
@@ -231,6 +232,7 @@ func (s *ServiceImpl) CreateSessionWithPayment(req *models.CreateSessionWithPaym
 		SessionID: session.ID,
 		Amount:    priceResp.Price,
 		Currency:  priceResp.Currency,
+		Email:     session.Email, // Передаем email из сессии
 	})
 	if err != nil {
 		return nil, fmt.Errorf("ошибка создания платежа: %w", err)
@@ -860,6 +862,7 @@ func (s *ServiceImpl) ExtendSessionWithPayment(req *models.ExtendSessionWithPaym
 		SessionID: session.ID,
 		Amount:    priceResp.Price,
 		Currency:  priceResp.Currency,
+		Email:     session.Email, // Передаем email из сессии
 	})
 	if err != nil {
 		return nil, fmt.Errorf("ошибка создания платежа продления: %w", err)

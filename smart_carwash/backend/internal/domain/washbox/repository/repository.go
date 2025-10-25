@@ -428,5 +428,6 @@ func (r *PostgresRepository) CheckCooldownExpired() error {
 			"last_completed_session_user_id": nil,
 			"last_completed_at":              nil,
 			"cooldown_until":                 nil,
+			"status":                         models.StatusFree,
 		}).Error
 }

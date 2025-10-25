@@ -81,6 +81,7 @@ type CreatePaymentRequest struct {
 	SessionID uuid.UUID `json:"session_id" binding:"required"`
 	Amount    int       `json:"amount" binding:"required"`
 	Currency  string    `json:"currency" binding:"required"`
+	Email     string    `json:"email"` // Email для чека
 }
 
 // CreatePaymentResponse представляет ответ на создание платежа
@@ -93,6 +94,7 @@ type CreateExtensionPaymentRequest struct {
 	SessionID uuid.UUID `json:"session_id" binding:"required"`
 	Amount    int       `json:"amount" binding:"required"`
 	Currency  string    `json:"currency" binding:"required"`
+	Email     string    `json:"email"` // Email для чека
 }
 
 // CreateExtensionPaymentResponse представляет ответ на создание платежа продления

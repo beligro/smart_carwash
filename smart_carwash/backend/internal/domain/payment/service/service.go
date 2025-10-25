@@ -250,7 +250,7 @@ func (s *service) CreatePayment(req *models.CreatePaymentRequest) (*models.Creat
 	description := fmt.Sprintf("Оплата услуги автомойки (сессия: %s)", req.SessionID.String())
 
 	// Создаем чек для фискализации
-	receipt := s.buildReceipt(req.Amount)
+	receipt := s.buildReceipt(req.Amount, req.Email)
 
 	tinkoffResp, err := s.tinkoffClient.CreatePayment(orderID, req.Amount, description, receipt)
 	if err != nil {
@@ -298,7 +298,7 @@ func (s *service) CreateExtensionPayment(req *models.CreateExtensionPaymentReque
 	description := fmt.Sprintf("Продление сессии автомойки (сессия: %s)", req.SessionID.String())
 
 	// Создаем чек для фискализации
-	receipt := s.buildReceipt(req.Amount)
+	receipt := s.buildReceipt(req.Amount, req.Email)
 
 	tinkoffResp, err := s.tinkoffClient.CreatePayment(orderID, req.Amount, description, receipt)
 	if err != nil {
@@ -800,9 +800,15 @@ func (s *service) GetCashierLastShiftStatistics(req *models.CashierLastShiftStat
 }
 
 // buildReceipt формирует чек для фискализации
-func (s *service) buildReceipt(amount int) map[string]interface{} {
+func (s *service) buildReceipt(amount int, email string) map[string]interface{} {
+	// Используем переданный email или фоллбек на хардкод
+	receiptEmail := email
+	if receiptEmail == "" {
+		receiptEmail = "yndx-aagrom-ijakag@yandex.ru"
+	}
+	
 	receipt := map[string]interface{}{
-		"Email": "yndx-aagrom-ijakag@yandex.ru",
+		"Email": receiptEmail,
 		"Taxation": "usn_income_outcome",
 		"Items": []map[string]interface{}{
 			{

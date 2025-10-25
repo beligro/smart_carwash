@@ -31,6 +31,7 @@ func (h *Handler) RegisterRoutes(router *gin.RouterGroup) {
 		userRoutes.POST("", h.createUser)
 		userRoutes.GET("/by-telegram-id", h.getUserByTelegramID) // telegram_id в query параметре
 		userRoutes.PUT("/car-number", h.updateCarNumber)         // Обновление номера машины
+		userRoutes.PUT("/email", h.updateEmail)                   // Обновление email
 	}
 
 	// Административные маршруты
@@ -115,6 +116,35 @@ func (h *Handler) updateCarNumber(c *gin.Context) {
 	resp, err := h.service.UpdateCarNumber(&req)
 	if err != nil {
 		logger.WithContext(c).Errorf("API Error - updateCarNumber: ошибка обновления номера машины, user_id: %s, car_number: %s, error: %v", req.UserID.String(), req.CarNumber, err)
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	// Возвращаем результат
+	c.JSON(http.StatusOK, resp)
+}
+
+// updateEmail обработчик для обновления email
+func (h *Handler) updateEmail(c *gin.Context) {
+	var req models.UpdateEmailRequest
+
+	// Парсим JSON из тела запроса
+	if err := c.ShouldBindJSON(&req); err != nil {
+		logger.WithContext(c).Errorf("API Error - updateEmail: ошибка парсинга JSON, error: %v", err)
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	// Логируем мета-параметры
+	c.Set("meta", gin.H{
+		"user_id": req.UserID.String(),
+		"email":   req.Email,
+	})
+
+	// Обновляем email
+	resp, err := h.service.UpdateEmail(&req)
+	if err != nil {
+		logger.WithContext(c).Errorf("API Error - updateEmail: ошибка обновления email, user_id: %s, email: %s, error: %v", req.UserID.String(), req.Email, err)
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}

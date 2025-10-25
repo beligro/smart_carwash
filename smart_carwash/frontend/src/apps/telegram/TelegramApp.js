@@ -7,6 +7,7 @@ import WashInfo from './components/WashInfo/WashInfo';
 import PaymentPage from './components/PaymentPage';
 import ApiService from '../../shared/services/ApiService';
 import { getTheme } from '../../shared/styles/theme';
+// import { SettingsProvider } from '../../shared/contexts/SettingsContext';
 
 // Ленивая загрузка компонентов
 const SessionDetails = lazy(() => import('./components/SessionDetails'));
@@ -490,26 +491,8 @@ const TelegramApp = () => {
     // Запускаем поллинг для обновленной сессии
     startSessionPolling(updatedSession.id);
     
-    // Проверяем тип платежа
-    const paymentType = location?.state?.paymentType;
-    
-    if (paymentType === 'extension') {
-      // Для платежа продления возвращаемся к деталям сессии
-      navigate('/telegram/session/' + updatedSession.id, { 
-        state: { 
-          session: updatedSession,
-          payment: updatedSession.payment
-        } 
-      });
-    } else {
-      // Для основного платежа переходим к деталям сессии
-      navigate('/telegram/session/' + updatedSession.id, { 
-        state: { 
-          session: updatedSession,
-          payment: updatedSession.payment
-        } 
-      });
-    }
+    // Всегда возвращаемся на главную страницу mini app после успешной оплаты
+    navigate('/telegram');
   };
 
   const handlePaymentFailed = (updatedSession) => {
@@ -534,13 +517,8 @@ const TelegramApp = () => {
   };
 
   const handlePaymentBack = () => {
-    // Возвращаемся на страницу сессии, если есть sessionId в state
-    if (location?.state?.sessionId) {
-      navigate(`/telegram/session/${location.state.sessionId}`);
-    } else {
-      // Иначе возвращаемся на главную страницу
-      navigate('/telegram');
-    }
+    // Всегда возвращаемся на главную страницу mini app
+    navigate('/telegram');
   };
 
     // Обработчик отмены сессии
@@ -549,12 +527,26 @@ const TelegramApp = () => {
       // Отменяем сессию через API
       const response = await ApiService.cancelSession(sessionId, userId);
       
-      // Обновляем информацию о сессии
-      setWashInfo(prevInfo => ({
-        ...prevInfo,
-        userSession: response.session,
-        payment: response.payment
-      }));
+      // Немедленно обновляем данные сессии для мгновенного отображения изменений
+      try {
+        const updatedSessionData = await ApiService.getSessionById(sessionId);
+        if (updatedSessionData && updatedSessionData.session) {
+          // Обновляем информацию о сессии с актуальными данными
+          setWashInfo(prevInfo => ({
+            ...prevInfo,
+            userSession: updatedSessionData.session,
+            payment: updatedSessionData.payment
+          }));
+        }
+      } catch (refreshError) {
+        console.error('Ошибка при обновлении данных сессии:', refreshError);
+        // Fallback к данным из ответа API
+        setWashInfo(prevInfo => ({
+          ...prevInfo,
+          userSession: response.session,
+          payment: response.payment
+        }));
+      }
       
       // Очищаем поллинг сессии, так как она отменена
       if (sessionPollingInterval.current) {
@@ -590,6 +582,16 @@ const TelegramApp = () => {
     }
   };
 
+  // Обработчик завершения сессии
+  const handleCompleteSession = (updatedSession, updatedPayment) => {
+    // Обновляем информацию о сессии с актуальными данными
+    setWashInfo(prevInfo => ({
+      ...prevInfo,
+      userSession: updatedSession,
+      payment: updatedPayment
+    }));
+  };
+
   const themeObject = getTheme(theme);
 
   // Обработка ошибок рендеринга
@@ -621,6 +623,7 @@ const TelegramApp = () => {
                       onCreateSession={handleCreateSessionWithPayment}
                       onViewHistory={handleViewHistory}
                       onCancelSession={handleCancelSession}
+                      onCompleteSession={handleCompleteSession}
                       user={user}
                     />
                   ) : (

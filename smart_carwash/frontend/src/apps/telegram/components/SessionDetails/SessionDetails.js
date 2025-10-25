@@ -439,23 +439,39 @@ const SessionDetails = ({ theme = 'light', user }) => {
       const response = await ApiService.completeSession(sessionId);
       
       if (response && response.session) {
-        setSession(response.session);
-        
-        // Обновляем информацию о платеже, если она есть
-        if (response.payment) {
-          setPayment(response.payment);
-        }
-        
-        // Если у сессии есть номер бокса, используем его
-        if (response.session.box_number) {
-          setBox({ number: response.session.box_number });
-        }
-        // Иначе, если у сессии есть назначенный бокс, получаем информацию о нем
-        else if (response.session.box_id) {
-          const queueStatus = await ApiService.getQueueStatus();
-          const boxInfo = queueStatus.boxes.find(b => b.id === response.session.box_id);
-          if (boxInfo) {
-            setBox(boxInfo);
+        // Немедленно обновляем данные сессии для мгновенного отображения изменений
+        try {
+          const updatedSessionData = await ApiService.getSessionById(sessionId);
+          if (updatedSessionData && updatedSessionData.session) {
+            setSession(updatedSessionData.session);
+            
+            // Обновляем информацию о платеже, если она есть
+            if (updatedSessionData.payment) {
+              setPayment(updatedSessionData.payment);
+            }
+            
+            // Если у сессии есть номер бокса, используем его
+            if (updatedSessionData.session.box_number) {
+              setBox({ number: updatedSessionData.session.box_number });
+            }
+            // Иначе, если у сессии есть назначенный бокс, получаем информацию о нем
+            else if (updatedSessionData.session.box_id) {
+              const queueStatus = await ApiService.getQueueStatus();
+              const boxInfo = queueStatus.boxes.find(b => b.id === updatedSessionData.session.box_id);
+              if (boxInfo) {
+                setBox(boxInfo);
+              }
+            }
+          }
+        } catch (refreshError) {
+          console.error('Ошибка при обновлении данных сессии:', refreshError);
+          // Fallback к данным из ответа API
+          setSession(response.session);
+          if (response.payment) {
+            setPayment(response.payment);
+          }
+          if (response.session.box_number) {
+            setBox({ number: response.session.box_number });
           }
         }
       }

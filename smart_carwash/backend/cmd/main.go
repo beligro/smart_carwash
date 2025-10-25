@@ -312,7 +312,7 @@ func main() {
 
 	// Запускаем периодическую задачу для очистки истекших cooldown'ов
 	go func() {
-		ticker := time.NewTicker(1 * time.Minute) // Проверяем каждую минуту
+		ticker := time.NewTicker(5 * time.Second) // Проверяем каждые 5 секунд
 		defer ticker.Stop()
 
 		for {
