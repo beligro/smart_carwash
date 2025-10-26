@@ -297,24 +297,6 @@ const ApiService = {
     }
   },
 
-  // Создание сессии (для Telegram приложения)
-  createSession: async (data) => {
-    try {
-      // Добавляем обязательное поле idempotency_key
-      const sessionData = {
-        ...data,
-        idempotencyKey: uuidv4() // Генерируем уникальный ключ
-      };
-      
-      const snakeData = toSnakeCase(sessionData);
-      const response = await api.post('/sessions', snakeData);
-      return response.data;
-    } catch (error) {
-      console.error('Ошибка при создании сессии:', error);
-      throw error;
-    }
-  },
-
   // Получение сессии пользователя
   getUserSession: async (userId) => {
     try {
@@ -377,20 +359,6 @@ const ApiService = {
       return response.data;
     } catch (error) {
       console.error('Ошибка при завершении сессии:', error);
-      throw error;
-    }
-  },
-  
-  // Продление сессии (добавление времени к активной сессии)
-  extendSession: async (sessionId, extensionTimeMinutes) => {
-    try {
-      const response = await api.post('/sessions/extend', { 
-        session_id: sessionId,
-        extension_time_minutes: extensionTimeMinutes
-      });
-      return response.data;
-    } catch (error) {
-      console.error('Ошибка при продлении сессии:', error);
       throw error;
     }
   },

@@ -35,7 +35,6 @@ type Service interface {
 	GetSession(req *models.GetSessionRequest) (*models.GetSessionResponse, error)
 	StartSession(req *models.StartSessionRequest) (*models.Session, error)
 	CompleteSession(req *models.CompleteSessionRequest) (*models.CompleteSessionResponse, error)
-	ExtendSession(req *models.ExtendSessionRequest) (*models.Session, error)
 	ExtendSessionWithPayment(req *models.ExtendSessionWithPaymentRequest) (*models.ExtendSessionWithPaymentResponse, error)
 	GetSessionPayments(req *models.GetSessionPaymentsRequest) (*models.GetSessionPaymentsResponse, error)
 	CancelSession(req *models.CancelSessionRequest) (*models.CancelSessionResponse, error)
@@ -198,8 +197,8 @@ func (s *ServiceImpl) CreateSession(req *models.CreateSessionRequest) (*models.S
 		ServiceType:          req.ServiceType,
 		WithChemistry:        req.WithChemistry,
 		ChemistryTimeMinutes: req.ChemistryTimeMinutes, // Сохраняем выбранное время химии
-		CarNumber:            normalizedCarNumber, // Используем нормализованный госномер
-		Email:                req.Email, // Сохраняем email для чека
+		CarNumber:            normalizedCarNumber,      // Используем нормализованный госномер
+		Email:                req.Email,                // Сохраняем email для чека
 		RentalTimeMinutes:    req.RentalTimeMinutes,
 		IdempotencyKey:       req.IdempotencyKey,
 		StatusUpdatedAt:      now, // Инициализируем время изменения статуса
@@ -636,47 +635,6 @@ func (s *ServiceImpl) CompleteSession(req *models.CompleteSessionRequest) (*mode
 	now := time.Now()
 	usedTimeSeconds := int(now.Sub(startTime).Seconds())
 
-	// Объявляем переменные для кулдауна
-	var cooldownTimeout int
-	var shouldSetCooldown bool
-
-	// Если нет резерва уборки, устанавливаем cooldown для бокса
-	// Исключаем сессии кассира из кулдауна
-	if box.CleaningReservedBy == nil {
-		if s.cashierUserID != "" {
-			cashierUserID, err := uuid.Parse(s.cashierUserID)
-			if err == nil && session.UserID != cashierUserID {
-				// Устанавливаем cooldown только для обычных пользователей
-				cooldownTimeout, err = s.settingsService.GetCooldownTimeout()
-				if err != nil {
-					// Если не удалось получить настройку, используем значение по умолчанию
-					cooldownTimeout = 5
-				}
-				shouldSetCooldown = true
-			} else if err == nil && session.UserID == cashierUserID {
-				// Для сессий кассира переводим бокс в статус "свободен" (уже сделано выше)
-			}
-		} else {
-			// Если CASHIER_USER_ID не настроен, устанавливаем cooldown для всех
-			cooldownTimeout, err = s.settingsService.GetCooldownTimeout()
-			if err != nil {
-				// Если не удалось получить настройку, используем значение по умолчанию
-				cooldownTimeout = 5
-			}
-			shouldSetCooldown = true
-		}
-
-		// Устанавливаем cooldown для бокса, если нужно
-		if shouldSetCooldown {
-			now := time.Now()
-			cooldownUntil := now.Add(time.Duration(cooldownTimeout) * time.Minute)
-			err := s.washboxService.SetCooldown(*session.BoxID, session.UserID, cooldownUntil)
-			if err != nil {
-				return nil, err
-			}
-		}
-	}
-
 	// Обновляем статус сессии на complete, время обновления статуса и сбрасываем флаг уведомления
 	session.Status = models.SessionStatusComplete
 	session.StatusUpdatedAt = time.Now()         // Обновляем время изменения статуса
@@ -763,13 +721,7 @@ func (s *ServiceImpl) CompleteSession(req *models.CompleteSessionRequest) (*mode
 	if s.telegramBot != nil {
 		user, err := s.userService.GetUserByID(session.UserID)
 		if err == nil && user != nil {
-			// Передаем время кулдауна в уведомление, если оно было установлено
-			var cooldownMinutes *int
-			if shouldSetCooldown {
-				cooldownMinutes = &cooldownTimeout
-			}
-
-			err = s.telegramBot.SendSessionNotification(user.TelegramID, telegram.NotificationTypeSessionCompleted, cooldownMinutes)
+			err = s.telegramBot.SendSessionNotification(user.TelegramID, telegram.NotificationTypeSessionCompleted, nil)
 			if err != nil {
 				logger.Printf("CompleteSession: ошибка отправки уведомления о завершении сессии: %v", err)
 			} else {
@@ -815,10 +767,6 @@ func (s *ServiceImpl) CompleteSessionWithoutRefund(sessionID uuid.UUID) error {
 		return nil
 	}
 
-	// Объявляем переменные для кулдауна в начале метода
-	var cooldownTimeout int
-	var shouldSetCooldown bool
-
 	// Проверяем, есть ли резерв уборки для этого бокса
 	box, err := s.washboxService.GetWashBoxByID(*session.BoxID)
 	if err != nil {
@@ -843,49 +791,12 @@ func (s *ServiceImpl) CompleteSessionWithoutRefund(sessionID uuid.UUID) error {
 			return err
 		}
 	} else {
-		// Если нет резерва уборки, устанавливаем cooldown для бокса
-		// Исключаем сессии кассира из кулдауна
-		if s.cashierUserID != "" {
-			cashierUserID, err := uuid.Parse(s.cashierUserID)
-			if err == nil && session.UserID != cashierUserID {
-				// Устанавливаем cooldown только для обычных пользователей
-				cooldownTimeout, err = s.settingsService.GetCooldownTimeout()
-				if err != nil {
-					// Если не удалось получить настройку, используем значение по умолчанию
-					cooldownTimeout = 5
-				}
-				shouldSetCooldown = true
-			} else if err == nil && session.UserID == cashierUserID {
-				// Для сессий кассира переводим бокс в статус "свободен"
-				err = s.washboxService.UpdateWashBoxStatus(*session.BoxID, washboxModels.StatusFree)
-				if err != nil {
-					return err
-				}
-			}
-		} else {
-			// Если CASHIER_USER_ID не настроен, устанавливаем cooldown для всех
-			cooldownTimeout, err = s.settingsService.GetCooldownTimeout()
-			if err != nil {
-				// Если не удалось получить настройку, используем значение по умолчанию
-				cooldownTimeout = 5
-			}
-			shouldSetCooldown = true
-		}
-
-		// Устанавливаем cooldown для бокса, если нужно
-		if shouldSetCooldown {
-			now := time.Now()
-			cooldownUntil := now.Add(time.Duration(cooldownTimeout) * time.Minute)
-			err := s.washboxService.SetCooldown(*session.BoxID, session.UserID, cooldownUntil)
-			if err != nil {
-				return err
-			}
+		// Если нет резерва уборки, переводим в статус free
+		err = s.washboxService.UpdateWashBoxStatus(*session.BoxID, washboxModels.StatusFree)
+		if err != nil {
+			return err
 		}
 	}
-
-	// Определяем, нужно ли показывать информацию о кулдауне в уведомлении
-	// (только если нет резерва уборки и установлен кулдаун)
-	// Переменные shouldSetCooldown и cooldownTimeout уже установлены выше
 
 	// Обновляем статус сессии на complete, время обновления статуса и сбрасываем флаг уведомления
 	session.Status = models.SessionStatusComplete
@@ -949,13 +860,7 @@ func (s *ServiceImpl) CompleteSessionWithoutRefund(sessionID uuid.UUID) error {
 	if s.telegramBot != nil {
 		user, err := s.userService.GetUserByID(session.UserID)
 		if err == nil && user != nil {
-			// Передаем время кулдауна в уведомление, если оно было установлено
-			var cooldownMinutes *int
-			if shouldSetCooldown {
-				cooldownMinutes = &cooldownTimeout
-			}
-
-			err = s.telegramBot.SendSessionNotification(user.TelegramID, telegram.NotificationTypeSessionCompleted, cooldownMinutes)
+			err = s.telegramBot.SendSessionNotification(user.TelegramID, telegram.NotificationTypeSessionCompleted, nil)
 			if err != nil {
 				logger.Printf("CompleteSessionWithoutRefund: ошибка отправки уведомления о завершении сессии: %v", err)
 			} else {
@@ -973,35 +878,6 @@ func (s *ServiceImpl) CompleteSessionWithoutRefund(sessionID uuid.UUID) error {
 // GetActiveSessionByUserID получает активную сессию пользователя
 func (s *ServiceImpl) GetActiveSessionByUserID(userID uuid.UUID) (*models.Session, error) {
 	return s.repo.GetActiveSessionByUserID(userID)
-}
-
-// ExtendSession продлевает сессию (добавляет время к активной сессии)
-func (s *ServiceImpl) ExtendSession(req *models.ExtendSessionRequest) (*models.Session, error) {
-	// Получаем сессию по ID
-	session, err := s.repo.GetSessionByID(req.SessionID)
-	if err != nil {
-		return nil, err
-	}
-
-	// Проверяем, что сессия в статусе active
-	if session.Status != models.SessionStatusActive {
-		return nil, fmt.Errorf("сессия должна быть в статусе active для продления")
-	}
-
-	// Проверяем, что время продления положительное
-	if req.ExtensionTimeMinutes <= 0 {
-		return nil, fmt.Errorf("время продления должно быть положительным числом")
-	}
-
-	// Обновляем время продления сессии
-	session.ExtensionTimeMinutes += req.ExtensionTimeMinutes
-	session.StatusUpdatedAt = time.Now()
-	err = s.repo.UpdateSession(session)
-	if err != nil {
-		return nil, err
-	}
-
-	return session, nil
 }
 
 // ExtendSessionWithPayment создает платеж для продления сессии
@@ -1856,23 +1732,47 @@ func (s *ServiceImpl) GetUserSessionHistory(req *models.GetUserSessionHistoryReq
 		}
 		sessions[i].SessionTimeoutMinutes = sessionTimeout
 
-		// Заполняем cooldown_minutes для завершенных сессий (кроме сессий кассира)
-		if sessions[i].Status == models.SessionStatusComplete {
+		// Заполняем cooldown_minutes только для завершенных сессий с реальным активным кулдауном
+		if sessions[i].Status == models.SessionStatusComplete && sessions[i].BoxID != nil {
 			// Проверяем, что это не сессия кассира
 			if s.cashierUserID != "" {
 				cashierUserID, err := uuid.Parse(s.cashierUserID)
 				if err == nil && sessions[i].UserID != cashierUserID {
-					// Это обычный пользователь, получаем время кулдауна
-					cooldownTimeout, err := s.settingsService.GetCooldownTimeout()
-					if err == nil {
-						sessions[i].CooldownMinutes = &cooldownTimeout
+					// Это обычный пользователь, проверяем реальный активный кулдаун
+					if s.washboxService != nil {
+						box, err := s.washboxService.GetWashBoxByID(*sessions[i].BoxID)
+						if err == nil && box != nil {
+							// Проверяем, что последний пользователь - это пользователь сессии и кулдаун еще активен
+							if box.LastCompletedSessionUserID != nil &&
+								*box.LastCompletedSessionUserID == sessions[i].UserID &&
+								box.CooldownUntil != nil &&
+								box.CooldownUntil.After(time.Now()) {
+								// Получаем время кулдауна из настроек
+								cooldownTimeout, err := s.settingsService.GetCooldownTimeout()
+								if err == nil {
+									sessions[i].CooldownMinutes = &cooldownTimeout
+								}
+							}
+						}
 					}
 				}
 			} else {
-				// Если CASHIER_USER_ID не настроен, считаем что все сессии имеют кулдаун
-				cooldownTimeout, err := s.settingsService.GetCooldownTimeout()
-				if err == nil {
-					sessions[i].CooldownMinutes = &cooldownTimeout
+				// Если CASHIER_USER_ID не настроен, проверяем реальный активный кулдаун для всех
+				if s.washboxService != nil {
+					box, err := s.washboxService.GetWashBoxByID(*sessions[i].BoxID)
+					if err == nil && box != nil {
+						// Проверяем, что последний пользователь - это пользователь сессии и кулдаун еще активен
+						if box.LastCompletedSessionUserID != nil &&
+							*box.LastCompletedSessionUserID == sessions[i].UserID &&
+							box.CooldownUntil != nil &&
+							box.CooldownUntil.After(time.Now()) {
+							// Получаем время кулдауна из настроек
+							cooldownTimeout, err := s.settingsService.GetCooldownTimeout()
+							if err == nil {
+								sessions[i].CooldownMinutes = &cooldownTimeout
+							}
+						}
+					}
 				}
 			}
 		}
@@ -2758,15 +2658,15 @@ func (s *ServiceImpl) getChemistryRegisterForBox(boxID uuid.UUID) string {
 // GetActiveSessionByCarNumber получает активную сессию по номеру автомобиля
 func (s *ServiceImpl) GetActiveSessionByCarNumber(carNumber string) (*models.Session, error) {
 	logger.Printf("Service - GetActiveSessionByCarNumber: поиск активной сессии по номеру %s", carNumber)
-	
+
 	session, err := s.repo.GetActiveSessionByCarNumber(carNumber)
 	if err != nil {
 		logger.Printf("Service - GetActiveSessionByCarNumber: активная сессия с номером %s не найдена: %v", carNumber, err)
 		return nil, err
 	}
-	
-	logger.Printf("Service - GetActiveSessionByCarNumber: найдена активная сессия - SessionID=%s, CarNumber=%s, Status=%s", 
+
+	logger.Printf("Service - GetActiveSessionByCarNumber: найдена активная сессия - SessionID=%s, CarNumber=%s, Status=%s",
 		session.ID, session.CarNumber, session.Status)
-	
+
 	return session, nil
 }

@@ -1,20 +1,20 @@
 package handlers
 
 import (
-	"carwash_backend/internal/logger"
-	"io"
 	"bytes"
+	"carwash_backend/internal/logger"
 	"encoding/json"
+	"io"
 	"net/http"
 	"strconv"
 	"strings"
 	"time"
 
+	authService "carwash_backend/internal/domain/auth/service"
+	paymentService "carwash_backend/internal/domain/payment/service"
+	"carwash_backend/internal/domain/session/middleware"
 	"carwash_backend/internal/domain/session/models"
 	"carwash_backend/internal/domain/session/service"
-	paymentService "carwash_backend/internal/domain/payment/service"
-	authService "carwash_backend/internal/domain/auth/service"
-	"carwash_backend/internal/domain/session/middleware"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -42,20 +42,18 @@ func NewHandler(service service.Service, paymentService paymentService.Service, 
 func (h *Handler) RegisterRoutes(router *gin.RouterGroup) {
 	sessionRoutes := router.Group("/sessions")
 	{
-		sessionRoutes.POST("", h.createSession)
-		sessionRoutes.POST("/with-payment", h.createSessionWithPayment) // создание сессии с платежом
-		sessionRoutes.GET("", h.getUserSession)                // user_id в query параметре
-		sessionRoutes.GET("/for-payment", h.getUserSessionForPayment) // user_id в query параметре, включает payment_failed
-		sessionRoutes.GET("/check-active", h.checkActiveSession) // user_id в query параметре, проверка активной сессии
-		sessionRoutes.GET("/by-id", h.getSessionByID)          // session_id в query параметре
-		sessionRoutes.POST("/start", h.startSession)           // session_id в теле запроса
-		sessionRoutes.POST("/complete", h.completeSession)     // session_id в теле запроса
-		sessionRoutes.POST("/extend", h.extendSession)         // session_id и extension_time_minutes в теле запроса
+		sessionRoutes.POST("/with-payment", h.createSessionWithPayment)        // создание сессии с платежом
+		sessionRoutes.GET("", h.getUserSession)                                // user_id в query параметре
+		sessionRoutes.GET("/for-payment", h.getUserSessionForPayment)          // user_id в query параметре, включает payment_failed
+		sessionRoutes.GET("/check-active", h.checkActiveSession)               // user_id в query параметре, проверка активной сессии
+		sessionRoutes.GET("/by-id", h.getSessionByID)                          // session_id в query параметре
+		sessionRoutes.POST("/start", h.startSession)                           // session_id в теле запроса
+		sessionRoutes.POST("/complete", h.completeSession)                     // session_id в теле запроса
 		sessionRoutes.POST("/extend-with-payment", h.extendSessionWithPayment) // session_id и extension_time_minutes в теле запроса
-		sessionRoutes.GET("/payments", h.getSessionPayments)   // session_id в query параметре
-		sessionRoutes.GET("/history", h.getUserSessionHistory) // user_id в query параметре
-		sessionRoutes.POST("/cancel", h.cancelSession)         // session_id и user_id в теле запроса
-		sessionRoutes.POST("/enable-chemistry", h.enableChemistry) // session_id и user_id в теле запроса
+		sessionRoutes.GET("/payments", h.getSessionPayments)                   // session_id в query параметре
+		sessionRoutes.GET("/history", h.getUserSessionHistory)                 // user_id в query параметре
+		sessionRoutes.POST("/cancel", h.cancelSession)                         // session_id и user_id в теле запроса
+		sessionRoutes.POST("/enable-chemistry", h.enableChemistry)             // session_id и user_id в теле запроса
 	}
 
 	// Административные маршруты
@@ -64,7 +62,7 @@ func (h *Handler) RegisterRoutes(router *gin.RouterGroup) {
 		adminRoutes.GET("", h.adminListSessions)
 		adminRoutes.GET("/by-id", h.adminGetSession)
 		adminRoutes.GET("/chemistry-stats", h.getChemistryStats) // статистика химии
-		adminRoutes.POST("/reassign", h.adminReassignSession) // переназначение сессии администратором
+		adminRoutes.POST("/reassign", h.adminReassignSession)    // переназначение сессии администратором
 	}
 
 	// Маршруты для кассира
@@ -76,7 +74,7 @@ func (h *Handler) RegisterRoutes(router *gin.RouterGroup) {
 		cashierRoutes.POST("/complete", h.cashierCompleteSession)
 		cashierRoutes.POST("/cancel", h.cashierCancelSession)
 		cashierRoutes.POST("/enable-chemistry", h.cashierEnableChemistry) // включение химии кассиром
-		cashierRoutes.POST("/reassign", h.cashierReassignSession) // переназначение сессии кассиром
+		cashierRoutes.POST("/reassign", h.cashierReassignSession)         // переназначение сессии кассиром
 	}
 
 	// 1C webhook маршруты
@@ -84,29 +82,6 @@ func (h *Handler) RegisterRoutes(router *gin.RouterGroup) {
 	{
 		oneCRoutes.POST("/payment-callback", middleware.Auth1CMiddleware(h.apiKey1C), h.handle1CPaymentCallback)
 	}
-}
-
-// createSession обработчик для создания сессии
-func (h *Handler) createSession(c *gin.Context) {
-	var req models.CreateSessionRequest
-
-	// Парсим JSON из тела запроса
-	if err := c.ShouldBindJSON(&req); err != nil {
-		logger.WithContext(c).Errorf("API Error - createSession: ошибка парсинга JSON, error: %v", err)
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-		return
-	}
-
-	// Создаем сессию
-	session, err := h.service.CreateSession(&req)
-	if err != nil {
-		logger.WithContext(c).Errorf("API Error - createSession: ошибка создания сессии, user_id: %s, service_type: %s, error: %v", req.UserID.String(), req.ServiceType, err)
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-		return
-	}
-
-	// Возвращаем созданную сессию
-	c.JSON(http.StatusOK, models.CreateSessionResponse{Session: *session})
 }
 
 // createSessionWithPayment обработчик для создания сессии с платежом
@@ -293,27 +268,6 @@ func (h *Handler) completeSession(c *gin.Context) {
 
 	// Возвращаем обновленную сессию с информацией о платеже
 	c.JSON(http.StatusOK, response)
-}
-
-// extendSession обработчик для продления сессии
-func (h *Handler) extendSession(c *gin.Context) {
-	var req models.ExtendSessionRequest
-
-	// Парсим JSON из тела запроса
-	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-		return
-	}
-
-	// Продлеваем сессию
-	session, err := h.service.ExtendSession(&req)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-		return
-	}
-
-	// Возвращаем обновленную сессию
-	c.JSON(http.StatusOK, models.ExtendSessionResponse{Session: session})
 }
 
 // extendSessionWithPayment обработчик для продления сессии с оплатой
@@ -595,19 +549,19 @@ func (h *Handler) adminGetSession(c *gin.Context) {
 // handle1CPaymentCallback обработчик для webhook от 1C для платежей через кассира
 func (h *Handler) handle1CPaymentCallback(c *gin.Context) {
 	bodyBytes, err := io.ReadAll(c.Request.Body)
-    if err != nil {
-        logger.WithContext(c).Infof("Error reading request body: %v", err)
-        c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request body"})
-        return
-    }
-    
-    // Логируем тело запроса
-    logger.WithContext(c).Infof("Raw request body: %s", string(bodyBytes))
+	if err != nil {
+		logger.WithContext(c).Infof("Error reading request body: %v", err)
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request body"})
+		return
+	}
+
+	// Логируем тело запроса
+	logger.WithContext(c).Infof("Raw request body: %s", string(bodyBytes))
 
 	bodyBytes = bytes.TrimPrefix(bodyBytes, []byte("\xef\xbb\xbf"))
-    
-    // ВАЖНО: Восстанавливаем body для дальнейшего использования
-    c.Request.Body = io.NopCloser(bytes.NewBuffer(bodyBytes))
+
+	// ВАЖНО: Восстанавливаем body для дальнейшего использования
+	c.Request.Body = io.NopCloser(bytes.NewBuffer(bodyBytes))
 
 	var req models.CashierPaymentRequest
 
