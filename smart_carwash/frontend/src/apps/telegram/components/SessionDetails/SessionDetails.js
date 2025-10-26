@@ -710,7 +710,7 @@ const SessionDetails = ({ theme = 'light', user }) => {
         {/* Таймеры и кнопки под статусом */}
         {session.status === 'active' && timeLeft !== null && (
           <>
-            <h2 className={`${styles.title} ${themeClass}`} style={{ marginTop: '20px' }}>Оставшееся время мойки</h2>
+            <h2 className={`${styles.title} ${themeClass}`} style={{ marginTop: '20px' }}>Оставшееся время</h2>
             <Timer seconds={timeLeft} theme={theme} />
             
             {/* Таймер химии под таймером времени сессии */}

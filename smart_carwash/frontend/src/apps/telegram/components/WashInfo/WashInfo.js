@@ -457,7 +457,7 @@ const WashInfo = ({ washInfo, theme = 'light', onCreateSession, onViewHistory, o
       
       fetchAvailableRentalTimes(userSession.service_type);
       // Загружаем время химии только для мойки с химией
-      if (userSession.service_type === 'wash' && userSession.with_chemistry) {
+      if (userSession.service_type === 'wash') {
         fetchAvailableChemistryTimes(userSession.service_type, true, 0);
       }
       setShowExtendModal(true);
@@ -490,7 +490,7 @@ const WashInfo = ({ washInfo, theme = 'light', onCreateSession, onViewHistory, o
   const handleExtensionTimeSelect = (time) => {
     setSelectedExtensionTime(time);
     // При изменении времени продления пересчитываем доступное время химии
-    if (userSession && userSession.service_type === 'wash' && userSession.with_chemistry) {
+    if (userSession && userSession.service_type === 'wash') {
       fetchAvailableChemistryTimes(userSession.service_type, true, time);
     }
   };
@@ -626,7 +626,7 @@ const WashInfo = ({ washInfo, theme = 'light', onCreateSession, onViewHistory, o
             {userSession.status === 'active' && timeLeft !== null && (
               <>
                 <p className={`${styles.sessionInfo} ${themeClass}`} style={{ marginTop: '12px', fontWeight: 'bold' }}>
-                  Оставшееся время мойки:
+                  Оставшееся время:
                 </p>
                 <Timer seconds={timeLeft} theme={theme} />
                 
@@ -1009,7 +1009,7 @@ const WashInfo = ({ washInfo, theme = 'light', onCreateSession, onViewHistory, o
                 </div>
                 
                 {/* Выбор времени химии для мойки с химией - показываем только если есть доступные опции */}
-                {userSession && userSession.service_type === 'wash' && userSession.with_chemistry && !loadingChemistryTimes && availableChemistryTimes.length > 0 && (
+                {userSession && userSession.service_type === 'wash' && !loadingChemistryTimes && availableChemistryTimes.length > 0 && (
                   <>
                     <p style={{ margin: '20px 0 12px 0' }}>
                       Дополнительное время химии (опционально):
@@ -1037,7 +1037,7 @@ const WashInfo = ({ washInfo, theme = 'light', onCreateSession, onViewHistory, o
                 )}
                 
                 {/* Показываем текст загрузки только если загружаем и нет доступных опций */}
-                {userSession && userSession.service_type === 'wash' && userSession.with_chemistry && loadingChemistryTimes && (
+                {userSession && userSession.service_type === 'wash' && loadingChemistryTimes && (
                   <p style={{ margin: '20px 0 12px 0' }}>Загрузка времени химии...</p>
                 )}
                 

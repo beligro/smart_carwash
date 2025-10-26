@@ -227,7 +227,7 @@ func (b *Bot) SendSessionNotification(telegramID int64, notificationType Notific
 
 // SendBoxAssignmentNotification отправляет уведомление о назначении бокса
 func (b *Bot) SendBoxAssignmentNotification(telegramID int64, boxNumber int) error {
-	messageText := fmt.Sprintf("Вам назначен бокс №%d! Добро пожаловать. Будьте осторожны и заезжайте в бокс! Начните мойку в мини приложении.\n\nПерейдите в мини приложение по кнопке в левом нижнем углу ↙️↙️↙️", boxNumber)
+	messageText := fmt.Sprintf("Вам назначен бокс №%d! Добро пожаловать. Будьте осторожны и заезжайте в бокс! Начните мойку в мини приложении.\n\nПерейдите в мини приложение по кнопке в левом нижнем углу ↙️↙️↙️ и нажмите на кнопку \"Включить бокс\"", boxNumber)
 
 	// Отправляем сообщение без клавиатуры
 	msg := tgbotapi.NewMessage(telegramID, messageText)
