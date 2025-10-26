@@ -31,6 +31,7 @@ type UserService interface {
 // SessionService интерфейс для работы с сессиями
 type SessionService interface {
 	GetActiveSessionByUserID(userID uuid.UUID) (*sessionModels.Session, error)
+	GetActiveSessionByCarNumber(carNumber string) (*sessionModels.Session, error)
 	CompleteSessionWithoutRefund(sessionID uuid.UUID) error
 }
 
@@ -61,34 +62,20 @@ func (s *ServiceImpl) ProcessANPREvent(req *models.ProcessANPREventRequest) (*mo
 	normalizedLicensePlate := utils.NormalizeLicensePlateForSearch(req.LicensePlate)
 	log.Printf("ProcessANPREvent: номер нормализован '%s' -> '%s'", req.LicensePlate, normalizedLicensePlate)
 
-	// Ищем пользователя по нормализованному номеру автомобиля
-	user, err := s.userService.GetUserByCarNumber(normalizedLicensePlate)
+	// Ищем активную сессию напрямую по номеру автомобиля
+	activeSession, err := s.sessionService.GetActiveSessionByCarNumber(normalizedLicensePlate)
 	if err != nil {
-		log.Printf("ProcessANPREvent: пользователь с номером %s не найден: %v", req.LicensePlate, err)
+		log.Printf("ProcessANPREvent: активная сессия с номером %s не найдена: %v", req.LicensePlate, err)
 		return &models.ProcessANPREventResponse{
 			Success:      true,
-			Message:      fmt.Sprintf("Пользователь с номером %s не найден", req.LicensePlate),
+			Message:      fmt.Sprintf("Активная сессия с номером %s не найдена", req.LicensePlate),
 			UserFound:    false,
 			SessionFound: false,
 		}, nil
 	}
 
-	log.Printf("ProcessANPREvent: пользователь найден - UserID=%s, CarNumber=%s", user.ID, user.CarNumber)
-
-	// Ищем активную сессию пользователя
-	activeSession, err := s.sessionService.GetActiveSessionByUserID(user.ID)
-	if err != nil {
-		log.Printf("ProcessANPREvent: активная сессия для пользователя %s не найдена: %v", user.ID, err)
-		return &models.ProcessANPREventResponse{
-			Success:       true,
-			Message:       fmt.Sprintf("Активная сессия для пользователя %s не найдена", user.CarNumber),
-			UserFound:     true,
-			SessionFound:  false,
-			SessionStatus: "not_found",
-		}, nil
-	}
-
-	log.Printf("ProcessANPREvent: активная сессия найдена - SessionID=%s, Status=%s", activeSession.ID, activeSession.Status)
+	log.Printf("ProcessANPREvent: активная сессия найдена - SessionID=%s, Status=%s, CarNumber=%s",
+		activeSession.ID, activeSession.Status, activeSession.CarNumber)
 
 	// Завершаем сессию БЕЗ частичного возврата
 	err = s.sessionService.CompleteSessionWithoutRefund(activeSession.ID)
@@ -97,20 +84,20 @@ func (s *ServiceImpl) ProcessANPREvent(req *models.ProcessANPREventRequest) (*mo
 		return &models.ProcessANPREventResponse{
 			Success:       false,
 			Message:       fmt.Sprintf("Ошибка завершения сессии: %v", err),
-			UserFound:     true,
+			UserFound:     false,
 			SessionFound:  true,
 			SessionID:     activeSession.ID.String(),
 			SessionStatus: activeSession.Status,
 		}, err
 	}
 
-	log.Printf("ProcessANPREvent: сессия успешно завершена БЕЗ возврата - SessionID=%s, UserID=%s, CarNumber=%s", 
-		activeSession.ID, user.ID, req.LicensePlate)
+	log.Printf("ProcessANPREvent: сессия успешно завершена БЕЗ возврата - SessionID=%s, CarNumber=%s",
+		activeSession.ID, req.LicensePlate)
 
 	return &models.ProcessANPREventResponse{
 		Success:       true,
 		Message:       fmt.Sprintf("Сессия успешно завершена для автомобиля %s", req.LicensePlate),
-		UserFound:     true,
+		UserFound:     false,
 		SessionFound:  true,
 		SessionID:     activeSession.ID.String(),
 		SessionStatus: "completed",

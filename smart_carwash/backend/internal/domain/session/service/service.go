@@ -49,6 +49,7 @@ type Service interface {
 	GetSessionsByStatus(status string) ([]models.Session, error)
 	GetUserSessionHistory(req *models.GetUserSessionHistoryRequest) ([]models.Session, error)
 	CreateFromCashier(req *models.CashierPaymentRequest) (*models.Session, error)
+	GetActiveSessionByCarNumber(carNumber string) (*models.Session, error)
 
 	// Административные методы
 	AdminListSessions(req *models.AdminListSessionsRequest) (*models.AdminListSessionsResponse, error)
@@ -2752,4 +2753,20 @@ func (s *ServiceImpl) getChemistryRegisterForBox(boxID uuid.UUID) string {
 	}
 
 	return ""
+}
+
+// GetActiveSessionByCarNumber получает активную сессию по номеру автомобиля
+func (s *ServiceImpl) GetActiveSessionByCarNumber(carNumber string) (*models.Session, error) {
+	logger.Printf("Service - GetActiveSessionByCarNumber: поиск активной сессии по номеру %s", carNumber)
+	
+	session, err := s.repo.GetActiveSessionByCarNumber(carNumber)
+	if err != nil {
+		logger.Printf("Service - GetActiveSessionByCarNumber: активная сессия с номером %s не найдена: %v", carNumber, err)
+		return nil, err
+	}
+	
+	logger.Printf("Service - GetActiveSessionByCarNumber: найдена активная сессия - SessionID=%s, CarNumber=%s, Status=%s", 
+		session.ID, session.CarNumber, session.Status)
+	
+	return session, nil
 }

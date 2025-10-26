@@ -1,6 +1,7 @@
 package middleware
 
 import (
+	"log"
 	"net"
 	"os"
 	"strings"
@@ -8,17 +9,59 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
+// DahuaIPWhitelistMiddleware создает middleware для проверки IP whitelist
+// Проверяет только IP адрес без Basic Auth
+func DahuaIPWhitelistMiddleware() gin.HandlerFunc {
+	return gin.HandlerFunc(func(c *gin.Context) {
+		// Получаем IP адрес клиента
+		clientIP := getClientIP(c)
+		
+		// Получаем список разрешенных IP
+		allowedIPs := getAllowedIPs()
+		
+		// Проверяем, разрешен ли IP адрес
+		if !isIPAllowed(clientIP, allowedIPs) {
+			log.Printf("❌ IP адрес не разрешен: %s", clientIP)
+			c.JSON(403, gin.H{
+				"success": false,
+				"message": "IP адрес не разрешен",
+			})
+			c.Abort()
+			return
+		}
+
+		// Добавляем информацию об IP в контекст
+		c.Set("dahua_client_ip", clientIP)
+		c.Set("dahua_ip_allowed", true)
+
+		c.Next()
+	})
+}
+
 // DahuaAuthMiddleware создает middleware для аутентификации Dahua webhook
 // Проверяет Basic Auth (username/password) и IP whitelist
+// Поддерживает как XML, так и JSON форматы ответов
 func DahuaAuthMiddleware() gin.HandlerFunc {
 	return gin.HandlerFunc(func(c *gin.Context) {
+		// Определяем Content-Type для выбора формата ответа
+		contentType := c.GetHeader("Content-Type")
+
 		// 1. Проверка Basic Authentication
 		username, password, hasAuth := c.Request.BasicAuth()
 		if !hasAuth {
-			c.JSON(401, gin.H{
-				"success": false,
-				"message": "Требуется аутентификация",
-			})
+			if contentType == "application/xml" || contentType == "text/xml" {
+				c.Header("Content-Type", "application/xml")
+				c.String(401, `<?xml version="1.0" encoding="UTF-8"?>
+<Response>
+    <result>ERROR</result>
+    <message>Требуется аутентификация</message>
+</Response>`)
+			} else {
+				c.JSON(401, gin.H{
+					"success": false,
+					"message": "Требуется аутентификация",
+				})
+			}
 			c.Abort()
 			return
 		}
@@ -28,19 +71,37 @@ func DahuaAuthMiddleware() gin.HandlerFunc {
 		expectedPassword := os.Getenv("DAHUA_WEBHOOK_PASSWORD")
 
 		if expectedUsername == "" || expectedPassword == "" {
-			c.JSON(500, gin.H{
-				"success": false,
-				"message": "Конфигурация аутентификации не настроена",
-			})
+			if contentType == "application/xml" || contentType == "text/xml" {
+				c.Header("Content-Type", "application/xml")
+				c.String(500, `<?xml version="1.0" encoding="UTF-8"?>
+<Response>
+    <result>ERROR</result>
+    <message>Конфигурация аутентификации не настроена</message>
+</Response>`)
+			} else {
+				c.JSON(500, gin.H{
+					"success": false,
+					"message": "Конфигурация аутентификации не настроена",
+				})
+			}
 			c.Abort()
 			return
 		}
 
 		if username != expectedUsername || password != expectedPassword {
-			c.JSON(401, gin.H{
-				"success": false,
-				"message": "Неверные учетные данные",
-			})
+			if contentType == "application/xml" || contentType == "text/xml" {
+				c.Header("Content-Type", "application/xml")
+				c.String(401, `<?xml version="1.0" encoding="UTF-8"?>
+<Response>
+    <result>ERROR</result>
+    <message>Неверные учетные данные</message>
+</Response>`)
+			} else {
+				c.JSON(401, gin.H{
+					"success": false,
+					"message": "Неверные учетные данные",
+				})
+			}
 			c.Abort()
 			return
 		}
@@ -141,4 +202,3 @@ func isIPAllowed(clientIP string, allowedIPs []string) bool {
 
 	return false
 }
-
