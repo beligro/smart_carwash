@@ -14,6 +14,7 @@ import (
 	washboxService "carwash_backend/internal/domain/washbox/service"
 	"carwash_backend/internal/logger"
 	"carwash_backend/internal/metrics"
+	"carwash_backend/internal/utils"
 	"errors"
 	"fmt"
 	"sort"
@@ -104,6 +105,14 @@ func NewService(repo repository.Repository, washboxService washboxService.Servic
 func (s *ServiceImpl) CreateSession(req *models.CreateSessionRequest) (*models.Session, error) {
 	logger.Printf("Service - CreateSession: начало создания сессии, user_id: %s, service_type: %s, with_chemistry: %t", req.UserID.String(), req.ServiceType, req.WithChemistry)
 
+	// Валидация и нормализация госномера
+	normalizedCarNumber, err := utils.ValidateAndNormalizeLicensePlate(req.CarNumber)
+	if err != nil {
+		logger.Printf("Service - CreateSession: ошибка валидации госномера '%s': %v, user_id: %s", req.CarNumber, err, req.UserID.String())
+		return nil, fmt.Errorf("неверный формат номера автомобиля: %w", err)
+	}
+	logger.Printf("Service - CreateSession: госномер нормализован '%s' -> '%s', user_id: %s", req.CarNumber, normalizedCarNumber, req.UserID.String())
+
 	// Валидация химии
 	if req.WithChemistry {
 		switch req.ServiceType {
@@ -188,7 +197,7 @@ func (s *ServiceImpl) CreateSession(req *models.CreateSessionRequest) (*models.S
 		ServiceType:          req.ServiceType,
 		WithChemistry:        req.WithChemistry,
 		ChemistryTimeMinutes: req.ChemistryTimeMinutes, // Сохраняем выбранное время химии
-		CarNumber:            req.CarNumber,
+		CarNumber:            normalizedCarNumber, // Используем нормализованный госномер
 		Email:                req.Email, // Сохраняем email для чека
 		RentalTimeMinutes:    req.RentalTimeMinutes,
 		IdempotencyKey:       req.IdempotencyKey,
@@ -1883,6 +1892,18 @@ func (s *ServiceImpl) CreateFromCashier(req *models.CashierPaymentRequest) (*mod
 		return nil, fmt.Errorf("неверный формат CASHIER_USER_ID: %v", err)
 	}
 
+	// Валидация и нормализация госномера (если указан)
+	var normalizedCarNumber string
+	if req.CarNumber != "" {
+		var err error
+		normalizedCarNumber, err = utils.ValidateAndNormalizeLicensePlate(req.CarNumber)
+		if err != nil {
+			logger.Printf("Service - CreateFromCashier: ошибка валидации госномера '%s': %v", req.CarNumber, err)
+			return nil, fmt.Errorf("неверный формат номера автомобиля: %w", err)
+		}
+		logger.Printf("Service - CreateFromCashier: госномер нормализован '%s' -> '%s'", req.CarNumber, normalizedCarNumber)
+	}
+
 	// Валидация химии
 	if req.WithChemistry {
 		switch req.ServiceType {
@@ -1903,7 +1924,7 @@ func (s *ServiceImpl) CreateFromCashier(req *models.CashierPaymentRequest) (*mod
 		ServiceType:          req.ServiceType,
 		WithChemistry:        req.WithChemistry,
 		ChemistryTimeMinutes: req.ChemistryTimeMinutes, // Сохраняем выбранное время химии
-		CarNumber:            req.CarNumber,            // Используем переданный номер машины или пустую строку
+		CarNumber:            normalizedCarNumber,      // Используем нормализованный госномер
 		RentalTimeMinutes:    req.RentalTimeMinutes,
 		StatusUpdatedAt:      now,
 	}

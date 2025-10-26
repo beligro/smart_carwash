@@ -5,6 +5,7 @@ import CarNumberInput from '../CarNumberInput';
 import EmailInput from '../EmailInput';
 import PriceCalculator from '../PriceCalculator';
 import ApiService from '../../../../shared/services/ApiService';
+import { validateAndNormalizeLicensePlate } from '../../../../shared/utils/licensePlateUtils';
 
 /**
  * Компонент ServiceSelector - позволяет выбрать тип услуги и дополнительные опции
@@ -30,6 +31,10 @@ const ServiceSelector = ({ onSelect, theme = 'light', user }) => {
   const [rememberEmail, setRememberEmail] = useState(false);
   const [savingEmail, setSavingEmail] = useState(false);
   const [wantReceipt, setWantReceipt] = useState(false);
+  
+  // Состояния для улучшенного UX валидации госномера
+  const [carNumberError, setCarNumberError] = useState('');
+  const [showCarNumberError, setShowCarNumberError] = useState(false);
   
   const themeClass = theme === 'dark' ? styles.dark : styles.light;
   
@@ -195,16 +200,6 @@ const ServiceSelector = ({ onSelect, theme = 'light', user }) => {
     }
   };
 
-  // Обработчик изменения номера машины
-  const handleCarNumberChange = (value) => {
-    try {
-      setCarNumber(value || '');
-    } catch (error) {
-      console.error('Ошибка в handleCarNumberChange:', error);
-      setCarNumber('');
-    }
-  };
-
   // Обработчик изменения чекбокса "запомнить номер"
   const handleRememberCarNumberChange = (checked) => {
     try {
@@ -247,29 +242,67 @@ const ServiceSelector = ({ onSelect, theme = 'light', user }) => {
     }
   };
 
-  // Безопасная проверка номера машины (гибкая валидация)
+  // Улучшенная валидация госномера с детальными сообщениями
+  const validateCarNumberWithDetails = (number) => {
+    try {
+      if (!number || typeof number !== 'string') {
+        return {
+          isValid: false,
+          error: 'Введите номер автомобиля',
+          suggestion: 'Номер должен содержать буквы и цифры'
+        };
+      }
+
+      const validation = validateAndNormalizeLicensePlate(number);
+      
+      if (!validation.isValid) {
+        // Детализируем ошибку для лучшего UX
+        let error = validation.error;
+        let suggestion = '';
+        
+        if (number.length < 8) {
+          suggestion = 'Номер слишком короткий. Пример: А123ВС77';
+        } else if (number.length > 9) {
+          suggestion = 'Номер слишком длинный. Пример: А123ВС77';
+        } else if (!/[АВЕКМНОРСТУХA-Z]/.test(number)) {
+          suggestion = 'Используйте только поддерживаемые буквы: А, В, Е, К, М, Н, О, Р, С, Т, У, Х';
+        } else if (!/\d/.test(number)) {
+          suggestion = 'Номер должен содержать цифры. Пример: А123ВС77';
+        } else {
+          suggestion = 'Проверьте формат номера. Пример: А123ВС77';
+        }
+        
+        return {
+          isValid: false,
+          error: error,
+          suggestion: suggestion
+        };
+      }
+
+      return {
+        isValid: true,
+        error: '',
+        suggestion: ''
+      };
+    } catch (error) {
+      console.error('Ошибка в validateCarNumberWithDetails:', error);
+      return {
+        isValid: false,
+        error: 'Ошибка валидации номера',
+        suggestion: 'Попробуйте ввести номер заново'
+      };
+    }
+  };
+
+  // Безопасная проверка номера машины (используем новую утилиту)
   const isValidCarNumber = (number) => {
     try {
       if (!number || typeof number !== 'string') {
         return false;
       }
       
-      // Проверяем минимальную длину
-      if (number.length < 6) {
-        return false;
-      }
-      
-      // Проверяем, что номер содержит только буквы и цифры
-      const carNumberRegex = /^[А-ЯA-Z0-9]+$/;
-      if (!carNumberRegex.test(number)) {
-        return false;
-      }
-      
-      // Проверяем, что есть хотя бы одна буква и одна цифра
-      const hasLetter = /[А-ЯA-Z]/.test(number);
-      const hasDigit = /[0-9]/.test(number);
-      
-      return hasLetter && hasDigit;
+      const validation = validateAndNormalizeLicensePlate(number);
+      return validation.isValid;
     } catch (error) {
       console.error('Ошибка в isValidCarNumber:', error);
       return false;
@@ -284,8 +317,15 @@ const ServiceSelector = ({ onSelect, theme = 'light', user }) => {
 
     setSavingCarNumber(true);
     try {
-      await ApiService.updateCarNumber(user.id, carNumber);
-      console.log('Номер машины сохранен');
+      // Нормализуем номер перед сохранением
+      const validation = validateAndNormalizeLicensePlate(carNumber);
+      if (!validation.isValid) {
+        console.error('Номер машины невалидный:', validation.error);
+        return;
+      }
+      
+      await ApiService.updateCarNumber(user.id, validation.normalized);
+      console.log('Номер машины сохранен:', validation.normalized);
     } catch (error) {
       console.error('Ошибка при сохранении номера машины:', error);
     } finally {
@@ -310,9 +350,37 @@ const ServiceSelector = ({ onSelect, theme = 'light', user }) => {
     }
   };
 
-  // Обработчик подтверждения выбора
+  // Обработчик изменения госномера с валидацией в реальном времени
+  const handleCarNumberChange = (newCarNumber) => {
+    setCarNumber(newCarNumber);
+    
+    // Валидируем в реальном времени
+    const validation = validateCarNumberWithDetails(newCarNumber);
+    if (!validation.isValid) {
+      setCarNumberError(validation.suggestion); // Показываем подсказку вместо ошибки
+    } else {
+      setCarNumberError(''); // Очищаем ошибку при валидном номере
+    }
+    
+    // Скрываем ошибку при начале ввода
+    if (showCarNumberError) {
+      setShowCarNumberError(false);
+    }
+  };
   const handleConfirm = async () => {
     try {
+      // Сначала проверяем валидность госномера
+      const carNumberValidation = validateCarNumberWithDetails(carNumber);
+      if (!carNumberValidation.isValid) {
+        setCarNumberError(carNumberValidation.error);
+        setShowCarNumberError(true);
+        // Показываем ошибку на 5 секунд
+        setTimeout(() => {
+          setShowCarNumberError(false);
+        }, 5000);
+        return;
+      }
+
       if (selectedService && selectedRentalTime && carNumber) {
         // Если пользователь хочет запомнить номер, сохраняем его
         if (rememberCarNumber) {
@@ -336,12 +404,19 @@ const ServiceSelector = ({ onSelect, theme = 'light', user }) => {
           }
         }
 
+        // Нормализуем номер машины перед отправкой
+        const validation = validateAndNormalizeLicensePlate(carNumber);
+        if (!validation.isValid) {
+          alert('Неверный формат номера машины: ' + validation.error);
+          return;
+        }
+
         const serviceData = {
           serviceType: selectedService.id,
           withChemistry: selectedService.hasChemistry ? withChemistry : false,
           chemistryTimeMinutes: chemistryTime,
           rentalTimeMinutes: selectedRentalTime,
-          carNumber: carNumber,
+          carNumber: validation.normalized, // Используем нормализованный номер
           email: wantReceipt ? email : null // Передаем email только если галочка включена
         };
         
@@ -421,6 +496,18 @@ const ServiceSelector = ({ onSelect, theme = 'light', user }) => {
             onRememberChange={handleRememberCarNumberChange}
             savedCarNumber={user?.car_number || ''}
           />
+
+          {/* Отображение ошибки/подсказки для госномера */}
+          {carNumberError && (
+            <div className={`${styles.carNumberError} ${themeClass} ${showCarNumberError ? styles.errorVisible : styles.suggestionVisible}`}>
+              <div className={styles.errorIcon}>
+                {showCarNumberError ? '⚠️' : '💡'}
+              </div>
+              <div className={styles.errorText}>
+                {showCarNumberError ? 'Указан некорректный номер машины. Проверьте его, пожалуйста' : carNumberError}
+              </div>
+            </div>
+          )}
 
 
           {selectedService.hasChemistry && (

@@ -57,6 +57,15 @@
   font-size: 16px;
 }
 
+.successIcon {
+  position: absolute;
+  right: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  font-size: 16px;
+  animation: successPulse 0.6s ease-out;
+}
+
 .errorMessage {
   color: #d32f2f;
   font-size: 14px;
@@ -69,6 +78,13 @@
   font-size: 14px;
   margin-top: 8px;
   font-style: italic;
+}
+
+.examplesText {
+  color: #888;
+  font-size: 13px;
+  margin-top: 4px;
+  font-family: 'Courier New', monospace;
 }
 
 .rememberContainer {
@@ -155,6 +171,10 @@
   color: #aaa;
 }
 
+.dark .examplesText {
+  color: #888;
+}
+
 .dark .rememberContainer {
   border-top-color: #444;
 }
@@ -210,5 +230,21 @@
     top: 4px;
     width: 6px;
     height: 12px;
+  }
+}
+
+/* Анимация для иконки успеха */
+@keyframes successPulse {
+  0% {
+    transform: translateY(-50%) scale(0.8);
+    opacity: 0;
+  }
+  50% {
+    transform: translateY(-50%) scale(1.2);
+    opacity: 1;
+  }
+  100% {
+    transform: translateY(-50%) scale(1);
+    opacity: 1;
   }
 } 

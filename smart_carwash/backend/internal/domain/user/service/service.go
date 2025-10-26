@@ -3,6 +3,7 @@ package service
 import (
 	"carwash_backend/internal/domain/user/models"
 	"carwash_backend/internal/domain/user/repository"
+	"carwash_backend/internal/utils"
 
 	"fmt"
 	"regexp"
@@ -117,10 +118,10 @@ func (s *ServiceImpl) AdminGetUser(req *models.AdminGetUserRequest) (*models.Adm
 
 // UpdateCarNumber обновляет номер машины пользователя
 func (s *ServiceImpl) UpdateCarNumber(req *models.UpdateCarNumberRequest) (*models.UpdateCarNumberResponse, error) {
-	// Валидация номера машины (российский формат: О111ОО799)
-	carNumberRegex := regexp.MustCompile(`^[АВЕКМНОРСТУХ]\d{3}[АВЕКМНОРСТУХ]{2}\d{2,3}$`)
-	if !carNumberRegex.MatchString(req.CarNumber) {
-		return nil, fmt.Errorf("неверный формат номера машины. Используйте формат: О111ОО799")
+	// Валидация и нормализация номера машины
+	normalizedCarNumber, err := utils.ValidateAndNormalizeLicensePlate(req.CarNumber)
+	if err != nil {
+		return nil, fmt.Errorf("неверный формат номера машины: %w", err)
 	}
 
 	// Получаем пользователя
@@ -129,8 +130,8 @@ func (s *ServiceImpl) UpdateCarNumber(req *models.UpdateCarNumberRequest) (*mode
 		return nil, err
 	}
 
-	// Обновляем номер машины
-	user.CarNumber = req.CarNumber
+	// Обновляем номер машины нормализованным значением
+	user.CarNumber = normalizedCarNumber
 	err = s.repo.UpdateUser(user)
 	if err != nil {
 		return nil, err

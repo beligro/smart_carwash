@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import styles from './CarNumberInput.module.css';
 import { Card } from '../../../../shared/components/UI';
+import { validateAndNormalizeLicensePlate, formatLicensePlateForDisplay, getLicensePlateExamples, getLicensePlateFormatDescription } from '../../../../shared/utils/licensePlateUtils';
 
 /**
  * Компонент CarNumberInput - ввод номера машины с валидацией
@@ -34,43 +35,12 @@ const CarNumberInput = ({
   // Валидация номера машины (гибкий формат)
   const validateCarNumber = (number) => {
     try {
-      if (!number) {
-        setIsValid(false);
-        setErrorMessage('Введите номер машины');
-        return false;
-      }
-
-      // Проверяем, что number - это строка
-      if (typeof number !== 'string') {
-        setIsValid(false);
-        setErrorMessage('Некорректный тип данных');
-        return false;
-      }
-
-      // Проверяем минимальную длину
-      if (number.length < 6) {
-        setIsValid(false);
-        setErrorMessage('Номер должен содержать минимум 6 символов');
-        return false;
-      }
-
-      // Регулярное выражение для гибкого формата номера
-      // Разрешаем все русские буквы (А-Я) и латинские буквы (A-Z) и цифры
-      const carNumberRegex = /^[А-ЯA-Z0-9]+$/;
+      // Используем новую утилиту для валидации и нормализации
+      const validation = validateAndNormalizeLicensePlate(number);
       
-      if (!carNumberRegex.test(number)) {
+      if (!validation.isValid) {
         setIsValid(false);
-        setErrorMessage('Номер может содержать только буквы (А-Я, A-Z) и цифры');
-        return false;
-      }
-
-      // Проверяем, что есть хотя бы одна буква и одна цифра
-      const hasLetter = /[А-ЯA-Z]/.test(number);
-      const hasDigit = /[0-9]/.test(number);
-      
-      if (!hasLetter || !hasDigit) {
-        setIsValid(false);
-        setErrorMessage('Номер должен содержать и буквы, и цифры');
+        setErrorMessage(validation.error);
         return false;
       }
 
@@ -88,9 +58,21 @@ const CarNumberInput = ({
   // Обработчик изменения значения
   const handleChange = (e) => {
     try {
-      const newValue = e.target.value.toUpperCase();
-      onChange(newValue);
-      validateCarNumber(newValue);
+      const inputValue = e.target.value.toUpperCase();
+      
+      // Нормализуем номер при вводе
+      const validation = validateAndNormalizeLicensePlate(inputValue);
+      
+      // Если номер валидный, используем нормализованную версию
+      // Если не валидный, используем исходное значение для продолжения ввода
+      const valueToSet = validation.isValid ? validation.normalized : inputValue;
+      
+      onChange(valueToSet);
+      
+      // Валидируем с задержкой для лучшего UX
+      setTimeout(() => {
+        validateCarNumber(valueToSet);
+      }, 300);
     } catch (error) {
       console.error('Ошибка в handleChange:', error);
     }
@@ -171,15 +153,21 @@ const CarNumberInput = ({
             className={`${styles.input} ${themeClass}`}
             maxLength={12}
           />
-          {!isValid && (
+          {!isValid && safeValue && (
             <div className={styles.errorIcon}>⚠️</div>
+          )}
+          {isValid && safeValue && (
+            <div className={styles.successIcon}>✅</div>
           )}
         </div>
         {errorMessage && (
           <div className={styles.errorMessage}>{errorMessage}</div>
         )}
         <div className={styles.helpText}>
-          Введите номер машины с регионом
+          {getLicensePlateFormatDescription()}
+        </div>
+        <div className={styles.examplesText}>
+          Примеры: {getLicensePlateExamples().join(', ')}
         </div>
       </div>
 

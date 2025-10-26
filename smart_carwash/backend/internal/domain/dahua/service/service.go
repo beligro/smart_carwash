@@ -9,6 +9,7 @@ import (
 	"carwash_backend/internal/domain/dahua/models"
 	sessionModels "carwash_backend/internal/domain/session/models"
 	userModels "carwash_backend/internal/domain/user/models"
+	"carwash_backend/internal/utils"
 )
 
 // Service представляет сервис для обработки событий от камеры Dahua
@@ -56,8 +57,12 @@ func (s *ServiceImpl) ProcessANPREvent(req *models.ProcessANPREventRequest) (*mo
 		}, nil
 	}
 
-	// Ищем пользователя по номеру автомобиля
-	user, err := s.userService.GetUserByCarNumber(req.LicensePlate)
+	// Нормализуем номер от камеры для поиска
+	normalizedLicensePlate := utils.NormalizeLicensePlateForSearch(req.LicensePlate)
+	log.Printf("ProcessANPREvent: номер нормализован '%s' -> '%s'", req.LicensePlate, normalizedLicensePlate)
+
+	// Ищем пользователя по нормализованному номеру автомобиля
+	user, err := s.userService.GetUserByCarNumber(normalizedLicensePlate)
 	if err != nil {
 		log.Printf("ProcessANPREvent: пользователь с номером %s не найден: %v", req.LicensePlate, err)
 		return &models.ProcessANPREventResponse{

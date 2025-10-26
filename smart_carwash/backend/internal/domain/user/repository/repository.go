@@ -2,6 +2,7 @@ package repository
 
 import (
 	"carwash_backend/internal/domain/user/models"
+	"carwash_backend/internal/utils"
 
 	"github.com/google/uuid"
 	"gorm.io/gorm"
@@ -56,8 +57,11 @@ func (r *PostgresRepository) GetUserByID(id uuid.UUID) (*models.User, error) {
 
 // GetUserByCarNumber получает пользователя по номеру автомобиля
 func (r *PostgresRepository) GetUserByCarNumber(carNumber string) (*models.User, error) {
+	// Нормализуем номер для поиска
+	normalizedCarNumber := utils.NormalizeLicensePlateForSearch(carNumber)
+	
 	var user models.User
-	err := r.db.Where("car_number = ?", carNumber).First(&user).Error
+	err := r.db.Where("car_number = ?", normalizedCarNumber).First(&user).Error
 	if err != nil {
 		return nil, err
 	}
