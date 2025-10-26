@@ -4,6 +4,7 @@ import { getTheme } from '../../../shared/styles/theme';
 import ApiService from '../../../shared/services/ApiService';
 import Timer from '../../../shared/components/UI/Timer';
 import useTimer from '../../../shared/hooks/useTimer';
+import usePolling from '../../../shared/hooks/usePolling';
 import ReassignSessionModal from '../../../shared/components/UI/ReassignSessionModal/ReassignSessionModal';
 
 const Container = styled.div`
@@ -123,6 +124,9 @@ const ActionButton = styled.button`
   &.complete {
     background-color: #dc3545;
     color: white;
+    padding: 12px 24px;
+    font-size: 1rem;
+    font-weight: 600;
     
     &:hover:not(:disabled) {
       background-color: #c82333;
@@ -414,7 +418,7 @@ const SessionCardComponent = ({ session, onStart, onComplete, onCancel, onEnable
         )}
 
         {/* Кнопка переназначения сессии */}
-        {(session.status === 'assigned' || session.status === 'active') && (
+        {(session.status === 'active') && (
           <ActionButton
             className="reassign"
             onClick={() => onReassign(session.id, session.service_type)}
@@ -471,7 +475,15 @@ const ActiveSessions = () => {
   const pollActiveSessions = async () => {
     try {
       const response = await ApiService.getCashierActiveSessions();
-      setSessions(response.sessions || []);
+      const newSessions = response.sessions || [];
+      
+      // Обновляем только если данные изменились
+      setSessions(prevSessions => {
+        if (JSON.stringify(prevSessions) !== JSON.stringify(newSessions)) {
+          return newSessions;
+        }
+        return prevSessions;
+      });
     } catch (error) {
       console.error('Ошибка поллинга активных сессий:', error);
       // Не показываем ошибку при поллинге, чтобы не мешать пользователю
@@ -576,6 +588,9 @@ const ActiveSessions = () => {
       serviceType: null
     });
   };
+
+  // Поллинг для автоматического обновления активных сессий каждые 3 секунды (тихий)
+  usePolling(pollActiveSessions, 3000, true, []);
 
   if (loading) {
     return <LoadingSpinner theme={theme}>Загрузка активных сессий...</LoadingSpinner>;

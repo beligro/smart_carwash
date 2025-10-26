@@ -48,6 +48,7 @@ type Session struct {
 	UpdatedAt                     time.Time      `json:"updated_at"`
 	StatusUpdatedAt               time.Time      `json:"status_updated_at"` // Время последнего обновления статуса
 	SessionTimeoutMinutes         int            `json:"session_timeout_minutes" gorm:"-"` // Время ожидания старта мойки в минутах (виртуальное поле)
+	CooldownMinutes               *int           `json:"cooldown_minutes,omitempty" gorm:"-"` // Время кулдауна в минутах (виртуальное поле)
 	DeletedAt                     gorm.DeletedAt `json:"-" gorm:"index"`
 }
 

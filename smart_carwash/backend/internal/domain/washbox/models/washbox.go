@@ -41,6 +41,7 @@ type WashBox struct {
 	CooldownUntil         *time.Time     `json:"cooldown_until"`
 	LightStatus           *bool          `json:"light_status,omitempty" gorm:"-"` // Статус света (не хранится в БД, заполняется из modbus_connection_statuses)
 	ChemistryStatus       *bool          `json:"chemistry_status,omitempty" gorm:"-"` // Статус химии (не хранится в БД, заполняется из modbus_connection_statuses)
+	CanBeCleaned          *bool          `json:"can_be_cleaned,omitempty" gorm:"-"` // Можно ли убирать бокс (не хранится в БД, вычисляется динамически)
 	CreatedAt             time.Time      `json:"created_at"`
 	UpdatedAt             time.Time      `json:"updated_at"`
 	DeletedAt             gorm.DeletedAt `json:"-" gorm:"index"`

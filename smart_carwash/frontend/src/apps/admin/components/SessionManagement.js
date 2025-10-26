@@ -917,7 +917,7 @@ const SessionManagement = () => {
                 </ActionButton>
                 
                 {/* Кнопка переназначения сессии */}
-                {(session.status === 'assigned' || session.status === 'active') && (
+                {(session.status === 'active') && (
                   <ActionButton 
                     theme={theme} 
                     onClick={() => openReassignModal(session.id, session.service_type)}

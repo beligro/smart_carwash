@@ -34,7 +34,7 @@ const (
 
 // NotificationService интерфейс для отправки уведомлений
 type NotificationService interface {
-	SendSessionNotification(telegramID int64, notificationType NotificationType) error
+	SendSessionNotification(telegramID int64, notificationType NotificationType, cooldownMinutes *int) error
 	SendBoxAssignmentNotification(telegramID int64, boxNumber int) error
 	SendSessionReassignmentNotification(telegramID int64, serviceType string) error
 }
@@ -193,7 +193,7 @@ func (b *Bot) sendErrorMessage(chatID int64) {
 }
 
 // SendSessionNotification отправляет уведомление о сессии
-func (b *Bot) SendSessionNotification(telegramID int64, notificationType NotificationType) error {
+func (b *Bot) SendSessionNotification(telegramID int64, notificationType NotificationType, cooldownMinutes *int) error {
 	var messageText string
 
 	switch notificationType {
@@ -202,7 +202,11 @@ func (b *Bot) SendSessionNotification(telegramID int64, notificationType Notific
 	case NotificationTypeSessionCompletingSoon:
 		messageText = "⚠️ Внимание! Через 5 минут завершится время мойки. Самое время продлить оплаченное время или поторопиться.\n\nПерейдите в мини приложение по кнопке в левом нижнем углу ↙️↙️↙️"
 	case NotificationTypeSessionCompleted:
-		messageText = "Ваша мойка закончена, спасибо! Надеюсь, что вам все понравилось! Всегда рады видеть вас снова!"
+		messageText = "Ваше время закончилось, спасибо! Надеюсь, что вам все понравилось! Всегда рады видеть вас снова!"
+		// Добавляем информацию о кулдауне, если она передана
+		if cooldownMinutes != nil && *cooldownMinutes > 0 {
+			messageText += fmt.Sprintf("\n\nУ вас есть %d минут, чтобы продлить ваш бокс в приоритетном порядке. Просто оплатите заново и продолжайте.", *cooldownMinutes)
+		}
 	case NotificationTypeSessionExpiredOrCanceled:
 		messageText = "Мы вернули вашу оплату на ваш банковский счет. Обычно деньги поступают быстро, но это зависит от вашего банка"
 	case NotificationTypeSessionAutoStarted:

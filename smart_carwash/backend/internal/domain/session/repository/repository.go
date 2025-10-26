@@ -27,6 +27,9 @@ type Repository interface {
 	
 	// Методы для статистики химии
 	GetChemistryStats(dateFrom *time.Time, dateTo *time.Time) (*models.ChemistryStats, error)
+	
+	// Метод для проверки завершенных сессий между уборками
+	GetCompletedSessionsBetween(boxID uuid.UUID, dateFrom, dateTo time.Time) (int, error)
 }
 
 // PostgresRepository реализация Repository для PostgreSQL
@@ -310,4 +313,14 @@ func (r *PostgresRepository) GetChemistryStats(dateFrom *time.Time, dateTo *time
 		UsagePercentage:            usagePercentage,
 		Period:                     period,
 	}, nil
+}
+
+// GetCompletedSessionsBetween получает количество завершенных сессий для бокса между указанными датами
+func (r *PostgresRepository) GetCompletedSessionsBetween(boxID uuid.UUID, dateFrom, dateTo time.Time) (int, error) {
+	var count int64
+	err := r.db.Model(&models.Session{}).
+		Where("box_id = ? AND status = ? AND created_at >= ? AND created_at <= ?", 
+			boxID, models.SessionStatusComplete, dateFrom, dateTo).
+		Count(&count).Error
+	return int(count), err
 }

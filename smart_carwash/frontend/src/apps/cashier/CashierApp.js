@@ -10,6 +10,7 @@ import BoxManagement from './components/BoxManagement';
 import MobileTable from '../../shared/components/MobileTable';
 import Timer from '../../shared/components/UI/Timer';
 import useTimer from '../../shared/hooks/useTimer';
+import usePolling from '../../shared/hooks/usePolling';
 import ReassignSessionModal from '../../shared/components/UI/ReassignSessionModal/ReassignSessionModal';
 
 const CashierContainer = styled.div`
@@ -412,14 +413,6 @@ const CashierApp = () => {
     }
   }, [hasActiveShift, shiftInfo, activeTab]);
 
-  // Поллинг для сессий каждые 3 секунды без показа загрузки
-  useEffect(() => {
-    if (hasActiveShift && shiftInfo && activeTab === 'sessions') {
-      const interval = setInterval(pollSessions, 3000);
-      
-      return () => clearInterval(interval);
-    }
-  }, [hasActiveShift, shiftInfo, activeTab]);
 
   const checkShiftStatus = async () => {
     try {
@@ -514,7 +507,15 @@ const CashierApp = () => {
         limit: 100,
         date_from: shiftInfo.started_at
       });
-      setSessions(sessionsResponse.sessions || []);
+      const newSessions = sessionsResponse.sessions || [];
+      
+      // Обновляем только если данные изменились
+      setSessions(prevSessions => {
+        if (JSON.stringify(prevSessions) !== JSON.stringify(newSessions)) {
+          return newSessions;
+        }
+        return prevSessions;
+      });
     } catch (error) {
       console.error('Ошибка поллинга сессий:', error);
       // Не показываем ошибку при поллинге, чтобы не мешать пользователю
@@ -627,6 +628,59 @@ const CashierApp = () => {
     await AuthService.logout();
     navigate('/cashier/login');
   };
+
+  // Тихий поллинг для обновления данных без показа загрузки
+  const pollData = async () => {
+    console.log('pollData вызвана:', { shiftInfo, activeTab });
+    if (!shiftInfo) {
+      return;
+    }
+    
+    // Не загружаем данные для вкладок активных сессий и боксов - компоненты сами загружают
+    if (activeTab === 'active_sessions' || activeTab === 'boxes') {
+      return;
+    }
+    
+    try {
+      if (activeTab === 'sessions') {
+        console.log('Поллинг сессий для кассира с начала смены:', shiftInfo.started_at);
+        const sessionsResponse = await ApiService.getSessions({ 
+          limit: 100,
+          date_from: shiftInfo.started_at
+        });
+        const newSessions = sessionsResponse.sessions || [];
+        
+        // Обновляем только если данные изменились
+        setSessions(prevSessions => {
+          if (JSON.stringify(prevSessions) !== JSON.stringify(newSessions)) {
+            return newSessions;
+          }
+          return prevSessions;
+        });
+      } else if (activeTab === 'payments') {
+        console.log('Поллинг платежей для кассира, shiftStartedAt:', shiftInfo.started_at);
+        const paymentsResponse = await ApiService.getCashierPayments(shiftInfo.started_at);
+        const newPayments = paymentsResponse.payments || [];
+        
+        // Обновляем только если данные изменились
+        setPayments(prevPayments => {
+          if (JSON.stringify(prevPayments) !== JSON.stringify(newPayments)) {
+            return newPayments;
+          }
+          return prevPayments;
+        });
+      }
+    } catch (error) {
+      console.error('Ошибка поллинга данных:', error);
+      // Не показываем ошибку при поллинге, чтобы не мешать пользователю
+    }
+  };
+
+  // Поллинг для автоматического обновления данных каждые 3 секунды (тихий)
+  usePolling(pollData, 3000, hasActiveShift && !!shiftInfo, [activeTab]);
+
+  // Поллинг для сессий каждые 3 секунды без показа загрузки (только для вкладки sessions)
+  usePolling(pollSessions, 3000, hasActiveShift && !!shiftInfo && activeTab === 'sessions', [activeTab]);
   
   // Если идет загрузка, показываем пустой контент
   if (isLoading) {
@@ -809,12 +863,12 @@ const CashierApp = () => {
                                         className="complete"
                                         onClick={() => handleCompleteSessionFromTable(session.id)}
                                         disabled={actionLoading[session.id]}
-                                        style={{ padding: '4px 8px', fontSize: '0.8rem' }}
+                                        style={{ padding: '4px 8px', fontSize: '1.1rem' }}
                                       >
                                         {actionLoading[session.id] ? 'Завершаем...' : 'Завершить'}
                                       </ActionButton>
                                     )}
-                                    {(session.status === 'assigned' || session.status === 'active') && (
+                                    {(session.status === 'active') && (
                                       <ActionButton
                                         className="reassign"
                                         onClick={() => openReassignModal(session.id, session.service_type)}
@@ -913,7 +967,7 @@ const CashierApp = () => {
                                   {actionLoading[session.id] ? 'Завершаем...' : 'Завершить'}
                                 </ActionButton>
                               )}
-                              {(session.status === 'assigned' || session.status === 'active') && (
+                              {(session.status === 'active') && (
                                 <ActionButton
                                   className="reassign"
                                   onClick={() => openReassignModal(session.id, session.service_type)}

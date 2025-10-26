@@ -4,6 +4,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { getTheme } from '../../../shared/styles/theme';
 import ApiService from '../../../shared/services/ApiService';
 import MobileTable from '../../../shared/components/MobileTable';
+import usePolling from '../../../shared/hooks/usePolling';
 import axios from 'axios';
 
 // API клиент для Modbus тестирования
@@ -548,6 +549,9 @@ const WashBoxManagement = () => {
   useEffect(() => {
     fetchWashBoxes();
   }, [filters]);
+
+  // Поллинг для автоматического обновления данных каждые 3 секунды
+  usePolling(fetchWashBoxes, 3000, true, [filters]);
 
   // Автоматическое открытие модального окна при переходе с выделенным боксом
   useEffect(() => {

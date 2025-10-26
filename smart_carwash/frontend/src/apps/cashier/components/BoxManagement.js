@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import styled from 'styled-components';
 import { getTheme } from '../../../shared/styles/theme';
 import ApiService from '../../../shared/services/ApiService';
+import usePolling from '../../../shared/hooks/usePolling';
 
 const Container = styled.div`
   padding: 20px;
@@ -242,6 +243,25 @@ const BoxManagement = () => {
     }
   };
 
+  // Тихий поллинг без показа загрузки
+  const pollBoxes = async () => {
+    try {
+      const response = await ApiService.getCashierWashBoxes(filters);
+      const newBoxes = response.wash_boxes || [];
+      
+      // Обновляем только если данные изменились
+      setBoxes(prevBoxes => {
+        if (JSON.stringify(prevBoxes) !== JSON.stringify(newBoxes)) {
+          return newBoxes;
+        }
+        return prevBoxes;
+      });
+    } catch (error) {
+      console.error('Ошибка поллинга боксов:', error);
+      // Не показываем ошибку при поллинге, чтобы не мешать пользователю
+    }
+  };
+
   const handleSetMaintenance = async (boxId) => {
     if (!window.confirm('Вы уверены, что хотите перевести этот бокс в режим обслуживания?')) {
       return;
@@ -266,6 +286,9 @@ const BoxManagement = () => {
       [filterType]: value === '' ? undefined : value
     }));
   };
+
+  // Поллинг для автоматического обновления данных каждые 5 секунд (тихий)
+  usePolling(pollBoxes, 5000, true, [filters]);
 
   if (loading) {
     return <LoadingSpinner theme={theme}>Загрузка боксов...</LoadingSpinner>;
