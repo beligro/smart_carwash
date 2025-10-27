@@ -20,35 +20,37 @@ const (
 
 // Session представляет сессию мойки
 type Session struct {
-	ID                            uuid.UUID      `json:"id" gorm:"primaryKey;type:uuid;default:gen_random_uuid()"`
-	UserID                        uuid.UUID      `json:"user_id" gorm:"index;type:uuid"`
-	BoxID                         *uuid.UUID     `json:"box_id,omitempty" gorm:"index;type:uuid"`
-	BoxNumber                     *int           `json:"box_number,omitempty" gorm:"-"` // Виртуальное поле, не хранится в БД
-	Status                        string         `json:"status" gorm:"default:created;index"`
-	ServiceType                   string         `json:"service_type,omitempty" gorm:"default:null"`
-	WithChemistry                 bool           `json:"with_chemistry" gorm:"default:false"`
-	WasChemistryOn                bool           `json:"was_chemistry_on" gorm:"default:false"`             // Была ли фактически включена химия
-	ChemistryTimeMinutes          int            `json:"chemistry_time_minutes" gorm:"default:0"`           // Выбранное время химии в минутах
-	ChemistryStartedAt            *time.Time     `json:"chemistry_started_at,omitempty"`                    // Когда была включена химия
-	ChemistryEndedAt              *time.Time     `json:"chemistry_ended_at,omitempty"`                      // Когда была выключена химия
-	CarNumber                     string         `json:"car_number"`                                        // Номер машины в сессии
-	Email                         string         `json:"email"`                                             // Email для чека
-	RentalTimeMinutes             int            `json:"rental_time_minutes" gorm:"default:5"`              // Время мойки в минутах
-	ExtensionTimeMinutes          int            `json:"extension_time_minutes" gorm:"default:0"`           // Время продления в минутах
-	RequestedExtensionTimeMinutes int            `json:"requested_extension_time_minutes" gorm:"default:0"` // Запрошенное время продления в минутах
-	RequestedExtensionChemistryTimeMinutes int `json:"requested_extension_chemistry_time_minutes" gorm:"default:0"` // Запрошенное время химии при продлении в минутах
-	ExtensionChemistryTimeMinutes int            `json:"extension_chemistry_time_minutes" gorm:"default:0"` // Время химии при продлении в минутах
-	Payment                       *Payment       `json:"payment,omitempty" gorm:"-"`                        // Информация о платеже (не хранится в БД)
-	MainPayment                   *Payment       `json:"main_payment,omitempty" gorm:"-"`                   // Основной платеж (не хранится в БД)
-	ExtensionPayments             []Payment      `json:"extension_payments,omitempty" gorm:"-"`             // Платежи продления (не хранится в БД)
-	IdempotencyKey                string         `json:"idempotency_key,omitempty" gorm:"index"`
-	IsExpiringNotificationSent    bool           `json:"is_expiring_notification_sent" gorm:"default:false"`
-	IsCompletingNotificationSent  bool           `json:"is_completing_notification_sent" gorm:"default:false"`
-	CreatedAt                     time.Time      `json:"created_at"`
-	UpdatedAt                     time.Time      `json:"updated_at"`
-	StatusUpdatedAt               time.Time      `json:"status_updated_at"` // Время последнего обновления статуса
-	SessionTimeoutMinutes         int            `json:"session_timeout_minutes" gorm:"-"` // Время ожидания старта мойки в минутах (виртуальное поле)
-	DeletedAt                     gorm.DeletedAt `json:"-" gorm:"index"`
+	ID                                     uuid.UUID      `json:"id" gorm:"primaryKey;type:uuid;default:gen_random_uuid()"`
+	UserID                                 uuid.UUID      `json:"user_id" gorm:"index;type:uuid"`
+	BoxID                                  *uuid.UUID     `json:"box_id,omitempty" gorm:"index;type:uuid"`
+	BoxNumber                              *int           `json:"box_number,omitempty" gorm:"-"` // Виртуальное поле, не хранится в БД
+	Status                                 string         `json:"status" gorm:"default:created;index"`
+	ServiceType                            string         `json:"service_type,omitempty" gorm:"default:null"`
+	WithChemistry                          bool           `json:"with_chemistry" gorm:"default:false"`
+	WasChemistryOn                         bool           `json:"was_chemistry_on" gorm:"default:false"`                       // Была ли фактически включена химия
+	ChemistryTimeMinutes                   int            `json:"chemistry_time_minutes" gorm:"default:0"`                     // Выбранное время химии в минутах
+	ChemistryStartedAt                     *time.Time     `json:"chemistry_started_at,omitempty"`                              // Когда была включена химия
+	ChemistryEndedAt                       *time.Time     `json:"chemistry_ended_at,omitempty"`                                // Когда была выключена химия
+	CarNumber                              string         `json:"car_number"`                                                  // Номер машины в сессии
+	CarNumberCountry                       string         `json:"car_number_country" gorm:"default:'RUS'"`                     // Страна гос номера
+	Email                                  string         `json:"email"`                                                       // Email для чека
+	RentalTimeMinutes                      int            `json:"rental_time_minutes" gorm:"default:5"`                        // Время мойки в минутах
+	ExtensionTimeMinutes                   int            `json:"extension_time_minutes" gorm:"default:0"`                     // Время продления в минутах
+	RequestedExtensionTimeMinutes          int            `json:"requested_extension_time_minutes" gorm:"default:0"`           // Запрошенное время продления в минутах
+	RequestedExtensionChemistryTimeMinutes int            `json:"requested_extension_chemistry_time_minutes" gorm:"default:0"` // Запрошенное время химии при продлении в минутах
+	ExtensionChemistryTimeMinutes          int            `json:"extension_chemistry_time_minutes" gorm:"default:0"`           // Время химии при продлении в минутах
+	Payment                                *Payment       `json:"payment,omitempty" gorm:"-"`                                  // Информация о платеже (не хранится в БД)
+	MainPayment                            *Payment       `json:"main_payment,omitempty" gorm:"-"`                             // Основной платеж (не хранится в БД)
+	ExtensionPayments                      []Payment      `json:"extension_payments,omitempty" gorm:"-"`                       // Платежи продления (не хранится в БД)
+	IdempotencyKey                         string         `json:"idempotency_key,omitempty" gorm:"index"`
+	IsExpiringNotificationSent             bool           `json:"is_expiring_notification_sent" gorm:"default:false"`
+	IsCompletingNotificationSent           bool           `json:"is_completing_notification_sent" gorm:"default:false"`
+	CreatedAt                              time.Time      `json:"created_at"`
+	UpdatedAt                              time.Time      `json:"updated_at"`
+	StatusUpdatedAt                        time.Time      `json:"status_updated_at"`                   // Время последнего обновления статуса
+	SessionTimeoutMinutes                  int            `json:"session_timeout_minutes" gorm:"-"`    // Время ожидания старта мойки в минутах (виртуальное поле)
+	CooldownMinutes                        *int           `json:"cooldown_minutes,omitempty" gorm:"-"` // Время кулдауна в минутах (виртуальное поле)
+	DeletedAt                              gorm.DeletedAt `json:"-" gorm:"index"`
 }
 
 // ReassignSessionRequest запрос на переназначение сессии на другой бокс
@@ -70,14 +72,10 @@ type CreateSessionRequest struct {
 	WithChemistry        bool      `json:"with_chemistry"`
 	ChemistryTimeMinutes int       `json:"chemistry_time_minutes"` // Выбранное время химии в минутах
 	CarNumber            string    `json:"car_number" binding:"required"`
-	Email                string    `json:"email"`                   // Email для чека
+	CarNumberCountry     string    `json:"car_number_country"` // Страна гос номера
+	Email                string    `json:"email"` // Email для чека
 	RentalTimeMinutes    int       `json:"rental_time_minutes" binding:"required"`
 	IdempotencyKey       string    `json:"idempotency_key" binding:"required"`
-}
-
-// CreateSessionResponse представляет ответ на создание сессии
-type CreateSessionResponse struct {
-	Session Session `json:"session"`
 }
 
 // CreateSessionWithPaymentRequest представляет запрос на создание сессии с платежом
@@ -87,7 +85,8 @@ type CreateSessionWithPaymentRequest struct {
 	WithChemistry        bool      `json:"with_chemistry"`
 	ChemistryTimeMinutes int       `json:"chemistry_time_minutes"` // Выбранное время химии в минутах
 	CarNumber            string    `json:"car_number" binding:"required"`
-	Email                string    `json:"email"`                   // Email для чека
+	CarNumberCountry     string    `json:"car_number_country"` // Страна гос номера
+	Email                string    `json:"email"` // Email для чека
 	RentalTimeMinutes    int       `json:"rental_time_minutes" binding:"required"`
 	IdempotencyKey       string    `json:"idempotency_key" binding:"required"`
 }
@@ -180,17 +179,6 @@ type GetUserSessionHistoryRequest struct {
 // GetUserSessionHistoryResponse представляет ответ на получение истории сессий пользователя
 type GetUserSessionHistoryResponse struct {
 	Sessions []Session `json:"sessions"`
-}
-
-// ExtendSessionRequest представляет запрос на продление сессии
-type ExtendSessionRequest struct {
-	SessionID            uuid.UUID `json:"session_id" binding:"required"`
-	ExtensionTimeMinutes int       `json:"extension_time_minutes" binding:"required"`
-}
-
-// ExtendSessionResponse представляет ответ на продление сессии
-type ExtendSessionResponse struct {
-	Session *Session `json:"session"`
 }
 
 // ExtendSessionWithPaymentRequest представляет запрос на продление сессии с оплатой

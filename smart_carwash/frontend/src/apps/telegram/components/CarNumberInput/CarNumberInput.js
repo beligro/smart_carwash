@@ -1,12 +1,22 @@
 import React, { useState, useEffect } from 'react';
 import styles from './CarNumberInput.module.css';
 import { Card } from '../../../../shared/components/UI';
+import { 
+  validateAndNormalizeLicensePlate, 
+  formatLicensePlateForDisplay, 
+  getLicensePlateExamples, 
+  getLicensePlateFormatDescription,
+  getSupportedCountries,
+  getCountryConfig
+} from '../../../../shared/utils/licensePlateUtils';
 
 /**
- * Компонент CarNumberInput - ввод номера машины с валидацией
+ * Компонент CarNumberInput - ввод номера машины с валидацией и выбором страны
  * @param {Object} props - Свойства компонента
  * @param {string} props.value - Текущее значение номера
  * @param {Function} props.onChange - Функция изменения значения
+ * @param {string} props.country - Текущая выбранная страна
+ * @param {Function} props.onCountryChange - Функция изменения страны
  * @param {string} props.theme - Тема оформления ('light' или 'dark')
  * @param {boolean} props.showRememberCheckbox - Показывать ли чекбокс "запомнить"
  * @param {boolean} props.rememberChecked - Состояние чекбокса "запомнить"
@@ -16,6 +26,8 @@ import { Card } from '../../../../shared/components/UI';
 const CarNumberInput = ({ 
   value, 
   onChange, 
+  country = 'RUS',
+  onCountryChange,
   theme = 'light',
   showRememberCheckbox = false,
   rememberChecked = false,
@@ -31,46 +43,25 @@ const CarNumberInput = ({
   // Обеспечиваем безопасность value
   const safeValue = value || '';
 
-  // Валидация номера машины (гибкий формат)
-  const validateCarNumber = (number) => {
+  // Получаем конфигурацию текущей страны
+  const countryConfig = getCountryConfig(country);
+
+  // Перевалидируем номер при изменении страны
+  useEffect(() => {
+    if (safeValue) {
+      validateCarNumber(safeValue, country);
+    }
+  }, [country]);
+
+  // Валидация номера машины для выбранной страны
+  const validateCarNumber = (number, countryToValidate = country) => {
     try {
-      if (!number) {
-        setIsValid(false);
-        setErrorMessage('Введите номер машины');
-        return false;
-      }
-
-      // Проверяем, что number - это строка
-      if (typeof number !== 'string') {
-        setIsValid(false);
-        setErrorMessage('Некорректный тип данных');
-        return false;
-      }
-
-      // Проверяем минимальную длину
-      if (number.length < 6) {
-        setIsValid(false);
-        setErrorMessage('Номер должен содержать минимум 6 символов');
-        return false;
-      }
-
-      // Регулярное выражение для гибкого формата номера
-      // Разрешаем все русские буквы (А-Я) и латинские буквы (A-Z) и цифры
-      const carNumberRegex = /^[А-ЯA-Z0-9]+$/;
+      // Используем новую утилиту для валидации и нормализации с указанием страны
+      const validation = validateAndNormalizeLicensePlate(number, countryToValidate);
       
-      if (!carNumberRegex.test(number)) {
+      if (!validation.isValid) {
         setIsValid(false);
-        setErrorMessage('Номер может содержать только буквы (А-Я, A-Z) и цифры');
-        return false;
-      }
-
-      // Проверяем, что есть хотя бы одна буква и одна цифра
-      const hasLetter = /[А-ЯA-Z]/.test(number);
-      const hasDigit = /[0-9]/.test(number);
-      
-      if (!hasLetter || !hasDigit) {
-        setIsValid(false);
-        setErrorMessage('Номер должен содержать и буквы, и цифры');
+        setErrorMessage(validation.error);
         return false;
       }
 
@@ -88,11 +79,34 @@ const CarNumberInput = ({
   // Обработчик изменения значения
   const handleChange = (e) => {
     try {
-      const newValue = e.target.value.toUpperCase();
-      onChange(newValue);
-      validateCarNumber(newValue);
+      const inputValue = e.target.value.toUpperCase();
+      
+      // Нормализуем номер при вводе для выбранной страны
+      const validation = validateAndNormalizeLicensePlate(inputValue, country);
+      
+      // Если номер валидный, используем нормализованную версию
+      // Если не валидный, используем исходное значение для продолжения ввода
+      const valueToSet = validation.isValid ? validation.normalized : inputValue;
+      
+      onChange(valueToSet);
+      
+      // Валидируем с задержкой для лучшего UX
+      setTimeout(() => {
+        validateCarNumber(valueToSet);
+      }, 300);
     } catch (error) {
       console.error('Ошибка в handleChange:', error);
+    }
+  };
+
+  // Обработчик изменения страны
+  const handleCountryChange = (e) => {
+    try {
+      const newCountry = e.target.value;
+      onCountryChange(newCountry);
+      // Валидация произойдет автоматически через useEffect
+    } catch (error) {
+      console.error('Ошибка в handleCountryChange:', error);
     }
   };
 
@@ -158,6 +172,23 @@ const CarNumberInput = ({
     <Card theme={theme} className={styles.container}>
       <div className={styles.inputGroup}>
         <label className={`${styles.label} ${themeClass}`}>
+          Страна гос номера
+        </label>
+        <select
+          value={country}
+          onChange={handleCountryChange}
+          className={`${styles.countrySelect} ${themeClass}`}
+        >
+          {getSupportedCountries().map(countryOption => (
+            <option key={countryOption.code} value={countryOption.code}>
+              {countryOption.name}
+            </option>
+          ))}
+        </select>
+      </div>
+
+      <div className={styles.inputGroup}>
+        <label className={`${styles.label} ${themeClass}`}>
           Номер машины
         </label>
         <div className={`${styles.inputWrapper} ${!isValid ? styles.error : ''} ${isFocused ? styles.focused : ''}`}>
@@ -167,19 +198,25 @@ const CarNumberInput = ({
             onChange={handleInput}
             onFocus={handleFocus}
             onBlur={handleBlur}
-            placeholder="А123ВК456"
+            placeholder={countryConfig?.placeholder || "А123ВК456"}
             className={`${styles.input} ${themeClass}`}
             maxLength={12}
           />
-          {!isValid && (
+          {!isValid && safeValue && (
             <div className={styles.errorIcon}>⚠️</div>
+          )}
+          {isValid && safeValue && (
+            <div className={styles.successIcon}>✅</div>
           )}
         </div>
         {errorMessage && (
           <div className={styles.errorMessage}>{errorMessage}</div>
         )}
         <div className={styles.helpText}>
-          Введите номер машины с регионом
+          {getLicensePlateFormatDescription(country)}
+        </div>
+        <div className={styles.examplesText}>
+          Примеры: {getLicensePlateExamples(country).join(', ')}
         </div>
       </div>
 

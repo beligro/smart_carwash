@@ -9,7 +9,6 @@ echo "🚀 Начинаем оптимизацию системы Smart Carwash.
 echo "📦 Очищаем Docker..."
 docker system prune -f
 docker image prune -a -f
-docker volume prune -f
 docker network prune -f
 
 # 2. Настройка cron jobs

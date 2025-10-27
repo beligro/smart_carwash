@@ -2,6 +2,7 @@ package service
 
 import (
 	modbusRepository "carwash_backend/internal/domain/modbus/repository"
+	sessionRepository "carwash_backend/internal/domain/session/repository"
 	"carwash_backend/internal/domain/settings/service"
 	"carwash_backend/internal/domain/washbox/models"
 	"carwash_backend/internal/domain/washbox/repository"
@@ -51,13 +52,18 @@ type Service interface {
 
 	// Методы для работы с cooldown
 	SetCooldown(boxID uuid.UUID, userID uuid.UUID, cooldownUntil time.Time) error
+	SetCooldownByCarNumber(boxID uuid.UUID, carNumber string, cooldownUntil time.Time) error
+	GetCooldownBoxesForUser(userID uuid.UUID) ([]models.WashBox, error)
+	GetCooldownBoxesByCarNumber(carNumber string) ([]models.WashBox, error)
 	GetAvailableBoxesByServiceType(serviceType string, userID uuid.UUID) ([]models.WashBox, error)
+	GetAvailableBoxesByServiceTypeForCashier(serviceType string, carNumber string) ([]models.WashBox, error)
 	CheckCooldownExpired() error
 }
 
 // ServiceImpl реализация Service
 type ServiceImpl struct {
 	repo            repository.Repository
+	sessionRepo     sessionRepository.Repository
 	settingsService service.Service
 	modbusRepo      *modbusRepository.ModbusRepository
 }
@@ -92,9 +98,10 @@ func shuffleBoxesWithSamePriority(boxes []models.WashBox) []models.WashBox {
 }
 
 // NewService создает новый экземпляр Service
-func NewService(repo repository.Repository, settingsService service.Service, db *gorm.DB) *ServiceImpl {
+func NewService(repo repository.Repository, sessionRepo sessionRepository.Repository, settingsService service.Service, db *gorm.DB) *ServiceImpl {
 	return &ServiceImpl{
 		repo:            repo,
+		sessionRepo:     sessionRepo,
 		settingsService: settingsService,
 		modbusRepo:      modbusRepository.NewModbusRepository(db),
 	}
@@ -312,7 +319,7 @@ func (s *ServiceImpl) AdminListWashBoxes(req *models.AdminListWashBoxesRequest) 
 		// Создаем мапу статусов для быстрого доступа
 		statusMap := make(map[uuid.UUID]*bool)
 		chemistryMap := make(map[uuid.UUID]*bool)
-		
+
 		for i := range modbusStatuses {
 			if modbusStatuses[i].LightStatus != nil {
 				lightStatus := *modbusStatuses[i].LightStatus
@@ -323,7 +330,7 @@ func (s *ServiceImpl) AdminListWashBoxes(req *models.AdminListWashBoxesRequest) 
 				chemistryMap[modbusStatuses[i].BoxID] = &chemistryStatus
 			}
 		}
-		
+
 		// Мапим статусы на боксы
 		for i := range boxes {
 			if lightStatus, exists := statusMap[boxes[i].ID]; exists {
@@ -424,10 +431,46 @@ func (s *ServiceImpl) CleanerListWashBoxes(req *models.CleanerListWashBoxesReque
 		return nil, err
 	}
 
+	// Вычисляем для каждого бокса, можно ли его убирать
+	for i := range boxes {
+		canBeCleaned := s.checkIfBoxCanBeCleaned(boxes[i].ID)
+		boxes[i].CanBeCleaned = &canBeCleaned
+	}
+
 	return &models.CleanerListWashBoxesResponse{
 		WashBoxes: boxes,
 		Total:     total,
 	}, nil
+}
+
+// checkIfBoxCanBeCleaned проверяет, можно ли убирать бокс (не было повторного назначения)
+func (s *ServiceImpl) checkIfBoxCanBeCleaned(boxID uuid.UUID) bool {
+	// Получаем последний лог уборки для бокса
+	lastLog, err := s.repo.GetLastCleaningLogByBox(boxID)
+	if err != nil || lastLog == nil {
+		// Если нет логов уборки, бокс можно убирать
+		return true
+	}
+
+	// Проверяем, что последняя уборка была завершена
+	if lastLog.Status != models.CleaningLogStatusCompleted || lastLog.CompletedAt == nil {
+		// Если уборка не завершена, бокс можно убирать
+		return true
+	}
+
+	// Проверяем, что после последней уборки была хотя бы одна завершенная сессия
+	completedSessionsCount, err := s.sessionRepo.GetCompletedSessionsBetween(
+		boxID,
+		*lastLog.CompletedAt,
+		time.Now(),
+	)
+	if err != nil {
+		// В случае ошибки разрешаем уборку
+		return true
+	}
+
+	// Если есть завершенные сессии между уборками, бокс можно убирать
+	return completedSessionsCount > 0
 }
 
 // CleanerReserveCleaning резервирует уборку для бокса
@@ -454,12 +497,19 @@ func (s *ServiceImpl) CleanerReserveCleaning(req *models.CleanerReserveCleaningR
 	if err == nil && lastLog != nil {
 		// Проверяем, что последняя уборка была завершена
 		if lastLog.Status == models.CleaningLogStatusCompleted && lastLog.CompletedAt != nil {
-			// Проверяем, что после последней уборки была хотя бы одна сессия
-			// Для этого нужно проверить, есть ли сессии после завершения уборки
-			// Пока что просто проверяем, что прошло достаточно времени (например, 1 час)
-			timeSinceLastCleaning := time.Since(*lastLog.CompletedAt)
-			if timeSinceLastCleaning < time.Hour {
-				return nil, errors.New("бокс недавно убирался, нужно подождать")
+			// Проверяем, что после последней уборки была хотя бы одна завершенная сессия
+			completedSessionsCount, err := s.sessionRepo.GetCompletedSessionsBetween(
+				req.WashBoxID,
+				*lastLog.CompletedAt,
+				time.Now(),
+			)
+			if err != nil {
+				return nil, err
+			}
+
+			// Если нет завершенных сессий между уборками, запрещаем повторную уборку
+			if completedSessionsCount == 0 {
+				return nil, errors.New("уборщик не может 2 раза подряд брать уборку на одном и том же боксе, если между его уборками не было завершенной сессии")
 			}
 		}
 	}
@@ -493,6 +543,28 @@ func (s *ServiceImpl) CleanerStartCleaning(req *models.CleanerStartCleaningReque
 	activeLog, err := s.repo.GetActiveCleaningLogByCleaner(cleanerID)
 	if err == nil && activeLog != nil {
 		return nil, errors.New("уборщик уже убирает другой бокс")
+	}
+
+	// Проверяем, что бокс не убирался в предыдущей сессии
+	lastLog, err := s.repo.GetLastCleaningLogByBox(req.WashBoxID)
+	if err == nil && lastLog != nil {
+		// Проверяем, что последняя уборка была завершена
+		if lastLog.Status == models.CleaningLogStatusCompleted && lastLog.CompletedAt != nil {
+			// Проверяем, что после последней уборки была хотя бы одна завершенная сессия
+			completedSessionsCount, err := s.sessionRepo.GetCompletedSessionsBetween(
+				req.WashBoxID,
+				*lastLog.CompletedAt,
+				time.Now(),
+			)
+			if err != nil {
+				return nil, err
+			}
+
+			// Если нет завершенных сессий между уборками, запрещаем повторную уборку
+			if completedSessionsCount == 0 {
+				return nil, errors.New("уборщик не может 2 раза подряд брать уборку на одном и том же боксе, если между его уборками не было завершенной сессии")
+			}
+		}
 	}
 
 	// Начинаем уборку
@@ -734,6 +806,51 @@ func (s *ServiceImpl) GetAvailableBoxesByServiceType(serviceType string, userID 
 	}
 
 	// Если есть боксы в cooldown для пользователя - возвращаем их
+	if len(availableBoxes) > 0 {
+		return availableBoxes, nil
+	}
+
+	// 2. Если нет боксов в cooldown - берем свободные боксы
+	freeBoxes, err := s.repo.GetFreeWashBoxesByServiceType(serviceType)
+	if err != nil {
+		return nil, err
+	}
+
+	return freeBoxes, nil
+}
+
+// GetCooldownBoxesForUser получает боксы в cooldown для конкретного пользователя
+func (s *ServiceImpl) GetCooldownBoxesForUser(userID uuid.UUID) ([]models.WashBox, error) {
+	return s.repo.GetCooldownBoxesForUser(userID)
+}
+
+// SetCooldownByCarNumber устанавливает cooldown для бокса по госномеру после завершения сессии
+func (s *ServiceImpl) SetCooldownByCarNumber(boxID uuid.UUID, carNumber string, cooldownUntil time.Time) error {
+	return s.repo.SetCooldownByCarNumber(boxID, carNumber, cooldownUntil)
+}
+
+// GetCooldownBoxesByCarNumber получает боксы в cooldown для конкретного госномера
+func (s *ServiceImpl) GetCooldownBoxesByCarNumber(carNumber string) ([]models.WashBox, error) {
+	return s.repo.GetCooldownBoxesByCarNumber(carNumber)
+}
+
+// GetAvailableBoxesByServiceTypeForCashier получает доступные боксы для кассира с учетом cooldown по госномеру
+func (s *ServiceImpl) GetAvailableBoxesByServiceTypeForCashier(serviceType string, carNumber string) ([]models.WashBox, error) {
+	// 1. ПРИОРИТЕТ: Боксы в cooldown для того же госномера
+	cooldownBoxes, err := s.repo.GetCooldownBoxesByCarNumber(carNumber)
+	if err != nil {
+		return nil, err
+	}
+
+	// Фильтруем по типу услуги
+	var availableBoxes []models.WashBox
+	for _, box := range cooldownBoxes {
+		if box.ServiceType == serviceType {
+			availableBoxes = append(availableBoxes, box)
+		}
+	}
+
+	// Если есть боксы в cooldown для госномера - возвращаем их
 	if len(availableBoxes) > 0 {
 		return availableBoxes, nil
 	}

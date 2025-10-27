@@ -347,9 +347,10 @@ export const formatSessionDetailedCost = (sessionPayments) => {
   /**
  * Получает описание статуса сессии для отображения пользователю
  * @param {string} status - Статус сессии
+ * @param {number} cooldownMinutes - Время кулдауна в минутах (опционально)
  * @returns {string} - Описание статуса
  */
-export const getSessionStatusDescription = (status) => {
+export const getSessionStatusDescription = (status, cooldownMinutes = null) => {
     switch (status) {
       case 'created':
         return 'Сессия создана, ожидание оплаты...';
@@ -362,7 +363,11 @@ export const getSessionStatusDescription = (status) => {
       case 'active':
         return 'Мойка в процессе';
       case 'complete':
-        return 'Мойка завершена';
+        let description = 'Мойка завершена';
+        if (cooldownMinutes && cooldownMinutes > 0) {
+          description += `\n\nПосле отключения мойки у вас есть ${cooldownMinutes} минут для того, чтобы оплатить заново и гарантированно остаться в прежнем боксе.`;
+        }
+        return description;
       case 'canceled':
         return 'Сессия отменена';
       default:

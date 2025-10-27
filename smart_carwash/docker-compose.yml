@@ -98,15 +98,17 @@ services:
       - POSTGRES_DB=${POSTGRES_DB}
     volumes:
       - ./backups:/backups
-    command: >
-      bash -c "while true; do
-        PGPASSWORD=${POSTGRES_PASSWORD} pg_dump -h postgres -U ${POSTGRES_USER} ${POSTGRES_DB} > /backups/backup_$$(date +\%Y\%m\%d_\%H\%M\%S).sql
-        sleep 86400
-      done"
+      - ./backup_script.sh:/backup_script.sh:ro
+    command: ["bash", "/backup_script.sh"]
     networks:
       - carwash_network
     depends_on:
       - postgres
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
 
   # Мониторинг - Loki для логов
   loki:

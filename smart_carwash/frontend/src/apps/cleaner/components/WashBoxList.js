@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import styled from 'styled-components';
 import { getTheme } from '../../../shared/styles/theme';
 import ApiService from '../../../shared/services/ApiService';
+import usePolling from '../../../shared/hooks/usePolling';
 import MobileTable from '../../../shared/components/MobileTable';
 
 const Container = styled.div`
@@ -152,6 +153,29 @@ const WashBoxList = ({ onCleaningAction }) => {
     }
   };
 
+  // Тихий поллинг без показа загрузки
+  const pollWashBoxes = async () => {
+    try {
+      const response = await ApiService.getCleanerWashBoxes();
+      const newBoxes = response.wash_boxes || [];
+      
+      // Обновляем только если данные изменились
+      setWashBoxes(prevBoxes => {
+        if (JSON.stringify(prevBoxes) !== JSON.stringify(newBoxes)) {
+          return newBoxes;
+        }
+        return prevBoxes;
+      });
+      
+      // Определяем активную уборку
+      const cleaningBox = newBoxes.find(box => box.status === 'cleaning');
+      setActiveCleaningBox(cleaningBox || null);
+    } catch (err) {
+      console.error('Ошибка поллинга боксов:', err);
+      // Не показываем ошибку при поллинге, чтобы не мешать пользователю
+    }
+  };
+
   // Функция для извлечения конкретного сообщения об ошибке
   const getErrorMessage = (error, defaultMessage) => {
     if (error?.response?.data?.error) {
@@ -264,6 +288,15 @@ const WashBoxList = ({ onCleaningAction }) => {
       );
     }
 
+    // Проверяем, можно ли убирать бокс (не было повторного назначения)
+    if (washBox.can_be_cleaned === false) {
+      return (
+        <span style={{ color: '#dc3545', fontStyle: 'italic', fontWeight: '500' }}>
+          Нельзя убирать 2 раза подряд
+        </span>
+      );
+    }
+
     switch (washBox.status) {
       case 'free':
         return (
@@ -313,6 +346,9 @@ const WashBoxList = ({ onCleaningAction }) => {
         return null;
     }
   };
+
+  // Поллинг для автоматического обновления списка боксов каждые 5 секунд (тихий)
+  usePolling(pollWashBoxes, 5000, true, []);
 
   if (loading) {
     return <LoadingSpinner theme={theme}>Загрузка боксов...</LoadingSpinner>;

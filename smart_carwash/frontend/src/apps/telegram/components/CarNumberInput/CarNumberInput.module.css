@@ -13,6 +13,28 @@
   font-size: 16px;
 }
 
+.countrySelect {
+  width: 100%;
+  padding: 12px 16px;
+  border: 2px solid #e0e0e0;
+  border-radius: 8px;
+  font-size: 16px;
+  font-weight: 500;
+  background-color: #ffffff;
+  outline: none;
+  cursor: pointer;
+  transition: all 0.3s ease;
+}
+
+.countrySelect:focus {
+  border-color: #2481cc;
+  box-shadow: 0 0 0 3px rgba(36, 129, 204, 0.1);
+}
+
+.countrySelect:hover {
+  border-color: #2481cc;
+}
+
 .inputWrapper {
   position: relative;
   border: 2px solid #e0e0e0;
@@ -57,6 +79,15 @@
   font-size: 16px;
 }
 
+.successIcon {
+  position: absolute;
+  right: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  font-size: 16px;
+  animation: successPulse 0.6s ease-out;
+}
+
 .errorMessage {
   color: #d32f2f;
   font-size: 14px;
@@ -69,6 +100,13 @@
   font-size: 14px;
   margin-top: 8px;
   font-style: italic;
+}
+
+.examplesText {
+  color: #888;
+  font-size: 13px;
+  margin-top: 4px;
+  font-family: 'Courier New', monospace;
 }
 
 .rememberContainer {
@@ -138,6 +176,20 @@
   color: #ffffff;
 }
 
+.dark .countrySelect {
+  background-color: #2c2c2c;
+  border-color: #444;
+  color: #ffffff;
+}
+
+.dark .countrySelect:focus {
+  border-color: #2481cc;
+}
+
+.dark .countrySelect:hover {
+  border-color: #2481cc;
+}
+
 .dark .inputWrapper {
   background-color: #2c2c2c;
   border-color: #444;
@@ -153,6 +205,10 @@
 
 .dark .helpText {
   color: #aaa;
+}
+
+.dark .examplesText {
+  color: #888;
 }
 
 .dark .rememberContainer {
@@ -210,5 +266,21 @@
     top: 4px;
     width: 6px;
     height: 12px;
+  }
+}
+
+/* Анимация для иконки успеха */
+@keyframes successPulse {
+  0% {
+    transform: translateY(-50%) scale(0.8);
+    opacity: 0;
+  }
+  50% {
+    transform: translateY(-50%) scale(1.2);
+    opacity: 1;
+  }
+  100% {
+    transform: translateY(-50%) scale(1);
+    opacity: 1;
   }
 } 

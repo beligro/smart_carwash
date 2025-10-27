@@ -14,6 +14,7 @@ type Repository interface {
 	CreateSession(session *models.Session) error
 	GetSessionByID(id uuid.UUID) (*models.Session, error)
 	GetActiveSessionByUserID(userID uuid.UUID) (*models.Session, error)
+	GetActiveSessionByCarNumber(carNumber string) (*models.Session, error)
 	GetUserSessionForPayment(userID uuid.UUID) (*models.Session, error)
 	GetSessionByIdempotencyKey(key string) (*models.Session, error)
 	UpdateSession(session *models.Session) error
@@ -27,6 +28,9 @@ type Repository interface {
 	
 	// Методы для статистики химии
 	GetChemistryStats(dateFrom *time.Time, dateTo *time.Time) (*models.ChemistryStats, error)
+	
+	// Метод для проверки завершенных сессий между уборками
+	GetCompletedSessionsBetween(boxID uuid.UUID, dateFrom, dateTo time.Time) (int, error)
 }
 
 // PostgresRepository реализация Repository для PostgreSQL
@@ -310,4 +314,41 @@ func (r *PostgresRepository) GetChemistryStats(dateFrom *time.Time, dateTo *time
 		UsagePercentage:            usagePercentage,
 		Period:                     period,
 	}, nil
+}
+
+// GetCompletedSessionsBetween получает количество завершенных сессий для бокса между указанными датами
+func (r *PostgresRepository) GetCompletedSessionsBetween(boxID uuid.UUID, dateFrom, dateTo time.Time) (int, error) {
+	var count int64
+	err := r.db.Model(&models.Session{}).
+		Where("box_id = ? AND status = ? AND created_at >= ? AND created_at <= ?", 
+			boxID, models.SessionStatusComplete, dateFrom, dateTo).
+		Count(&count).Error
+	return int(count), err
+}
+
+// GetActiveSessionByCarNumber получает активную сессию по номеру автомобиля
+func (r *PostgresRepository) GetActiveSessionByCarNumber(carNumber string) (*models.Session, error) {
+	var session models.Session
+	err := r.db.Where("car_number = ? AND status IN (?, ?, ?, ?)",
+		carNumber,
+		models.SessionStatusCreated,
+		models.SessionStatusInQueue,
+		models.SessionStatusAssigned,
+		models.SessionStatusActive).
+		Order("created_at DESC").
+		First(&session).Error
+	if err != nil {
+		return nil, err
+	}
+
+	// Если у сессии есть BoxID, получаем номер бокса
+	if session.BoxID != nil {
+		var boxNumber int
+		err = r.db.Table("wash_boxes").Where("id = ?", *session.BoxID).Select("number").Scan(&boxNumber).Error
+		if err == nil {
+			session.BoxNumber = &boxNumber
+		}
+	}
+
+	return &session, nil
 }

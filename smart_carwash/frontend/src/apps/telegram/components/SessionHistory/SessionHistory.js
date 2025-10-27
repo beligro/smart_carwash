@@ -96,7 +96,7 @@ const SessionHistory = ({ user, theme = 'light' }) => {
                   <div className={styles.statusInfo}>
                     <div className={`${styles.statusDot} ${styles[session.status]}`}></div>
                     <span className={`${styles.statusText} ${themeClass}`}>
-                      {getSessionStatusDescription(session.status)}
+                      {getSessionStatusDescription(session.status, session.cooldown_minutes)}
                     </span>
                   </div>
                   {session.car_number && (

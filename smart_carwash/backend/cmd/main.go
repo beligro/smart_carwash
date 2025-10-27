@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"math/rand"
 	"net/http"
 	"os"
 	"os/signal"
@@ -55,6 +56,9 @@ import (
 )
 
 func main() {
+	// Инициализируем генератор случайных чисел
+	rand.Seed(time.Now().UnixNano())
+
 	// Инициализируем структурированный логгер
 	logger.Init()
 	log := logger.GetLogger()
@@ -111,7 +115,7 @@ func main() {
 	// Создаем сервисы
 	userSvc := userService.NewService(userRepository)
 	settingsSvc := settingsService.NewService(settingsRepository)
-	washboxSvc := washboxService.NewService(washboxRepository, settingsSvc, db)
+	washboxSvc := washboxService.NewService(washboxRepository, sessionRepository, settingsSvc, db)
 	authSvc := authService.NewService(authRepository, cfg)
 
 	// Создаем Modbus HTTP адаптер
