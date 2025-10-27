@@ -25,6 +25,7 @@ const ServiceSelector = ({ onSelect, theme = 'light', user }) => {
   const [loading, setLoading] = useState(false);
   const [loadingChemistryTimes, setLoadingChemistryTimes] = useState(false);
   const [carNumber, setCarNumber] = useState('');
+  const [carNumberCountry, setCarNumberCountry] = useState('RUS');
   const [rememberCarNumber, setRememberCarNumber] = useState(false);
   const [savingCarNumber, setSavingCarNumber] = useState(false);
   const [email, setEmail] = useState('');
@@ -44,6 +45,9 @@ const ServiceSelector = ({ onSelect, theme = 'light', user }) => {
       if (user) {
         if (user.car_number) {
           setCarNumber(user.car_number);
+        }
+        if (user.car_number_country) {
+          setCarNumberCountry(user.car_number_country);
         }
         if (user.email) {
           setEmail(user.email);
@@ -253,7 +257,7 @@ const ServiceSelector = ({ onSelect, theme = 'light', user }) => {
         };
       }
 
-      const validation = validateAndNormalizeLicensePlate(number);
+      const validation = validateAndNormalizeLicensePlate(number, carNumberCountry);
       
       if (!validation.isValid) {
         // Детализируем ошибку для лучшего UX
@@ -301,7 +305,7 @@ const ServiceSelector = ({ onSelect, theme = 'light', user }) => {
         return false;
       }
       
-      const validation = validateAndNormalizeLicensePlate(number);
+      const validation = validateAndNormalizeLicensePlate(number, carNumberCountry);
       return validation.isValid;
     } catch (error) {
       console.error('Ошибка в isValidCarNumber:', error);
@@ -318,14 +322,14 @@ const ServiceSelector = ({ onSelect, theme = 'light', user }) => {
     setSavingCarNumber(true);
     try {
       // Нормализуем номер перед сохранением
-      const validation = validateAndNormalizeLicensePlate(carNumber);
+      const validation = validateAndNormalizeLicensePlate(carNumber, carNumberCountry);
       if (!validation.isValid) {
         console.error('Номер машины невалидный:', validation.error);
         return;
       }
       
-      await ApiService.updateCarNumber(user.id, validation.normalized);
-      console.log('Номер машины сохранен:', validation.normalized);
+      await ApiService.updateCarNumber(user.id, validation.normalized, carNumberCountry);
+      console.log('Номер машины сохранен:', validation.normalized, 'страна:', carNumberCountry);
     } catch (error) {
       console.error('Ошибка при сохранении номера машины:', error);
     } finally {
@@ -405,7 +409,7 @@ const ServiceSelector = ({ onSelect, theme = 'light', user }) => {
         }
 
         // Нормализуем номер машины перед отправкой
-        const validation = validateAndNormalizeLicensePlate(carNumber);
+        const validation = validateAndNormalizeLicensePlate(carNumber, carNumberCountry);
         if (!validation.isValid) {
           alert('Неверный формат номера машины: ' + validation.error);
           return;
@@ -417,6 +421,7 @@ const ServiceSelector = ({ onSelect, theme = 'light', user }) => {
           chemistryTimeMinutes: chemistryTime,
           rentalTimeMinutes: selectedRentalTime,
           carNumber: validation.normalized, // Используем нормализованный номер
+          carNumberCountry: carNumberCountry, // Передаем страну гос номера
           email: wantReceipt ? email : null // Передаем email только если галочка включена
         };
         
@@ -490,6 +495,8 @@ const ServiceSelector = ({ onSelect, theme = 'light', user }) => {
           <CarNumberInput
             value={carNumber || ''}
             onChange={handleCarNumberChange}
+            country={carNumberCountry}
+            onCountryChange={setCarNumberCountry}
             theme={theme}
             showRememberCheckbox={showRememberCheckbox}
             rememberChecked={rememberCarNumber}

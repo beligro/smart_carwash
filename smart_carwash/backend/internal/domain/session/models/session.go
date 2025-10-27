@@ -32,6 +32,7 @@ type Session struct {
 	ChemistryStartedAt                     *time.Time     `json:"chemistry_started_at,omitempty"`                              // Когда была включена химия
 	ChemistryEndedAt                       *time.Time     `json:"chemistry_ended_at,omitempty"`                                // Когда была выключена химия
 	CarNumber                              string         `json:"car_number"`                                                  // Номер машины в сессии
+	CarNumberCountry                       string         `json:"car_number_country" gorm:"default:'RUS'"`                     // Страна гос номера
 	Email                                  string         `json:"email"`                                                       // Email для чека
 	RentalTimeMinutes                      int            `json:"rental_time_minutes" gorm:"default:5"`                        // Время мойки в минутах
 	ExtensionTimeMinutes                   int            `json:"extension_time_minutes" gorm:"default:0"`                     // Время продления в минутах
@@ -71,6 +72,7 @@ type CreateSessionRequest struct {
 	WithChemistry        bool      `json:"with_chemistry"`
 	ChemistryTimeMinutes int       `json:"chemistry_time_minutes"` // Выбранное время химии в минутах
 	CarNumber            string    `json:"car_number" binding:"required"`
+	CarNumberCountry     string    `json:"car_number_country"` // Страна гос номера
 	Email                string    `json:"email"` // Email для чека
 	RentalTimeMinutes    int       `json:"rental_time_minutes" binding:"required"`
 	IdempotencyKey       string    `json:"idempotency_key" binding:"required"`
@@ -83,6 +85,7 @@ type CreateSessionWithPaymentRequest struct {
 	WithChemistry        bool      `json:"with_chemistry"`
 	ChemistryTimeMinutes int       `json:"chemistry_time_minutes"` // Выбранное время химии в минутах
 	CarNumber            string    `json:"car_number" binding:"required"`
+	CarNumberCountry     string    `json:"car_number_country"` // Страна гос номера
 	Email                string    `json:"email"` // Email для чека
 	RentalTimeMinutes    int       `json:"rental_time_minutes" binding:"required"`
 	IdempotencyKey       string    `json:"idempotency_key" binding:"required"`

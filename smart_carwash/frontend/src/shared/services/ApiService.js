@@ -154,11 +154,12 @@ const ApiService = {
   },
 
   // Обновление номера машины пользователя
-  updateCarNumber: async (userId, carNumber) => {
+  updateCarNumber: async (userId, carNumber, carNumberCountry = 'RUS') => {
     try {
       const response = await api.put('/users/car-number', {
         user_id: userId,
-        car_number: carNumber
+        car_number: carNumber,
+        car_number_country: carNumberCountry
       });
       return response.data;
     } catch (error) {

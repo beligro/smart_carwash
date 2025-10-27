@@ -13,6 +13,28 @@
   font-size: 16px;
 }
 
+.countrySelect {
+  width: 100%;
+  padding: 12px 16px;
+  border: 2px solid #e0e0e0;
+  border-radius: 8px;
+  font-size: 16px;
+  font-weight: 500;
+  background-color: #ffffff;
+  outline: none;
+  cursor: pointer;
+  transition: all 0.3s ease;
+}
+
+.countrySelect:focus {
+  border-color: #2481cc;
+  box-shadow: 0 0 0 3px rgba(36, 129, 204, 0.1);
+}
+
+.countrySelect:hover {
+  border-color: #2481cc;
+}
+
 .inputWrapper {
   position: relative;
   border: 2px solid #e0e0e0;
@@ -152,6 +174,20 @@
 /* Темная тема */
 .dark .label {
   color: #ffffff;
+}
+
+.dark .countrySelect {
+  background-color: #2c2c2c;
+  border-color: #444;
+  color: #ffffff;
+}
+
+.dark .countrySelect:focus {
+  border-color: #2481cc;
+}
+
+.dark .countrySelect:hover {
+  border-color: #2481cc;
 }
 
 .dark .inputWrapper {

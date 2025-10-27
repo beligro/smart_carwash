@@ -118,10 +118,13 @@ func (s *ServiceImpl) AdminGetUser(req *models.AdminGetUserRequest) (*models.Adm
 
 // UpdateCarNumber обновляет номер машины пользователя
 func (s *ServiceImpl) UpdateCarNumber(req *models.UpdateCarNumberRequest) (*models.UpdateCarNumberResponse, error) {
-	// Валидация и нормализация номера машины
-	normalizedCarNumber, err := utils.ValidateAndNormalizeLicensePlate(req.CarNumber)
-	if err != nil {
-		return nil, fmt.Errorf("неверный формат номера машины: %w", err)
+	// Нормализация номера машины (без валидации)
+	normalizedCarNumber := utils.NormalizeLicensePlate(req.CarNumber)
+	
+	// Устанавливаем дефолтную страну если не указана
+	country := req.CarNumberCountry
+	if country == "" {
+		country = "RUS"
 	}
 
 	// Получаем пользователя
@@ -130,8 +133,9 @@ func (s *ServiceImpl) UpdateCarNumber(req *models.UpdateCarNumberRequest) (*mode
 		return nil, err
 	}
 
-	// Обновляем номер машины нормализованным значением
+	// Обновляем номер машины и страну нормализованными значениями
 	user.CarNumber = normalizedCarNumber
+	user.CarNumberCountry = country
 	err = s.repo.UpdateUser(user)
 	if err != nil {
 		return nil, err

@@ -272,6 +272,7 @@ const TelegramApp = () => {
         withChemistry: serviceData.withChemistry,
         chemistryTimeMinutes: serviceData.chemistryTimeMinutes || 0,
         carNumber: serviceData.carNumber,
+        carNumberCountry: serviceData.carNumberCountry || 'RUS',
         rentalTimeMinutes: serviceData.rentalTimeMinutes
       };
       

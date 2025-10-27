@@ -1,51 +1,102 @@
 /**
- * Утилиты для валидации и нормализации российских госномеров
+ * Утилиты для валидации и нормализации госномеров разных стран
  */
 
-// Маппинг английских букв на русские для госномеров
-const ENGLISH_TO_RUSSIAN = {
-  'A': 'А', 'B': 'В', 'E': 'Е', 'K': 'К', 'M': 'М',
-  'H': 'Н', 'O': 'О', 'P': 'Р', 'C': 'С', 'T': 'Т',
-  'Y': 'У', 'X': 'Х',
-  'a': 'А', 'b': 'В', 'e': 'Е', 'k': 'К', 'm': 'М',
-  'h': 'Н', 'o': 'О', 'p': 'Р', 'c': 'С', 't': 'Т',
-  'y': 'У', 'x': 'Х'
+// Маппинг русских букв на английские для госномеров
+const RUSSIAN_TO_ENGLISH = {
+  'А': 'A', 'В': 'B', 'Е': 'E', 'К': 'K', 'М': 'M',
+  'Н': 'H', 'О': 'O', 'Р': 'P', 'С': 'C', 'Т': 'T',
+  'У': 'Y', 'Х': 'X',
+  'а': 'A', 'в': 'B', 'е': 'E', 'к': 'K', 'м': 'M',
+  'н': 'H', 'о': 'O', 'р': 'P', 'с': 'C', 'т': 'T',
+  'у': 'Y', 'х': 'X'
 };
 
-// Регулярное выражение для валидации российских госномеров
-// Формат: О111ОО799 (буква + 3 цифры + 2 буквы + 2-3 цифры)
-const RUSSIAN_LICENSE_PLATE_REGEX = /^[АВЕКМНОРСТУХ]\d{3}[АВЕКМНОРСТУХ]{2}\d{2,3}$/;
+// Конфигурация стран и их форматов госномеров
+const LICENSE_PLATE_COUNTRIES = {
+    RUS: {
+        // Россия: A123BC77
+        pattern: /^[ABEKMHOPCTYX]\d{3}[ABEKMHOPCTYX]{2}\d{2,3}$/i,
+        name: 'Россия',
+        placeholder: 'A123BC77',
+        examples: ['A123BC77', 'O111OO799', 'M456TY123']
+    },
+    KAZ: {
+        // Казахстан: 123ABC01
+        pattern: /^(\d{3})([A-Z]{3})(\d{2})$/i,
+        name: 'Казахстан',
+        placeholder: '123ABC01',
+        examples: ['123ABC01', '456KZT02', '789NUR05']
+    },
+    KGZ: {
+        // Киргизия: 01KA12345
+        pattern: /^(\d{2})([A-Z]{2})(\d{5})$/i,
+        name: 'Киргизия',
+        placeholder: '01KA12345',
+        examples: ['01KA12345', '02BB67890']
+    },
+    UZB: {
+        // Узбекистан: 01A123BC
+        pattern: /^(\d{2})([A-Z])(\d{3})([A-Z]{2})$/i,
+        name: 'Узбекистан',
+        placeholder: '01A123BC',
+        examples: ['01A123BC', '02B456KD']
+    },
+    TJK: {
+        // Таджикистан: 1234AB01
+        pattern: /^(\d{4})([A-Z]{2})(\d{2})$/i,
+        name: 'Таджикистан',
+        placeholder: '1234AB01',
+        examples: ['1234AB01', '5678CD02']
+    },
+    ARM: {
+        // Армения: 123AB45
+        pattern: /^(\d{3})([A-Z]{2})(\d{2})$/i,
+        name: 'Армения',
+        placeholder: '123AB45',
+        examples: ['123AB45', '456CD67']
+    },
+    BLR: {
+        // Беларусь: 1234AB1 или 1234AB-1
+        pattern: /^(\d{4})([A-Z]{2})-?(\d)$/i,
+        name: 'Беларусь',
+        placeholder: '1234AB1',
+        examples: ['1234AB1', '5678CD2']
+    }
+};
+
+// Порядок стран для отображения
+const COUNTRY_ORDER = ['RUS', 'KAZ', 'KGZ', 'UZB', 'TJK', 'ARM', 'BLR'];
 
 /**
- * Заменяет английские буквы на русские в госномере
+ * Заменяет русские буквы на английские в госномере
  * @param {string} str - Строка для замены
  * @returns {string} - Строка с замененными буквами
  */
-const replaceEnglishWithRussian = (str) => {
+const replaceRussianWithEnglish = (str) => {
   if (!str || typeof str !== 'string') {
     return '';
   }
   
   return str
     .split('')
-    .map(char => ENGLISH_TO_RUSSIAN[char] || char)
+    .map(char => RUSSIAN_TO_ENGLISH[char] || char)
     .join('');
 };
 
 /**
- * Валидирует и нормализует российский госномер
- * Приводит к формату: заглавные русские буквы + цифры
+ * Валидирует и нормализует госномер для указанной страны
+ * Приводит к формату: заглавные английские буквы + цифры
  * 
  * @param {string} licensePlate - Госномер для валидации
+ * @param {string} country - Код страны (RUS, KAZ, KGZ, UZB, TJK, ARM, BLR)
  * @returns {Object} - Результат валидации { isValid: boolean, normalized: string, error: string }
  * 
  * @example
- * validateAndNormalizeLicensePlate("A123BC77") // { isValid: true, normalized: "А123ВС77", error: "" }
- * validateAndNormalizeLicensePlate("a123bc77") // { isValid: true, normalized: "А123ВС77", error: "" }
- * validateAndNormalizeLicensePlate("О111ОО799") // { isValid: true, normalized: "О111ОО799", error: "" }
- * validateAndNormalizeLicensePlate("o111oo799") // { isValid: true, normalized: "О111ОО799", error: "" }
+ * validateAndNormalizeLicensePlate("А123ВС77", "RUS") // { isValid: true, normalized: "A123BC77", error: "" }
+ * validateAndNormalizeLicensePlate("123АВС01", "KAZ") // { isValid: true, normalized: "123ABC01", error: "" }
  */
-export const validateAndNormalizeLicensePlate = (licensePlate) => {
+export const validateAndNormalizeLicensePlate = (licensePlate, country = 'RUS') => {
   try {
     // Проверяем входные данные
     if (!licensePlate || typeof licensePlate !== 'string') {
@@ -56,21 +107,31 @@ export const validateAndNormalizeLicensePlate = (licensePlate) => {
       };
     }
 
+    // Получаем конфигурацию страны
+    const countryConfig = LICENSE_PLATE_COUNTRIES[country];
+    if (!countryConfig) {
+      return {
+        isValid: false,
+        normalized: '',
+        error: 'Неподдерживаемая страна'
+      };
+    }
+
     // Очищаем от пробелов и дефисов
     const cleaned = licensePlate.replace(/[\s-]/g, '');
 
     // Приводим к верхнему регистру
     const upper = cleaned.toUpperCase();
 
-    // Заменяем английские буквы на русские
-    const normalized = replaceEnglishWithRussian(upper);
+    // Заменяем русские буквы на английские
+    const normalized = replaceRussianWithEnglish(upper);
 
-    // Валидируем формат
-    if (!RUSSIAN_LICENSE_PLATE_REGEX.test(normalized)) {
+    // Валидируем формат для выбранной страны
+    if (!countryConfig.pattern.test(normalized)) {
       return {
         isValid: false,
         normalized: normalized,
-        error: 'Неверный формат номера автомобиля. Используйте формат: О111ОО799'
+        error: `Неверный формат номера автомобиля для ${countryConfig.name}. Используйте формат: ${countryConfig.placeholder}`
       };
     }
 
@@ -90,18 +151,25 @@ export const validateAndNormalizeLicensePlate = (licensePlate) => {
 };
 
 /**
- * Проверяет, является ли строка валидным российским госномером
+ * Проверяет, является ли строка валидным госномером для указанной страны
  * без нормализации (для быстрой проверки)
  * 
  * @param {string} licensePlate - Госномер для проверки
+ * @param {string} country - Код страны (RUS, KAZ, KGZ, UZB, TJK, ARM, BLR)
  * @returns {boolean} - true если валидный, false если нет
  */
-export const isValidLicensePlate = (licensePlate) => {
+export const isValidLicensePlate = (licensePlate, country = 'RUS') => {
   try {
     if (!licensePlate || typeof licensePlate !== 'string') {
       return false;
     }
-    return RUSSIAN_LICENSE_PLATE_REGEX.test(licensePlate);
+    
+    const countryConfig = LICENSE_PLATE_COUNTRIES[country];
+    if (!countryConfig) {
+      return false;
+    }
+    
+    return countryConfig.pattern.test(licensePlate);
   } catch (error) {
     console.error('Ошибка проверки госномера:', error);
     return false;
@@ -125,8 +193,8 @@ export const normalizeLicensePlateForSearch = (licensePlate) => {
     const cleaned = licensePlate.replace(/[\s-]/g, '');
     const upper = cleaned.toUpperCase();
 
-    // Заменяем английские буквы на русские
-    return replaceEnglishWithRussian(upper);
+    // Заменяем русские буквы на английские
+    return replaceRussianWithEnglish(upper);
   } catch (error) {
     console.error('Ошибка нормализации госномера:', error);
     return '';
@@ -140,9 +208,9 @@ export const normalizeLicensePlateForSearch = (licensePlate) => {
  * @param {string} licensePlate - Госномер для поиска вариантов
  * @returns {Array<string>} - Массив вариантов госномера
  */
-export const getLicensePlateVariants = (licensePlate) => {
+export const getLicensePlateVariants = (licensePlate, country = 'RUS') => {
   try {
-    const validation = validateAndNormalizeLicensePlate(licensePlate);
+    const validation = validateAndNormalizeLicensePlate(licensePlate, country);
     if (!validation.isValid) {
       return [];
     }
@@ -169,7 +237,7 @@ export const formatLicensePlateForDisplay = (licensePlate) => {
     // Нормализуем номер
     const normalized = normalizeLicensePlateForSearch(licensePlate);
     
-    // Форматируем: А123ВС77 -> А 123 ВС 77
+    // Форматируем: A123BC77 -> A 123 BC 77
     if (normalized.length >= 8) {
       return `${normalized.slice(0, 1)} ${normalized.slice(1, 4)} ${normalized.slice(4, 6)} ${normalized.slice(6)}`;
     }
@@ -182,26 +250,48 @@ export const formatLicensePlateForDisplay = (licensePlate) => {
 };
 
 /**
- * Получает примеры валидных госномеров для подсказки пользователю
- * 
- * @returns {Array<string>} - Массив примеров госномеров
+ * Получает список всех поддерживаемых стран
+ * @returns {Array<Object>} - Массив объектов стран с кодом, названием и примерами
  */
-export const getLicensePlateExamples = () => {
-  return [
-    'А123ВС77',
-    'О111ОО799',
-    'М456ТУ123',
-    'К789ХЕ45'
-  ];
+export const getSupportedCountries = () => {
+  return COUNTRY_ORDER.map(countryCode => ({
+    code: countryCode,
+    name: LICENSE_PLATE_COUNTRIES[countryCode].name,
+    placeholder: LICENSE_PLATE_COUNTRIES[countryCode].placeholder,
+    examples: LICENSE_PLATE_COUNTRIES[countryCode].examples
+  }));
 };
 
 /**
- * Получает описание формата госномера для пользователя
- * 
+ * Получает конфигурацию страны по коду
+ * @param {string} countryCode - Код страны
+ * @returns {Object|null} - Конфигурация страны или null
+ */
+export const getCountryConfig = (countryCode) => {
+  return LICENSE_PLATE_COUNTRIES[countryCode] || null;
+};
+
+/**
+ * Получает примеры валидных госномеров для указанной страны
+ * @param {string} country - Код страны
+ * @returns {Array<string>} - Массив примеров госномеров
+ */
+export const getLicensePlateExamples = (country = 'RUS') => {
+  const countryConfig = LICENSE_PLATE_COUNTRIES[country];
+  return countryConfig ? countryConfig.examples : [];
+};
+
+/**
+ * Получает описание формата госномера для указанной страны
+ * @param {string} country - Код страны
  * @returns {string} - Описание формата
  */
-export const getLicensePlateFormatDescription = () => {
-  return 'Формат: буква + 3 цифры + 2 буквы + 2-3 цифры. Пример: А123ВС77';
+export const getLicensePlateFormatDescription = (country = 'RUS') => {
+  const countryConfig = LICENSE_PLATE_COUNTRIES[country];
+  if (!countryConfig) {
+    return 'Неподдерживаемая страна';
+  }
+  return `Формат для ${countryConfig.name}: ${countryConfig.placeholder}`;
 };
 
 /**
@@ -216,7 +306,7 @@ export const isSupportedLetter = (letter) => {
   }
   
   const upperLetter = letter.toUpperCase();
-  const supportedLetters = ['А', 'В', 'Е', 'К', 'М', 'Н', 'О', 'Р', 'С', 'Т', 'У', 'Х'];
+  const supportedLetters = ['A', 'B', 'E', 'K', 'M', 'H', 'O', 'P', 'C', 'T', 'Y', 'X'];
   
   return supportedLetters.includes(upperLetter);
 };
@@ -227,7 +317,7 @@ export const isSupportedLetter = (letter) => {
  * @returns {Array<string>} - Массив поддерживаемых букв
  */
 export const getSupportedLetters = () => {
-  return ['А', 'В', 'Е', 'К', 'М', 'Н', 'О', 'Р', 'С', 'Т', 'У', 'Х'];
+  return ['A', 'B', 'E', 'K', 'M', 'H', 'O', 'P', 'C', 'T', 'Y', 'X'];
 };
 
 export default {
@@ -238,6 +328,8 @@ export default {
   formatLicensePlateForDisplay,
   getLicensePlateExamples,
   getLicensePlateFormatDescription,
+  getSupportedCountries,
+  getCountryConfig,
   isSupportedLetter,
   getSupportedLetters
 };
