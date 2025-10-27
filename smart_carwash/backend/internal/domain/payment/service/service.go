@@ -245,6 +245,28 @@ func (s *service) CalculateExtensionPrice(req *models.CalculateExtensionPriceReq
 
 // CreatePayment создает платеж в Tinkoff и сохраняет в БД
 func (s *service) CreatePayment(req *models.CreatePaymentRequest) (*models.CreatePaymentResponse, error) {
+	// Проверяем, есть ли уже pending платеж для этой сессии
+	existingPayments, err := s.repository.GetPaymentsBySessionID(req.SessionID)
+	if err == nil {
+		for _, payment := range existingPayments {
+			// Проверяем только основные платежи в статусе pending
+			if payment.PaymentType == models.PaymentTypeMain && payment.Status == models.PaymentStatusPending {
+				// Проверяем, не истек ли платеж
+				if payment.ExpiresAt != nil && time.Now().Before(*payment.ExpiresAt) {
+					logger.WithFields(logrus.Fields{
+						"payment_id": payment.ID,
+						"session_id": payment.SessionID,
+						"amount":     payment.Amount,
+						"tinkoff_id": payment.TinkoffID,
+					}).Info("Найден существующий pending платеж, возвращаем его")
+					return &models.CreatePaymentResponse{
+						Payment: payment,
+					}, nil
+				}
+			}
+		}
+	}
+
 	// Создаем уникальный orderID для основного платежа
 	orderID := fmt.Sprintf("main_%s", generateRandomString(12))
 	description := fmt.Sprintf("Оплата услуги автомойки (сессия: %s)", req.SessionID.String())
@@ -293,6 +315,28 @@ func (s *service) CreatePayment(req *models.CreatePaymentRequest) (*models.Creat
 
 // CreateExtensionPayment создает платеж продления в Tinkoff и сохраняет в БД
 func (s *service) CreateExtensionPayment(req *models.CreateExtensionPaymentRequest) (*models.CreateExtensionPaymentResponse, error) {
+	// Проверяем, есть ли уже pending платеж продления для этой сессии
+	existingPayments, err := s.repository.GetPaymentsBySessionID(req.SessionID)
+	if err == nil {
+		for _, payment := range existingPayments {
+			// Проверяем только платежи продления в статусе pending
+			if payment.PaymentType == models.PaymentTypeExtension && payment.Status == models.PaymentStatusPending {
+				// Проверяем, не истек ли платеж
+				if payment.ExpiresAt != nil && time.Now().Before(*payment.ExpiresAt) {
+					logger.WithFields(logrus.Fields{
+						"payment_id": payment.ID,
+						"session_id": payment.SessionID,
+						"amount":     payment.Amount,
+						"tinkoff_id": payment.TinkoffID,
+					}).Info("Найден существующий pending платеж продления, возвращаем его")
+					return &models.CreateExtensionPaymentResponse{
+						Payment: payment,
+					}, nil
+				}
+			}
+		}
+	}
+
 	// Создаем уникальный orderID для платежа продления
 	orderID := fmt.Sprintf("ext_%s", generateRandomString(12))
 	description := fmt.Sprintf("Продление сессии автомойки (сессия: %s)", req.SessionID.String())
@@ -498,17 +542,17 @@ func (s *service) HandleWebhook(req *models.WebhookRequest) error {
 func (s *service) updateSessionStatus(payment *models.Payment) error {
 	// НОВАЯ ЛОГИКА: Обновляем статус сессии только для успешных платежей
 	// Неудачные платежи НЕ переводят сессию в payment_failed - пользователь остается на странице оплаты
-	
+
 	if payment.Status == models.PaymentStatusSucceeded {
 		newSessionStatus := "in_queue"
 		logger.Printf("Платеж успешен, обновляем сессию %s в статус 'in_queue'", payment.SessionID)
-		
+
 		// Обновляем статус сессии через Session Status Updater
 		err := s.sessionUpdater.UpdateSessionStatus(payment.SessionID, newSessionStatus)
 		if err != nil {
 			return fmt.Errorf("ошибка обновления статуса сессии: %w", err)
 		}
-		
+
 		logger.Printf("Статус сессии %s успешно обновлен на '%s'", payment.SessionID, newSessionStatus)
 	} else if payment.Status == models.PaymentStatusFailed {
 		// НЕ переводим сессию в payment_failed - пользователь остается на странице оплаты
@@ -806,9 +850,9 @@ func (s *service) buildReceipt(amount int, email string) map[string]interface{} 
 	if receiptEmail == "" {
 		receiptEmail = "yndx-aagrom-ijakag@yandex.ru"
 	}
-	
+
 	receipt := map[string]interface{}{
-		"Email": receiptEmail,
+		"Email":    receiptEmail,
 		"Taxation": "usn_income_outcome",
 		"Items": []map[string]interface{}{
 			{
