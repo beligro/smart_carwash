@@ -37,6 +37,7 @@ type WashBox struct {
 	CleaningReservedBy    *uuid.UUID     `json:"cleaning_reserved_by" gorm:"type:uuid;index"`
 	CleaningStartedAt     *time.Time     `json:"cleaning_started_at"`
 	LastCompletedSessionUserID *uuid.UUID `json:"last_completed_session_user_id" gorm:"type:uuid;index"`
+	LastCompletedSessionCarNumber *string `json:"last_completed_session_car_number" gorm:"type:varchar(20)"`
 	LastCompletedAt       *time.Time     `json:"last_completed_at"`
 	CooldownUntil         *time.Time     `json:"cooldown_until"`
 	LightStatus           *bool          `json:"light_status,omitempty" gorm:"-"` // Статус света (не хранится в БД, заполняется из modbus_connection_statuses)

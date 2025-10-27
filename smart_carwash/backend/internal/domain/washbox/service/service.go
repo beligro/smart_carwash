@@ -52,8 +52,11 @@ type Service interface {
 
 	// Методы для работы с cooldown
 	SetCooldown(boxID uuid.UUID, userID uuid.UUID, cooldownUntil time.Time) error
+	SetCooldownByCarNumber(boxID uuid.UUID, carNumber string, cooldownUntil time.Time) error
 	GetCooldownBoxesForUser(userID uuid.UUID) ([]models.WashBox, error)
+	GetCooldownBoxesByCarNumber(carNumber string) ([]models.WashBox, error)
 	GetAvailableBoxesByServiceType(serviceType string, userID uuid.UUID) ([]models.WashBox, error)
+	GetAvailableBoxesByServiceTypeForCashier(serviceType string, carNumber string) ([]models.WashBox, error)
 	CheckCooldownExpired() error
 }
 
@@ -819,6 +822,46 @@ func (s *ServiceImpl) GetAvailableBoxesByServiceType(serviceType string, userID 
 // GetCooldownBoxesForUser получает боксы в cooldown для конкретного пользователя
 func (s *ServiceImpl) GetCooldownBoxesForUser(userID uuid.UUID) ([]models.WashBox, error) {
 	return s.repo.GetCooldownBoxesForUser(userID)
+}
+
+// SetCooldownByCarNumber устанавливает cooldown для бокса по госномеру после завершения сессии
+func (s *ServiceImpl) SetCooldownByCarNumber(boxID uuid.UUID, carNumber string, cooldownUntil time.Time) error {
+	return s.repo.SetCooldownByCarNumber(boxID, carNumber, cooldownUntil)
+}
+
+// GetCooldownBoxesByCarNumber получает боксы в cooldown для конкретного госномера
+func (s *ServiceImpl) GetCooldownBoxesByCarNumber(carNumber string) ([]models.WashBox, error) {
+	return s.repo.GetCooldownBoxesByCarNumber(carNumber)
+}
+
+// GetAvailableBoxesByServiceTypeForCashier получает доступные боксы для кассира с учетом cooldown по госномеру
+func (s *ServiceImpl) GetAvailableBoxesByServiceTypeForCashier(serviceType string, carNumber string) ([]models.WashBox, error) {
+	// 1. ПРИОРИТЕТ: Боксы в cooldown для того же госномера
+	cooldownBoxes, err := s.repo.GetCooldownBoxesByCarNumber(carNumber)
+	if err != nil {
+		return nil, err
+	}
+
+	// Фильтруем по типу услуги
+	var availableBoxes []models.WashBox
+	for _, box := range cooldownBoxes {
+		if box.ServiceType == serviceType {
+			availableBoxes = append(availableBoxes, box)
+		}
+	}
+
+	// Если есть боксы в cooldown для госномера - возвращаем их
+	if len(availableBoxes) > 0 {
+		return availableBoxes, nil
+	}
+
+	// 2. Если нет боксов в cooldown - берем свободные боксы
+	freeBoxes, err := s.repo.GetFreeWashBoxesByServiceType(serviceType)
+	if err != nil {
+		return nil, err
+	}
+
+	return freeBoxes, nil
 }
 
 // CheckCooldownExpired очищает истекшие cooldown'ы

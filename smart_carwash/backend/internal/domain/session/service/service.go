@@ -1201,6 +1201,12 @@ func (s *ServiceImpl) CheckAndCompleteExpiredSessions() error {
 		// Учитываем время продления, если оно есть
 		totalTime := rentalTime + session.ExtensionTimeMinutes
 
+		cooldownTimeout, err := s.settingsService.GetCooldownTimeout()
+		if err != nil {
+			// Если не удалось получить настройку, используем значение по умолчанию
+			cooldownTimeout = 5
+		}
+
 		// Проверяем, прошло ли выбранное время с момента начала сессии
 		if now.Sub(startTime) >= time.Duration(totalTime)*time.Minute {
 			// Если прошло время, завершаем сессию
@@ -1209,13 +1215,6 @@ func (s *ServiceImpl) CheckAndCompleteExpiredSessions() error {
 				if s.cashierUserID != "" {
 					cashierUserID, err := uuid.Parse(s.cashierUserID)
 					if err == nil && session.UserID != cashierUserID {
-						// Устанавливаем cooldown только для обычных пользователей
-						cooldownTimeout, err := s.settingsService.GetCooldownTimeout()
-						if err != nil {
-							// Если не удалось получить настройку, используем значение по умолчанию
-							cooldownTimeout = 5
-						}
-
 						// Устанавливаем cooldown для бокса
 						cooldownUntil := now.Add(time.Duration(cooldownTimeout) * time.Minute)
 						err = s.washboxService.SetCooldown(*session.BoxID, session.UserID, cooldownUntil)
@@ -1223,10 +1222,20 @@ func (s *ServiceImpl) CheckAndCompleteExpiredSessions() error {
 							return err
 						}
 					} else if err == nil && session.UserID == cashierUserID {
-						// Для сессий кассира переводим бокс в статус "свободен"
-						err = s.washboxService.UpdateWashBoxStatus(*session.BoxID, washboxModels.StatusFree)
-						if err != nil {
-							return err
+						// Для сессий кассира устанавливаем cooldown по госномеру
+						if session.CarNumber != "" {
+							// Устанавливаем cooldown для бокса по госномеру
+							cooldownUntil := now.Add(time.Duration(cooldownTimeout) * time.Minute)
+							err = s.washboxService.SetCooldownByCarNumber(*session.BoxID, session.CarNumber, cooldownUntil)
+							if err != nil {
+								return err
+							}
+						} else {
+							// Если госномер не указан, переводим бокс в статус "свободен"
+							err = s.washboxService.UpdateWashBoxStatus(*session.BoxID, washboxModels.StatusFree)
+							if err != nil {
+								return err
+							}
 						}
 					}
 				} else {
@@ -1352,32 +1361,73 @@ func (s *ServiceImpl) ProcessQueue() error {
 		var availableBoxes []washboxModels.WashBox
 		var err error
 
-		switch session.ServiceType {
-		case "wash":
-			if session.WithChemistry {
-				// Ищем боксы с химией для мойки с учетом cooldown
-				availableBoxes, err = s.washboxService.GetAvailableBoxesByServiceType("wash", session.UserID)
-				// Фильтруем только боксы с химией
-				var filteredBoxes []washboxModels.WashBox
-				for _, box := range availableBoxes {
-					if box.ChemistryEnabled {
-						filteredBoxes = append(filteredBoxes, box)
-					}
-				}
-				availableBoxes = filteredBoxes
-			} else {
-				// Ищем любые боксы для мойки с учетом cooldown
-				availableBoxes, err = s.washboxService.GetAvailableBoxesByServiceType("wash", session.UserID)
+		// Проверяем, является ли это кассирской сессией
+		isCashierSession := false
+		if s.cashierUserID != "" {
+			cashierUserID, err := uuid.Parse(s.cashierUserID)
+			if err == nil && session.UserID == cashierUserID {
+				isCashierSession = true
 			}
-		case "air_dry":
-			// Химия недоступна для air_dry
-			availableBoxes, err = s.washboxService.GetAvailableBoxesByServiceType("air_dry", session.UserID)
-		case "vacuum":
-			// Химия недоступна для vacuum
-			availableBoxes, err = s.washboxService.GetAvailableBoxesByServiceType("vacuum", session.UserID)
-		default:
-			// Для неизвестных типов услуг
-			availableBoxes, err = s.washboxService.GetAvailableBoxesByServiceType(session.ServiceType, session.UserID)
+		}
+
+		if isCashierSession && session.CarNumber != "" {
+			// Для кассирских сессий используем логику по госномеру
+			switch session.ServiceType {
+			case "wash":
+				if session.WithChemistry {
+					// Ищем боксы с химией для мойки с учетом cooldown по госномеру
+					availableBoxes, err = s.washboxService.GetAvailableBoxesByServiceTypeForCashier("wash", session.CarNumber)
+					// Фильтруем только боксы с химией
+					var filteredBoxes []washboxModels.WashBox
+					for _, box := range availableBoxes {
+						if box.ChemistryEnabled {
+							filteredBoxes = append(filteredBoxes, box)
+						}
+					}
+					availableBoxes = filteredBoxes
+				} else {
+					// Ищем любые боксы для мойки с учетом cooldown по госномеру
+					availableBoxes, err = s.washboxService.GetAvailableBoxesByServiceTypeForCashier("wash", session.CarNumber)
+				}
+			case "air_dry":
+				// Химия недоступна для air_dry
+				availableBoxes, err = s.washboxService.GetAvailableBoxesByServiceTypeForCashier("air_dry", session.CarNumber)
+			case "vacuum":
+				// Химия недоступна для vacuum
+				availableBoxes, err = s.washboxService.GetAvailableBoxesByServiceTypeForCashier("vacuum", session.CarNumber)
+			default:
+				// Для неизвестных типов услуг
+				availableBoxes, err = s.washboxService.GetAvailableBoxesByServiceTypeForCashier(session.ServiceType, session.CarNumber)
+			}
+		} else {
+			// Для обычных пользователей используем существующую логику
+			switch session.ServiceType {
+			case "wash":
+				if session.WithChemistry {
+					// Ищем боксы с химией для мойки с учетом cooldown
+					availableBoxes, err = s.washboxService.GetAvailableBoxesByServiceType("wash", session.UserID)
+					// Фильтруем только боксы с химией
+					var filteredBoxes []washboxModels.WashBox
+					for _, box := range availableBoxes {
+						if box.ChemistryEnabled {
+							filteredBoxes = append(filteredBoxes, box)
+						}
+					}
+					availableBoxes = filteredBoxes
+				} else {
+					// Ищем любые боксы для мойки с учетом cooldown
+					availableBoxes, err = s.washboxService.GetAvailableBoxesByServiceType("wash", session.UserID)
+				}
+			case "air_dry":
+				// Химия недоступна для air_dry
+				availableBoxes, err = s.washboxService.GetAvailableBoxesByServiceType("air_dry", session.UserID)
+			case "vacuum":
+				// Химия недоступна для vacuum
+				availableBoxes, err = s.washboxService.GetAvailableBoxesByServiceType("vacuum", session.UserID)
+			default:
+				// Для неизвестных типов услуг
+				availableBoxes, err = s.washboxService.GetAvailableBoxesByServiceType(session.ServiceType, session.UserID)
+			}
 		}
 
 		if err != nil {
@@ -1408,26 +1458,52 @@ func (s *ServiceImpl) ProcessQueue() error {
 			return err
 		}
 
-		// Проверяем, был ли бокс в кулдауне для этого пользователя
+		// Проверяем, был ли бокс в кулдауне для этого пользователя или госномера
 		// Если да, то сразу запускаем сессию, пропуская статус assigned
-		cooldownBoxes, err := s.washboxService.GetCooldownBoxesForUser(session.UserID)
-		if err == nil {
-			// Проверяем, есть ли среди боксов в кулдауне тот, который мы только что назначили
-			for _, cooldownBox := range cooldownBoxes {
-				if cooldownBox.ID == box.ID && cooldownBox.ServiceType == session.ServiceType {
-					// Бокс был в кулдауне для этого пользователя - сразу запускаем сессию
-					logger.Printf("ProcessQueue: бокс %s был в кулдауне для пользователя %s, запускаем сессию %s автоматически", box.ID, session.UserID, session.ID)
+		if isCashierSession && session.CarNumber != "" {
+			// Для кассирских сессий проверяем кулдаун по госномеру
+			cooldownBoxes, err := s.washboxService.GetCooldownBoxesByCarNumber(session.CarNumber)
+			if err == nil {
+				// Проверяем, есть ли среди боксов в кулдауне тот, который мы только что назначили
+				for _, cooldownBox := range cooldownBoxes {
+					if cooldownBox.ID == box.ID && cooldownBox.ServiceType == session.ServiceType {
+						// Бокс был в кулдауне для этого госномера - сразу запускаем сессию
+						logger.Printf("ProcessQueue: бокс %s был в кулдауне для госномера %s, запускаем сессию %s автоматически", box.ID, session.CarNumber, session.ID)
 
-					// Запускаем сессию
-					_, err = s.StartSession(&models.StartSessionRequest{
-						SessionID: session.ID,
-					})
-					if err != nil {
-						logger.Printf("ProcessQueue: ошибка автоматического запуска сессии %s: %v", session.ID, err)
-					} else {
-						logger.Printf("ProcessQueue: сессия %s автоматически запущена для бокса в кулдауне", session.ID)
+						// Запускаем сессию
+						_, err = s.StartSession(&models.StartSessionRequest{
+							SessionID: session.ID,
+						})
+						if err != nil {
+							logger.Printf("ProcessQueue: ошибка автоматического запуска сессии %s: %v", session.ID, err)
+						} else {
+							logger.Printf("ProcessQueue: сессия %s автоматически запущена для бокса в кулдауне по госномеру", session.ID)
+						}
+						break
 					}
-					break
+				}
+			}
+		} else {
+			// Для обычных пользователей проверяем кулдаун по user_id
+			cooldownBoxes, err := s.washboxService.GetCooldownBoxesForUser(session.UserID)
+			if err == nil {
+				// Проверяем, есть ли среди боксов в кулдауне тот, который мы только что назначили
+				for _, cooldownBox := range cooldownBoxes {
+					if cooldownBox.ID == box.ID && cooldownBox.ServiceType == session.ServiceType {
+						// Бокс был в кулдауне для этого пользователя - сразу запускаем сессию
+						logger.Printf("ProcessQueue: бокс %s был в кулдауне для пользователя %s, запускаем сессию %s автоматически", box.ID, session.UserID, session.ID)
+
+						// Запускаем сессию
+						_, err = s.StartSession(&models.StartSessionRequest{
+							SessionID: session.ID,
+						})
+						if err != nil {
+							logger.Printf("ProcessQueue: ошибка автоматического запуска сессии %s: %v", session.ID, err)
+						} else {
+							logger.Printf("ProcessQueue: сессия %s автоматически запущена для бокса в кулдауне", session.ID)
+						}
+						break
+					}
 				}
 			}
 		}

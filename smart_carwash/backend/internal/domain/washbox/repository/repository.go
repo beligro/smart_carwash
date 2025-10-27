@@ -47,7 +47,9 @@ type Repository interface {
 
 	// Методы для работы с cooldown
 	SetCooldown(boxID uuid.UUID, userID uuid.UUID, cooldownUntil time.Time) error
+	SetCooldownByCarNumber(boxID uuid.UUID, carNumber string, cooldownUntil time.Time) error
 	GetCooldownBoxesForUser(userID uuid.UUID) ([]models.WashBox, error)
+	GetCooldownBoxesByCarNumber(carNumber string) ([]models.WashBox, error)
 	CheckCooldownExpired() error
 }
 
@@ -419,15 +421,38 @@ func (r *PostgresRepository) GetCooldownBoxesForUser(userID uuid.UUID) ([]models
 	return boxes, err
 }
 
+// SetCooldownByCarNumber устанавливает cooldown для бокса по госномеру после завершения сессии
+func (r *PostgresRepository) SetCooldownByCarNumber(boxID uuid.UUID, carNumber string, cooldownUntil time.Time) error {
+	return r.db.Model(&models.WashBox{}).
+		Where("id = ?", boxID).
+		Updates(map[string]interface{}{
+			"last_completed_session_car_number": carNumber,
+			"last_completed_at":                 time.Now(),
+			"cooldown_until":                    cooldownUntil,
+		}).Error
+}
+
+// GetCooldownBoxesByCarNumber получает боксы в cooldown для конкретного госномера
+func (r *PostgresRepository) GetCooldownBoxesByCarNumber(carNumber string) ([]models.WashBox, error) {
+	var boxes []models.WashBox
+	now := time.Now()
+
+	err := r.db.Where("last_completed_session_car_number = ? AND cooldown_until > ?",
+		carNumber, now).
+		Find(&boxes).Error
+	return boxes, err
+}
+
 // CheckCooldownExpired очищает истекшие cooldown'ы
 func (r *PostgresRepository) CheckCooldownExpired() error {
 	now := time.Now()
 	return r.db.Model(&models.WashBox{}).
 		Where("cooldown_until IS NOT NULL AND cooldown_until <= ?", now).
 		Updates(map[string]interface{}{
-			"last_completed_session_user_id": nil,
-			"last_completed_at":              nil,
-			"cooldown_until":                 nil,
-			"status":                         models.StatusFree,
+			"last_completed_session_user_id":     nil,
+			"last_completed_session_car_number":   nil,
+			"last_completed_at":                  nil,
+			"cooldown_until":                    nil,
+			"status":                             models.StatusFree,
 		}).Error
 }

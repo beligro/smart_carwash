@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"math/rand"
 	"net/http"
 	"os"
 	"os/signal"
@@ -55,6 +56,9 @@ import (
 )
 
 func main() {
+	// Инициализируем генератор случайных чисел
+	rand.Seed(time.Now().UnixNano())
+
 	// Инициализируем структурированный логгер
 	logger.Init()
 	log := logger.GetLogger()
