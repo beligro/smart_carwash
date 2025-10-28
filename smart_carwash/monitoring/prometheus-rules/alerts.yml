@@ -84,16 +84,6 @@ groups:
           summary: "High database connections detected"
           description: "Number of database connections is above 80 for more than 5 minutes"
 
-      - alert: DatabaseDown
-        expr: up{job="postgres-exporter"} == 0
-        for: 1m
-        labels:
-          severity: critical
-          service: database
-        annotations:
-          summary: "Database is down"
-          description: "PostgreSQL exporter is not responding"
-
       # Алерты сервисов
       - alert: BackendDown
         expr: up{job="backend"} == 0

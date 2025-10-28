@@ -22,6 +22,12 @@ import {
  * @param {boolean} props.rememberChecked - Состояние чекбокса "запомнить"
  * @param {Function} props.onRememberChange - Функция изменения чекбокса "запомнить"
  * @param {string} props.savedCarNumber - Сохраненный номер машины пользователя
+ * @param {boolean} props.noCarNumber - Состояние "нет номера"
+ * @param {Function} props.onNoCarNumberChange - Функция изменения состояния "нет номера"
+ * @param {boolean} props.showDisclaimer - Показывать ли дисклеймер с предупреждением
+ * @param {boolean} props.showConfirmation - Показывать ли подтверждение номера
+ * @param {boolean} props.confirmationChecked - Состояние чекбокса подтверждения
+ * @param {Function} props.onConfirmationChange - Функция изменения чекбокса подтверждения
  */
 const CarNumberInput = ({ 
   value, 
@@ -32,7 +38,13 @@ const CarNumberInput = ({
   showRememberCheckbox = false,
   rememberChecked = false,
   onRememberChange,
-  savedCarNumber = ''
+  savedCarNumber = '',
+  noCarNumber = false,
+  onNoCarNumberChange,
+  showDisclaimer = false,
+  showConfirmation = false,
+  confirmationChecked = false,
+  onConfirmationChange
 }) => {
   const [isValid, setIsValid] = useState(true);
   const [errorMessage, setErrorMessage] = useState('');
@@ -53,25 +65,20 @@ const CarNumberInput = ({
     }
   }, [country]);
 
-  // Валидация номера машины для выбранной страны
+  // Валидация номера машины для выбранной страны (только для внутренней логики)
   const validateCarNumber = (number, countryToValidate = country) => {
     try {
       // Используем новую утилиту для валидации и нормализации с указанием страны
       const validation = validateAndNormalizeLicensePlate(number, countryToValidate);
       
-      if (!validation.isValid) {
-        setIsValid(false);
-        setErrorMessage(validation.error);
-        return false;
-      }
-
+      // Всегда считаем валидным для отображения, ошибки показываем только через suggestion
       setIsValid(true);
       setErrorMessage('');
-      return true;
+      return validation.isValid;
     } catch (error) {
       console.error('Ошибка валидации номера машины:', error);
-      setIsValid(false);
-      setErrorMessage('Ошибка валидации');
+      setIsValid(true);
+      setErrorMessage('');
       return false;
     }
   };
@@ -107,6 +114,31 @@ const CarNumberInput = ({
       // Валидация произойдет автоматически через useEffect
     } catch (error) {
       console.error('Ошибка в handleCountryChange:', error);
+    }
+  };
+
+  // Обработчик изменения чекбокса "Нет номера"
+  const handleNoCarNumberChange = (e) => {
+    try {
+      const checked = e.target.checked;
+      onNoCarNumberChange(checked);
+      
+      // Если включаем "нет номера", очищаем номер
+      if (checked) {
+        onChange('');
+      }
+    } catch (error) {
+      console.error('Ошибка в handleNoCarNumberChange:', error);
+    }
+  };
+
+  // Обработчик изменения чекбокса подтверждения номера
+  const handleConfirmationChange = (e) => {
+    try {
+      const checked = e.target.checked;
+      onConfirmationChange(checked);
+    } catch (error) {
+      console.error('Ошибка в handleConfirmationChange:', error);
     }
   };
 
@@ -170,72 +202,126 @@ const CarNumberInput = ({
 
   return (
     <Card theme={theme} className={styles.container}>
-      <div className={styles.inputGroup}>
-        <label className={`${styles.label} ${themeClass}`}>
-          Страна гос номера
-        </label>
-        <select
-          value={country}
-          onChange={handleCountryChange}
-          className={`${styles.countrySelect} ${themeClass}`}
-        >
-          {getSupportedCountries().map(countryOption => (
-            <option key={countryOption.code} value={countryOption.code}>
-              {countryOption.name}
-            </option>
-          ))}
-        </select>
-      </div>
-
-      <div className={styles.inputGroup}>
-        <label className={`${styles.label} ${themeClass}`}>
-          Номер машины
-        </label>
-        <div className={`${styles.inputWrapper} ${!isValid ? styles.error : ''} ${isFocused ? styles.focused : ''}`}>
-          <input
-            type="text"
-            value={safeValue}
-            onChange={handleInput}
-            onFocus={handleFocus}
-            onBlur={handleBlur}
-            placeholder={countryConfig?.placeholder || "А123ВК456"}
-            className={`${styles.input} ${themeClass}`}
-            maxLength={12}
-          />
-          {!isValid && safeValue && (
-            <div className={styles.errorIcon}>⚠️</div>
-          )}
-          {isValid && safeValue && (
-            <div className={styles.successIcon}>✅</div>
-          )}
-        </div>
-        {errorMessage && (
-          <div className={styles.errorMessage}>{errorMessage}</div>
-        )}
-        <div className={styles.helpText}>
-          {getLicensePlateFormatDescription(country)}
-        </div>
-        <div className={styles.examplesText}>
-          Примеры: {getLicensePlateExamples(country).join(', ')}
-        </div>
-      </div>
-
-      {shouldShowRememberCheckbox && (
-        <div className={styles.rememberContainer}>
-          <label className={`${styles.rememberLabel} ${themeClass}`}>
+      {/* Чекбокс "Нет номера" */}
+      <div className={styles.noCarNumberContainer}>
+        <div className={styles.optionRow}>
+          <label className={`${styles.optionLabel} ${themeClass}`}>
             <input
               type="checkbox"
-              checked={rememberChecked}
-              onChange={(e) => onRememberChange(e.target.checked)}
+              checked={noCarNumber}
+              onChange={handleNoCarNumberChange}
               className={styles.checkbox}
             />
             <span className={styles.checkmark}></span>
-            Запомнить номер машины
+            У меня нет номера на автомобиле
           </label>
-          <div className={styles.rememberHelp}>
-            Номер будет автоматически подставляться при следующих записях
+        </div>
+      </div>
+
+      {/* Сообщение для автомобилей без номера */}
+      {noCarNumber && (
+        <div className={`${styles.noCarNumberMessage} ${themeClass}`}>
+          <div className={styles.messageIcon}>⚠️</div>
+          <div className={styles.messageText}>
+            Для автомобилей без номера необходимо записаться и оплатить мойку у кассира-администратора
           </div>
         </div>
+      )}
+
+      {/* Поля ввода номера - показываем только если НЕ выбрано "нет номера" */}
+      {!noCarNumber && (
+        <>
+          <div className={styles.inputGroup}>
+            <label className={`${styles.label} ${themeClass}`}>
+              Страна гос номера
+            </label>
+            <select
+              value={country}
+              onChange={handleCountryChange}
+              className={`${styles.countrySelect} ${themeClass}`}
+            >
+              {getSupportedCountries().map(countryOption => (
+                <option key={countryOption.code} value={countryOption.code}>
+                  {countryOption.name}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div className={styles.inputGroup}>
+            <label className={`${styles.label} ${themeClass}`}>
+              Номер машины
+            </label>
+            <div className={`${styles.inputWrapper} ${isFocused ? styles.focused : ''}`}>
+              <input
+                type="text"
+                value={safeValue}
+                onChange={handleInput}
+                onFocus={handleFocus}
+                onBlur={handleBlur}
+                placeholder={countryConfig?.placeholder || "А123ВК456"}
+                className={`${styles.input} ${themeClass}`}
+                maxLength={12}
+              />
+            </div>
+            <div className={styles.helpText}>
+              💡 Проверьте формат номера. Пример: А123ВС77
+            </div>
+          </div>
+
+          {/* Дисклеймер с предупреждением */}
+          {showDisclaimer && (
+            <div className={`${styles.disclaimerContainer} ${themeClass}`}>
+              <div className={styles.disclaimerIcon}>⚠️</div>
+              <div className={styles.disclaimerContent}>
+                <div className={styles.disclaimerTitle}>Внимание! При вводе некорректного номера возможны:</div>
+                <ul className={styles.disclaimerList}>
+                  <li>Преждевременное отключение оборудования</li>
+                  <li>Некорректное время работы поста</li>
+                  <li>Автоматическое завершение сессии</li>
+                </ul>
+              </div>
+            </div>
+          )}
+
+          {/* Подтверждение номера */}
+          {showConfirmation && (
+            <div className={styles.confirmationContainer}>
+              <div className={styles.optionRow}>
+                <label className={`${styles.optionLabel} ${themeClass}`}>
+                  <input
+                    type="checkbox"
+                    checked={confirmationChecked}
+                    onChange={handleConfirmationChange}
+                    className={styles.checkbox}
+                  />
+                  <span className={styles.checkmark}></span>
+                  Подтверждаю, что ввёл корректный номер моего автомобиля и понимаю возможные последствия
+                </label>
+              </div>
+            </div>
+          )}
+
+          {shouldShowRememberCheckbox && (
+            <div className={styles.rememberContainer}>
+              <div className={styles.optionRow}>
+                <label className={`${styles.optionLabel} ${themeClass}`}>
+                  <input
+                    type="checkbox"
+                    checked={rememberChecked}
+                    onChange={(e) => onRememberChange(e.target.checked)}
+                    className={styles.checkbox}
+                  />
+                  <span className={styles.checkmark}></span>
+                  Запомнить номер машины
+                </label>
+              </div>
+              <div className={styles.rememberHelp}>
+                Номер будет автоматически подставляться при следующих записях
+              </div>
+            </div>
+          )}
+        </>
       )}
     </Card>
   );

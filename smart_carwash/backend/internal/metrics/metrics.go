@@ -19,7 +19,6 @@ type Metrics struct {
 	ActiveConnections     prometheus.Gauge
 	DatabaseConnections   *prometheus.GaugeVec
 	SessionMetrics        *prometheus.CounterVec
-	PaymentMetrics        *prometheus.CounterVec
 	QueueMetrics          *prometheus.GaugeVec
 	ErrorMetrics          *prometheus.CounterVec
 	MultipleSessionMetrics *prometheus.CounterVec
@@ -78,13 +77,6 @@ func NewMetrics() *Metrics {
 				Help: "Total number of sessions",
 			},
 			[]string{"status", "service_type", "with_chemistry"},
-		),
-		PaymentMetrics: promauto.NewCounterVec(
-			prometheus.CounterOpts{
-				Name: "payments_total",
-				Help: "Total number of payments",
-			},
-			[]string{"status", "payment_method", "service_type"},
 		),
 		QueueMetrics: promauto.NewGaugeVec(
 			prometheus.GaugeOpts{
@@ -154,11 +146,6 @@ func (m *Metrics) MetricsHandler() gin.HandlerFunc {
 // RecordSession создает метрику для сессии
 func (m *Metrics) RecordSession(status, serviceType, withChemistry string) {
 	m.SessionMetrics.WithLabelValues(status, serviceType, withChemistry).Inc()
-}
-
-// RecordPayment создает метрику для платежа
-func (m *Metrics) RecordPayment(status, paymentMethod, serviceType string) {
-	m.PaymentMetrics.WithLabelValues(status, paymentMethod, serviceType).Inc()
 }
 
 // UpdateQueueSize обновляет размер очереди

@@ -12,7 +12,7 @@ common:
       rules_directory: /loki/rules
   replication_factor: 1
   ring:
-    instance_addr: 127.0.0.1
+    instance_addr: loki
     kvstore:
       store: inmemory
 
@@ -36,47 +36,48 @@ schema_config:
 ruler:
   alertmanager_url: http://localhost:9093
 
-# Настройки хранения - 2 дня
+# Оптимизированные настройки хранения - 1 день
 limits_config:
   enforce_metric_name: false
   reject_old_samples: true
-  reject_old_samples_max_age: 48h
-  max_cache_freshness_per_query: 10m
-  split_queries_by_interval: 15m
-  max_query_parallelism: 32
+  reject_old_samples_max_age: 24h
+  max_cache_freshness_per_query: 5m
+  split_queries_by_interval: 30m
+  max_query_parallelism: 16
   max_streams_per_user: 0
-  max_line_size: 256000
-  max_entries_limit_per_query: 5000
-  max_query_series: 500
+  max_line_size: 128000
+  max_entries_limit_per_query: 2000
+  max_query_series: 200
   max_query_lookback: 0s
-  max_query_length: 48h
-  cardinality_limit: 100000
-  max_streams_matchers_per_query: 1000
-  max_concurrent_tail_requests: 10
+  max_query_length: 24h
+  cardinality_limit: 50000
+  max_streams_matchers_per_query: 500
+  max_concurrent_tail_requests: 5
   max_queriers_per_tenant: 0
   ruler_max_rules_per_rule_group: 0
   ruler_max_rule_groups_per_tenant: 0
-  per_stream_rate_limit: 3MB
-  per_stream_rate_limit_burst: 15MB
+  # Увеличиваем лимиты для предотвращения 429 ошибок
+  per_stream_rate_limit: 8MB
+  per_stream_rate_limit_burst: 32MB
   max_global_streams_per_user: 0
-  max_chunks_per_query: 2000000
-  # 2 дня хранения
-  retention_period: 48h
+  max_chunks_per_query: 1000000
+  # 1 день хранения для экономии ресурсов
+  retention_period: 24h
 
 chunk_store_config:
   max_look_back_period: 0s
 
 table_manager:
   retention_deletes_enabled: true
-  retention_period: 48h
+  retention_period: 24h
 
 compactor:
   working_directory: /loki/compactor
   shared_store: filesystem
-  compaction_interval: 10m
+  compaction_interval: 30m
   retention_enabled: true
-  retention_delete_delay: 2h
-  retention_delete_worker_count: 150
+  retention_delete_delay: 1h
+  retention_delete_worker_count: 50
 
 analytics:
   reporting_enabled: false

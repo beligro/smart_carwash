@@ -461,20 +461,10 @@ func (s *service) HandleWebhook(req *models.WebhookRequest) error {
 		payment.Status = models.PaymentStatusSucceeded
 		logger.Printf("Платеж подтвержден: ID=%s, Status=%s", payment.ID, payment.Status)
 
-		// Записываем метрику успешного платежа
-		if s.metrics != nil {
-			s.metrics.RecordPayment("succeeded", "tinkoff", "unknown") // service_type будет получен из сессии
-		}
-
 	// Неудачные платежи
 	case "CANCELED", "REJECTED", "AUTH_FAIL", "DEADLINE_EXPIRED", "ATTEMPTS_EXPIRED":
 		payment.Status = models.PaymentStatusFailed
 		logger.Printf("Платеж неудачен (%s): ID=%s, Status=%s", req.Status, payment.ID, payment.Status)
-
-		// Записываем метрику неудачного платежа
-		if s.metrics != nil {
-			s.metrics.RecordPayment("failed", "tinkoff", "unknown") // service_type будет получен из сессии
-		}
 
 	// Возвраты
 	case "REFUNDING", "ASYNC_REFUNDING":

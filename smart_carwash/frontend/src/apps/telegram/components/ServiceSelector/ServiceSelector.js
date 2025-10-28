@@ -2,7 +2,6 @@ import React, { useState, useEffect } from 'react';
 import styles from './ServiceSelector.module.css';
 import { Card, Button } from '../../../../shared/components/UI';
 import CarNumberInput from '../CarNumberInput';
-import EmailInput from '../EmailInput';
 import PriceCalculator from '../PriceCalculator';
 import ApiService from '../../../../shared/services/ApiService';
 import { validateAndNormalizeLicensePlate } from '../../../../shared/utils/licensePlateUtils';
@@ -28,10 +27,11 @@ const ServiceSelector = ({ onSelect, theme = 'light', user }) => {
   const [carNumberCountry, setCarNumberCountry] = useState('RUS');
   const [rememberCarNumber, setRememberCarNumber] = useState(false);
   const [savingCarNumber, setSavingCarNumber] = useState(false);
-  const [email, setEmail] = useState('');
-  const [rememberEmail, setRememberEmail] = useState(false);
-  const [savingEmail, setSavingEmail] = useState(false);
-  const [wantReceipt, setWantReceipt] = useState(false);
+  const [noCarNumber, setNoCarNumber] = useState(false);
+  const [showDisclaimer, setShowDisclaimer] = useState(false);
+  const [showConfirmation, setShowConfirmation] = useState(false);
+  const [confirmationChecked, setConfirmationChecked] = useState(false);
+  const [savedCarNumber, setSavedCarNumber] = useState(''); // Сохраняем номер при переключении "нет номера"
   
   // Состояния для улучшенного UX валидации госномера
   const [carNumberError, setCarNumberError] = useState('');
@@ -49,12 +49,16 @@ const ServiceSelector = ({ onSelect, theme = 'light', user }) => {
         if (user.car_number_country) {
           setCarNumberCountry(user.car_number_country);
         }
-        if (user.email) {
-          setEmail(user.email);
-        }
       }
     } catch (error) {
       console.error('Ошибка при инициализации данных пользователя:', error);
+    }
+  }, [user]);
+
+  // Сброс состояния "нет номера" при изменении пользователя
+  useEffect(() => {
+    if (user && user.car_number) {
+      setNoCarNumber(false);
     }
   }, [user]);
   
@@ -213,38 +217,48 @@ const ServiceSelector = ({ onSelect, theme = 'light', user }) => {
     }
   };
 
-  // Обработчик изменения email
-  const handleEmailChange = (value) => {
+  // Обработчик изменения чекбокса "нет номера"
+  const handleNoCarNumberChange = (checked) => {
     try {
-      setEmail(value || '');
-    } catch (error) {
-      console.error('Ошибка в handleEmailChange:', error);
-      setEmail('');
-    }
-  };
-
-  // Обработчик изменения чекбокса "запомнить email"
-  const handleRememberEmailChange = (checked) => {
-    try {
-      setRememberEmail(checked);
-    } catch (error) {
-      console.error('Ошибка в handleRememberEmailChange:', error);
-    }
-  };
-
-  // Обработчик изменения галочки "Хочу получить чек"
-  const handleWantReceiptChange = (checked) => {
-    try {
-      setWantReceipt(checked);
-      // Если галочка выключена, очищаем email
-      if (!checked) {
-        setEmail('');
+      setNoCarNumber(checked);
+      
+      if (checked) {
+        // Если включаем "нет номера", сохраняем текущий номер и очищаем поля
+        if (carNumber) {
+          setSavedCarNumber(carNumber);
+        }
+        setCarNumber('');
+        setCarNumberError('');
+        setShowCarNumberError(false);
+        setShowDisclaimer(false);
+        setShowConfirmation(false);
+        setConfirmationChecked(false);
+      } else {
+        // Если выключаем "нет номера", восстанавливаем сохраненный номер
+        if (savedCarNumber) {
+          setCarNumber(savedCarNumber);
+          // Валидируем восстановленный номер
+          const validation = validateCarNumberWithDetails(savedCarNumber);
+          if (validation.isValid) {
+            setShowDisclaimer(true);
+            setShowConfirmation(true);
+          }
+        }
       }
     } catch (error) {
-      console.error('Ошибка в handleWantReceiptChange:', error);
-      setWantReceipt(false);
+      console.error('Ошибка в handleNoCarNumberChange:', error);
     }
   };
+
+  // Обработчик изменения чекбокса подтверждения
+  const handleConfirmationChange = (checked) => {
+    try {
+      setConfirmationChecked(checked);
+    } catch (error) {
+      console.error('Ошибка в handleConfirmationChange:', error);
+    }
+  };
+
 
   // Улучшенная валидация госномера с детальными сообщениями
   const validateCarNumberWithDetails = (number) => {
@@ -337,33 +351,29 @@ const ServiceSelector = ({ onSelect, theme = 'light', user }) => {
     }
   };
 
-  // Сохранение email пользователя
-  const saveEmail = async () => {
-    if (!user || !email || !rememberEmail) {
-      return;
-    }
-
-    setSavingEmail(true);
-    try {
-      await ApiService.updateEmail(user.id, email);
-      console.log('Email сохранен');
-    } catch (error) {
-      console.error('Ошибка при сохранении email:', error);
-    } finally {
-      setSavingEmail(false);
-    }
-  };
 
   // Обработчик изменения госномера с валидацией в реальном времени
   const handleCarNumberChange = (newCarNumber) => {
     setCarNumber(newCarNumber);
     
-    // Валидируем в реальном времени
-    const validation = validateCarNumberWithDetails(newCarNumber);
-    if (!validation.isValid) {
-      setCarNumberError(validation.suggestion); // Показываем подсказку вместо ошибки
+    // Валидируем в реальном времени только если НЕ выбрано "нет номера"
+    if (!noCarNumber) {
+      const validation = validateCarNumberWithDetails(newCarNumber);
+      if (!validation.isValid) {
+        setCarNumberError(validation.suggestion); // Показываем подсказку вместо ошибки
+        setShowDisclaimer(false);
+        setShowConfirmation(false);
+        setConfirmationChecked(false);
+      } else {
+        setCarNumberError(''); // Очищаем ошибку при валидном номере
+        setShowDisclaimer(true); // Показываем дисклеймер при валидном номере
+        setShowConfirmation(true); // Показываем подтверждение
+      }
     } else {
-      setCarNumberError(''); // Очищаем ошибку при валидном номере
+      setCarNumberError(''); // Очищаем ошибку если выбрано "нет номера"
+      setShowDisclaimer(false);
+      setShowConfirmation(false);
+      setConfirmationChecked(false);
     }
     
     // Скрываем ошибку при начале ввода
@@ -373,27 +383,24 @@ const ServiceSelector = ({ onSelect, theme = 'light', user }) => {
   };
   const handleConfirm = async () => {
     try {
-      // Сначала проверяем валидность госномера
-      const carNumberValidation = validateCarNumberWithDetails(carNumber);
-      if (!carNumberValidation.isValid) {
-        setCarNumberError(carNumberValidation.error);
-        setShowCarNumberError(true);
-        // Показываем ошибку на 5 секунд
-        setTimeout(() => {
-          setShowCarNumberError(false);
-        }, 5000);
-        return;
+      // Проверяем валидность госномера только если номер указан
+      if (!noCarNumber && carNumber) {
+        const carNumberValidation = validateCarNumberWithDetails(carNumber);
+        if (!carNumberValidation.isValid) {
+          setCarNumberError(carNumberValidation.error);
+          setShowCarNumberError(true);
+          // Показываем ошибку на 5 секунд
+          setTimeout(() => {
+            setShowCarNumberError(false);
+          }, 5000);
+          return;
+        }
       }
 
-      if (selectedService && selectedRentalTime && carNumber) {
+      if (selectedService && selectedRentalTime && (noCarNumber || carNumber)) {
         // Если пользователь хочет запомнить номер, сохраняем его
-        if (rememberCarNumber) {
+        if (rememberCarNumber && carNumber) {
           await saveCarNumber();
-        }
-
-        // Если пользователь хочет запомнить email, сохраняем его
-        if (rememberEmail) {
-          await saveEmail();
         }
 
         // Определяем время химии
@@ -408,11 +415,15 @@ const ServiceSelector = ({ onSelect, theme = 'light', user }) => {
           }
         }
 
-        // Нормализуем номер машины перед отправкой
-        const validation = validateAndNormalizeLicensePlate(carNumber, carNumberCountry);
-        if (!validation.isValid) {
-          alert('Неверный формат номера машины: ' + validation.error);
-          return;
+        // Нормализуем номер машины перед отправкой (только если номер указан)
+        let normalizedCarNumber = '';
+        if (!noCarNumber && carNumber) {
+          const validation = validateAndNormalizeLicensePlate(carNumber, carNumberCountry);
+          if (!validation.isValid) {
+            alert('Неверный формат номера машины: ' + validation.error);
+            return;
+          }
+          normalizedCarNumber = validation.normalized;
         }
 
         const serviceData = {
@@ -420,9 +431,9 @@ const ServiceSelector = ({ onSelect, theme = 'light', user }) => {
           withChemistry: selectedService.hasChemistry ? withChemistry : false,
           chemistryTimeMinutes: chemistryTime,
           rentalTimeMinutes: selectedRentalTime,
-          carNumber: validation.normalized, // Используем нормализованный номер
-          carNumberCountry: carNumberCountry, // Передаем страну гос номера
-          email: wantReceipt ? email : null // Передаем email только если галочка включена
+          carNumber: normalizedCarNumber, // Используем нормализованный номер или пустую строку
+          carNumberCountry: noCarNumber ? '' : carNumberCountry, // Передаем страну только если номер указан
+          email: null // Email больше не используется
         };
         
         onSelect(serviceData);
@@ -435,11 +446,8 @@ const ServiceSelector = ({ onSelect, theme = 'light', user }) => {
   // Проверяем, можно ли подтвердить выбор
   const canConfirm = selectedService && 
     selectedRentalTime && 
-    carNumber && 
-    carNumber.length >= 6 && 
-    isValidCarNumber(carNumber) &&
-    (!withChemistry || selectedChemistryTime) && // Если химия включена, должно быть выбрано время
-    (!wantReceipt || (email && email.length > 0)); // Если галочка включена, email должен быть заполнен
+    (noCarNumber || (carNumber && carNumber.length >= 6 && isValidCarNumber(carNumber) && confirmationChecked)) &&
+    (!withChemistry || selectedChemistryTime); // Если химия включена, должно быть выбрано время
 
   // Определяем, нужно ли показывать чекбокс "запомнить номер"
   const showRememberCheckbox = user && 
@@ -502,10 +510,16 @@ const ServiceSelector = ({ onSelect, theme = 'light', user }) => {
             rememberChecked={rememberCarNumber}
             onRememberChange={handleRememberCarNumberChange}
             savedCarNumber={user?.car_number || ''}
+            noCarNumber={noCarNumber}
+            onNoCarNumberChange={handleNoCarNumberChange}
+            showDisclaimer={showDisclaimer}
+            showConfirmation={showConfirmation}
+            confirmationChecked={confirmationChecked}
+            onConfirmationChange={handleConfirmationChange}
           />
 
-          {/* Отображение ошибки/подсказки для госномера */}
-          {carNumberError && (
+          {/* Отображение ошибки/подсказки для госномера - только если НЕ выбрано "нет номера" */}
+          {!noCarNumber && carNumberError && (
             <div className={`${styles.carNumberError} ${themeClass} ${showCarNumberError ? styles.errorVisible : styles.suggestionVisible}`}>
               <div className={styles.errorIcon}>
                 {showCarNumberError ? '⚠️' : '💡'}
@@ -517,137 +531,109 @@ const ServiceSelector = ({ onSelect, theme = 'light', user }) => {
           )}
 
 
-          {selectedService.hasChemistry && (
+          {/* Показываем опции только если НЕ выбрано "нет номера" */}
+          {!noCarNumber && (
             <>
+              {selectedService.hasChemistry && (
+                <>
+                  <Card theme={theme} className={styles.optionCard}>
+                    <div className={styles.optionRow}>
+                      <label className={`${styles.optionLabel} ${themeClass}`}>
+                        <input 
+                          type="checkbox" 
+                          checked={withChemistry} 
+                          onChange={handleChemistryToggle}
+                          className={styles.checkbox}
+                        />
+                        <span className={styles.checkmark}></span>
+                        Использовать химию
+                      </label>
+                    </div>
+                    <p className={`${styles.optionDescription} ${themeClass}`}>
+                      Химия помогает лучше очистить поверхность автомобиля от грязи и жира
+                    </p>
+                  </Card>
+
+                  {withChemistry && (
+                    <Card theme={theme} className={styles.optionCard}>
+                      <h3 className={`${styles.optionTitle} ${themeClass}`}>Выберите время химии</h3>
+                      <p className={`${styles.optionDescription} ${themeClass}`}>
+                        Химия будет автоматически выключена через выбранное время
+                      </p>
+                      {loadingChemistryTimes ? (
+                        <p className={`${styles.loadingText} ${themeClass}`}>Загрузка доступного времени...</p>
+                      ) : filteredChemistryTimes.length === 0 ? (
+                        <p className={`${styles.optionDescription} ${themeClass}`}>
+                          Нет доступных вариантов химии для выбранного времени мойки
+                        </p>
+                      ) : (
+                        <div className={styles.rentalTimeGrid}>
+                          {filteredChemistryTimes.map((time) => (
+                            <div 
+                              key={time} 
+                              className={`${styles.rentalTimeItem} ${selectedChemistryTime === time ? styles.selectedTime : ''}`}
+                              onClick={() => handleChemistryTimeSelect(time)}
+                            >
+                              <span className={`${styles.rentalTimeValue} ${themeClass}`}>{time}</span>
+                              <span className={`${styles.rentalTimeUnit} ${themeClass}`}>мин</span>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </Card>
+                  )}
+                </>
+              )}
+              
               <Card theme={theme} className={styles.optionCard}>
-                <div className={styles.optionRow}>
-                  <label className={`${styles.optionLabel} ${themeClass}`}>
-                    <input 
-                      type="checkbox" 
-                      checked={withChemistry} 
-                      onChange={handleChemistryToggle}
-                      className={styles.checkbox}
-                    />
-                    <span className={styles.checkmark}></span>
-                    Использовать химию
-                  </label>
-                </div>
-                <p className={`${styles.optionDescription} ${themeClass}`}>
-                  Химия помогает лучше очистить поверхность автомобиля от грязи и жира
-                </p>
+                <h3 className={`${styles.optionTitle} ${themeClass}`}>Выберите время мойки</h3>
+                {loading ? (
+                  <p className={`${styles.loadingText} ${themeClass}`}>Загрузка доступного времени...</p>
+                ) : (
+                  <div className={styles.rentalTimeGrid}>
+                    {(rentalTimes || []).map((time) => (
+                      <div 
+                        key={time} 
+                        className={`${styles.rentalTimeItem} ${selectedRentalTime === time ? styles.selectedTime : ''}`}
+                        onClick={() => handleRentalTimeSelect(time)}
+                      >
+                        <span className={`${styles.rentalTimeValue} ${themeClass}`}>{time}</span>
+                        <span className={`${styles.rentalTimeUnit} ${themeClass}`}>мин</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </Card>
 
-              {withChemistry && (
-                <Card theme={theme} className={styles.optionCard}>
-                  <h3 className={`${styles.optionTitle} ${themeClass}`}>Выберите время химии</h3>
-                  <p className={`${styles.optionDescription} ${themeClass}`}>
-                    Химия будет автоматически выключена через выбранное время
-                  </p>
-                  {loadingChemistryTimes ? (
-                    <p className={`${styles.loadingText} ${themeClass}`}>Загрузка доступного времени...</p>
-                  ) : filteredChemistryTimes.length === 0 ? (
-                    <p className={`${styles.optionDescription} ${themeClass}`}>
-                      Нет доступных вариантов химии для выбранного времени мойки
-                    </p>
-                  ) : (
-                    <div className={styles.rentalTimeGrid}>
-                      {filteredChemistryTimes.map((time) => (
-                        <div 
-                          key={time} 
-                          className={`${styles.rentalTimeItem} ${selectedChemistryTime === time ? styles.selectedTime : ''}`}
-                          onClick={() => handleChemistryTimeSelect(time)}
-                        >
-                          <span className={`${styles.rentalTimeValue} ${themeClass}`}>{time}</span>
-                          <span className={`${styles.rentalTimeUnit} ${themeClass}`}>мин</span>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </Card>
+              {/* Отображение цены */}
+              {selectedService && selectedRentalTime && (
+                <PriceCalculator
+                  serviceType={selectedService.id}
+                  withChemistry={withChemistry}
+                  chemistryTimeMinutes={withChemistry ? selectedChemistryTime : 0}
+                  rentalTimeMinutes={selectedRentalTime}
+                  theme={theme}
+                />
               )}
             </>
           )}
-          
-          <Card theme={theme} className={styles.optionCard}>
-            <h3 className={`${styles.optionTitle} ${themeClass}`}>Выберите время мойки</h3>
-            {loading ? (
-              <p className={`${styles.loadingText} ${themeClass}`}>Загрузка доступного времени...</p>
-            ) : (
-              <div className={styles.rentalTimeGrid}>
-                {(rentalTimes || []).map((time) => (
-                  <div 
-                    key={time} 
-                    className={`${styles.rentalTimeItem} ${selectedRentalTime === time ? styles.selectedTime : ''}`}
-                    onClick={() => handleRentalTimeSelect(time)}
-                  >
-                    <span className={`${styles.rentalTimeValue} ${themeClass}`}>{time}</span>
-                    <span className={`${styles.rentalTimeUnit} ${themeClass}`}>мин</span>
-                  </div>
-                ))}
-              </div>
-            )}
-          </Card>
 
-          {/* Отображение цены */}
-          {selectedService && selectedRentalTime && (
-            <PriceCalculator
-              serviceType={selectedService.id}
-              withChemistry={withChemistry}
-              chemistryTimeMinutes={withChemistry ? selectedChemistryTime : 0}
-              rentalTimeMinutes={selectedRentalTime}
-              theme={theme}
-            />
-          )}
-
-          {/* Галочка "Хочу получить чек" */}
-          {selectedService && selectedRentalTime && (
-            <Card theme={theme} className={styles.optionCard}>
-              <div className={styles.optionRow}>
-                <label className={`${styles.optionLabel} ${themeClass}`}>
-                  <input 
-                    type="checkbox" 
-                    checked={wantReceipt} 
-                    onChange={(e) => handleWantReceiptChange(e.target.checked)}
-                    className={styles.checkbox}
-                  />
-                  <span className={styles.checkmark}></span>
-                  Хочу получить чек
-                </label>
-              </div>
-              <p className={`${styles.optionDescription} ${themeClass}`}>
-                Чек будет отправлен на указанный email после оплаты
-              </p>
-            </Card>
-          )}
-
-          {/* Ввод email - показывается только если галочка включена */}
-          {selectedService && selectedRentalTime && wantReceipt && (
-            <EmailInput
-              value={email || ''}
-              onChange={handleEmailChange}
-              theme={theme}
-              showRememberCheckbox={user && 
-                email && 
-                email !== user.email && 
-                email.length > 0}
-              rememberChecked={rememberEmail}
-              onRememberChange={handleRememberEmailChange}
-              savedEmail={user?.email || ''}
-            />
-          )}
         </div>
       )}
       
-      <div className={styles.buttonContainer}>
-        <Button 
-          theme={theme} 
-          onClick={handleConfirm}
-          disabled={!canConfirm || loading || savingCarNumber || savingEmail}
-          className={styles.confirmButton}
-        >
-          {savingCarNumber || savingEmail ? 'Сохранение...' : 'Подтвердить выбор'}
-        </Button>
-      </div>
+      {/* Показываем кнопку только если НЕ выбрано "нет номера" */}
+      {!noCarNumber && (
+        <div className={styles.buttonContainer}>
+          <Button 
+            theme={theme} 
+            onClick={handleConfirm}
+            disabled={!canConfirm || loading || savingCarNumber}
+            className={styles.confirmButton}
+          >
+            {savingCarNumber ? 'Сохранение...' : 'Подтвердить выбор'}
+          </Button>
+        </div>
+      )}
     </div>
   );
 };

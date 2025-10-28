@@ -25,27 +25,27 @@ const (
 
 // WashBox представляет бокс автомойки
 type WashBox struct {
-	ID                    uuid.UUID      `json:"id" gorm:"primaryKey;type:uuid;default:gen_random_uuid()"`
-	Number                int            `json:"number" gorm:"uniqueIndex"`
-	Status                string         `json:"status" gorm:"default:free"`
-	ServiceType           string         `json:"service_type" gorm:"default:wash"`
-	ChemistryEnabled      bool           `json:"chemistry_enabled" gorm:"default:true"`
-	Priority              string         `json:"priority" gorm:"type:varchar(1);default:'A';check:priority ~ '^[A-Z]$'"`
-	LightCoilRegister     *string        `json:"light_coil_register"`
-	ChemistryCoilRegister *string        `json:"chemistry_coil_register"`
-	Comment               *string        `json:"comment" gorm:"type:varchar(1000)"`
-	CleaningReservedBy    *uuid.UUID     `json:"cleaning_reserved_by" gorm:"type:uuid;index"`
-	CleaningStartedAt     *time.Time     `json:"cleaning_started_at"`
-	LastCompletedSessionUserID *uuid.UUID `json:"last_completed_session_user_id" gorm:"type:uuid;index"`
-	LastCompletedSessionCarNumber *string `json:"last_completed_session_car_number" gorm:"type:varchar(20)"`
-	LastCompletedAt       *time.Time     `json:"last_completed_at"`
-	CooldownUntil         *time.Time     `json:"cooldown_until"`
-	LightStatus           *bool          `json:"light_status,omitempty" gorm:"-"` // Статус света (не хранится в БД, заполняется из modbus_connection_statuses)
-	ChemistryStatus       *bool          `json:"chemistry_status,omitempty" gorm:"-"` // Статус химии (не хранится в БД, заполняется из modbus_connection_statuses)
-	CanBeCleaned          *bool          `json:"can_be_cleaned,omitempty" gorm:"-"` // Можно ли убирать бокс (не хранится в БД, вычисляется динамически)
-	CreatedAt             time.Time      `json:"created_at"`
-	UpdatedAt             time.Time      `json:"updated_at"`
-	DeletedAt             gorm.DeletedAt `json:"-" gorm:"index"`
+	ID                            uuid.UUID      `json:"id" gorm:"primaryKey;type:uuid;default:gen_random_uuid()"`
+	Number                        int            `json:"number" gorm:"uniqueIndex"`
+	Status                        string         `json:"status" gorm:"default:free"`
+	ServiceType                   string         `json:"service_type" gorm:"default:wash"`
+	ChemistryEnabled              bool           `json:"chemistry_enabled" gorm:"default:true"`
+	Priority                      string         `json:"priority" gorm:"type:varchar(1);default:'A';check:priority ~ '^[A-Z]$'"`
+	LightCoilRegister             *string        `json:"light_coil_register"`
+	ChemistryCoilRegister         *string        `json:"chemistry_coil_register"`
+	Comment                       *string        `json:"comment" gorm:"type:varchar(1000)"`
+	CleaningReservedBy            *uuid.UUID     `json:"cleaning_reserved_by" gorm:"type:uuid;index"`
+	CleaningStartedAt             *time.Time     `json:"cleaning_started_at"`
+	LastCompletedSessionUserID    *uuid.UUID     `json:"last_completed_session_user_id" gorm:"type:uuid;index"`
+	LastCompletedSessionCarNumber *string        `json:"last_completed_session_car_number"`
+	LastCompletedAt               *time.Time     `json:"last_completed_at"`
+	CooldownUntil                 *time.Time     `json:"cooldown_until"`
+	LightStatus                   *bool          `json:"light_status,omitempty" gorm:"-"`     // Статус света (не хранится в БД, заполняется из modbus_connection_statuses)
+	ChemistryStatus               *bool          `json:"chemistry_status,omitempty" gorm:"-"` // Статус химии (не хранится в БД, заполняется из modbus_connection_statuses)
+	CanBeCleaned                  *bool          `json:"can_be_cleaned,omitempty" gorm:"-"`   // Можно ли убирать бокс (не хранится в БД, вычисляется динамически)
+	CreatedAt                     time.Time      `json:"created_at"`
+	UpdatedAt                     time.Time      `json:"updated_at"`
+	DeletedAt                     gorm.DeletedAt `json:"-" gorm:"index"`
 }
 
 // GetQueueStatusResponse представляет ответ на получение статуса очереди и боксов

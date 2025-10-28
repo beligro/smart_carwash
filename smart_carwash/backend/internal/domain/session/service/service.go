@@ -17,7 +17,6 @@ import (
 	"carwash_backend/internal/utils"
 	"errors"
 	"fmt"
-	"sort"
 	"strconv"
 	"time"
 
@@ -2185,16 +2184,12 @@ func (s *ServiceImpl) CashierGetActiveSessions(req *models.CashierActiveSessions
 		}
 	}
 
-	// Сортируем сессии: сначала in_queue, потом active, потом остальные
-	sort.Slice(activeSessions, func(i, j int) bool {
-		if activeSessions[i].Status == "in_queue" && activeSessions[j].Status != "in_queue" {
-			return true
-		}
-		if activeSessions[i].Status == "active" && activeSessions[j].Status != "in_queue" && activeSessions[j].Status != "active" {
-			return true
-		}
-		return false
-	})
+	// Заполняем session_timeout_minutes из настроек
+	sessionTimeout, err := s.settingsService.GetSessionTimeout()
+	if err != nil {
+		// Если не удалось получить настройку, используем значение по умолчанию
+		sessionTimeout = 3
+	}
 
 	// Загружаем платежи для каждой сессии
 	for i := range activeSessions {
@@ -2245,12 +2240,6 @@ func (s *ServiceImpl) CashierGetActiveSessions(req *models.CashierActiveSessions
 			}
 		}
 
-		// Заполняем session_timeout_minutes из настроек
-		sessionTimeout, err := s.settingsService.GetSessionTimeout()
-		if err != nil {
-			// Если не удалось получить настройку, используем значение по умолчанию
-			sessionTimeout = 3
-		}
 		activeSessions[i].SessionTimeoutMinutes = sessionTimeout
 	}
 

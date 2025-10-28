@@ -16,6 +16,7 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ./postgres_security.conf:/etc/postgresql/postgresql.conf:ro
+    command: ["postgres", "-c", "config_file=/etc/postgresql/postgresql.conf"]
     networks:
       - carwash_network
     logging:
@@ -88,65 +89,83 @@ services:
         max-size: "10m"
         max-file: "3"
 
-  postgres-backup:
-    image: postgres:latest
-    container_name: carwash_postgres_backup
-    environment:
-      - POSTGRES_HOST=postgres
-      - POSTGRES_USER=${POSTGRES_USER}
-      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
-      - POSTGRES_DB=${POSTGRES_DB}
-    volumes:
-      - ./backups:/backups
-      - ./backup_script.sh:/backup_script.sh:ro
-    command: ["bash", "/backup_script.sh"]
-    networks:
-      - carwash_network
-    depends_on:
-      - postgres
-    logging:
-      driver: "json-file"
-      options:
-        max-size: "10m"
-        max-file: "3"
+  #postgres-backup:
+  #  image: postgres:latest
+  #  container_name: carwash_postgres_backup
+  #  environment:
+  #    - POSTGRES_HOST=postgres
+  #    - POSTGRES_USER=${POSTGRES_USER}
+  #    - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+  #    - POSTGRES_DB=${POSTGRES_DB}
+  #  volumes:
+  #    - ./backups:/backups
+  #    - ./backup_script.sh:/backup_script.sh:ro
+  #  command: ["bash", "/backup_script.sh"]
+  #  networks:
+  #    - carwash_network
+  #  depends_on:
+  #    - postgres
+  #  logging:
+  #    driver: "json-file"
+  #    options:
+  #      max-size: "10m"
+  #      max-file: "3"
 
-  # Мониторинг - Loki для логов
-  loki:
-    image: grafana/loki:2.9.0
-    container_name: carwash_loki
-    restart: always
-    ports:
-      - "3100:3100"
-    volumes:
-      - ./monitoring/loki-config.yml:/etc/loki/local-config.yaml:ro
-      - loki_data:/loki
-    command: -config.file=/etc/loki/local-config.yaml
-    networks:
-      - carwash_network
-    logging:
-      driver: "json-file"
-      options:
-        max-size: "10m"
-        max-file: "3"
+  # Мониторинг - Loki для логов (отключен)
+  # loki:
+  #   image: grafana/loki:2.9.0
+  #   container_name: carwash_loki
+  #   restart: always
+  #   ports:
+  #     - "3100:3100"
+  #   volumes:
+  #     - ./monitoring/loki-config.yml:/etc/loki/local-config.yaml:ro
+  #     - loki_data:/loki
+  #   command: -config.file=/etc/loki/local-config.yaml
+  #   networks:
+  #     - carwash_network
+  #   # Ограничения ресурсов для предотвращения перегрузки
+  #   deploy:
+  #     resources:
+  #       limits:
+  #         cpus: '1.0'
+  #         memory: 1G
+  #       reservations:
+  #         cpus: '0.5'
+  #         memory: 512M
+  #   logging:
+  #     driver: "json-file"
+  #     options:
+  #       max-size: "10m"
+  #       max-file: "3"
 
-  # Promtail для сбора логов
-  promtail:
-    image: grafana/promtail:2.9.0
-    container_name: carwash_promtail
-    restart: always
-    volumes:
-      - ./monitoring/promtail-config.yml:/etc/promtail/config.yml:ro
-      - backend_logs:/var/log/backend:ro
-    command: -config.file=/etc/promtail/config.yml
-    networks:
-      - carwash_network
-    depends_on:
-      - loki
-    logging:
-      driver: "json-file"
-      options:
-        max-size: "10m"
-        max-file: "3"
+  # Promtail для сбора логов (отключен)
+  # promtail:
+  #   image: grafana/promtail:2.9.0
+  #   container_name: carwash_promtail
+  #   restart: always
+  #   volumes:
+  #     - ./monitoring/promtail-config.yml:/etc/promtail/config.yml:ro
+  #     - backend_logs:/var/log/backend:ro
+  #   command: -config.file=/etc/promtail/config.yml
+  #   networks:
+  #     - carwash_network
+  #   depends_on:
+  #     - loki
+  #   # Ограничения ресурсов
+  #   deploy:
+  #     resources:
+  #       limits:
+  #         cpus: '0.5'
+  #         memory: 256M
+  #       reservations:
+  #         cpus: '0.2'
+  #         memory: 128M
+  #   logging:
+  #     driver: "json-file"
+  #     options:
+  #       max-size: "10m"
+  #       max-file: "3"
 
   # Prometheus для метрик
   prometheus:
@@ -202,25 +221,6 @@ services:
         max-size: "10m"
         max-file: "3"
 
-  # PostgreSQL Exporter для метрик БД
-  postgres-exporter:
-    image: prometheuscommunity/postgres-exporter:latest
-    container_name: carwash_postgres_exporter
-    restart: always
-    ports:
-      - "9187:9187"
-    environment:
-      DATA_SOURCE_NAME: "postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}?sslmode=disable"
-    networks:
-      - carwash_network
-    depends_on:
-      - postgres
-    logging:
-      driver: "json-file"
-      options:
-        max-size: "10m"
-        max-file: "3"
-
   # Grafana для визуализации
   grafana:
     image: grafana/grafana:latest
@@ -239,8 +239,16 @@ services:
     networks:
       - carwash_network
     depends_on:
-      - loki
       - prometheus
+    # Ограничения ресурсов
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 512M
+        reservations:
+          cpus: '0.2'
+          memory: 256M
     logging:
       driver: "json-file"
       options:

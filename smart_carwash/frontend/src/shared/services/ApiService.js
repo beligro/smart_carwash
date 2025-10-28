@@ -168,19 +168,6 @@ const ApiService = {
     }
   },
 
-  // Обновление email пользователя
-  updateEmail: async (userId, email) => {
-    try {
-      const response = await api.put('/users/email', {
-        user_id: userId,
-        email: email
-      });
-      return response.data;
-    } catch (error) {
-      console.error('Ошибка при обновлении email:', error);
-      throw error;
-    }
-  },
 
   // === МЕТОДЫ ДЛЯ TELEGRAM ПРИЛОЖЕНИЯ ===
 
