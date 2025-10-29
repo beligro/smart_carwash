@@ -8,7 +8,7 @@ services:
     container_name: carwash_cashier_frontend
     restart: unless-stopped
     ports:
-      - "3000:80"
+      - "0.0.0.0:3000:80"
     environment:
       - REACT_APP_API_URL=http://10.0.0.4/api/v1
       - REACT_APP_STANDALONE=true

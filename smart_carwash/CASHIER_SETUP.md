@@ -20,9 +20,17 @@ docker-compose -f docker-compose.cashier.yml up --build -d
 
 ## Доступ к приложению
 
+### Локальный доступ
 - **Главная страница**: http://localhost:3000
 - **Вход кассира**: http://localhost:3000/cashier/login
 - **Интерфейс кассира**: http://localhost:3000/cashier
+
+### Внешний доступ (с других серверов)
+- **Главная страница**: http://<IP_СЕРВЕРА>:3000
+- **Вход кассира**: http://<IP_СЕРВЕРА>:3000/cashier/login
+- **Интерфейс кассира**: http://<IP_СЕРВЕРА>:3000/cashier
+
+> Замените `<IP_СЕРВЕРА>` на реальный IP адрес сервера, где запущен контейнер
 
 ## Управление контейнером
 
@@ -67,6 +75,11 @@ docker-compose -f docker-compose.cashier.yml logs
 # Проверьте статус
 docker-compose -f docker-compose.cashier.yml ps
 ```
+
+### Проблемы с доступом
+- Убедитесь, что порт 3000 открыт в файрволе
+- Проверьте, что контейнер запущен: `docker ps | grep cashier`
+- Проверьте логи: `docker-compose -f docker-compose.cashier.yml logs`
 
 ### Проблемы с API
 - Убедитесь, что VPN подключен
