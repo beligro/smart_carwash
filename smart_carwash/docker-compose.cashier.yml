@@ -1,0 +1,32 @@
+version: '3.8'
+
+services:
+  cashier-frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile.cashier
+    container_name: carwash_cashier_frontend
+    restart: unless-stopped
+    ports:
+      - "80:80"
+    environment:
+      - REACT_APP_API_URL=http://10.0.0.4/api/v1
+      - REACT_APP_STANDALONE=true
+      - REACT_APP_APP_TYPE=cashier
+    networks:
+      - cashier_network
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+networks:
+  cashier_network:
+    driver: bridge
