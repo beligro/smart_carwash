@@ -20,9 +20,9 @@ docker-compose -f docker-compose.cashier.yml up --build -d
 
 ## Доступ к приложению
 
-- **Главная страница**: http://localhost
-- **Вход кассира**: http://localhost/cashier/login
-- **Интерфейс кассира**: http://localhost/cashier
+- **Главная страница**: http://localhost:3000
+- **Вход кассира**: http://localhost:3000/cashier/login
+- **Интерфейс кассира**: http://localhost:3000/cashier
 
 ## Управление контейнером
 
@@ -73,11 +73,13 @@ docker-compose -f docker-compose.cashier.yml ps
 - Проверьте доступность API: `curl http://10.0.0.4/api/v1/health`
 - Проверьте настройки CORS на бэкенде
 
-### Проблемы с портом 80
-Если порт 80 занят, измените в `docker-compose.cashier.yml`:
+### Проблемы с портами
+Если порт 3000 занят, измените в `docker-compose.cashier.yml`:
 ```yaml
 ports:
   - "8080:80"  # Теперь доступен на http://localhost:8080
+  # или
+  - "9000:80"  # Теперь доступен на http://localhost:9000
 ```
 
 ## Особенности

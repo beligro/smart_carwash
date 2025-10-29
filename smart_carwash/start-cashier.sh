@@ -42,8 +42,8 @@ sleep 10
 # Проверяем статус контейнера
 if docker-compose -f docker-compose.cashier.yml ps | grep -q "Up"; then
     echo "✅ Фронтенд кассира успешно запущен!"
-    echo "🌐 Доступен по адресу: http://localhost"
-    echo "🔐 Страница входа: http://localhost/cashier/login"
+    echo "🌐 Доступен по адресу: http://localhost:3000"
+    echo "🔐 Страница входа: http://localhost:3000/cashier/login"
     echo ""
     echo "📋 Полезные команды:"
     echo "  Просмотр логов: docker-compose -f docker-compose.cashier.yml logs -f"
