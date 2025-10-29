@@ -45,6 +45,8 @@ const ServiceSelector = ({ onSelect, theme = 'light', user }) => {
       if (user) {
         if (user.car_number) {
           setCarNumber(user.car_number);
+          // Для сохраненного номера не показываем дисклеймер и подтверждение
+          // Он будет работать без дополнительных подтверждений
         }
         if (user.car_number_country) {
           setCarNumberCountry(user.car_number_country);
@@ -237,11 +239,14 @@ const ServiceSelector = ({ onSelect, theme = 'light', user }) => {
         // Если выключаем "нет номера", восстанавливаем сохраненный номер
         if (savedCarNumber) {
           setCarNumber(savedCarNumber);
-          // Валидируем восстановленный номер
-          const validation = validateCarNumberWithDetails(savedCarNumber);
-          if (validation.isValid) {
-            setShowDisclaimer(true);
-            setShowConfirmation(true);
+          // Для восстановленного номера показываем дисклеймер/подтверждение только если это НЕ сохраненный номер
+          if (savedCarNumber !== user?.car_number) {
+            const validation = validateCarNumberWithDetails(savedCarNumber);
+            if (validation.isValid) {
+              setShowDisclaimer(true);
+              setShowConfirmation(true);
+              setConfirmationChecked(true);
+            }
           }
         }
       }
@@ -254,6 +259,8 @@ const ServiceSelector = ({ onSelect, theme = 'light', user }) => {
   const handleConfirmationChange = (checked) => {
     try {
       setConfirmationChecked(checked);
+      // Скрываем дисклеймер при подтверждении, показываем при снятии галочки
+      setShowDisclaimer(!checked);
     } catch (error) {
       console.error('Ошибка в handleConfirmationChange:', error);
     }
@@ -446,7 +453,8 @@ const ServiceSelector = ({ onSelect, theme = 'light', user }) => {
   // Проверяем, можно ли подтвердить выбор
   const canConfirm = selectedService && 
     selectedRentalTime && 
-    (noCarNumber || (carNumber && carNumber.length >= 6 && isValidCarNumber(carNumber) && confirmationChecked)) &&
+    (noCarNumber || (carNumber && carNumber.length >= 6 && isValidCarNumber(carNumber) && 
+      (carNumber === user?.car_number || confirmationChecked))) && // Для сохраненного номера подтверждение не требуется
     (!withChemistry || selectedChemistryTime); // Если химия включена, должно быть выбрано время
 
   // Определяем, нужно ли показывать чекбокс "запомнить номер"
