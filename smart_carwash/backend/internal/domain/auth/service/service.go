@@ -1,9 +1,10 @@
 package service
 
 import (
+	"carwash_backend/internal/logger"
+	"context"
 	"errors"
 	"fmt"
-	"carwash_backend/internal/logger"
 	"time"
 
 	"carwash_backend/internal/config"
@@ -39,35 +40,35 @@ var (
 type Service interface {
 	// Методы для авторизации
 	LoginAdmin(username, password string) (*models.LoginResponse, error)
-	LoginCashier(username, password string) (*models.LoginResponse, error)
-	LoginCleaner(username, password string) (*models.LoginResponse, error)
-	ValidateToken(token string) (*models.TokenClaims, error)
-	ValidateCleanerToken(token string) (*models.TokenClaims, error)
-	Logout(token string) error
+	LoginCashier(ctx context.Context, username, password string) (*models.LoginResponse, error)
+	LoginCleaner(ctx context.Context, username, password string) (*models.LoginResponse, error)
+	ValidateToken(ctx context.Context, token string) (*models.TokenClaims, error)
+	ValidateCleanerToken(ctx context.Context, token string) (*models.TokenClaims, error)
+	Logout(ctx context.Context, token string) error
 
 	// Методы для управления кассирами
-	CreateCashier(req *models.CreateCashierRequest) (*models.CreateCashierResponse, error)
-	UpdateCashier(req *models.UpdateCashierRequest) (*models.UpdateCashierResponse, error)
-	DeleteCashier(id uuid.UUID) error
-	GetCashiers() (*models.GetCashiersResponse, error)
-	GetCashierByID(id uuid.UUID) (*models.Cashier, error)
+	CreateCashier(ctx context.Context, req *models.CreateCashierRequest) (*models.CreateCashierResponse, error)
+	UpdateCashier(ctx context.Context, req *models.UpdateCashierRequest) (*models.UpdateCashierResponse, error)
+	DeleteCashier(ctx context.Context, id uuid.UUID) error
+	GetCashiers(ctx context.Context) (*models.GetCashiersResponse, error)
+	GetCashierByID(ctx context.Context, id uuid.UUID) (*models.Cashier, error)
 
 	// Методы для управления сменами кассиров
-	StartShift(req *models.StartShiftRequest) (*models.StartShiftResponse, error)
-	EndShift(req *models.EndShiftRequest) (*models.EndShiftResponse, error)
-	GetShiftStatus(cashierID uuid.UUID) (*models.ShiftStatusResponse, error)
+	StartShift(ctx context.Context, req *models.StartShiftRequest) (*models.StartShiftResponse, error)
+	EndShift(ctx context.Context, req *models.EndShiftRequest) (*models.EndShiftResponse, error)
+	GetShiftStatus(ctx context.Context, cashierID uuid.UUID) (*models.ShiftStatusResponse, error)
 
 	// Методы для управления уборщиками
-	CreateCleaner(req *models.CreateCleanerRequest) (*models.CreateCleanerResponse, error)
-	UpdateCleaner(req *models.UpdateCleanerRequest) (*models.UpdateCleanerResponse, error)
-	DeleteCleaner(id uuid.UUID) error
-	GetCleaners() (*models.GetCleanersResponse, error)
-	GetCleanerByID(id uuid.UUID) (*models.Cleaner, error)
+	CreateCleaner(ctx context.Context, req *models.CreateCleanerRequest) (*models.CreateCleanerResponse, error)
+	UpdateCleaner(ctx context.Context, req *models.UpdateCleanerRequest) (*models.UpdateCleanerResponse, error)
+	DeleteCleaner(ctx context.Context, id uuid.UUID) error
+	GetCleaners(ctx context.Context) (*models.GetCleanersResponse, error)
+	GetCleanerByID(ctx context.Context, id uuid.UUID) (*models.Cleaner, error)
 
 	// Методы для двухфакторной аутентификации (заглушки для будущей реализации)
-	EnableTwoFactorAuth(userID uuid.UUID) (string, error)
-	DisableTwoFactorAuth(userID uuid.UUID) error
-	VerifyTwoFactorCode(userID uuid.UUID, code string) (bool, error)
+	EnableTwoFactorAuth(ctx context.Context, userID uuid.UUID) (string, error)
+	DisableTwoFactorAuth(ctx context.Context, userID uuid.UUID) error
+	VerifyTwoFactorCode(ctx context.Context, userID uuid.UUID, code string) (bool, error)
 }
 
 // ServiceImpl реализация Service
@@ -112,11 +113,11 @@ func (s *ServiceImpl) LoginAdmin(username, password string) (*models.LoginRespon
 }
 
 // LoginCashier авторизует кассира
-func (s *ServiceImpl) LoginCashier(username, password string) (*models.LoginResponse, error) {
+func (s *ServiceImpl) LoginCashier(ctx context.Context, username, password string) (*models.LoginResponse, error) {
 	logger.Printf("Попытка входа кассира: username=%s", username)
-	
+
 	// Получаем кассира по имени пользователя
-	cashier, err := s.repo.GetCashierByUsername(username)
+	cashier, err := s.repo.GetCashierByUsername(ctx, username)
 	if err != nil {
 		logger.Printf("Ошибка получения кассира: %v", err)
 		if errors.Is(err, repository.ErrCashierNotFound) {
@@ -163,7 +164,7 @@ func (s *ServiceImpl) LoginCashier(username, password string) (*models.LoginResp
 	}
 
 	// Сохраняем сессию в базе данных
-	if err := s.repo.CreateCashierSession(session); err != nil {
+	if err := s.repo.CreateCashierSession(ctx, session); err != nil {
 		if errors.Is(err, repository.ErrActiveCashierSessionExists) {
 			return nil, ErrAnotherCashierActive
 		}
@@ -173,7 +174,7 @@ func (s *ServiceImpl) LoginCashier(username, password string) (*models.LoginResp
 	// Обновляем время последнего входа кассира
 	now := time.Now()
 	cashier.LastLogin = &now
-	if err := s.repo.UpdateCashier(cashier); err != nil {
+	if err := s.repo.UpdateCashier(ctx, cashier); err != nil {
 		return nil, err
 	}
 
@@ -185,7 +186,7 @@ func (s *ServiceImpl) LoginCashier(username, password string) (*models.LoginResp
 }
 
 // ValidateToken проверяет JWT токен и возвращает данные пользователя
-func (s *ServiceImpl) ValidateToken(tokenString string) (*models.TokenClaims, error) {
+func (s *ServiceImpl) ValidateToken(ctx context.Context, tokenString string) (*models.TokenClaims, error) {
 	// Парсим токен
 	token, err := jwt.Parse(tokenString, func(token *jwt.Token) (interface{}, error) {
 		// Проверяем метод подписи
@@ -221,7 +222,7 @@ func (s *ServiceImpl) ValidateToken(tokenString string) (*models.TokenClaims, er
 	isAdmin, _ := claims["is_admin"].(bool)
 	if !isAdmin {
 		// Получаем сессию по токену
-		session, err := s.repo.GetCashierSessionByToken(tokenString)
+		session, err := s.repo.GetCashierSessionByToken(ctx, tokenString)
 		if err != nil {
 			return nil, err
 		}
@@ -247,7 +248,7 @@ func (s *ServiceImpl) ValidateToken(tokenString string) (*models.TokenClaims, er
 }
 
 // ValidateCleanerToken проверяет токен уборщика и возвращает данные из него
-func (s *ServiceImpl) ValidateCleanerToken(tokenString string) (*models.TokenClaims, error) {
+func (s *ServiceImpl) ValidateCleanerToken(ctx context.Context, tokenString string) (*models.TokenClaims, error) {
 	// Парсим токен
 	token, err := jwt.Parse(tokenString, func(token *jwt.Token) (interface{}, error) {
 		// Проверяем метод подписи
@@ -282,7 +283,7 @@ func (s *ServiceImpl) ValidateCleanerToken(tokenString string) (*models.TokenCla
 	}
 
 	// Получаем сессию уборщика по токену
-	session, err := s.repo.GetCleanerSessionByToken(tokenString)
+	session, err := s.repo.GetCleanerSessionByToken(ctx, tokenString)
 	if err != nil {
 		return nil, err
 	}
@@ -307,9 +308,9 @@ func (s *ServiceImpl) ValidateCleanerToken(tokenString string) (*models.TokenCla
 }
 
 // Logout завершает сессию пользователя
-func (s *ServiceImpl) Logout(token string) error {
+func (s *ServiceImpl) Logout(ctx context.Context, token string) error {
 	// Проверяем токен
-	claims, err := s.ValidateToken(token)
+	claims, err := s.ValidateToken(ctx, token)
 	if err != nil {
 		return err
 	}
@@ -320,7 +321,7 @@ func (s *ServiceImpl) Logout(token string) error {
 	}
 
 	// Если это кассир, удаляем сессию
-	session, err := s.repo.GetCashierSessionByToken(token)
+	session, err := s.repo.GetCashierSessionByToken(ctx, token)
 	if err != nil {
 		return err
 	}
@@ -328,11 +329,11 @@ func (s *ServiceImpl) Logout(token string) error {
 		return nil // Сессия уже удалена или истекла
 	}
 
-	return s.repo.DeleteCashierSession(session.ID)
+	return s.repo.DeleteCashierSession(ctx, session.ID)
 }
 
 // CreateCashier создает нового кассира
-func (s *ServiceImpl) CreateCashier(req *models.CreateCashierRequest) (*models.CreateCashierResponse, error) {
+func (s *ServiceImpl) CreateCashier(ctx context.Context, req *models.CreateCashierRequest) (*models.CreateCashierResponse, error) {
 	// Хешируем пароль
 	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(req.Password), bcrypt.DefaultCost)
 	if err != nil {
@@ -347,7 +348,7 @@ func (s *ServiceImpl) CreateCashier(req *models.CreateCashierRequest) (*models.C
 	}
 
 	// Сохраняем кассира в базе данных
-	if err := s.repo.CreateCashier(cashier); err != nil {
+	if err := s.repo.CreateCashier(ctx, cashier); err != nil {
 		if errors.Is(err, repository.ErrCashierAlreadyExists) {
 			return nil, fmt.Errorf("кассир с именем %s уже существует", req.Username)
 		}
@@ -362,9 +363,9 @@ func (s *ServiceImpl) CreateCashier(req *models.CreateCashierRequest) (*models.C
 }
 
 // UpdateCashier обновляет кассира
-func (s *ServiceImpl) UpdateCashier(req *models.UpdateCashierRequest) (*models.UpdateCashierResponse, error) {
+func (s *ServiceImpl) UpdateCashier(ctx context.Context, req *models.UpdateCashierRequest) (*models.UpdateCashierResponse, error) {
 	// Получаем кассира по ID
-	cashier, err := s.repo.GetCashierByID(req.ID)
+	cashier, err := s.repo.GetCashierByID(ctx, req.ID)
 	if err != nil {
 		if errors.Is(err, repository.ErrCashierNotFound) {
 			return nil, fmt.Errorf("кассир с ID %s не найден", req.ID)
@@ -389,7 +390,7 @@ func (s *ServiceImpl) UpdateCashier(req *models.UpdateCashierRequest) (*models.U
 	cashier.IsActive = req.IsActive
 
 	// Сохраняем обновленного кассира
-	if err := s.repo.UpdateCashier(cashier); err != nil {
+	if err := s.repo.UpdateCashier(ctx, cashier); err != nil {
 		return nil, err
 	}
 
@@ -402,9 +403,9 @@ func (s *ServiceImpl) UpdateCashier(req *models.UpdateCashierRequest) (*models.U
 }
 
 // DeleteCashier удаляет кассира
-func (s *ServiceImpl) DeleteCashier(id uuid.UUID) error {
+func (s *ServiceImpl) DeleteCashier(ctx context.Context, id uuid.UUID) error {
 	// Проверяем, существует ли кассир
-	_, err := s.repo.GetCashierByID(id)
+	_, err := s.repo.GetCashierByID(ctx, id)
 	if err != nil {
 		if errors.Is(err, repository.ErrCashierNotFound) {
 			return fmt.Errorf("кассир с ID %s не найден", id)
@@ -413,17 +414,17 @@ func (s *ServiceImpl) DeleteCashier(id uuid.UUID) error {
 	}
 
 	// Удаляем все сессии кассира
-	if err := s.repo.DeleteCashierSession(id); err != nil {
+	if err := s.repo.DeleteCashierSession(ctx, id); err != nil {
 		return err
 	}
 
 	// Удаляем кассира
-	return s.repo.DeleteCashier(id)
+	return s.repo.DeleteCashier(ctx, id)
 }
 
 // GetCashiers возвращает список всех кассиров
-func (s *ServiceImpl) GetCashiers() (*models.GetCashiersResponse, error) {
-	cashiers, err := s.repo.ListCashiers()
+func (s *ServiceImpl) GetCashiers(ctx context.Context) (*models.GetCashiersResponse, error) {
+	cashiers, err := s.repo.ListCashiers(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -434,14 +435,14 @@ func (s *ServiceImpl) GetCashiers() (*models.GetCashiersResponse, error) {
 }
 
 // GetCashierByID возвращает кассира по ID
-func (s *ServiceImpl) GetCashierByID(id uuid.UUID) (*models.Cashier, error) {
-	return s.repo.GetCashierByID(id)
+func (s *ServiceImpl) GetCashierByID(ctx context.Context, id uuid.UUID) (*models.Cashier, error) {
+	return s.repo.GetCashierByID(ctx, id)
 }
 
 // StartShift начинает смену для кассира
-func (s *ServiceImpl) StartShift(req *models.StartShiftRequest) (*models.StartShiftResponse, error) {
+func (s *ServiceImpl) StartShift(ctx context.Context, req *models.StartShiftRequest) (*models.StartShiftResponse, error) {
 	// Проверяем, существует ли кассир
-	cashier, err := s.repo.GetCashierByID(req.CashierID)
+	cashier, err := s.repo.GetCashierByID(ctx, req.CashierID)
 	if err != nil {
 		if errors.Is(err, repository.ErrCashierNotFound) {
 			return nil, fmt.Errorf("кассир с ID %s не найден", req.CashierID)
@@ -457,7 +458,7 @@ func (s *ServiceImpl) StartShift(req *models.StartShiftRequest) (*models.StartSh
 	// Создаем новую смену
 	now := time.Now()
 	expiresAt := now.Add(24 * time.Hour) // Смена длится 24 часа
-	
+
 	shift := &models.CashierShift{
 		CashierID: req.CashierID,
 		StartedAt: now,
@@ -465,7 +466,7 @@ func (s *ServiceImpl) StartShift(req *models.StartShiftRequest) (*models.StartSh
 		IsActive:  true,
 	}
 
-	if err := s.repo.CreateCashierShift(shift); err != nil {
+	if err := s.repo.CreateCashierShift(ctx, shift); err != nil {
 		if errors.Is(err, repository.ErrActiveShiftExists) {
 			return nil, fmt.Errorf("уже есть активная смена")
 		}
@@ -481,9 +482,9 @@ func (s *ServiceImpl) StartShift(req *models.StartShiftRequest) (*models.StartSh
 }
 
 // EndShift завершает смену для кассира
-func (s *ServiceImpl) EndShift(req *models.EndShiftRequest) (*models.EndShiftResponse, error) {
+func (s *ServiceImpl) EndShift(ctx context.Context, req *models.EndShiftRequest) (*models.EndShiftResponse, error) {
 	// Проверяем, существует ли кассир
-	cashier, err := s.repo.GetCashierByID(req.CashierID)
+	cashier, err := s.repo.GetCashierByID(ctx, req.CashierID)
 	if err != nil {
 		if errors.Is(err, repository.ErrCashierNotFound) {
 			return nil, fmt.Errorf("кассир с ID %s не найден", req.CashierID)
@@ -497,7 +498,7 @@ func (s *ServiceImpl) EndShift(req *models.EndShiftRequest) (*models.EndShiftRes
 	}
 
 	// Получаем активную смену
-	shift, err := s.repo.GetActiveCashierShift()
+	shift, err := s.repo.GetActiveCashierShift(ctx)
 	if err != nil {
 		if errors.Is(err, repository.ErrNoActiveShift) {
 			return nil, fmt.Errorf("нет активной смены")
@@ -515,7 +516,7 @@ func (s *ServiceImpl) EndShift(req *models.EndShiftRequest) (*models.EndShiftRes
 	shift.EndedAt = &now
 	shift.IsActive = false
 
-	if err := s.repo.UpdateCashierShift(shift); err != nil {
+	if err := s.repo.UpdateCashierShift(ctx, shift); err != nil {
 		return nil, err
 	}
 
@@ -528,9 +529,9 @@ func (s *ServiceImpl) EndShift(req *models.EndShiftRequest) (*models.EndShiftRes
 }
 
 // GetShiftStatus возвращает статус смены для кассира
-func (s *ServiceImpl) GetShiftStatus(cashierID uuid.UUID) (*models.ShiftStatusResponse, error) {
+func (s *ServiceImpl) GetShiftStatus(ctx context.Context, cashierID uuid.UUID) (*models.ShiftStatusResponse, error) {
 	// Проверяем, существует ли кассир
-	cashier, err := s.repo.GetCashierByID(cashierID)
+	cashier, err := s.repo.GetCashierByID(ctx, cashierID)
 	if err != nil {
 		if errors.Is(err, repository.ErrCashierNotFound) {
 			return nil, fmt.Errorf("кассир с ID %s не найден", cashierID)
@@ -544,7 +545,7 @@ func (s *ServiceImpl) GetShiftStatus(cashierID uuid.UUID) (*models.ShiftStatusRe
 	}
 
 	// Получаем активную смену
-	shift, err := s.repo.GetActiveCashierShift()
+	shift, err := s.repo.GetActiveCashierShift(ctx)
 	if err != nil {
 		if errors.Is(err, repository.ErrNoActiveShift) {
 			return &models.ShiftStatusResponse{
@@ -571,7 +572,7 @@ func (s *ServiceImpl) GetShiftStatus(cashierID uuid.UUID) (*models.ShiftStatusRe
 
 // EnableTwoFactorAuth включает двухфакторную аутентификацию для пользователя
 // (заглушка для будущей реализации)
-func (s *ServiceImpl) EnableTwoFactorAuth(userID uuid.UUID) (string, error) {
+func (s *ServiceImpl) EnableTwoFactorAuth(ctx context.Context, userID uuid.UUID) (string, error) {
 	// Здесь будет логика генерации секрета и QR-кода для двухфакторной аутентификации
 	// Пока просто заглушка
 	settings := &models.TwoFactorAuthSettings{
@@ -580,7 +581,7 @@ func (s *ServiceImpl) EnableTwoFactorAuth(userID uuid.UUID) (string, error) {
 		Secret:    "dummy_secret", // В реальной реализации здесь будет настоящий секрет
 	}
 
-	if err := s.repo.SaveTwoFactorAuthSettings(settings); err != nil {
+	if err := s.repo.SaveTwoFactorAuthSettings(ctx, settings); err != nil {
 		return "", err
 	}
 
@@ -589,22 +590,22 @@ func (s *ServiceImpl) EnableTwoFactorAuth(userID uuid.UUID) (string, error) {
 
 // DisableTwoFactorAuth отключает двухфакторную аутентификацию для пользователя
 // (заглушка для будущей реализации)
-func (s *ServiceImpl) DisableTwoFactorAuth(userID uuid.UUID) error {
+func (s *ServiceImpl) DisableTwoFactorAuth(ctx context.Context, userID uuid.UUID) error {
 	settings := &models.TwoFactorAuthSettings{
 		UserID:    userID,
 		IsEnabled: false,
 		Secret:    "",
 	}
 
-	return s.repo.SaveTwoFactorAuthSettings(settings)
+	return s.repo.SaveTwoFactorAuthSettings(ctx, settings)
 }
 
 // VerifyTwoFactorCode проверяет код двухфакторной аутентификации
 // (заглушка для будущей реализации)
-func (s *ServiceImpl) VerifyTwoFactorCode(userID uuid.UUID, code string) (bool, error) {
+func (s *ServiceImpl) VerifyTwoFactorCode(ctx context.Context, userID uuid.UUID, code string) (bool, error) {
 	// Здесь будет логика проверки кода двухфакторной аутентификации
 	// Пока просто заглушка
-	settings, err := s.repo.GetTwoFactorAuthSettings(userID)
+	settings, err := s.repo.GetTwoFactorAuthSettings(ctx, userID)
 	if err != nil {
 		return false, err
 	}
@@ -640,11 +641,11 @@ func (s *ServiceImpl) generateToken(claims models.TokenClaims) (string, time.Tim
 }
 
 // LoginCleaner авторизует уборщика
-func (s *ServiceImpl) LoginCleaner(username, password string) (*models.LoginResponse, error) {
+func (s *ServiceImpl) LoginCleaner(ctx context.Context, username, password string) (*models.LoginResponse, error) {
 	logger.Printf("Попытка входа уборщика: username=%s", username)
-	
+
 	// Получаем уборщика по имени пользователя
-	cleaner, err := s.repo.GetCleanerByUsername(username)
+	cleaner, err := s.repo.GetCleanerByUsername(ctx, username)
 	if err != nil {
 		logger.Printf("Ошибка получения уборщика: %v", err)
 		if errors.Is(err, repository.ErrCleanerNotFound) {
@@ -691,14 +692,14 @@ func (s *ServiceImpl) LoginCleaner(username, password string) (*models.LoginResp
 	}
 
 	// Сохраняем сессию в базе данных
-	if err := s.repo.CreateCleanerSession(session); err != nil {
+	if err := s.repo.CreateCleanerSession(ctx, session); err != nil {
 		return nil, err
 	}
 
 	// Обновляем время последнего входа уборщика
 	now := time.Now()
 	cleaner.LastLogin = &now
-	if err := s.repo.UpdateCleaner(cleaner); err != nil {
+	if err := s.repo.UpdateCleaner(ctx, cleaner); err != nil {
 		logger.Printf("Ошибка обновления времени последнего входа уборщика: %v", err)
 		// Не возвращаем ошибку, так как авторизация прошла успешно
 	}
@@ -713,7 +714,7 @@ func (s *ServiceImpl) LoginCleaner(username, password string) (*models.LoginResp
 }
 
 // CreateCleaner создает нового уборщика
-func (s *ServiceImpl) CreateCleaner(req *models.CreateCleanerRequest) (*models.CreateCleanerResponse, error) {
+func (s *ServiceImpl) CreateCleaner(ctx context.Context, req *models.CreateCleanerRequest) (*models.CreateCleanerResponse, error) {
 	// Хешируем пароль
 	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(req.Password), bcrypt.DefaultCost)
 	if err != nil {
@@ -729,7 +730,7 @@ func (s *ServiceImpl) CreateCleaner(req *models.CreateCleanerRequest) (*models.C
 	}
 
 	// Сохраняем уборщика в базе данных
-	err = s.repo.CreateCleaner(cleaner)
+	err = s.repo.CreateCleaner(ctx, cleaner)
 	if err != nil {
 		return nil, err
 	}
@@ -742,9 +743,9 @@ func (s *ServiceImpl) CreateCleaner(req *models.CreateCleanerRequest) (*models.C
 }
 
 // UpdateCleaner обновляет уборщика
-func (s *ServiceImpl) UpdateCleaner(req *models.UpdateCleanerRequest) (*models.UpdateCleanerResponse, error) {
+func (s *ServiceImpl) UpdateCleaner(ctx context.Context, req *models.UpdateCleanerRequest) (*models.UpdateCleanerResponse, error) {
 	// Получаем существующего уборщика
-	cleaner, err := s.repo.GetCleanerByID(req.ID)
+	cleaner, err := s.repo.GetCleanerByID(ctx, req.ID)
 	if err != nil {
 		return nil, err
 	}
@@ -763,7 +764,7 @@ func (s *ServiceImpl) UpdateCleaner(req *models.UpdateCleanerRequest) (*models.U
 	}
 
 	// Сохраняем изменения
-	err = s.repo.UpdateCleaner(cleaner)
+	err = s.repo.UpdateCleaner(ctx, cleaner)
 	if err != nil {
 		return nil, err
 	}
@@ -777,13 +778,13 @@ func (s *ServiceImpl) UpdateCleaner(req *models.UpdateCleanerRequest) (*models.U
 }
 
 // DeleteCleaner удаляет уборщика
-func (s *ServiceImpl) DeleteCleaner(id uuid.UUID) error {
-	return s.repo.DeleteCleaner(id)
+func (s *ServiceImpl) DeleteCleaner(ctx context.Context, id uuid.UUID) error {
+	return s.repo.DeleteCleaner(ctx, id)
 }
 
 // GetCleaners получает список всех уборщиков
-func (s *ServiceImpl) GetCleaners() (*models.GetCleanersResponse, error) {
-	cleaners, err := s.repo.ListCleaners()
+func (s *ServiceImpl) GetCleaners(ctx context.Context) (*models.GetCleanersResponse, error) {
+	cleaners, err := s.repo.ListCleaners(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -794,6 +795,6 @@ func (s *ServiceImpl) GetCleaners() (*models.GetCleanersResponse, error) {
 }
 
 // GetCleanerByID получает уборщика по ID
-func (s *ServiceImpl) GetCleanerByID(id uuid.UUID) (*models.Cleaner, error) {
-	return s.repo.GetCleanerByID(id)
+func (s *ServiceImpl) GetCleanerByID(ctx context.Context, id uuid.UUID) (*models.Cleaner, error) {
+	return s.repo.GetCleanerByID(ctx, id)
 }

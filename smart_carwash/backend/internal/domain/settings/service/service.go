@@ -3,33 +3,34 @@ package service
 import (
 	"carwash_backend/internal/domain/settings/models"
 	"carwash_backend/internal/domain/settings/repository"
+	"context"
 	"encoding/json"
 )
 
 // Service интерфейс для бизнес-логики настроек
 type Service interface {
-	GetAvailableRentalTimes(req *models.GetAvailableRentalTimesRequest) (*models.GetAvailableRentalTimesResponse, error)
-	UpdateAvailableRentalTimes(req *models.UpdateAvailableRentalTimesRequest) (*models.UpdateAvailableRentalTimesResponse, error)
-	GetSettings(req *models.AdminGetSettingsRequest) (*models.AdminGetSettingsResponse, error)
-	UpdatePrices(req *models.AdminUpdatePricesRequest) (*models.AdminUpdatePricesResponse, error)
-	UpdateRentalTimes(req *models.AdminUpdateRentalTimesRequest) (*models.AdminUpdateRentalTimesResponse, error)
+	GetAvailableRentalTimes(ctx context.Context, req *models.GetAvailableRentalTimesRequest) (*models.GetAvailableRentalTimesResponse, error)
+	UpdateAvailableRentalTimes(ctx context.Context, req *models.UpdateAvailableRentalTimesRequest) (*models.UpdateAvailableRentalTimesResponse, error)
+	GetSettings(ctx context.Context, req *models.AdminGetSettingsRequest) (*models.AdminGetSettingsResponse, error)
+	UpdatePrices(ctx context.Context, req *models.AdminUpdatePricesRequest) (*models.AdminUpdatePricesResponse, error)
+	UpdateRentalTimes(ctx context.Context, req *models.AdminUpdateRentalTimesRequest) (*models.AdminUpdateRentalTimesResponse, error)
 
 	// Методы для управления доступным временем химии
-	GetAvailableChemistryTimes(req *models.GetAvailableChemistryTimesRequest) (*models.GetAvailableChemistryTimesResponse, error)
-	AdminGetAvailableChemistryTimes(req *models.AdminGetAvailableChemistryTimesRequest) (*models.AdminGetAvailableChemistryTimesResponse, error)
-	AdminUpdateAvailableChemistryTimes(req *models.AdminUpdateAvailableChemistryTimesRequest) (*models.AdminUpdateAvailableChemistryTimesResponse, error)
+	GetAvailableChemistryTimes(ctx context.Context, req *models.GetAvailableChemistryTimesRequest) (*models.GetAvailableChemistryTimesResponse, error)
+	AdminGetAvailableChemistryTimes(ctx context.Context, req *models.AdminGetAvailableChemistryTimesRequest) (*models.AdminGetAvailableChemistryTimesResponse, error)
+	AdminUpdateAvailableChemistryTimes(ctx context.Context, req *models.AdminUpdateAvailableChemistryTimesRequest) (*models.AdminUpdateAvailableChemistryTimesResponse, error)
 
 	// Методы для управления временем уборки
-	GetCleaningTimeout() (int, error)
-	UpdateCleaningTimeout(timeoutMinutes int) error
+	GetCleaningTimeout(ctx context.Context) (int, error)
+	UpdateCleaningTimeout(ctx context.Context, timeoutMinutes int) error
 
 	// Методы для управления временем ожидания старта мойки
-	GetSessionTimeout() (int, error)
-	UpdateSessionTimeout(timeoutMinutes int) error
+	GetSessionTimeout(ctx context.Context) (int, error)
+	UpdateSessionTimeout(ctx context.Context, timeoutMinutes int) error
 
 	// Методы для управления временем блокировки бокса после завершения сессии
-	GetCooldownTimeout() (int, error)
-	UpdateCooldownTimeout(timeoutMinutes int) error
+	GetCooldownTimeout(ctx context.Context) (int, error)
+	UpdateCooldownTimeout(ctx context.Context, timeoutMinutes int) error
 }
 
 // ServiceImpl реализация Service
@@ -45,8 +46,8 @@ func NewService(repo repository.Repository) *ServiceImpl {
 }
 
 // GetAvailableRentalTimes получает доступное время мойки для определенного типа услуги
-func (s *ServiceImpl) GetAvailableRentalTimes(req *models.GetAvailableRentalTimesRequest) (*models.GetAvailableRentalTimesResponse, error) {
-	times, err := s.repo.GetAvailableRentalTimes(req.ServiceType)
+func (s *ServiceImpl) GetAvailableRentalTimes(ctx context.Context, req *models.GetAvailableRentalTimesRequest) (*models.GetAvailableRentalTimesResponse, error) {
+	times, err := s.repo.GetAvailableRentalTimes(ctx, req.ServiceType)
 	if err != nil {
 		return nil, err
 	}
@@ -57,8 +58,8 @@ func (s *ServiceImpl) GetAvailableRentalTimes(req *models.GetAvailableRentalTime
 }
 
 // UpdateAvailableRentalTimes обновляет доступное время мойки для определенного типа услуги
-func (s *ServiceImpl) UpdateAvailableRentalTimes(req *models.UpdateAvailableRentalTimesRequest) (*models.UpdateAvailableRentalTimesResponse, error) {
-	err := s.repo.UpdateAvailableRentalTimes(req.ServiceType, req.AvailableTimes)
+func (s *ServiceImpl) UpdateAvailableRentalTimes(ctx context.Context, req *models.UpdateAvailableRentalTimesRequest) (*models.UpdateAvailableRentalTimesResponse, error) {
+	err := s.repo.UpdateAvailableRentalTimes(ctx, req.ServiceType, req.AvailableTimes)
 	if err != nil {
 		return nil, err
 	}
@@ -69,9 +70,9 @@ func (s *ServiceImpl) UpdateAvailableRentalTimes(req *models.UpdateAvailableRent
 }
 
 // GetSettings получает все настройки сервиса (админка)
-func (s *ServiceImpl) GetSettings(req *models.AdminGetSettingsRequest) (*models.AdminGetSettingsResponse, error) {
+func (s *ServiceImpl) GetSettings(ctx context.Context, req *models.AdminGetSettingsRequest) (*models.AdminGetSettingsResponse, error) {
 	// Получаем цену за минуту
-	pricePerMinuteSetting, err := s.repo.GetServiceSetting(req.ServiceType, "price_per_minute")
+	pricePerMinuteSetting, err := s.repo.GetServiceSetting(ctx, req.ServiceType, "price_per_minute")
 	if err != nil {
 		return nil, err
 	}
@@ -84,7 +85,7 @@ func (s *ServiceImpl) GetSettings(req *models.AdminGetSettingsRequest) (*models.
 	}
 
 	// Получаем цену химии за минуту
-	chemistryPricePerMinuteSetting, err := s.repo.GetServiceSetting(req.ServiceType, "chemistry_price_per_minute")
+	chemistryPricePerMinuteSetting, err := s.repo.GetServiceSetting(ctx, req.ServiceType, "chemistry_price_per_minute")
 	if err != nil {
 		return nil, err
 	}
@@ -97,7 +98,7 @@ func (s *ServiceImpl) GetSettings(req *models.AdminGetSettingsRequest) (*models.
 	}
 
 	// Получаем доступное время мойки
-	availableTimes, err := s.repo.GetAvailableRentalTimes(req.ServiceType)
+	availableTimes, err := s.repo.GetAvailableRentalTimes(ctx, req.ServiceType)
 	if err != nil {
 		return nil, err
 	}
@@ -111,8 +112,8 @@ func (s *ServiceImpl) GetSettings(req *models.AdminGetSettingsRequest) (*models.
 }
 
 // GetCleaningTimeout получает время уборки в минутах
-func (s *ServiceImpl) GetCleaningTimeout() (int, error) {
-	setting, err := s.repo.GetServiceSetting("cleaner", "cleaning_timeout_minutes")
+func (s *ServiceImpl) GetCleaningTimeout(ctx context.Context) (int, error) {
+	setting, err := s.repo.GetServiceSetting(ctx, "cleaner", "cleaning_timeout_minutes")
 	if err != nil {
 		return 3, err // По умолчанию 3 минуты
 	}
@@ -130,13 +131,13 @@ func (s *ServiceImpl) GetCleaningTimeout() (int, error) {
 }
 
 // UpdateCleaningTimeout обновляет время уборки в минутах
-func (s *ServiceImpl) UpdateCleaningTimeout(timeoutMinutes int) error {
-	return s.repo.UpdateServiceSetting("cleaner", "cleaning_timeout_minutes", timeoutMinutes)
+func (s *ServiceImpl) UpdateCleaningTimeout(ctx context.Context, timeoutMinutes int) error {
+	return s.repo.UpdateServiceSetting(ctx, "cleaner", "cleaning_timeout_minutes", timeoutMinutes)
 }
 
 // GetSessionTimeout получает время ожидания старта мойки в минутах
-func (s *ServiceImpl) GetSessionTimeout() (int, error) {
-	setting, err := s.repo.GetServiceSetting("session", "session_timeout_minutes")
+func (s *ServiceImpl) GetSessionTimeout(ctx context.Context) (int, error) {
+	setting, err := s.repo.GetServiceSetting(ctx, "session", "session_timeout_minutes")
 	if err != nil {
 		return 3, err // По умолчанию 3 минуты
 	}
@@ -154,13 +155,13 @@ func (s *ServiceImpl) GetSessionTimeout() (int, error) {
 }
 
 // UpdateSessionTimeout обновляет время ожидания старта мойки в минутах
-func (s *ServiceImpl) UpdateSessionTimeout(timeoutMinutes int) error {
-	return s.repo.UpdateServiceSetting("session", "session_timeout_minutes", timeoutMinutes)
+func (s *ServiceImpl) UpdateSessionTimeout(ctx context.Context, timeoutMinutes int) error {
+	return s.repo.UpdateServiceSetting(ctx, "session", "session_timeout_minutes", timeoutMinutes)
 }
 
 // GetCooldownTimeout получает время блокировки бокса после завершения сессии в минутах
-func (s *ServiceImpl) GetCooldownTimeout() (int, error) {
-	setting, err := s.repo.GetServiceSetting("session", "cooldown_timeout_minutes")
+func (s *ServiceImpl) GetCooldownTimeout(ctx context.Context) (int, error) {
+	setting, err := s.repo.GetServiceSetting(ctx, "session", "cooldown_timeout_minutes")
 	if err != nil {
 		return 5, err // По умолчанию 5 минут
 	}
@@ -178,20 +179,20 @@ func (s *ServiceImpl) GetCooldownTimeout() (int, error) {
 }
 
 // UpdateCooldownTimeout обновляет время блокировки бокса после завершения сессии в минутах
-func (s *ServiceImpl) UpdateCooldownTimeout(timeoutMinutes int) error {
-	return s.repo.UpdateServiceSetting("session", "cooldown_timeout_minutes", timeoutMinutes)
+func (s *ServiceImpl) UpdateCooldownTimeout(ctx context.Context, timeoutMinutes int) error {
+	return s.repo.UpdateServiceSetting(ctx, "session", "cooldown_timeout_minutes", timeoutMinutes)
 }
 
 // UpdatePrices обновляет цены сервиса (админка)
-func (s *ServiceImpl) UpdatePrices(req *models.AdminUpdatePricesRequest) (*models.AdminUpdatePricesResponse, error) {
+func (s *ServiceImpl) UpdatePrices(ctx context.Context, req *models.AdminUpdatePricesRequest) (*models.AdminUpdatePricesResponse, error) {
 	// Обновляем цену за минуту
-	if err := s.repo.UpdateServiceSetting(req.ServiceType, "price_per_minute", req.PricePerMinute); err != nil {
+	if err := s.repo.UpdateServiceSetting(ctx, req.ServiceType, "price_per_minute", req.PricePerMinute); err != nil {
 		return nil, err
 	}
 
 	// Обновляем цену химии за минуту
 	if req.ChemistryPricePerMinute != nil {
-		if err := s.repo.UpdateServiceSetting(req.ServiceType, "chemistry_price_per_minute", *req.ChemistryPricePerMinute); err != nil {
+		if err := s.repo.UpdateServiceSetting(ctx, req.ServiceType, "chemistry_price_per_minute", *req.ChemistryPricePerMinute); err != nil {
 			return nil, err
 		}
 	}
@@ -203,8 +204,8 @@ func (s *ServiceImpl) UpdatePrices(req *models.AdminUpdatePricesRequest) (*model
 }
 
 // UpdateRentalTimes обновляет доступное время мойки (админка)
-func (s *ServiceImpl) UpdateRentalTimes(req *models.AdminUpdateRentalTimesRequest) (*models.AdminUpdateRentalTimesResponse, error) {
-	if err := s.repo.UpdateAvailableRentalTimes(req.ServiceType, req.AvailableRentalTimes); err != nil {
+func (s *ServiceImpl) UpdateRentalTimes(ctx context.Context, req *models.AdminUpdateRentalTimesRequest) (*models.AdminUpdateRentalTimesResponse, error) {
+	if err := s.repo.UpdateAvailableRentalTimes(ctx, req.ServiceType, req.AvailableRentalTimes); err != nil {
 		return nil, err
 	}
 
@@ -215,9 +216,9 @@ func (s *ServiceImpl) UpdateRentalTimes(req *models.AdminUpdateRentalTimesReques
 }
 
 // GetAvailableChemistryTimes получает доступное время химии для определенного типа услуги (публичный метод)
-func (s *ServiceImpl) GetAvailableChemistryTimes(req *models.GetAvailableChemistryTimesRequest) (*models.GetAvailableChemistryTimesResponse, error) {
+func (s *ServiceImpl) GetAvailableChemistryTimes(ctx context.Context, req *models.GetAvailableChemistryTimesRequest) (*models.GetAvailableChemistryTimesResponse, error) {
 	// Получаем настройку доступного времени химии
-	setting, err := s.repo.GetServiceSetting(req.ServiceType, "available_chemistry_times")
+	setting, err := s.repo.GetServiceSetting(ctx, req.ServiceType, "available_chemistry_times")
 	if err != nil {
 		return nil, err
 	}
@@ -239,9 +240,9 @@ func (s *ServiceImpl) GetAvailableChemistryTimes(req *models.GetAvailableChemist
 }
 
 // AdminGetAvailableChemistryTimes получает доступное время химии для определенного типа услуги (админка)
-func (s *ServiceImpl) AdminGetAvailableChemistryTimes(req *models.AdminGetAvailableChemistryTimesRequest) (*models.AdminGetAvailableChemistryTimesResponse, error) {
+func (s *ServiceImpl) AdminGetAvailableChemistryTimes(ctx context.Context, req *models.AdminGetAvailableChemistryTimesRequest) (*models.AdminGetAvailableChemistryTimesResponse, error) {
 	// Получаем настройку доступного времени химии
-	setting, err := s.repo.GetServiceSetting(req.ServiceType, "available_chemistry_times")
+	setting, err := s.repo.GetServiceSetting(ctx, req.ServiceType, "available_chemistry_times")
 	if err != nil {
 		return nil, err
 	}
@@ -264,9 +265,9 @@ func (s *ServiceImpl) AdminGetAvailableChemistryTimes(req *models.AdminGetAvaila
 }
 
 // AdminUpdateAvailableChemistryTimes обновляет доступное время химии для определенного типа услуги (админка)
-func (s *ServiceImpl) AdminUpdateAvailableChemistryTimes(req *models.AdminUpdateAvailableChemistryTimesRequest) (*models.AdminUpdateAvailableChemistryTimesResponse, error) {
+func (s *ServiceImpl) AdminUpdateAvailableChemistryTimes(ctx context.Context, req *models.AdminUpdateAvailableChemistryTimesRequest) (*models.AdminUpdateAvailableChemistryTimesResponse, error) {
 	// Обновляем настройку (UpdateServiceSetting сам сделает Marshal)
-	if err := s.repo.UpdateServiceSetting(req.ServiceType, "available_chemistry_times", req.AvailableChemistryTimes); err != nil {
+	if err := s.repo.UpdateServiceSetting(ctx, req.ServiceType, "available_chemistry_times", req.AvailableChemistryTimes); err != nil {
 		return nil, err
 	}
 

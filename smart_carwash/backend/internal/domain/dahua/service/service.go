@@ -1,6 +1,7 @@
 package service
 
 import (
+	"context"
 	"fmt"
 	"log"
 
@@ -8,43 +9,35 @@ import (
 
 	"carwash_backend/internal/domain/dahua/models"
 	sessionModels "carwash_backend/internal/domain/session/models"
-	userModels "carwash_backend/internal/domain/user/models"
 	"carwash_backend/internal/utils"
 )
 
 // Service представляет сервис для обработки событий от камеры Dahua
 type Service interface {
-	ProcessANPREvent(req *models.ProcessANPREventRequest) (*models.ProcessANPREventResponse, error)
+	ProcessANPREvent(ctx context.Context, req *models.ProcessANPREventRequest) (*models.ProcessANPREventResponse, error)
 }
 
 // ServiceImpl реализует интерфейс Service
 type ServiceImpl struct {
-	userService    UserService
 	sessionService SessionService
-}
-
-// UserService интерфейс для работы с пользователями
-type UserService interface {
-	GetUserByCarNumber(carNumber string) (*userModels.User, error)
 }
 
 // SessionService интерфейс для работы с сессиями
 type SessionService interface {
-	GetActiveSessionByUserID(userID uuid.UUID) (*sessionModels.Session, error)
-	GetActiveSessionByCarNumber(carNumber string) (*sessionModels.Session, error)
-	CompleteSessionWithoutRefund(sessionID uuid.UUID) error
+	GetActiveSessionByUserID(ctx context.Context, userID uuid.UUID) (*sessionModels.Session, error)
+	GetActiveSessionByCarNumber(ctx context.Context, carNumber string) (*sessionModels.Session, error)
+	CompleteSessionWithoutRefund(ctx context.Context, sessionID uuid.UUID) error
 }
 
 // NewService создает новый экземпляр сервиса
-func NewService(userService UserService, sessionService SessionService) Service {
+func NewService(sessionService SessionService) Service {
 	return &ServiceImpl{
-		userService:    userService,
 		sessionService: sessionService,
 	}
 }
 
 // ProcessANPREvent обрабатывает ANPR событие от камеры Dahua
-func (s *ServiceImpl) ProcessANPREvent(req *models.ProcessANPREventRequest) (*models.ProcessANPREventResponse, error) {
+func (s *ServiceImpl) ProcessANPREvent(ctx context.Context, req *models.ProcessANPREventRequest) (*models.ProcessANPREventResponse, error) {
 	log.Printf("ProcessANPREvent: обработка события ANPR - LicensePlate=%s, Direction=%s", req.LicensePlate, req.Direction)
 
 	// Проверяем, что это событие выезда
@@ -63,7 +56,7 @@ func (s *ServiceImpl) ProcessANPREvent(req *models.ProcessANPREventRequest) (*mo
 	log.Printf("ProcessANPREvent: номер нормализован '%s' -> '%s'", req.LicensePlate, normalizedLicensePlate)
 
 	// Ищем активную сессию напрямую по номеру автомобиля
-	activeSession, err := s.sessionService.GetActiveSessionByCarNumber(normalizedLicensePlate)
+	activeSession, err := s.sessionService.GetActiveSessionByCarNumber(ctx, normalizedLicensePlate)
 	if err != nil {
 		log.Printf("ProcessANPREvent: активная сессия с номером %s не найдена: %v", req.LicensePlate, err)
 		return &models.ProcessANPREventResponse{
@@ -78,7 +71,7 @@ func (s *ServiceImpl) ProcessANPREvent(req *models.ProcessANPREventRequest) (*mo
 		activeSession.ID, activeSession.Status, activeSession.CarNumber)
 
 	// Завершаем сессию БЕЗ частичного возврата
-	err = s.sessionService.CompleteSessionWithoutRefund(activeSession.ID)
+	err = s.sessionService.CompleteSessionWithoutRefund(ctx, activeSession.ID)
 	if err != nil {
 		log.Printf("ProcessANPREvent: ошибка завершения сессии %s: %v", activeSession.ID, err)
 		return &models.ProcessANPREventResponse{

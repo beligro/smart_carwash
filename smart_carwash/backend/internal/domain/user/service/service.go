@@ -4,6 +4,7 @@ import (
 	"carwash_backend/internal/domain/user/models"
 	"carwash_backend/internal/domain/user/repository"
 	"carwash_backend/internal/utils"
+	"context"
 
 	"fmt"
 	"regexp"
@@ -13,16 +14,16 @@ import (
 
 // Service интерфейс для бизнес-логики пользователей
 type Service interface {
-	CreateUser(req *models.CreateUserRequest) (*models.User, error)
-	GetUserByTelegramID(telegramID int64) (*models.User, error)
-	GetUserByID(id uuid.UUID) (*models.User, error)
-	GetUserByCarNumber(carNumber string) (*models.User, error)
-	UpdateCarNumber(req *models.UpdateCarNumberRequest) (*models.UpdateCarNumberResponse, error)
-	UpdateEmail(req *models.UpdateEmailRequest) (*models.UpdateEmailResponse, error)
+	CreateUser(ctx context.Context, req *models.CreateUserRequest) (*models.User, error)
+	GetUserByTelegramID(ctx context.Context, telegramID int64) (*models.User, error)
+	GetUserByID(ctx context.Context, id uuid.UUID) (*models.User, error)
+	GetUserByCarNumber(ctx context.Context, carNumber string) (*models.User, error)
+	UpdateCarNumber(ctx context.Context, req *models.UpdateCarNumberRequest) (*models.UpdateCarNumberResponse, error)
+	UpdateEmail(ctx context.Context, req *models.UpdateEmailRequest) (*models.UpdateEmailResponse, error)
 
 	// Административные методы
-	AdminListUsers(req *models.AdminListUsersRequest) (*models.AdminListUsersResponse, error)
-	AdminGetUser(req *models.AdminGetUserRequest) (*models.AdminGetUserResponse, error)
+	AdminListUsers(ctx context.Context, req *models.AdminListUsersRequest) (*models.AdminListUsersResponse, error)
+	AdminGetUser(ctx context.Context, req *models.AdminGetUserRequest) (*models.AdminGetUserResponse, error)
 }
 
 // ServiceImpl реализация Service
@@ -36,9 +37,9 @@ func NewService(repo repository.Repository) *ServiceImpl {
 }
 
 // CreateUser создает нового пользователя
-func (s *ServiceImpl) CreateUser(req *models.CreateUserRequest) (*models.User, error) {
+func (s *ServiceImpl) CreateUser(ctx context.Context, req *models.CreateUserRequest) (*models.User, error) {
 	// Проверяем, существует ли пользователь
-	existingUser, err := s.repo.GetUserByTelegramID(req.TelegramID)
+	existingUser, err := s.repo.GetUserByTelegramID(ctx, req.TelegramID)
 	if err == nil {
 		// Пользователь уже существует, возвращаем его
 		return existingUser, nil
@@ -54,7 +55,7 @@ func (s *ServiceImpl) CreateUser(req *models.CreateUserRequest) (*models.User, e
 	}
 
 	// Сохраняем пользователя в базе данных
-	err = s.repo.CreateUser(user)
+	err = s.repo.CreateUser(ctx, user)
 	if err != nil {
 		return nil, err
 	}
@@ -63,22 +64,22 @@ func (s *ServiceImpl) CreateUser(req *models.CreateUserRequest) (*models.User, e
 }
 
 // GetUserByTelegramID получает пользователя по Telegram ID
-func (s *ServiceImpl) GetUserByTelegramID(telegramID int64) (*models.User, error) {
-	return s.repo.GetUserByTelegramID(telegramID)
+func (s *ServiceImpl) GetUserByTelegramID(ctx context.Context, telegramID int64) (*models.User, error) {
+	return s.repo.GetUserByTelegramID(ctx, telegramID)
 }
 
 // GetUserByID получает пользователя по ID
-func (s *ServiceImpl) GetUserByID(id uuid.UUID) (*models.User, error) {
-	return s.repo.GetUserByID(id)
+func (s *ServiceImpl) GetUserByID(ctx context.Context, id uuid.UUID) (*models.User, error) {
+	return s.repo.GetUserByID(ctx, id)
 }
 
 // GetUserByCarNumber получает пользователя по номеру автомобиля
-func (s *ServiceImpl) GetUserByCarNumber(carNumber string) (*models.User, error) {
-	return s.repo.GetUserByCarNumber(carNumber)
+func (s *ServiceImpl) GetUserByCarNumber(ctx context.Context, carNumber string) (*models.User, error) {
+	return s.repo.GetUserByCarNumber(ctx, carNumber)
 }
 
 // AdminListUsers получает список пользователей для администратора
-func (s *ServiceImpl) AdminListUsers(req *models.AdminListUsersRequest) (*models.AdminListUsersResponse, error) {
+func (s *ServiceImpl) AdminListUsers(ctx context.Context, req *models.AdminListUsersRequest) (*models.AdminListUsersResponse, error) {
 	// Устанавливаем значения по умолчанию
 	limit := 50
 	offset := 0
@@ -91,7 +92,7 @@ func (s *ServiceImpl) AdminListUsers(req *models.AdminListUsersRequest) (*models
 	}
 
 	// Получаем пользователей с пагинацией
-	users, total, err := s.repo.GetUsersWithPagination(limit, offset)
+	users, total, err := s.repo.GetUsersWithPagination(ctx, limit, offset)
 	if err != nil {
 		return nil, err
 	}
@@ -105,8 +106,8 @@ func (s *ServiceImpl) AdminListUsers(req *models.AdminListUsersRequest) (*models
 }
 
 // AdminGetUser получает пользователя по ID для администратора
-func (s *ServiceImpl) AdminGetUser(req *models.AdminGetUserRequest) (*models.AdminGetUserResponse, error) {
-	user, err := s.repo.GetUserByID(req.ID)
+func (s *ServiceImpl) AdminGetUser(ctx context.Context, req *models.AdminGetUserRequest) (*models.AdminGetUserResponse, error) {
+	user, err := s.repo.GetUserByID(ctx, req.ID)
 	if err != nil {
 		return nil, err
 	}
@@ -117,10 +118,10 @@ func (s *ServiceImpl) AdminGetUser(req *models.AdminGetUserRequest) (*models.Adm
 }
 
 // UpdateCarNumber обновляет номер машины пользователя
-func (s *ServiceImpl) UpdateCarNumber(req *models.UpdateCarNumberRequest) (*models.UpdateCarNumberResponse, error) {
+func (s *ServiceImpl) UpdateCarNumber(ctx context.Context, req *models.UpdateCarNumberRequest) (*models.UpdateCarNumberResponse, error) {
 	// Нормализация номера машины (без валидации)
 	normalizedCarNumber := utils.NormalizeLicensePlate(req.CarNumber)
-	
+
 	// Устанавливаем дефолтную страну если не указана
 	country := req.CarNumberCountry
 	if country == "" {
@@ -128,7 +129,7 @@ func (s *ServiceImpl) UpdateCarNumber(req *models.UpdateCarNumberRequest) (*mode
 	}
 
 	// Получаем пользователя
-	user, err := s.repo.GetUserByID(req.UserID)
+	user, err := s.repo.GetUserByID(ctx, req.UserID)
 	if err != nil {
 		return nil, err
 	}
@@ -136,7 +137,7 @@ func (s *ServiceImpl) UpdateCarNumber(req *models.UpdateCarNumberRequest) (*mode
 	// Обновляем номер машины и страну нормализованными значениями
 	user.CarNumber = normalizedCarNumber
 	user.CarNumberCountry = country
-	err = s.repo.UpdateUser(user)
+	err = s.repo.UpdateUser(ctx, user)
 	if err != nil {
 		return nil, err
 	}
@@ -148,7 +149,7 @@ func (s *ServiceImpl) UpdateCarNumber(req *models.UpdateCarNumberRequest) (*mode
 }
 
 // UpdateEmail обновляет email пользователя
-func (s *ServiceImpl) UpdateEmail(req *models.UpdateEmailRequest) (*models.UpdateEmailResponse, error) {
+func (s *ServiceImpl) UpdateEmail(ctx context.Context, req *models.UpdateEmailRequest) (*models.UpdateEmailResponse, error) {
 	// Валидация email
 	emailRegex := regexp.MustCompile(`^[^\s@]+@[^\s@]+\.[^\s@]+$`)
 	if !emailRegex.MatchString(req.Email) {
@@ -156,14 +157,14 @@ func (s *ServiceImpl) UpdateEmail(req *models.UpdateEmailRequest) (*models.Updat
 	}
 
 	// Получаем пользователя
-	user, err := s.repo.GetUserByID(req.UserID)
+	user, err := s.repo.GetUserByID(ctx, req.UserID)
 	if err != nil {
 		return nil, err
 	}
 
 	// Обновляем email
 	user.Email = req.Email
-	err = s.repo.UpdateUser(user)
+	err = s.repo.UpdateUser(ctx, user)
 	if err != nil {
 		return nil, err
 	}

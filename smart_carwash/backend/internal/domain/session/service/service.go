@@ -15,9 +15,11 @@ import (
 	"carwash_backend/internal/logger"
 	"carwash_backend/internal/metrics"
 	"carwash_backend/internal/utils"
+	"context"
 	"errors"
 	"fmt"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -26,50 +28,50 @@ import (
 
 // Service интерфейс для бизнес-логики сессий
 type Service interface {
-	CreateSession(req *models.CreateSessionRequest) (*models.Session, error)
-	CreateSessionWithPayment(req *models.CreateSessionWithPaymentRequest) (*models.CreateSessionWithPaymentResponse, error)
-	GetUserSession(req *models.GetUserSessionRequest) (*models.GetUserSessionResponse, error)
-	GetUserSessionForPayment(req *models.GetUserSessionRequest) (*models.GetUserSessionResponse, error)
-	CheckActiveSession(req *models.CheckActiveSessionRequest) (*models.CheckActiveSessionResponse, error)
-	GetSession(req *models.GetSessionRequest) (*models.GetSessionResponse, error)
-	StartSession(req *models.StartSessionRequest) (*models.Session, error)
-	CompleteSession(req *models.CompleteSessionRequest) (*models.CompleteSessionResponse, error)
-	ExtendSessionWithPayment(req *models.ExtendSessionWithPaymentRequest) (*models.ExtendSessionWithPaymentResponse, error)
-	GetSessionPayments(req *models.GetSessionPaymentsRequest) (*models.GetSessionPaymentsResponse, error)
-	CancelSession(req *models.CancelSessionRequest) (*models.CancelSessionResponse, error)
-	UpdateSessionStatus(sessionID uuid.UUID, status string) error
-	ProcessQueue() error
-	CheckAndCompleteExpiredSessions() error
-	CheckAndExpireReservedSessions() error
-	CheckAndNotifyExpiringReservedSessions() error
-	CheckAndNotifyCompletingSessions() error
-	CountSessionsByStatus(status string) (int, error)
-	GetSessionsByStatus(status string) ([]models.Session, error)
-	GetUserSessionHistory(req *models.GetUserSessionHistoryRequest) ([]models.Session, error)
-	CreateFromCashier(req *models.CashierPaymentRequest) (*models.Session, error)
-	GetActiveSessionByCarNumber(carNumber string) (*models.Session, error)
+	CreateSession(ctx context.Context, req *models.CreateSessionRequest) (*models.Session, error)
+	CreateSessionWithPayment(ctx context.Context, req *models.CreateSessionWithPaymentRequest) (*models.CreateSessionWithPaymentResponse, error)
+	GetUserSession(ctx context.Context, req *models.GetUserSessionRequest) (*models.GetUserSessionResponse, error)
+	GetUserSessionForPayment(ctx context.Context, req *models.GetUserSessionRequest) (*models.GetUserSessionResponse, error)
+	CheckActiveSession(ctx context.Context, req *models.CheckActiveSessionRequest) (*models.CheckActiveSessionResponse, error)
+	GetSession(ctx context.Context, req *models.GetSessionRequest) (*models.GetSessionResponse, error)
+	StartSession(ctx context.Context, req *models.StartSessionRequest) (*models.Session, error)
+	CompleteSession(ctx context.Context, req *models.CompleteSessionRequest) (*models.CompleteSessionResponse, error)
+	ExtendSessionWithPayment(ctx context.Context, req *models.ExtendSessionWithPaymentRequest) (*models.ExtendSessionWithPaymentResponse, error)
+	GetSessionPayments(ctx context.Context, req *models.GetSessionPaymentsRequest) (*models.GetSessionPaymentsResponse, error)
+	CancelSession(ctx context.Context, req *models.CancelSessionRequest) (*models.CancelSessionResponse, error)
+	UpdateSessionStatus(ctx context.Context, sessionID uuid.UUID, status string) error
+	ProcessQueue(ctx context.Context) error
+	CheckAndCompleteExpiredSessions(ctx context.Context) error
+	CheckAndExpireReservedSessions(ctx context.Context) error
+	CheckAndNotifyExpiringReservedSessions(ctx context.Context) error
+	CheckAndNotifyCompletingSessions(ctx context.Context) error
+	CountSessionsByStatus(ctx context.Context, status string) (int, error)
+	GetSessionsByStatus(ctx context.Context, status string) ([]models.Session, error)
+	GetUserSessionHistory(ctx context.Context, req *models.GetUserSessionHistoryRequest) ([]models.Session, error)
+	CreateFromCashier(ctx context.Context, req *models.CashierPaymentRequest) (*models.Session, error)
+	GetActiveSessionByCarNumber(ctx context.Context, carNumber string) (*models.Session, error)
 
 	// Административные методы
-	AdminListSessions(req *models.AdminListSessionsRequest) (*models.AdminListSessionsResponse, error)
-	AdminGetSession(req *models.AdminGetSessionRequest) (*models.AdminGetSessionResponse, error)
+	AdminListSessions(ctx context.Context, req *models.AdminListSessionsRequest) (*models.AdminListSessionsResponse, error)
+	AdminGetSession(ctx context.Context, req *models.AdminGetSessionRequest) (*models.AdminGetSessionResponse, error)
 
 	// Методы для кассира
-	CashierListSessions(req *models.CashierSessionsRequest) (*models.AdminListSessionsResponse, error)
-	CashierGetActiveSessions(req *models.CashierActiveSessionsRequest) (*models.CashierActiveSessionsResponse, error)
-	CashierStartSession(req *models.CashierStartSessionRequest) (*models.Session, error)
-	CashierCompleteSession(req *models.CashierCompleteSessionRequest) (*models.Session, error)
-	CashierCancelSession(req *models.CashierCancelSessionRequest) (*models.Session, error)
+	CashierListSessions(ctx context.Context, req *models.CashierSessionsRequest) (*models.AdminListSessionsResponse, error)
+	CashierGetActiveSessions(ctx context.Context, req *models.CashierActiveSessionsRequest) (*models.CashierActiveSessionsResponse, error)
+	CashierStartSession(ctx context.Context, req *models.CashierStartSessionRequest) (*models.Session, error)
+	CashierCompleteSession(ctx context.Context, req *models.CashierCompleteSessionRequest) (*models.Session, error)
+	CashierCancelSession(ctx context.Context, req *models.CashierCancelSessionRequest) (*models.Session, error)
 
 	// Методы для химии
-	EnableChemistry(req *models.EnableChemistryRequest) (*models.EnableChemistryResponse, error)
-	GetChemistryStats(req *models.GetChemistryStatsRequest) (*models.GetChemistryStatsResponse, error)
+	EnableChemistry(ctx context.Context, req *models.EnableChemistryRequest) (*models.EnableChemistryResponse, error)
+	GetChemistryStats(ctx context.Context, req *models.GetChemistryStatsRequest) (*models.GetChemistryStatsResponse, error)
 
 	// Методы для переназначения сессий
-	ReassignSession(req *models.ReassignSessionRequest) (*models.ReassignSessionResponse, error)
+	ReassignSession(ctx context.Context, req *models.ReassignSessionRequest) (*models.ReassignSessionResponse, error)
 
 	// Методы для Dahua интеграции
-	GetActiveSessionByUserID(userID uuid.UUID) (*models.Session, error)
-	CompleteSessionWithoutRefund(sessionID uuid.UUID) error
+	GetActiveSessionByUserID(ctx context.Context, userID uuid.UUID) (*models.Session, error)
+	CompleteSessionWithoutRefund(ctx context.Context, sessionID uuid.UUID) error
 }
 
 // ServiceImpl реализация Service
@@ -83,6 +85,7 @@ type ServiceImpl struct {
 	settingsService settingsService.Service
 	cashierUserID   string
 	metrics         *metrics.Metrics
+	// SafeDB удалён; используем контексты вызова
 }
 
 // NewService создает новый экземпляр Service
@@ -101,12 +104,29 @@ func NewService(repo repository.Repository, washboxService washboxService.Servic
 }
 
 // CreateSession создает новую сессию
-func (s *ServiceImpl) CreateSession(req *models.CreateSessionRequest) (*models.Session, error) {
+func (s *ServiceImpl) CreateSession(ctx context.Context, req *models.CreateSessionRequest) (*models.Session, error) {
 	logger.Printf("Service - CreateSession: начало создания сессии, user_id: %s, service_type: %s, with_chemistry: %t", req.UserID.String(), req.ServiceType, req.WithChemistry)
 
 	// Нормализация госномера (без валидации)
 	normalizedCarNumber := utils.NormalizeLicensePlate(req.CarNumber)
 	logger.Printf("Service - CreateSession: госномер нормализован '%s' -> '%s', user_id: %s", req.CarNumber, normalizedCarNumber, req.UserID.String())
+
+	// Проверяем, нет ли уже активной сессии с этим номером машины (если указан)
+	if normalizedCarNumber != "" {
+		existingSessionByCar, err := s.repo.GetActiveSessionByCarNumber(ctx, normalizedCarNumber)
+		if err == nil && existingSessionByCar != nil {
+			logger.Printf("Service - CreateSession: найдена существующая активная сессия с номером '%s', session_id: %s, status: %s, created_at: %s",
+				normalizedCarNumber, existingSessionByCar.ID.String(), existingSessionByCar.Status, existingSessionByCar.CreatedAt.Format(time.RFC3339))
+
+			// Записываем метрику попытки создания дубликата сессии
+			if s.metrics != nil {
+				s.metrics.RecordMultipleSession("duplicate_car_number", normalizedCarNumber, "0")
+			}
+
+			// Возвращаем ошибку о существующей сессии
+			return nil, fmt.Errorf("уже существует активная сессия с номером автомобиля '%s'", req.CarNumber)
+		}
+	}
 
 	// Валидация химии
 	if req.WithChemistry {
@@ -125,7 +145,7 @@ func (s *ServiceImpl) CreateSession(req *models.CreateSessionRequest) (*models.S
 			availableTimesReq := &settingsModels.GetAvailableChemistryTimesRequest{
 				ServiceType: req.ServiceType,
 			}
-			availableTimesResp, err := s.settingsService.GetAvailableChemistryTimes(availableTimesReq)
+			availableTimesResp, err := s.settingsService.GetAvailableChemistryTimes(ctx, availableTimesReq)
 			if err != nil {
 				logger.Printf("Service - CreateSession: ошибка получения доступного времени химии: %v, user_id: %s", err, req.UserID.String())
 				return nil, fmt.Errorf("не удалось получить доступное время химии: %w", err)
@@ -154,7 +174,7 @@ func (s *ServiceImpl) CreateSession(req *models.CreateSessionRequest) (*models.S
 	}
 
 	// Проверяем идемпотентность запроса
-	existingSessionByKey, err := s.repo.GetSessionByIdempotencyKey(req.IdempotencyKey)
+	existingSessionByKey, err := s.repo.GetSessionByIdempotencyKey(ctx, req.IdempotencyKey)
 	if err == nil && existingSessionByKey != nil {
 		// Сессия с таким ключом идемпотентности уже существует
 		logger.Printf("Service - CreateSession: найдена существующая сессия по ключу идемпотентности, session_id: %s, user_id: %s", existingSessionByKey.ID.String(), req.UserID.String())
@@ -162,7 +182,7 @@ func (s *ServiceImpl) CreateSession(req *models.CreateSessionRequest) (*models.S
 	}
 
 	// Проверяем, есть ли у пользователя активная сессия
-	existingSession, err := s.repo.GetActiveSessionByUserID(req.UserID)
+	existingSession, err := s.repo.GetActiveSessionByUserID(ctx, req.UserID)
 	if err == nil && existingSession != nil {
 		// У пользователя уже есть активная сессия
 		logger.Printf("Service - CreateSession: у пользователя уже есть активная сессия, session_id: %s, user_id: %s, status: %s", existingSession.ID.String(), req.UserID.String(), existingSession.Status)
@@ -201,8 +221,21 @@ func (s *ServiceImpl) CreateSession(req *models.CreateSessionRequest) (*models.S
 	}
 
 	// Сохраняем сессию в базе данных
-	err = s.repo.CreateSession(session)
+	err = s.repo.CreateSession(ctx, session)
 	if err != nil {
+		// Проверяем, не является ли это ошибкой нарушения уникального индекса
+		if strings.Contains(err.Error(), "duplicate key") || strings.Contains(err.Error(), "unique constraint") {
+			logger.Printf("Service - CreateSession: нарушение уникального индекса для номера '%s', ищем существующую сессию", normalizedCarNumber)
+
+			// Если есть номер машины, пытаемся найти существующую сессию
+			if normalizedCarNumber != "" {
+				existingSession, findErr := s.repo.GetActiveSessionByCarNumber(ctx, normalizedCarNumber)
+				if findErr == nil && existingSession != nil {
+					logger.Printf("Service - CreateSession: найдена существующая сессия после ошибки БД, session_id: %s", existingSession.ID.String())
+					return nil, fmt.Errorf("уже существует активная сессия с номером автомобиля '%s'", req.CarNumber)
+				}
+			}
+		}
 		logger.Printf("Service - CreateSession: ошибка сохранения сессии в БД, user_id: %s, error: %v", req.UserID.String(), err)
 		return nil, err
 	}
@@ -218,11 +251,11 @@ func (s *ServiceImpl) CreateSession(req *models.CreateSessionRequest) (*models.S
 }
 
 // CreateSessionWithPayment создает сессию с платежом
-func (s *ServiceImpl) CreateSessionWithPayment(req *models.CreateSessionWithPaymentRequest) (*models.CreateSessionWithPaymentResponse, error) {
+func (s *ServiceImpl) CreateSessionWithPayment(ctx context.Context, req *models.CreateSessionWithPaymentRequest) (*models.CreateSessionWithPaymentResponse, error) {
 	logger.Printf("Service - CreateSessionWithPayment: начало создания сессии с платежом, user_id: %s, service_type: %s", req.UserID.String(), req.ServiceType)
 
 	// 1. Создаем сессию
-	session, err := s.CreateSession(&models.CreateSessionRequest{
+	session, err := s.CreateSession(ctx, &models.CreateSessionRequest{
 		UserID:               req.UserID,
 		ServiceType:          req.ServiceType,
 		WithChemistry:        req.WithChemistry,
@@ -237,7 +270,7 @@ func (s *ServiceImpl) CreateSessionWithPayment(req *models.CreateSessionWithPaym
 	}
 
 	// 2. Рассчитываем цену через Payment Service
-	priceResp, err := s.paymentService.CalculatePrice(&paymentModels.CalculatePriceRequest{
+	priceResp, err := s.paymentService.CalculatePrice(ctx, &paymentModels.CalculatePriceRequest{
 		ServiceType:          req.ServiceType,
 		WithChemistry:        req.WithChemistry,
 		ChemistryTimeMinutes: req.ChemistryTimeMinutes,
@@ -251,7 +284,7 @@ func (s *ServiceImpl) CreateSessionWithPayment(req *models.CreateSessionWithPaym
 	logger.Printf("Service - CreateSessionWithPayment: цена рассчитана, session_id: %s, price: %d %s", session.ID.String(), priceResp.Price, priceResp.Currency)
 
 	// 3. Создаем платеж через Payment Service
-	paymentResp, err := s.paymentService.CreatePayment(&paymentModels.CreatePaymentRequest{
+	paymentResp, err := s.paymentService.CreatePayment(ctx, &paymentModels.CreatePaymentRequest{
 		SessionID: session.ID,
 		Amount:    priceResp.Price,
 		Currency:  priceResp.Currency,
@@ -282,11 +315,11 @@ func (s *ServiceImpl) CreateSessionWithPayment(req *models.CreateSessionWithPaym
 }
 
 // CheckActiveSession проверяет активную сессию пользователя с учетом временной блокировки
-func (s *ServiceImpl) CheckActiveSession(req *models.CheckActiveSessionRequest) (*models.CheckActiveSessionResponse, error) {
+func (s *ServiceImpl) CheckActiveSession(ctx context.Context, req *models.CheckActiveSessionRequest) (*models.CheckActiveSessionResponse, error) {
 	logger.Printf("Service - CheckActiveSession: проверка активной сессии, user_id: %s", req.UserID.String())
 
 	// Проверяем активную сессию
-	session, err := s.repo.GetActiveSessionByUserID(req.UserID)
+	session, err := s.repo.GetActiveSessionByUserID(ctx, req.UserID)
 	if err != nil {
 		// Если сессии нет, это нормально
 		if errors.Is(err, gorm.ErrRecordNotFound) {
@@ -302,7 +335,7 @@ func (s *ServiceImpl) CheckActiveSession(req *models.CheckActiveSessionRequest) 
 	// Если сессия найдена, получаем информацию о платеже
 	var payment *models.Payment
 	if session != nil {
-		paymentResp, err := s.paymentService.GetMainPaymentBySessionID(session.ID)
+		paymentResp, err := s.paymentService.GetMainPaymentBySessionID(ctx, session.ID)
 		if err == nil && paymentResp != nil {
 			payment = &models.Payment{
 				ID:             paymentResp.ID,
@@ -331,8 +364,8 @@ func (s *ServiceImpl) CheckActiveSession(req *models.CheckActiveSessionRequest) 
 }
 
 // GetUserSession получает активную сессию пользователя
-func (s *ServiceImpl) GetUserSession(req *models.GetUserSessionRequest) (*models.GetUserSessionResponse, error) {
-	session, err := s.repo.GetActiveSessionByUserID(req.UserID)
+func (s *ServiceImpl) GetUserSession(ctx context.Context, req *models.GetUserSessionRequest) (*models.GetUserSessionResponse, error) {
+	session, err := s.repo.GetActiveSessionByUserID(ctx, req.UserID)
 	if err != nil {
 		return nil, err
 	}
@@ -340,7 +373,7 @@ func (s *ServiceImpl) GetUserSession(req *models.GetUserSessionRequest) (*models
 	// Получаем основной платеж сессии, если сессия существует
 	var payment *models.Payment
 	if session != nil {
-		paymentResp, err := s.paymentService.GetMainPaymentBySessionID(session.ID)
+		paymentResp, err := s.paymentService.GetMainPaymentBySessionID(ctx, session.ID)
 		if err == nil && paymentResp != nil {
 			payment = &models.Payment{
 				ID:             paymentResp.ID,
@@ -362,7 +395,7 @@ func (s *ServiceImpl) GetUserSession(req *models.GetUserSessionRequest) (*models
 
 	// Заполняем session_timeout_minutes из настроек
 	if session != nil {
-		sessionTimeout, err := s.settingsService.GetSessionTimeout()
+		sessionTimeout, err := s.settingsService.GetSessionTimeout(ctx)
 		if err != nil {
 			// Если не удалось получить настройку, используем значение по умолчанию
 			sessionTimeout = 3
@@ -377,8 +410,8 @@ func (s *ServiceImpl) GetUserSession(req *models.GetUserSessionRequest) (*models
 }
 
 // GetUserSessionForPayment получает сессию пользователя для PaymentPage (включая payment_failed)
-func (s *ServiceImpl) GetUserSessionForPayment(req *models.GetUserSessionRequest) (*models.GetUserSessionResponse, error) {
-	session, err := s.repo.GetUserSessionForPayment(req.UserID)
+func (s *ServiceImpl) GetUserSessionForPayment(ctx context.Context, req *models.GetUserSessionRequest) (*models.GetUserSessionResponse, error) {
+	session, err := s.repo.GetUserSessionForPayment(ctx, req.UserID)
 	if err != nil {
 		return nil, err
 	}
@@ -386,7 +419,7 @@ func (s *ServiceImpl) GetUserSessionForPayment(req *models.GetUserSessionRequest
 	// Получаем последний платеж сессии, если сессия существует
 	var payment *models.Payment
 	if session != nil {
-		paymentResp, err := s.paymentService.GetLastPaymentBySessionID(session.ID)
+		paymentResp, err := s.paymentService.GetLastPaymentBySessionID(ctx, session.ID)
 		if err == nil && paymentResp != nil {
 			payment = &models.Payment{
 				ID:             paymentResp.ID,
@@ -408,7 +441,7 @@ func (s *ServiceImpl) GetUserSessionForPayment(req *models.GetUserSessionRequest
 
 	// Заполняем session_timeout_minutes из настроек
 	if session != nil {
-		sessionTimeout, err := s.settingsService.GetSessionTimeout()
+		sessionTimeout, err := s.settingsService.GetSessionTimeout(ctx)
 		if err != nil {
 			// Если не удалось получить настройку, используем значение по умолчанию
 			sessionTimeout = 3
@@ -423,8 +456,8 @@ func (s *ServiceImpl) GetUserSessionForPayment(req *models.GetUserSessionRequest
 }
 
 // GetSession получает сессию по ID
-func (s *ServiceImpl) GetSession(req *models.GetSessionRequest) (*models.GetSessionResponse, error) {
-	session, err := s.repo.GetSessionByID(req.SessionID)
+func (s *ServiceImpl) GetSession(ctx context.Context, req *models.GetSessionRequest) (*models.GetSessionResponse, error) {
+	session, err := s.repo.GetSessionByID(ctx, req.SessionID)
 	if err != nil {
 		return nil, err
 	}
@@ -432,7 +465,7 @@ func (s *ServiceImpl) GetSession(req *models.GetSessionRequest) (*models.GetSess
 	// Получаем основной платеж сессии, если сессия существует
 	var payment *models.Payment
 	if session != nil {
-		paymentResp, err := s.paymentService.GetMainPaymentBySessionID(session.ID)
+		paymentResp, err := s.paymentService.GetMainPaymentBySessionID(ctx, session.ID)
 		if err == nil && paymentResp != nil {
 			payment = &models.Payment{
 				ID:             paymentResp.ID,
@@ -454,7 +487,7 @@ func (s *ServiceImpl) GetSession(req *models.GetSessionRequest) (*models.GetSess
 
 	// Заполняем session_timeout_minutes из настроек
 	if session != nil {
-		sessionTimeout, err := s.settingsService.GetSessionTimeout()
+		sessionTimeout, err := s.settingsService.GetSessionTimeout(ctx)
 		if err != nil {
 			// Если не удалось получить настройку, используем значение по умолчанию
 			sessionTimeout = 3
@@ -469,9 +502,9 @@ func (s *ServiceImpl) GetSession(req *models.GetSessionRequest) (*models.GetSess
 }
 
 // StartSession запускает сессию (переводит в статус active)
-func (s *ServiceImpl) StartSession(req *models.StartSessionRequest) (*models.Session, error) {
+func (s *ServiceImpl) StartSession(ctx context.Context, req *models.StartSessionRequest) (*models.Session, error) {
 	// Получаем сессию по ID
-	session, err := s.repo.GetSessionByID(req.SessionID)
+	session, err := s.repo.GetSessionByID(ctx, req.SessionID)
 	if err != nil {
 		return nil, err
 	}
@@ -492,7 +525,7 @@ func (s *ServiceImpl) StartSession(req *models.StartSessionRequest) (*models.Ses
 	if s.washboxService == nil {
 		// Обновляем статус сессии на active
 		session.Status = models.SessionStatusActive
-		err = s.repo.UpdateSession(session)
+		err = s.repo.UpdateSession(ctx, session)
 		if err != nil {
 			logger.Printf("StartSessionError: ошибка обновления статуса сессии %s", session.ID)
 			return nil, err
@@ -501,27 +534,32 @@ func (s *ServiceImpl) StartSession(req *models.StartSessionRequest) (*models.Ses
 	}
 
 	// Получаем информацию о боксе
-	box, err := s.washboxService.GetWashBoxByID(*session.BoxID)
+	box, err := s.washboxService.GetWashBoxByID(ctx, *session.BoxID)
 	if err != nil {
 		logger.Printf("StartSessionError: ошибка получения информации о боксе %s", *session.BoxID)
 		return nil, err
 	}
 
 	// Обновляем статус бокса на busy
-	err = s.washboxService.UpdateWashBoxStatus(*session.BoxID, washboxModels.StatusBusy)
+	err = s.washboxService.UpdateWashBoxStatus(ctx, *session.BoxID, washboxModels.StatusBusy)
 	if err != nil {
 		logger.Printf("StartSessionError: ошибка обновления статуса бокса %s", *session.BoxID)
 		return nil, err
+	}
+
+	// Очищаем любые поля кулдауна у бокса, чтобы фоновые джобы не перезаписали статус
+	if clearErr := s.washboxService.ClearCooldown(ctx, *session.BoxID); clearErr != nil {
+		logger.Printf("StartSessionWarning: не удалось очистить кулдаун у бокса %s, session_id=%s, err=%v", *session.BoxID, session.ID, clearErr)
 	}
 
 	// Обновляем статус сессии на active, время обновления статуса и сбрасываем флаг уведомления
 	session.Status = models.SessionStatusActive
 	session.StatusUpdatedAt = time.Now()       // Обновляем время изменения статуса
 	session.IsExpiringNotificationSent = false // Сбрасываем флаг, чтобы уведомление могло быть отправлено снова
-	err = s.repo.UpdateSession(session)
+	err = s.repo.UpdateSession(ctx, session)
 	if err != nil {
 		// Если не удалось обновить сессию, возвращаем статус бокса обратно
-		s.washboxService.UpdateWashBoxStatus(*session.BoxID, box.Status)
+		s.washboxService.UpdateWashBoxStatus(ctx, *session.BoxID, box.Status)
 		logger.Printf("StartSessionError: ошибка обновления статуса сессии %s", session.ID)
 		return nil, err
 	}
@@ -530,7 +568,7 @@ func (s *ServiceImpl) StartSession(req *models.StartSessionRequest) (*models.Ses
 	if s.modbusService != nil {
 		// Используем уже полученную информацию о боксе
 		if box.LightCoilRegister != nil {
-			err = s.modbusService.WriteLightCoil(*session.BoxID, *box.LightCoilRegister, true)
+			err = s.modbusService.WriteLightCoil(ctx, *session.BoxID, *box.LightCoilRegister, true)
 			if err != nil {
 				// Логируем ошибку (HandleModbusError теперь только логирует, не продлевает время)
 				s.modbusService.HandleModbusError(*session.BoxID, "light_on", session.ID, err)
@@ -544,7 +582,7 @@ func (s *ServiceImpl) StartSession(req *models.StartSessionRequest) (*models.Ses
 	}
 
 	// Получаем основной платеж сессии
-	paymentResp, err := s.paymentService.GetMainPaymentBySessionID(session.ID)
+	paymentResp, err := s.paymentService.GetMainPaymentBySessionID(ctx, session.ID)
 	if err == nil && paymentResp != nil {
 		session.Payment = &models.Payment{
 			ID:             paymentResp.ID,
@@ -567,9 +605,9 @@ func (s *ServiceImpl) StartSession(req *models.StartSessionRequest) (*models.Ses
 }
 
 // CompleteSession завершает сессию (переводит в статус complete) с возможным частичным возвратом
-func (s *ServiceImpl) CompleteSession(req *models.CompleteSessionRequest) (*models.CompleteSessionResponse, error) {
+func (s *ServiceImpl) CompleteSession(ctx context.Context, req *models.CompleteSessionRequest) (*models.CompleteSessionResponse, error) {
 	// Получаем сессию по ID
-	session, err := s.repo.GetSessionByID(req.SessionID)
+	session, err := s.repo.GetSessionByID(ctx, req.SessionID)
 	if err != nil {
 		return nil, err
 	}
@@ -588,7 +626,7 @@ func (s *ServiceImpl) CompleteSession(req *models.CompleteSessionRequest) (*mode
 	if s.washboxService == nil {
 		// Обновляем статус сессии на complete
 		session.Status = models.SessionStatusComplete
-		err = s.repo.UpdateSession(session)
+		err = s.repo.UpdateSession(ctx, session)
 		if err != nil {
 			return nil, err
 		}
@@ -596,31 +634,39 @@ func (s *ServiceImpl) CompleteSession(req *models.CompleteSessionRequest) (*mode
 	}
 
 	// Проверяем, есть ли резерв уборки для этого бокса
-	box, err := s.washboxService.GetWashBoxByID(*session.BoxID)
+	box, err := s.washboxService.GetWashBoxByID(ctx, *session.BoxID)
 	if err != nil {
 		return nil, err
 	}
 
 	// Если есть резерв уборки, переводим бокс в статус cleaning
 	if box.CleaningReservedBy != nil {
-		err = s.washboxService.UpdateWashBoxStatus(*session.BoxID, washboxModels.StatusCleaning)
+		err = s.washboxService.UpdateWashBoxStatus(ctx, *session.BoxID, washboxModels.StatusCleaning)
 		if err != nil {
 			return nil, err
 		}
 		// Устанавливаем время начала уборки
 		now := time.Now()
-		err = s.washboxService.UpdateCleaningStartedAt(*session.BoxID, now)
+		err = s.washboxService.UpdateCleaningStartedAt(ctx, *session.BoxID, now)
 		if err != nil {
 			return nil, err
 		}
 		// Очищаем резерв
-		err = s.washboxService.ClearCleaningReservation(*session.BoxID)
+		err = s.washboxService.ClearCleaningReservation(ctx, *session.BoxID)
 		if err != nil {
 			return nil, err
 		}
+		// Включаем свет при начале уборки (если есть регистр)
+		if s.modbusService != nil {
+			if box.LightCoilRegister != nil && *box.LightCoilRegister != "" {
+				if err := s.modbusService.WriteLightCoil(ctx, *session.BoxID, *box.LightCoilRegister, true); err != nil {
+					s.modbusService.HandleModbusError(*session.BoxID, "light_on", session.ID, err)
+				}
+			}
+		}
 	} else {
 		// Если нет резерва уборки, переводим в статус free
-		err = s.washboxService.UpdateWashBoxStatus(*session.BoxID, washboxModels.StatusFree)
+		err = s.washboxService.UpdateWashBoxStatus(ctx, *session.BoxID, washboxModels.StatusFree)
 		if err != nil {
 			return nil, err
 		}
@@ -635,7 +681,7 @@ func (s *ServiceImpl) CompleteSession(req *models.CompleteSessionRequest) (*mode
 	session.Status = models.SessionStatusComplete
 	session.StatusUpdatedAt = time.Now()         // Обновляем время изменения статуса
 	session.IsCompletingNotificationSent = false // Сбрасываем флаг, чтобы уведомление могло быть отправлено снова
-	err = s.repo.UpdateSession(session)
+	err = s.repo.UpdateSession(ctx, session)
 	if err != nil {
 		return nil, err
 	}
@@ -648,7 +694,7 @@ func (s *ServiceImpl) CompleteSession(req *models.CompleteSessionRequest) (*mode
 		if s.modbusService != nil {
 			// Используем уже полученную информацию о боксе
 			if box.ChemistryCoilRegister != nil {
-				err = s.modbusService.WriteChemistryCoil(*session.BoxID, *box.ChemistryCoilRegister, false)
+				err = s.modbusService.WriteChemistryCoil(ctx, *session.BoxID, *box.ChemistryCoilRegister, false)
 				if err != nil {
 					logger.Printf("CompleteSession: ошибка выключения химии в боксе %s: %v", *session.BoxID, err)
 				} else {
@@ -660,7 +706,7 @@ func (s *ServiceImpl) CompleteSession(req *models.CompleteSessionRequest) (*mode
 		}
 
 		// Обновляем только поле chemistry_ended_at
-		err = s.repo.UpdateSessionFields(session.ID, map[string]interface{}{
+		err = s.repo.UpdateSessionFields(ctx, session.ID, map[string]interface{}{
 			"chemistry_ended_at": now,
 			"updated_at":         now,
 		})
@@ -673,7 +719,7 @@ func (s *ServiceImpl) CompleteSession(req *models.CompleteSessionRequest) (*mode
 	if s.modbusService != nil {
 		// Используем уже полученную информацию о боксе
 		if box.LightCoilRegister != nil {
-			err = s.modbusService.WriteLightCoil(*session.BoxID, *box.LightCoilRegister, false)
+			err = s.modbusService.WriteLightCoil(ctx, *session.BoxID, *box.LightCoilRegister, false)
 			if err != nil {
 				logger.Printf("Ошибка выключения света в боксе %s: %v", *session.BoxID, err)
 			}
@@ -686,7 +732,7 @@ func (s *ServiceImpl) CompleteSession(req *models.CompleteSessionRequest) (*mode
 		session.ID, session.RentalTimeMinutes, session.ExtensionTimeMinutes, usedTimeSeconds)
 
 	// Получаем обновленную информацию о платежах для отображения
-	paymentsResp, err := s.paymentService.GetPaymentsBySessionID(session.ID)
+	paymentsResp, err := s.paymentService.GetPaymentsBySessionID(ctx, session.ID)
 	if err == nil && paymentsResp != nil {
 		// Используем основной платеж для отображения в сессии
 		if paymentsResp.MainPayment != nil {
@@ -715,7 +761,7 @@ func (s *ServiceImpl) CompleteSession(req *models.CompleteSessionRequest) (*mode
 
 	// Отправляем уведомление о завершении сессии
 	if s.telegramBot != nil {
-		user, err := s.userService.GetUserByID(session.UserID)
+		user, err := s.userService.GetUserByID(ctx, session.UserID)
 		if err == nil && user != nil {
 			err = s.telegramBot.SendSessionNotification(user.TelegramID, telegram.NotificationTypeSessionCompleted, nil)
 			if err != nil {
@@ -735,9 +781,9 @@ func (s *ServiceImpl) CompleteSession(req *models.CompleteSessionRequest) (*mode
 }
 
 // CompleteSessionWithoutRefund завершает сессию БЕЗ частичного возврата (для Dahua webhook)
-func (s *ServiceImpl) CompleteSessionWithoutRefund(sessionID uuid.UUID) error {
+func (s *ServiceImpl) CompleteSessionWithoutRefund(ctx context.Context, sessionID uuid.UUID) error {
 	// Получаем сессию по ID
-	session, err := s.repo.GetSessionByID(sessionID)
+	session, err := s.repo.GetSessionByID(ctx, sessionID)
 	if err != nil {
 		return err
 	}
@@ -756,7 +802,7 @@ func (s *ServiceImpl) CompleteSessionWithoutRefund(sessionID uuid.UUID) error {
 	if s.washboxService == nil {
 		// Обновляем статус сессии на complete
 		session.Status = models.SessionStatusComplete
-		err = s.repo.UpdateSession(session)
+		err = s.repo.UpdateSession(ctx, session)
 		if err != nil {
 			return err
 		}
@@ -764,31 +810,39 @@ func (s *ServiceImpl) CompleteSessionWithoutRefund(sessionID uuid.UUID) error {
 	}
 
 	// Проверяем, есть ли резерв уборки для этого бокса
-	box, err := s.washboxService.GetWashBoxByID(*session.BoxID)
+	box, err := s.washboxService.GetWashBoxByID(ctx, *session.BoxID)
 	if err != nil {
 		return err
 	}
 
 	// Если есть резерв уборки, переводим бокс в статус cleaning
 	if box.CleaningReservedBy != nil {
-		err = s.washboxService.UpdateWashBoxStatus(*session.BoxID, washboxModels.StatusCleaning)
+		err = s.washboxService.UpdateWashBoxStatus(ctx, *session.BoxID, washboxModels.StatusCleaning)
 		if err != nil {
 			return err
 		}
 		// Устанавливаем время начала уборки
 		now := time.Now()
-		err = s.washboxService.UpdateCleaningStartedAt(*session.BoxID, now)
+		err = s.washboxService.UpdateCleaningStartedAt(ctx, *session.BoxID, now)
 		if err != nil {
 			return err
 		}
 		// Очищаем резерв
-		err = s.washboxService.ClearCleaningReservation(*session.BoxID)
+		err = s.washboxService.ClearCleaningReservation(ctx, *session.BoxID)
 		if err != nil {
 			return err
 		}
+		// Включаем свет при начале уборки (если есть регистр)
+		if s.modbusService != nil {
+			if box.LightCoilRegister != nil && *box.LightCoilRegister != "" {
+				if err := s.modbusService.WriteLightCoil(ctx, *session.BoxID, *box.LightCoilRegister, true); err != nil {
+					s.modbusService.HandleModbusError(*session.BoxID, "light_on", session.ID, err)
+				}
+			}
+		}
 	} else {
 		// Если нет резерва уборки, переводим в статус free
-		err = s.washboxService.UpdateWashBoxStatus(*session.BoxID, washboxModels.StatusFree)
+		err = s.washboxService.UpdateWashBoxStatus(ctx, *session.BoxID, washboxModels.StatusFree)
 		if err != nil {
 			return err
 		}
@@ -798,7 +852,7 @@ func (s *ServiceImpl) CompleteSessionWithoutRefund(sessionID uuid.UUID) error {
 	session.Status = models.SessionStatusComplete
 	session.StatusUpdatedAt = time.Now()         // Обновляем время изменения статуса
 	session.IsCompletingNotificationSent = false // Сбрасываем флаг, чтобы уведомление могло быть отправлено снова
-	err = s.repo.UpdateSession(session)
+	err = s.repo.UpdateSession(ctx, session)
 	if err != nil {
 		return err
 	}
@@ -811,7 +865,7 @@ func (s *ServiceImpl) CompleteSessionWithoutRefund(sessionID uuid.UUID) error {
 		if s.modbusService != nil {
 			// Используем уже полученную информацию о боксе
 			if box.ChemistryCoilRegister != nil {
-				err = s.modbusService.WriteChemistryCoil(*session.BoxID, *box.ChemistryCoilRegister, false)
+				err = s.modbusService.WriteChemistryCoil(ctx, *session.BoxID, *box.ChemistryCoilRegister, false)
 				if err != nil {
 					logger.Printf("CompleteSessionWithoutRefund: ошибка выключения химии в боксе %s: %v", *session.BoxID, err)
 				} else {
@@ -823,7 +877,7 @@ func (s *ServiceImpl) CompleteSessionWithoutRefund(sessionID uuid.UUID) error {
 		}
 
 		// Обновляем только поле chemistry_ended_at
-		err = s.repo.UpdateSessionFields(session.ID, map[string]interface{}{
+		err = s.repo.UpdateSessionFields(context.Background(), session.ID, map[string]interface{}{
 			"chemistry_ended_at": now,
 			"updated_at":         now,
 		})
@@ -836,7 +890,7 @@ func (s *ServiceImpl) CompleteSessionWithoutRefund(sessionID uuid.UUID) error {
 	if s.modbusService != nil {
 		// Используем уже полученную информацию о боксе
 		if box.LightCoilRegister != nil {
-			err = s.modbusService.WriteLightCoil(*session.BoxID, *box.LightCoilRegister, false)
+			err = s.modbusService.WriteLightCoil(ctx, *session.BoxID, *box.LightCoilRegister, false)
 			if err != nil {
 				logger.Printf("CompleteSessionWithoutRefund: ошибка выключения света в боксе %s: %v", *session.BoxID, err)
 			} else {
@@ -854,7 +908,7 @@ func (s *ServiceImpl) CompleteSessionWithoutRefund(sessionID uuid.UUID) error {
 
 	// Отправляем уведомление о завершении сессии
 	if s.telegramBot != nil {
-		user, err := s.userService.GetUserByID(session.UserID)
+		user, err := s.userService.GetUserByID(ctx, session.UserID)
 		if err == nil && user != nil {
 			err = s.telegramBot.SendSessionNotification(user.TelegramID, telegram.NotificationTypeSessionCompleted, nil)
 			if err != nil {
@@ -872,14 +926,14 @@ func (s *ServiceImpl) CompleteSessionWithoutRefund(sessionID uuid.UUID) error {
 }
 
 // GetActiveSessionByUserID получает активную сессию пользователя
-func (s *ServiceImpl) GetActiveSessionByUserID(userID uuid.UUID) (*models.Session, error) {
-	return s.repo.GetActiveSessionByUserID(userID)
+func (s *ServiceImpl) GetActiveSessionByUserID(ctx context.Context, userID uuid.UUID) (*models.Session, error) {
+	return s.repo.GetActiveSessionByUserID(ctx, userID)
 }
 
 // ExtendSessionWithPayment создает платеж для продления сессии
-func (s *ServiceImpl) ExtendSessionWithPayment(req *models.ExtendSessionWithPaymentRequest) (*models.ExtendSessionWithPaymentResponse, error) {
+func (s *ServiceImpl) ExtendSessionWithPayment(ctx context.Context, req *models.ExtendSessionWithPaymentRequest) (*models.ExtendSessionWithPaymentResponse, error) {
 	// Получаем сессию по ID
-	session, err := s.repo.GetSessionByID(req.SessionID)
+	session, err := s.repo.GetSessionByID(ctx, req.SessionID)
 	if err != nil {
 		return nil, err
 	}
@@ -905,7 +959,7 @@ func (s *ServiceImpl) ExtendSessionWithPayment(req *models.ExtendSessionWithPaym
 		updateFields["requested_extension_chemistry_time_minutes"] = req.ExtensionChemistryTimeMinutes
 	}
 
-	if err := s.repo.UpdateSessionFields(session.ID, updateFields); err != nil {
+	if err := s.repo.UpdateSessionFields(ctx, session.ID, updateFields); err != nil {
 		return nil, fmt.Errorf("ошибка обновления сессии: %w", err)
 	}
 
@@ -914,7 +968,7 @@ func (s *ServiceImpl) ExtendSessionWithPayment(req *models.ExtendSessionWithPaym
 	session.ExtensionChemistryTimeMinutes = req.ExtensionChemistryTimeMinutes
 
 	// Рассчитываем цену продления через Payment Service
-	priceResp, err := s.paymentService.CalculateExtensionPrice(&paymentModels.CalculateExtensionPriceRequest{
+	priceResp, err := s.paymentService.CalculateExtensionPrice(ctx, &paymentModels.CalculateExtensionPriceRequest{
 		ServiceType:                   session.ServiceType,
 		ExtensionTimeMinutes:          req.ExtensionTimeMinutes,
 		WithChemistry:                 session.WithChemistry || req.ExtensionChemistryTimeMinutes > 0,
@@ -925,7 +979,7 @@ func (s *ServiceImpl) ExtendSessionWithPayment(req *models.ExtendSessionWithPaym
 	}
 
 	// Создаем платеж продления через Payment Service
-	paymentResp, err := s.paymentService.CreateExtensionPayment(&paymentModels.CreateExtensionPaymentRequest{
+	paymentResp, err := s.paymentService.CreateExtensionPayment(ctx, &paymentModels.CreateExtensionPaymentRequest{
 		SessionID: session.ID,
 		Amount:    priceResp.Price,
 		Currency:  priceResp.Currency,
@@ -959,15 +1013,15 @@ func (s *ServiceImpl) ExtendSessionWithPayment(req *models.ExtendSessionWithPaym
 }
 
 // GetSessionPayments получает все платежи сессии
-func (s *ServiceImpl) GetSessionPayments(req *models.GetSessionPaymentsRequest) (*models.GetSessionPaymentsResponse, error) {
+func (s *ServiceImpl) GetSessionPayments(ctx context.Context, req *models.GetSessionPaymentsRequest) (*models.GetSessionPaymentsResponse, error) {
 	// Получаем сессию по ID
-	_, err := s.repo.GetSessionByID(req.SessionID)
+	_, err := s.repo.GetSessionByID(ctx, req.SessionID)
 	if err != nil {
 		return nil, err
 	}
 
 	// Получаем все платежи сессии через Payment Service
-	paymentsResp, err := s.paymentService.GetPaymentsBySessionID(req.SessionID)
+	paymentsResp, err := s.paymentService.GetPaymentsBySessionID(ctx, req.SessionID)
 	if err != nil {
 		return nil, fmt.Errorf("ошибка получения платежей сессии: %w", err)
 	}
@@ -1020,9 +1074,9 @@ func (s *ServiceImpl) GetSessionPayments(req *models.GetSessionPaymentsRequest) 
 }
 
 // CancelSession отменяет сессию с возможным возвратом денег
-func (s *ServiceImpl) CancelSession(req *models.CancelSessionRequest) (*models.CancelSessionResponse, error) {
+func (s *ServiceImpl) CancelSession(ctx context.Context, req *models.CancelSessionRequest) (*models.CancelSessionResponse, error) {
 	// Получаем сессию по ID
-	session, err := s.repo.GetSessionByID(req.SessionID)
+	session, err := s.repo.GetSessionByID(ctx, req.SessionID)
 	if err != nil {
 		return nil, fmt.Errorf("сессия не найдена: %w", err)
 	}
@@ -1059,7 +1113,7 @@ func (s *ServiceImpl) CancelSession(req *models.CancelSessionRequest) (*models.C
 	// Если сессия оплачена (in_queue или assigned), возвращаем деньги
 	if (session.Status == models.SessionStatusInQueue || session.Status == models.SessionStatusAssigned) && !req.SkipRefund {
 		// Получаем основной платеж сессии
-		paymentResp, err := s.paymentService.GetMainPaymentBySessionID(session.ID)
+		paymentResp, err := s.paymentService.GetMainPaymentBySessionID(ctx, session.ID)
 		if err == nil && paymentResp != nil {
 			// Выполняем возврат денег через payment service
 			refundReq := &paymentModels.RefundPaymentRequest{
@@ -1067,7 +1121,7 @@ func (s *ServiceImpl) CancelSession(req *models.CancelSessionRequest) (*models.C
 				Amount:    paymentResp.Amount, // Возвращаем полную сумму
 			}
 
-			refundResp, err := s.paymentService.RefundPayment(refundReq)
+			refundResp, err := s.paymentService.RefundPayment(ctx, refundReq)
 			if err != nil {
 				return nil, fmt.Errorf("ошибка возврата денег: %w", err)
 			}
@@ -1102,7 +1156,7 @@ func (s *ServiceImpl) CancelSession(req *models.CancelSessionRequest) (*models.C
 	// Обновляем статус сессии на canceled
 	session.Status = models.SessionStatusCanceled
 	session.StatusUpdatedAt = time.Now()
-	err = s.repo.UpdateSession(session)
+	err = s.repo.UpdateSession(ctx, session)
 	if err != nil {
 		return nil, fmt.Errorf("ошибка обновления статуса сессии: %w", err)
 	}
@@ -1115,16 +1169,16 @@ func (s *ServiceImpl) CancelSession(req *models.CancelSessionRequest) (*models.C
 	}
 
 	// Обновляем статус бокса на free
-	s.washboxService.UpdateWashBoxStatus(*session.BoxID, washboxModels.StatusFree)
+	s.washboxService.UpdateWashBoxStatus(ctx, *session.BoxID, washboxModels.StatusFree)
 
 	// Выключаем все койлы через Modbus при отмене сессии
 	if s.modbusService != nil {
 		logger.Printf("Выключение всех койлов для отмененной сессии - session_id: %s, box_id: %s", session.ID, *session.BoxID)
 
 		// Выключаем свет
-		lightRegister := s.getLightRegisterForBox(*session.BoxID)
+		lightRegister := s.getLightRegisterForBox(ctx, *session.BoxID)
 		if lightRegister != "" {
-			if err := s.modbusService.WriteLightCoil(*session.BoxID, lightRegister, false); err != nil {
+			if err := s.modbusService.WriteLightCoil(ctx, *session.BoxID, lightRegister, false); err != nil {
 				logger.Printf("Ошибка выключения света при отмене сессии - session_id: %s, box_id: %s, error: %v",
 					session.ID, *session.BoxID, err)
 			}
@@ -1134,9 +1188,9 @@ func (s *ServiceImpl) CancelSession(req *models.CancelSessionRequest) (*models.C
 
 		// Выключаем химию (если была включена)
 		if session.WasChemistryOn {
-			chemistryRegister := s.getChemistryRegisterForBox(*session.BoxID)
+			chemistryRegister := s.getChemistryRegisterForBox(ctx, *session.BoxID)
 			if chemistryRegister != "" {
-				if err := s.modbusService.WriteChemistryCoil(*session.BoxID, chemistryRegister, false); err != nil {
+				if err := s.modbusService.WriteChemistryCoil(ctx, *session.BoxID, chemistryRegister, false); err != nil {
 					logger.Printf("Ошибка выключения химии при отмене сессии - session_id: %s, box_id: %s, error: %v",
 						session.ID, *session.BoxID, err)
 				}
@@ -1148,7 +1202,7 @@ func (s *ServiceImpl) CancelSession(req *models.CancelSessionRequest) (*models.C
 
 	// Отправляем уведомление о возврате денег при отмене сессии
 	if s.telegramBot != nil {
-		user, err := s.userService.GetUserByID(session.UserID)
+		user, err := s.userService.GetUserByID(ctx, session.UserID)
 		if err == nil && user != nil {
 			err = s.telegramBot.SendSessionNotification(user.TelegramID, telegram.NotificationTypeSessionExpiredOrCanceled, nil)
 			if err != nil {
@@ -1168,9 +1222,9 @@ func (s *ServiceImpl) CancelSession(req *models.CancelSessionRequest) (*models.C
 }
 
 // CheckAndCompleteExpiredSessions проверяет и завершает истекшие сессии
-func (s *ServiceImpl) CheckAndCompleteExpiredSessions() error {
+func (s *ServiceImpl) CheckAndCompleteExpiredSessions(ctx context.Context) error {
 	// Получаем все активные сессии
-	activeSessions, err := s.repo.GetSessionsByStatus(models.SessionStatusActive)
+	activeSessions, err := s.repo.GetSessionsByStatus(ctx, models.SessionStatusActive)
 	if err != nil {
 		return err
 	}
@@ -1197,7 +1251,7 @@ func (s *ServiceImpl) CheckAndCompleteExpiredSessions() error {
 		// Учитываем время продления, если оно есть
 		totalTime := rentalTime + session.ExtensionTimeMinutes
 
-		cooldownTimeout, err := s.settingsService.GetCooldownTimeout()
+		cooldownTimeout, err := s.settingsService.GetCooldownTimeout(ctx)
 		if err != nil {
 			// Если не удалось получить настройку, используем значение по умолчанию
 			cooldownTimeout = 5
@@ -1213,7 +1267,7 @@ func (s *ServiceImpl) CheckAndCompleteExpiredSessions() error {
 					if err == nil && session.UserID != cashierUserID {
 						// Устанавливаем cooldown для бокса
 						cooldownUntil := now.Add(time.Duration(cooldownTimeout) * time.Minute)
-						err = s.washboxService.SetCooldown(*session.BoxID, session.UserID, cooldownUntil)
+						err = s.washboxService.SetCooldown(ctx, *session.BoxID, session.UserID, cooldownUntil)
 						if err != nil {
 							return err
 						}
@@ -1222,13 +1276,13 @@ func (s *ServiceImpl) CheckAndCompleteExpiredSessions() error {
 						if session.CarNumber != "" {
 							// Устанавливаем cooldown для бокса по госномеру
 							cooldownUntil := now.Add(time.Duration(cooldownTimeout) * time.Minute)
-							err = s.washboxService.SetCooldownByCarNumber(*session.BoxID, session.CarNumber, cooldownUntil)
+							err = s.washboxService.SetCooldownByCarNumber(ctx, *session.BoxID, session.CarNumber, cooldownUntil)
 							if err != nil {
 								return err
 							}
 						} else {
 							// Если госномер не указан, переводим бокс в статус "свободен"
-							err = s.washboxService.UpdateWashBoxStatus(*session.BoxID, washboxModels.StatusFree)
+							err = s.washboxService.UpdateWashBoxStatus(ctx, *session.BoxID, washboxModels.StatusFree)
 							if err != nil {
 								return err
 							}
@@ -1236,7 +1290,7 @@ func (s *ServiceImpl) CheckAndCompleteExpiredSessions() error {
 					}
 				} else {
 					// Если CASHIER_USER_ID не настроен, устанавливаем cooldown для всех
-					cooldownTimeout, err := s.settingsService.GetCooldownTimeout()
+					cooldownTimeout, err := s.settingsService.GetCooldownTimeout(ctx)
 					if err != nil {
 						// Если не удалось получить настройку, используем значение по умолчанию
 						cooldownTimeout = 5
@@ -1244,7 +1298,7 @@ func (s *ServiceImpl) CheckAndCompleteExpiredSessions() error {
 
 					// Устанавливаем cooldown для бокса
 					cooldownUntil := now.Add(time.Duration(cooldownTimeout) * time.Minute)
-					err = s.washboxService.SetCooldown(*session.BoxID, session.UserID, cooldownUntil)
+					err = s.washboxService.SetCooldown(ctx, *session.BoxID, session.UserID, cooldownUntil)
 					if err != nil {
 						return err
 					}
@@ -1256,9 +1310,9 @@ func (s *ServiceImpl) CheckAndCompleteExpiredSessions() error {
 				logger.Printf("Выключение всех койлов для истекшей сессии - session_id: %s, box_id: %s", session.ID, *session.BoxID)
 
 				// Выключаем свет
-				lightRegister := s.getLightRegisterForBox(*session.BoxID)
+				lightRegister := s.getLightRegisterForBox(ctx, *session.BoxID)
 				if lightRegister != "" {
-					if err := s.modbusService.WriteLightCoil(*session.BoxID, lightRegister, false); err != nil {
+					if err := s.modbusService.WriteLightCoil(ctx, *session.BoxID, lightRegister, false); err != nil {
 						logger.Printf("Ошибка выключения света при истечении сессии - session_id: %s, box_id: %s, error: %v",
 							session.ID, *session.BoxID, err)
 					}
@@ -1268,9 +1322,9 @@ func (s *ServiceImpl) CheckAndCompleteExpiredSessions() error {
 
 				// Выключаем химию (если была включена)
 				if session.WasChemistryOn {
-					chemistryRegister := s.getChemistryRegisterForBox(*session.BoxID)
+					chemistryRegister := s.getChemistryRegisterForBox(ctx, *session.BoxID)
 					if chemistryRegister != "" {
-						if err := s.modbusService.WriteChemistryCoil(*session.BoxID, chemistryRegister, false); err != nil {
+						if err := s.modbusService.WriteChemistryCoil(ctx, *session.BoxID, chemistryRegister, false); err != nil {
 							logger.Printf("Ошибка выключения химии при истечении сессии - session_id: %s, box_id: %s, error: %v",
 								session.ID, *session.BoxID, err)
 						}
@@ -1284,14 +1338,14 @@ func (s *ServiceImpl) CheckAndCompleteExpiredSessions() error {
 			session.Status = models.SessionStatusComplete
 			session.StatusUpdatedAt = time.Now()         // Обновляем время изменения статуса
 			session.IsCompletingNotificationSent = false // Сбрасываем флаг, чтобы уведомление могло быть отправлено снова
-			err = s.repo.UpdateSession(&session)
+			err = s.repo.UpdateSession(ctx, &session)
 			if err != nil {
 				return err
 			}
 
 			// Отправляем уведомление о завершении сессии с информацией о кулдауне
 			if s.telegramBot != nil {
-				user, err := s.userService.GetUserByID(session.UserID)
+				user, err := s.userService.GetUserByID(ctx, session.UserID)
 				if err == nil && user != nil {
 					// Определяем, нужно ли показывать информацию о кулдауне в уведомлении
 					var cooldownMinutes *int
@@ -1299,14 +1353,14 @@ func (s *ServiceImpl) CheckAndCompleteExpiredSessions() error {
 						cashierUserID, err := uuid.Parse(s.cashierUserID)
 						if err == nil && session.UserID != cashierUserID {
 							// Это обычный пользователь, получаем время кулдауна для уведомления
-							cooldownTimeout, err := s.settingsService.GetCooldownTimeout()
+							cooldownTimeout, err := s.settingsService.GetCooldownTimeout(ctx)
 							if err == nil {
 								cooldownMinutes = &cooldownTimeout
 							}
 						}
 					} else {
 						// Если CASHIER_USER_ID не настроен, считаем что все сессии имеют кулдаун
-						cooldownTimeout, err := s.settingsService.GetCooldownTimeout()
+						cooldownTimeout, err := s.settingsService.GetCooldownTimeout(ctx)
 						if err == nil {
 							cooldownMinutes = &cooldownTimeout
 						}
@@ -1329,14 +1383,14 @@ func (s *ServiceImpl) CheckAndCompleteExpiredSessions() error {
 }
 
 // ProcessQueue обрабатывает очередь сессий
-func (s *ServiceImpl) ProcessQueue() error {
+func (s *ServiceImpl) ProcessQueue(ctx context.Context) error {
 	// Если сервис боксов не инициализирован, выходим
 	if s.washboxService == nil {
 		return nil
 	}
 
 	// Получаем все сессии со статусом "in_queue" (оплаченные сессии)
-	sessions, err := s.repo.GetSessionsByStatus(models.SessionStatusInQueue)
+	sessions, err := s.repo.GetSessionsByStatus(ctx, models.SessionStatusInQueue)
 	if err != nil {
 		return err
 	}
@@ -1372,7 +1426,7 @@ func (s *ServiceImpl) ProcessQueue() error {
 			case "wash":
 				if session.WithChemistry {
 					// Ищем боксы с химией для мойки с учетом cooldown по госномеру
-					availableBoxes, err = s.washboxService.GetAvailableBoxesByServiceTypeForCashier("wash", session.CarNumber)
+					availableBoxes, err = s.washboxService.GetAvailableBoxesByServiceTypeForCashier(ctx, "wash", session.CarNumber)
 					// Фильтруем только боксы с химией
 					var filteredBoxes []washboxModels.WashBox
 					for _, box := range availableBoxes {
@@ -1383,17 +1437,17 @@ func (s *ServiceImpl) ProcessQueue() error {
 					availableBoxes = filteredBoxes
 				} else {
 					// Ищем любые боксы для мойки с учетом cooldown по госномеру
-					availableBoxes, err = s.washboxService.GetAvailableBoxesByServiceTypeForCashier("wash", session.CarNumber)
+					availableBoxes, err = s.washboxService.GetAvailableBoxesByServiceTypeForCashier(ctx, "wash", session.CarNumber)
 				}
 			case "air_dry":
 				// Химия недоступна для air_dry
-				availableBoxes, err = s.washboxService.GetAvailableBoxesByServiceTypeForCashier("air_dry", session.CarNumber)
+				availableBoxes, err = s.washboxService.GetAvailableBoxesByServiceTypeForCashier(ctx, "air_dry", session.CarNumber)
 			case "vacuum":
 				// Химия недоступна для vacuum
-				availableBoxes, err = s.washboxService.GetAvailableBoxesByServiceTypeForCashier("vacuum", session.CarNumber)
+				availableBoxes, err = s.washboxService.GetAvailableBoxesByServiceTypeForCashier(ctx, "vacuum", session.CarNumber)
 			default:
 				// Для неизвестных типов услуг
-				availableBoxes, err = s.washboxService.GetAvailableBoxesByServiceTypeForCashier(session.ServiceType, session.CarNumber)
+				availableBoxes, err = s.washboxService.GetAvailableBoxesByServiceTypeForCashier(ctx, session.ServiceType, session.CarNumber)
 			}
 		} else {
 			// Для обычных пользователей используем существующую логику
@@ -1401,7 +1455,7 @@ func (s *ServiceImpl) ProcessQueue() error {
 			case "wash":
 				if session.WithChemistry {
 					// Ищем боксы с химией для мойки с учетом cooldown
-					availableBoxes, err = s.washboxService.GetAvailableBoxesByServiceType("wash", session.UserID)
+					availableBoxes, err = s.washboxService.GetAvailableBoxesByServiceType(ctx, "wash", session.UserID)
 					// Фильтруем только боксы с химией
 					var filteredBoxes []washboxModels.WashBox
 					for _, box := range availableBoxes {
@@ -1412,17 +1466,17 @@ func (s *ServiceImpl) ProcessQueue() error {
 					availableBoxes = filteredBoxes
 				} else {
 					// Ищем любые боксы для мойки с учетом cooldown
-					availableBoxes, err = s.washboxService.GetAvailableBoxesByServiceType("wash", session.UserID)
+					availableBoxes, err = s.washboxService.GetAvailableBoxesByServiceType(ctx, "wash", session.UserID)
 				}
 			case "air_dry":
 				// Химия недоступна для air_dry
-				availableBoxes, err = s.washboxService.GetAvailableBoxesByServiceType("air_dry", session.UserID)
+				availableBoxes, err = s.washboxService.GetAvailableBoxesByServiceType(ctx, "air_dry", session.UserID)
 			case "vacuum":
 				// Химия недоступна для vacuum
-				availableBoxes, err = s.washboxService.GetAvailableBoxesByServiceType("vacuum", session.UserID)
+				availableBoxes, err = s.washboxService.GetAvailableBoxesByServiceType(ctx, "vacuum", session.UserID)
 			default:
 				// Для неизвестных типов услуг
-				availableBoxes, err = s.washboxService.GetAvailableBoxesByServiceType(session.ServiceType, session.UserID)
+				availableBoxes, err = s.washboxService.GetAvailableBoxesByServiceType(ctx, session.ServiceType, session.UserID)
 			}
 		}
 
@@ -1439,7 +1493,7 @@ func (s *ServiceImpl) ProcessQueue() error {
 		box := availableBoxes[0]
 
 		// Обновляем статус бокса на "reserved"
-		err = s.washboxService.UpdateWashBoxStatus(box.ID, washboxModels.StatusReserved)
+		err = s.washboxService.UpdateWashBoxStatus(ctx, box.ID, washboxModels.StatusReserved)
 		if err != nil {
 			return err
 		}
@@ -1449,7 +1503,7 @@ func (s *ServiceImpl) ProcessQueue() error {
 		session.BoxNumber = &box.Number
 		session.Status = models.SessionStatusAssigned
 		session.StatusUpdatedAt = time.Now() // Обновляем время изменения статуса
-		err = s.repo.UpdateSession(&session)
+		err = s.repo.UpdateSession(ctx, &session)
 		if err != nil {
 			return err
 		}
@@ -1458,7 +1512,7 @@ func (s *ServiceImpl) ProcessQueue() error {
 		// Если да, то сразу запускаем сессию, пропуская статус assigned
 		if isCashierSession && session.CarNumber != "" {
 			// Для кассирских сессий проверяем кулдаун по госномеру
-			cooldownBoxes, err := s.washboxService.GetCooldownBoxesByCarNumber(session.CarNumber)
+			cooldownBoxes, err := s.washboxService.GetCooldownBoxesByCarNumber(ctx, session.CarNumber)
 			if err == nil {
 				// Проверяем, есть ли среди боксов в кулдауне тот, который мы только что назначили
 				for _, cooldownBox := range cooldownBoxes {
@@ -1467,7 +1521,7 @@ func (s *ServiceImpl) ProcessQueue() error {
 						logger.Printf("ProcessQueue: бокс %s был в кулдауне для госномера %s, запускаем сессию %s автоматически", box.ID, session.CarNumber, session.ID)
 
 						// Запускаем сессию
-						_, err = s.StartSession(&models.StartSessionRequest{
+						_, err = s.StartSession(ctx, &models.StartSessionRequest{
 							SessionID: session.ID,
 						})
 						if err != nil {
@@ -1481,7 +1535,7 @@ func (s *ServiceImpl) ProcessQueue() error {
 			}
 		} else {
 			// Для обычных пользователей проверяем кулдаун по user_id
-			cooldownBoxes, err := s.washboxService.GetCooldownBoxesForUser(session.UserID)
+			cooldownBoxes, err := s.washboxService.GetCooldownBoxesForUser(ctx, session.UserID)
 			if err == nil {
 				// Проверяем, есть ли среди боксов в кулдауне тот, который мы только что назначили
 				for _, cooldownBox := range cooldownBoxes {
@@ -1490,7 +1544,7 @@ func (s *ServiceImpl) ProcessQueue() error {
 						logger.Printf("ProcessQueue: бокс %s был в кулдауне для пользователя %s, запускаем сессию %s автоматически", box.ID, session.UserID, session.ID)
 
 						// Запускаем сессию
-						_, err = s.StartSession(&models.StartSessionRequest{
+						_, err = s.StartSession(ctx, &models.StartSessionRequest{
 							SessionID: session.ID,
 						})
 						if err != nil {
@@ -1507,7 +1561,7 @@ func (s *ServiceImpl) ProcessQueue() error {
 		// Отправляем уведомление о назначении бокса (только если сессия не была автоматически запущена)
 		if session.Status == models.SessionStatusAssigned && s.userService != nil && s.telegramBot != nil {
 			// Получаем пользователя
-			user, err := s.userService.GetUserByID(session.UserID)
+			user, err := s.userService.GetUserByID(ctx, session.UserID)
 			if err == nil {
 				// Отправляем уведомление с номером бокса
 				err = s.telegramBot.SendBoxAssignmentNotification(user.TelegramID, box.Number)
@@ -1524,16 +1578,16 @@ func (s *ServiceImpl) ProcessQueue() error {
 }
 
 // CheckAndExpireReservedSessions проверяет и автоматически запускает сессии, которые не были стартованы в течение 3 минут
-func (s *ServiceImpl) CheckAndExpireReservedSessions() error {
+func (s *ServiceImpl) CheckAndExpireReservedSessions(ctx context.Context) error {
 	// Получаем время ожидания старта мойки из настроек
-	sessionTimeout, err := s.settingsService.GetSessionTimeout()
+	sessionTimeout, err := s.settingsService.GetSessionTimeout(ctx)
 	if err != nil {
 		// Если не удалось получить настройку, используем значение по умолчанию
 		sessionTimeout = 3
 	}
 
 	// Получаем все сессии со статусом "assigned"
-	assignedSessions, err := s.repo.GetSessionsByStatus(models.SessionStatusAssigned)
+	assignedSessions, err := s.repo.GetSessionsByStatus(ctx, models.SessionStatusAssigned)
 	if err != nil {
 		return err
 	}
@@ -1556,7 +1610,7 @@ func (s *ServiceImpl) CheckAndExpireReservedSessions() error {
 			// Если прошло время ожидания, автоматически запускаем сессию
 			if session.BoxID != nil {
 				// Используем существующий метод StartSession для запуска сессии
-				_, err = s.StartSession(&models.StartSessionRequest{
+				_, err = s.StartSession(ctx, &models.StartSessionRequest{
 					SessionID: session.ID,
 				})
 				if err != nil {
@@ -1566,7 +1620,7 @@ func (s *ServiceImpl) CheckAndExpireReservedSessions() error {
 
 				// Отправляем уведомление об автоматическом запуске сессии
 				if s.telegramBot != nil {
-					user, err := s.userService.GetUserByID(session.UserID)
+					user, err := s.userService.GetUserByID(ctx, session.UserID)
 					if err == nil && user != nil {
 						err = s.telegramBot.SendSessionNotification(user.TelegramID, telegram.NotificationTypeSessionAutoStarted, nil)
 						if err != nil {
@@ -1588,21 +1642,21 @@ func (s *ServiceImpl) CheckAndExpireReservedSessions() error {
 }
 
 // CheckAndNotifyExpiringReservedSessions проверяет и отправляет уведомления для сессий, которые скоро истекут
-func (s *ServiceImpl) CheckAndNotifyExpiringReservedSessions() error {
+func (s *ServiceImpl) CheckAndNotifyExpiringReservedSessions(ctx context.Context) error {
 	// Если сервис пользователей или телеграм бот не инициализированы, выходим
 	if s.userService == nil || s.telegramBot == nil {
 		return nil
 	}
 
 	// Получаем время ожидания старта мойки из настроек
-	sessionTimeout, err := s.settingsService.GetSessionTimeout()
+	sessionTimeout, err := s.settingsService.GetSessionTimeout(ctx)
 	if err != nil {
 		// Если не удалось получить настройку, используем значение по умолчанию
 		sessionTimeout = 3
 	}
 
 	// Получаем все сессии со статусом "assigned"
-	assignedSessions, err := s.repo.GetSessionsByStatus(models.SessionStatusAssigned)
+	assignedSessions, err := s.repo.GetSessionsByStatus(ctx, models.SessionStatusAssigned)
 	if err != nil {
 		return err
 	}
@@ -1626,7 +1680,7 @@ func (s *ServiceImpl) CheckAndNotifyExpiringReservedSessions() error {
 			// Если прошло 2 минуты и уведомление еще не отправлено, отправляем его
 			if !session.IsExpiringNotificationSent {
 				// Получаем пользователя
-				user, err := s.userService.GetUserByID(session.UserID)
+				user, err := s.userService.GetUserByID(ctx, session.UserID)
 				if err != nil {
 					continue
 				}
@@ -1638,7 +1692,7 @@ func (s *ServiceImpl) CheckAndNotifyExpiringReservedSessions() error {
 				}
 
 				// Помечаем, что уведомление отправлено
-				err = s.repo.UpdateSessionFields(session.ID, map[string]interface{}{
+				err = s.repo.UpdateSessionFields(ctx, session.ID, map[string]interface{}{
 					"is_expiring_notification_sent": true,
 					"updated_at":                    time.Now(),
 				})
@@ -1654,14 +1708,14 @@ func (s *ServiceImpl) CheckAndNotifyExpiringReservedSessions() error {
 }
 
 // CheckAndNotifyCompletingSessions проверяет и отправляет уведомления для сессий, которые скоро завершатся
-func (s *ServiceImpl) CheckAndNotifyCompletingSessions() error {
+func (s *ServiceImpl) CheckAndNotifyCompletingSessions(ctx context.Context) error {
 	// Если сервис пользователей или телеграм бот не инициализированы, выходим
 	if s.userService == nil || s.telegramBot == nil {
 		return nil
 	}
 
 	// Получаем все сессии со статусом "active"
-	activeSessions, err := s.repo.GetSessionsByStatus(models.SessionStatusActive)
+	activeSessions, err := s.repo.GetSessionsByStatus(ctx, models.SessionStatusActive)
 	if err != nil {
 		return err
 	}
@@ -1692,7 +1746,7 @@ func (s *ServiceImpl) CheckAndNotifyCompletingSessions() error {
 		if now.Sub(startTime) >= time.Duration(totalTime-5)*time.Minute && now.Sub(startTime) < time.Duration(totalTime)*time.Minute {
 			if !session.IsCompletingNotificationSent {
 				// Получаем пользователя
-				user, err := s.userService.GetUserByID(session.UserID)
+				user, err := s.userService.GetUserByID(ctx, session.UserID)
 				if err != nil {
 					continue
 				}
@@ -1704,7 +1758,7 @@ func (s *ServiceImpl) CheckAndNotifyCompletingSessions() error {
 				}
 
 				// Помечаем, что уведомление отправлено
-				err = s.repo.UpdateSessionFields(session.ID, map[string]interface{}{
+				err = s.repo.UpdateSessionFields(ctx, session.ID, map[string]interface{}{
 					"is_completing_notification_sent": true,
 					"updated_at":                      time.Now(),
 				})
@@ -1720,17 +1774,17 @@ func (s *ServiceImpl) CheckAndNotifyCompletingSessions() error {
 }
 
 // CountSessionsByStatus подсчитывает количество сессий с определенным статусом
-func (s *ServiceImpl) CountSessionsByStatus(status string) (int, error) {
-	return s.repo.CountSessionsByStatus(status)
+func (s *ServiceImpl) CountSessionsByStatus(ctx context.Context, status string) (int, error) {
+	return s.repo.CountSessionsByStatus(ctx, status)
 }
 
 // GetSessionsByStatus получает сессии по статусу
-func (s *ServiceImpl) GetSessionsByStatus(status string) ([]models.Session, error) {
-	return s.repo.GetSessionsByStatus(status)
+func (s *ServiceImpl) GetSessionsByStatus(ctx context.Context, status string) ([]models.Session, error) {
+	return s.repo.GetSessionsByStatus(ctx, status)
 }
 
 // GetUserSessionHistory получает историю сессий пользователя
-func (s *ServiceImpl) GetUserSessionHistory(req *models.GetUserSessionHistoryRequest) ([]models.Session, error) {
+func (s *ServiceImpl) GetUserSessionHistory(ctx context.Context, req *models.GetUserSessionHistoryRequest) ([]models.Session, error) {
 	// Устанавливаем значения по умолчанию, если не указаны
 	limit := req.Limit
 	if limit <= 0 {
@@ -1742,7 +1796,7 @@ func (s *ServiceImpl) GetUserSessionHistory(req *models.GetUserSessionHistoryReq
 		offset = 0
 	}
 
-	sessions, err := s.repo.GetUserSessionHistory(req.UserID, limit, offset)
+	sessions, err := s.repo.GetUserSessionHistory(ctx, req.UserID, limit, offset)
 	if err != nil {
 		return nil, err
 	}
@@ -1750,7 +1804,7 @@ func (s *ServiceImpl) GetUserSessionHistory(req *models.GetUserSessionHistoryReq
 	// Заполняем информацию о платежах для каждой сессии
 	for i := range sessions {
 		// Получаем полную информацию о платежах сессии
-		paymentsResp, err := s.paymentService.GetPaymentsBySessionID(sessions[i].ID)
+		paymentsResp, err := s.paymentService.GetPaymentsBySessionID(ctx, sessions[i].ID)
 		if err == nil && paymentsResp != nil {
 			// Основной платеж
 			if paymentsResp.MainPayment != nil {
@@ -1797,7 +1851,7 @@ func (s *ServiceImpl) GetUserSessionHistory(req *models.GetUserSessionHistoryReq
 		}
 
 		// Заполняем session_timeout_minutes из настроек
-		sessionTimeout, err := s.settingsService.GetSessionTimeout()
+		sessionTimeout, err := s.settingsService.GetSessionTimeout(ctx)
 		if err != nil {
 			// Если не удалось получить настройку, используем значение по умолчанию
 			sessionTimeout = 3
@@ -1812,7 +1866,7 @@ func (s *ServiceImpl) GetUserSessionHistory(req *models.GetUserSessionHistoryReq
 				if err == nil && sessions[i].UserID != cashierUserID {
 					// Это обычный пользователь, проверяем реальный активный кулдаун
 					if s.washboxService != nil {
-						box, err := s.washboxService.GetWashBoxByID(*sessions[i].BoxID)
+						box, err := s.washboxService.GetWashBoxByID(ctx, *sessions[i].BoxID)
 						if err == nil && box != nil {
 							// Проверяем, что последний пользователь - это пользователь сессии и кулдаун еще активен
 							if box.LastCompletedSessionUserID != nil &&
@@ -1820,7 +1874,7 @@ func (s *ServiceImpl) GetUserSessionHistory(req *models.GetUserSessionHistoryReq
 								box.CooldownUntil != nil &&
 								box.CooldownUntil.After(time.Now()) {
 								// Получаем время кулдауна из настроек
-								cooldownTimeout, err := s.settingsService.GetCooldownTimeout()
+								cooldownTimeout, err := s.settingsService.GetCooldownTimeout(ctx)
 								if err == nil {
 									sessions[i].CooldownMinutes = &cooldownTimeout
 								}
@@ -1831,7 +1885,7 @@ func (s *ServiceImpl) GetUserSessionHistory(req *models.GetUserSessionHistoryReq
 			} else {
 				// Если CASHIER_USER_ID не настроен, проверяем реальный активный кулдаун для всех
 				if s.washboxService != nil {
-					box, err := s.washboxService.GetWashBoxByID(*sessions[i].BoxID)
+					box, err := s.washboxService.GetWashBoxByID(ctx, *sessions[i].BoxID)
 					if err == nil && box != nil {
 						// Проверяем, что последний пользователь - это пользователь сессии и кулдаун еще активен
 						if box.LastCompletedSessionUserID != nil &&
@@ -1839,7 +1893,7 @@ func (s *ServiceImpl) GetUserSessionHistory(req *models.GetUserSessionHistoryReq
 							box.CooldownUntil != nil &&
 							box.CooldownUntil.After(time.Now()) {
 							// Получаем время кулдауна из настроек
-							cooldownTimeout, err := s.settingsService.GetCooldownTimeout()
+							cooldownTimeout, err := s.settingsService.GetCooldownTimeout(ctx)
 							if err == nil {
 								sessions[i].CooldownMinutes = &cooldownTimeout
 							}
@@ -1854,7 +1908,7 @@ func (s *ServiceImpl) GetUserSessionHistory(req *models.GetUserSessionHistoryReq
 }
 
 // CreateFromCashier создает сессию из запроса кассира
-func (s *ServiceImpl) CreateFromCashier(req *models.CashierPaymentRequest) (*models.Session, error) {
+func (s *ServiceImpl) CreateFromCashier(ctx context.Context, req *models.CashierPaymentRequest) (*models.Session, error) {
 	// Проверяем, что ID кассира настроен
 	if s.cashierUserID == "" {
 		return nil, fmt.Errorf("CASHIER_USER_ID не настроен")
@@ -1870,6 +1924,21 @@ func (s *ServiceImpl) CreateFromCashier(req *models.CashierPaymentRequest) (*mod
 	if req.CarNumber != "" {
 		normalizedCarNumber = utils.NormalizeLicensePlate(req.CarNumber)
 		logger.Printf("Service - CreateFromCashier: госномер нормализован '%s' -> '%s'", req.CarNumber, normalizedCarNumber)
+
+		// Проверяем, нет ли уже активной сессии с этим номером машины
+		existingSession, err := s.repo.GetActiveSessionByCarNumber(ctx, normalizedCarNumber)
+		if err == nil && existingSession != nil {
+			logger.Printf("Service - CreateFromCashier: найдена существующая активная сессия с номером '%s', session_id: %s, status: %s, created_at: %s",
+				normalizedCarNumber, existingSession.ID.String(), existingSession.Status, existingSession.CreatedAt.Format(time.RFC3339))
+
+			// Записываем метрику попытки создания дубликата сессии
+			if s.metrics != nil {
+				s.metrics.RecordMultipleSession("duplicate_car_number", normalizedCarNumber, "0")
+			}
+
+			// Возвращаем существующую сессию вместо создания новой
+			return existingSession, nil
+		}
 	}
 
 	// Валидация химии
@@ -1899,8 +1968,21 @@ func (s *ServiceImpl) CreateFromCashier(req *models.CashierPaymentRequest) (*mod
 	}
 
 	// Сохраняем сессию в базе данных
-	err = s.repo.CreateSession(session)
+	err = s.repo.CreateSession(ctx, session)
 	if err != nil {
+		// Проверяем, не является ли это ошибкой нарушения уникального индекса
+		if strings.Contains(err.Error(), "duplicate key") || strings.Contains(err.Error(), "unique constraint") {
+			logger.Printf("Service - CreateFromCashier: нарушение уникального индекса для номера '%s', ищем существующую сессию", normalizedCarNumber)
+
+			// Если есть номер машины, пытаемся найти существующую сессию
+			if normalizedCarNumber != "" {
+				existingSession, findErr := s.repo.GetActiveSessionByCarNumber(ctx, normalizedCarNumber)
+				if findErr == nil && existingSession != nil {
+					logger.Printf("Service - CreateFromCashier: найдена существующая сессия после ошибки БД, session_id: %s", existingSession.ID.String())
+					return existingSession, nil
+				}
+			}
+		}
 		return nil, err
 	}
 
@@ -1908,7 +1990,7 @@ func (s *ServiceImpl) CreateFromCashier(req *models.CashierPaymentRequest) (*mod
 }
 
 // AdminListSessions список сессий для администратора
-func (s *ServiceImpl) AdminListSessions(req *models.AdminListSessionsRequest) (*models.AdminListSessionsResponse, error) {
+func (s *ServiceImpl) AdminListSessions(ctx context.Context, req *models.AdminListSessionsRequest) (*models.AdminListSessionsResponse, error) {
 	// Устанавливаем значения по умолчанию
 	limit := 50
 	offset := 0
@@ -1921,7 +2003,7 @@ func (s *ServiceImpl) AdminListSessions(req *models.AdminListSessionsRequest) (*
 	}
 
 	// Получаем сессии с фильтрацией
-	sessions, total, err := s.repo.GetSessionsWithFilters(
+	sessions, total, err := s.repo.GetSessionsWithFilters(ctx,
 		req.UserID,
 		req.BoxID,
 		req.BoxNumber,
@@ -1937,7 +2019,7 @@ func (s *ServiceImpl) AdminListSessions(req *models.AdminListSessionsRequest) (*
 	}
 
 	// Заполняем session_timeout_minutes из настроек для каждой сессии
-	sessionTimeout, err := s.settingsService.GetSessionTimeout()
+	sessionTimeout, err := s.settingsService.GetSessionTimeout(ctx)
 	if err != nil {
 		// Если не удалось получить настройку, используем значение по умолчанию
 		sessionTimeout = 3
@@ -1955,15 +2037,15 @@ func (s *ServiceImpl) AdminListSessions(req *models.AdminListSessionsRequest) (*
 }
 
 // AdminGetSession получение информации о сессии для администратора
-func (s *ServiceImpl) AdminGetSession(req *models.AdminGetSessionRequest) (*models.AdminGetSessionResponse, error) {
-	session, err := s.repo.GetSessionByID(req.ID)
+func (s *ServiceImpl) AdminGetSession(ctx context.Context, req *models.AdminGetSessionRequest) (*models.AdminGetSessionResponse, error) {
+	session, err := s.repo.GetSessionByID(ctx, req.ID)
 	if err != nil {
 		return nil, err
 	}
 
 	// Заполняем session_timeout_minutes из настроек
 	if session != nil {
-		sessionTimeout, err := s.settingsService.GetSessionTimeout()
+		sessionTimeout, err := s.settingsService.GetSessionTimeout(ctx)
 		if err != nil {
 			// Если не удалось получить настройку, используем значение по умолчанию
 			sessionTimeout = 3
@@ -1977,9 +2059,9 @@ func (s *ServiceImpl) AdminGetSession(req *models.AdminGetSessionRequest) (*mode
 }
 
 // UpdateSessionStatus обновляет статус сессии
-func (s *ServiceImpl) UpdateSessionStatus(sessionID uuid.UUID, status string) error {
+func (s *ServiceImpl) UpdateSessionStatus(ctx context.Context, sessionID uuid.UUID, status string) error {
 	// Получаем сессию по ID
-	session, err := s.repo.GetSessionByID(sessionID)
+	session, err := s.repo.GetSessionByID(ctx, sessionID)
 	if err != nil {
 		return fmt.Errorf("сессия не найдена: %w", err)
 	}
@@ -1994,7 +2076,7 @@ func (s *ServiceImpl) UpdateSessionStatus(sessionID uuid.UUID, status string) er
 	session.StatusUpdatedAt = time.Now()
 
 	// Сохраняем изменения
-	err = s.repo.UpdateSession(session)
+	err = s.repo.UpdateSession(ctx, session)
 	if err != nil {
 		return fmt.Errorf("ошибка обновления статуса сессии: %w", err)
 	}
@@ -2003,9 +2085,9 @@ func (s *ServiceImpl) UpdateSessionStatus(sessionID uuid.UUID, status string) er
 }
 
 // UpdateSessionExtension обновляет время продления сессии
-func (s *ServiceImpl) UpdateSessionExtension(sessionID uuid.UUID, extensionTimeMinutes int) error {
+func (s *ServiceImpl) UpdateSessionExtension(ctx context.Context, sessionID uuid.UUID, extensionTimeMinutes int) error {
 	// Получаем сессию по ID
-	session, err := s.repo.GetSessionByID(sessionID)
+	session, err := s.repo.GetSessionByID(ctx, sessionID)
 	if err != nil {
 		return fmt.Errorf("сессия не найдена: %w", err)
 	}
@@ -2057,7 +2139,7 @@ func (s *ServiceImpl) UpdateSessionExtension(sessionID uuid.UUID, extensionTimeM
 	}
 
 	// Сохраняем изменения
-	err = s.repo.UpdateSession(session)
+	err = s.repo.UpdateSession(ctx, session)
 	if err != nil {
 		return fmt.Errorf("ошибка обновления времени продления сессии: %w", err)
 	}
@@ -2066,7 +2148,7 @@ func (s *ServiceImpl) UpdateSessionExtension(sessionID uuid.UUID, extensionTimeM
 }
 
 // CashierListSessions возвращает список сессий для кассира с начала смены
-func (s *ServiceImpl) CashierListSessions(req *models.CashierSessionsRequest) (*models.AdminListSessionsResponse, error) {
+func (s *ServiceImpl) CashierListSessions(ctx context.Context, req *models.CashierSessionsRequest) (*models.AdminListSessionsResponse, error) {
 	// Устанавливаем значения по умолчанию для пагинации
 	limit := 50
 	if req.Limit > 0 {
@@ -2078,14 +2160,14 @@ func (s *ServiceImpl) CashierListSessions(req *models.CashierSessionsRequest) (*
 	}
 
 	// Получаем сессии с начала смены
-	sessions, total, err := s.repo.GetSessionsWithFilters(nil, nil, nil, nil, nil, &req.ShiftStartedAt, nil, limit, offset)
+	sessions, total, err := s.repo.GetSessionsWithFilters(ctx, nil, nil, nil, nil, nil, &req.ShiftStartedAt, nil, limit, offset)
 	if err != nil {
 		return nil, err
 	}
 
 	// Загружаем платежи для каждой сессии
 	for i := range sessions {
-		payments, err := s.paymentService.GetPaymentsBySessionID(sessions[i].ID)
+		payments, err := s.paymentService.GetPaymentsBySessionID(ctx, sessions[i].ID)
 		if err != nil {
 			// Логируем ошибку, но продолжаем работу
 			continue
@@ -2133,7 +2215,7 @@ func (s *ServiceImpl) CashierListSessions(req *models.CashierSessionsRequest) (*
 		}
 
 		// Заполняем session_timeout_minutes из настроек
-		sessionTimeout, err := s.settingsService.GetSessionTimeout()
+		sessionTimeout, err := s.settingsService.GetSessionTimeout(ctx)
 		if err != nil {
 			// Если не удалось получить настройку, используем значение по умолчанию
 			sessionTimeout = 3
@@ -2150,7 +2232,7 @@ func (s *ServiceImpl) CashierListSessions(req *models.CashierSessionsRequest) (*
 }
 
 // CashierGetActiveSessions возвращает активные сессии кассира
-func (s *ServiceImpl) CashierGetActiveSessions(req *models.CashierActiveSessionsRequest) (*models.CashierActiveSessionsResponse, error) {
+func (s *ServiceImpl) CashierGetActiveSessions(ctx context.Context, req *models.CashierActiveSessionsRequest) (*models.CashierActiveSessionsResponse, error) {
 	// Устанавливаем значения по умолчанию для пагинации
 	limit := 50
 	if req.Limit > 0 {
@@ -2170,7 +2252,7 @@ func (s *ServiceImpl) CashierGetActiveSessions(req *models.CashierActiveSessions
 	// Получаем активные сессии кассира (не завершенные)
 	// Активные статусы: created, in_queue, assigned, active
 	// Терминальные статусы: complete, canceled, expired, payment_failed
-	sessions, _, err := s.repo.GetSessionsWithFilters(&cashierUserID, nil, nil, nil, nil, nil, nil, limit, offset)
+	sessions, _, err := s.repo.GetSessionsWithFilters(ctx, &cashierUserID, nil, nil, nil, nil, nil, nil, limit, offset)
 	if err != nil {
 		return nil, err
 	}
@@ -2185,7 +2267,7 @@ func (s *ServiceImpl) CashierGetActiveSessions(req *models.CashierActiveSessions
 	}
 
 	// Заполняем session_timeout_minutes из настроек
-	sessionTimeout, err := s.settingsService.GetSessionTimeout()
+	sessionTimeout, err := s.settingsService.GetSessionTimeout(ctx)
 	if err != nil {
 		// Если не удалось получить настройку, используем значение по умолчанию
 		sessionTimeout = 3
@@ -2193,7 +2275,7 @@ func (s *ServiceImpl) CashierGetActiveSessions(req *models.CashierActiveSessions
 
 	// Загружаем платежи для каждой сессии
 	for i := range activeSessions {
-		payments, err := s.paymentService.GetPaymentsBySessionID(activeSessions[i].ID)
+		payments, err := s.paymentService.GetPaymentsBySessionID(ctx, activeSessions[i].ID)
 		if err != nil {
 			// Логируем ошибку, но продолжаем работу
 			continue
@@ -2252,9 +2334,9 @@ func (s *ServiceImpl) CashierGetActiveSessions(req *models.CashierActiveSessions
 }
 
 // CashierStartSession запускает сессию кассиром
-func (s *ServiceImpl) CashierStartSession(req *models.CashierStartSessionRequest) (*models.Session, error) {
+func (s *ServiceImpl) CashierStartSession(ctx context.Context, req *models.CashierStartSessionRequest) (*models.Session, error) {
 	// Получаем сессию
-	session, err := s.repo.GetSessionByID(req.SessionID)
+	session, err := s.repo.GetSessionByID(ctx, req.SessionID)
 	if err != nil {
 		return nil, fmt.Errorf("сессия не найдена: %w", err)
 	}
@@ -2275,15 +2357,15 @@ func (s *ServiceImpl) CashierStartSession(req *models.CashierStartSessionRequest
 	}
 
 	// Запускаем сессию
-	return s.StartSession(&models.StartSessionRequest{
+	return s.StartSession(ctx, &models.StartSessionRequest{
 		SessionID: req.SessionID,
 	})
 }
 
 // CashierCompleteSession завершает сессию кассиром
-func (s *ServiceImpl) CashierCompleteSession(req *models.CashierCompleteSessionRequest) (*models.Session, error) {
+func (s *ServiceImpl) CashierCompleteSession(ctx context.Context, req *models.CashierCompleteSessionRequest) (*models.Session, error) {
 	// Получаем сессию
-	session, err := s.repo.GetSessionByID(req.SessionID)
+	session, err := s.repo.GetSessionByID(ctx, req.SessionID)
 	if err != nil {
 		return nil, fmt.Errorf("сессия не найдена: %w", err)
 	}
@@ -2296,7 +2378,7 @@ func (s *ServiceImpl) CashierCompleteSession(req *models.CashierCompleteSessionR
 	}
 
 	// Завершаем сессию
-	response, err := s.CompleteSession(&models.CompleteSessionRequest{
+	response, err := s.CompleteSession(ctx, &models.CompleteSessionRequest{
 		SessionID: req.SessionID,
 	})
 	if err != nil {
@@ -2307,9 +2389,9 @@ func (s *ServiceImpl) CashierCompleteSession(req *models.CashierCompleteSessionR
 }
 
 // CashierCancelSession отменяет сессию кассиром
-func (s *ServiceImpl) CashierCancelSession(req *models.CashierCancelSessionRequest) (*models.Session, error) {
+func (s *ServiceImpl) CashierCancelSession(ctx context.Context, req *models.CashierCancelSessionRequest) (*models.Session, error) {
 	// Получаем сессию
-	session, err := s.repo.GetSessionByID(req.SessionID)
+	session, err := s.repo.GetSessionByID(ctx, req.SessionID)
 	if err != nil {
 		return nil, fmt.Errorf("сессия не найдена: %w", err)
 	}
@@ -2322,7 +2404,7 @@ func (s *ServiceImpl) CashierCancelSession(req *models.CashierCancelSessionReque
 	}
 
 	// Отменяем сессию
-	response, err := s.CancelSession(&models.CancelSessionRequest{
+	response, err := s.CancelSession(ctx, &models.CancelSessionRequest{
 		SessionID:  req.SessionID,
 		UserID:     session.UserID, // Используем ID владельца сессии
 		SkipRefund: req.SkipRefund, // Передаем признак пропуска возврата
@@ -2335,9 +2417,9 @@ func (s *ServiceImpl) CashierCancelSession(req *models.CashierCancelSessionReque
 }
 
 // EnableChemistry включает химию в сессии
-func (s *ServiceImpl) EnableChemistry(req *models.EnableChemistryRequest) (*models.EnableChemistryResponse, error) {
+func (s *ServiceImpl) EnableChemistry(ctx context.Context, req *models.EnableChemistryRequest) (*models.EnableChemistryResponse, error) {
 	// Получаем сессию
-	session, err := s.repo.GetSessionByID(req.SessionID)
+	session, err := s.repo.GetSessionByID(ctx, req.SessionID)
 	if err != nil {
 		return nil, fmt.Errorf("сессия не найдена: %w", err)
 	}
@@ -2364,7 +2446,7 @@ func (s *ServiceImpl) EnableChemistry(req *models.EnableChemistryRequest) (*mode
 	logger.Printf("EnableChemistry: обновление химии - SessionID=%s", session.ID)
 
 	// Используем Updates для обновления только нужных полей
-	err = s.repo.UpdateSessionFields(session.ID, map[string]interface{}{
+	err = s.repo.UpdateSessionFields(ctx, session.ID, map[string]interface{}{
 		"was_chemistry_on":     true,
 		"chemistry_started_at": now,
 		"updated_at":           now,
@@ -2374,7 +2456,7 @@ func (s *ServiceImpl) EnableChemistry(req *models.EnableChemistryRequest) (*mode
 	}
 
 	// Перечитываем обновленную сессию
-	session, err = s.repo.GetSessionByID(session.ID)
+	session, err = s.repo.GetSessionByID(ctx, session.ID)
 	if err != nil {
 		return nil, fmt.Errorf("ошибка получения обновленной сессии: %w", err)
 	}
@@ -2382,9 +2464,9 @@ func (s *ServiceImpl) EnableChemistry(req *models.EnableChemistryRequest) (*mode
 	// Включаем химию в боксе через Modbus
 	if s.modbusService != nil && session.BoxID != nil {
 		// Получаем регистр химии для бокса
-		chemistryRegister := s.getChemistryRegisterForBox(*session.BoxID)
+		chemistryRegister := s.getChemistryRegisterForBox(ctx, *session.BoxID)
 		if chemistryRegister != "" {
-			err = s.modbusService.WriteChemistryCoil(*session.BoxID, chemistryRegister, true)
+			err = s.modbusService.WriteChemistryCoil(ctx, *session.BoxID, chemistryRegister, true)
 			if err != nil {
 				// Логируем ошибку (HandleModbusError теперь только логирует, не продлевает время)
 				s.modbusService.HandleModbusError(*session.BoxID, "chemistry_on", session.ID, err)
@@ -2399,7 +2481,7 @@ func (s *ServiceImpl) EnableChemistry(req *models.EnableChemistryRequest) (*mode
 
 	// Запускаем автоматическое выключение химии через указанное время
 	if session.ChemistryTimeMinutes > 0 {
-		s.AutoDisableChemistry(session.ID, session.ChemistryTimeMinutes)
+		s.AutoDisableChemistry(ctx, session.ID, session.ChemistryTimeMinutes)
 	}
 
 	return &models.EnableChemistryResponse{
@@ -2408,7 +2490,7 @@ func (s *ServiceImpl) EnableChemistry(req *models.EnableChemistryRequest) (*mode
 }
 
 // AutoDisableChemistry автоматически выключает химию через указанное количество минут
-func (s *ServiceImpl) AutoDisableChemistry(sessionID uuid.UUID, chemistryTimeMinutes int) {
+func (s *ServiceImpl) AutoDisableChemistry(ctx context.Context, sessionID uuid.UUID, chemistryTimeMinutes int) {
 	// Запускаем в отдельной горутине
 	go func() {
 		logger.Printf("AutoDisableChemistry: запланировано автовыключение химии через %d минут, SessionID=%s", chemistryTimeMinutes, sessionID)
@@ -2417,7 +2499,7 @@ func (s *ServiceImpl) AutoDisableChemistry(sessionID uuid.UUID, chemistryTimeMin
 		time.Sleep(time.Duration(chemistryTimeMinutes) * time.Minute)
 
 		// Получаем сессию
-		session, err := s.repo.GetSessionByID(sessionID)
+		session, err := s.repo.GetSessionByID(ctx, sessionID)
 		if err != nil {
 			logger.Printf("AutoDisableChemistry: ошибка получения сессии для автовыключения химии: %v, SessionID=%s", err, sessionID)
 			return
@@ -2428,9 +2510,9 @@ func (s *ServiceImpl) AutoDisableChemistry(sessionID uuid.UUID, chemistryTimeMin
 			// Выключаем химию через Modbus
 			if s.modbusService != nil && session.BoxID != nil {
 				// Получаем регистр химии для бокса
-				chemistryRegister := s.getChemistryRegisterForBox(*session.BoxID)
+				chemistryRegister := s.getChemistryRegisterForBox(ctx, *session.BoxID)
 				if chemistryRegister != "" {
-					err := s.modbusService.WriteChemistryCoil(*session.BoxID, chemistryRegister, false)
+					err := s.modbusService.WriteChemistryCoil(ctx, *session.BoxID, chemistryRegister, false)
 					if err != nil {
 						logger.Printf("AutoDisableChemistry: ошибка автовыключения химии через Modbus: %v, SessionID=%s, BoxID=%s", err, sessionID, *session.BoxID)
 					} else {
@@ -2448,7 +2530,7 @@ func (s *ServiceImpl) AutoDisableChemistry(sessionID uuid.UUID, chemistryTimeMin
 			logger.Printf("AutoDisableChemistry: выключение химии - SessionID=%s", sessionID)
 
 			// Используем Updates для обновления только нужных полей
-			err = s.repo.UpdateSessionFields(sessionID, map[string]interface{}{
+			err = s.repo.UpdateSessionFields(ctx, sessionID, map[string]interface{}{
 				"chemistry_ended_at": now,
 				"updated_at":         now,
 			})
@@ -2464,8 +2546,8 @@ func (s *ServiceImpl) AutoDisableChemistry(sessionID uuid.UUID, chemistryTimeMin
 }
 
 // GetChemistryStats получает статистику использования химии
-func (s *ServiceImpl) GetChemistryStats(req *models.GetChemistryStatsRequest) (*models.GetChemistryStatsResponse, error) {
-	stats, err := s.repo.GetChemistryStats(req.DateFrom, req.DateTo)
+func (s *ServiceImpl) GetChemistryStats(ctx context.Context, req *models.GetChemistryStatsRequest) (*models.GetChemistryStatsResponse, error) {
+	stats, err := s.repo.GetChemistryStats(ctx, req.DateFrom, req.DateTo)
 	if err != nil {
 		return nil, fmt.Errorf("ошибка при получении статистики химии: %w", err)
 	}
@@ -2476,11 +2558,11 @@ func (s *ServiceImpl) GetChemistryStats(req *models.GetChemistryStatsRequest) (*
 }
 
 // ReassignSession переназначает сессию на другой бокс
-func (s *ServiceImpl) ReassignSession(req *models.ReassignSessionRequest) (*models.ReassignSessionResponse, error) {
+func (s *ServiceImpl) ReassignSession(ctx context.Context, req *models.ReassignSessionRequest) (*models.ReassignSessionResponse, error) {
 	logger.Printf("ReassignSession: начало переназначения сессии, SessionID=%s", req.SessionID)
 
 	// Получаем сессию по ID
-	session, err := s.repo.GetSessionByID(req.SessionID)
+	session, err := s.repo.GetSessionByID(ctx, req.SessionID)
 	if err != nil {
 		logger.Printf("ReassignSession: ошибка получения сессии, SessionID=%s, error=%v", req.SessionID, err)
 		return nil, fmt.Errorf("не удалось найти сессию: %w", err)
@@ -2502,7 +2584,7 @@ func (s *ServiceImpl) ReassignSession(req *models.ReassignSessionRequest) (*mode
 
 		// Переводим бокс в статус maintenance
 		if s.washboxService != nil {
-			err = s.washboxService.UpdateWashBoxStatus(*session.BoxID, washboxModels.StatusMaintenance)
+			err = s.washboxService.UpdateWashBoxStatus(ctx, *session.BoxID, washboxModels.StatusMaintenance)
 			if err != nil {
 				logger.Printf("ReassignSession: ошибка перевода бокса в maintenance, SessionID=%s, BoxID=%s, error=%v", req.SessionID, *session.BoxID, err)
 				return nil, fmt.Errorf("не удалось перевести бокс в статус обслуживания: %w", err)
@@ -2514,9 +2596,9 @@ func (s *ServiceImpl) ReassignSession(req *models.ReassignSessionRequest) (*mode
 			logger.Printf("ReassignSession: выключение оборудования, SessionID=%s, BoxID=%s", req.SessionID, *session.BoxID)
 
 			// Выключаем свет
-			lightRegister := s.getLightRegisterForBox(*session.BoxID)
+			lightRegister := s.getLightRegisterForBox(ctx, *session.BoxID)
 			if lightRegister != "" {
-				if err := s.modbusService.WriteLightCoil(*session.BoxID, lightRegister, false); err != nil {
+				if err := s.modbusService.WriteLightCoil(ctx, *session.BoxID, lightRegister, false); err != nil {
 					logger.Printf("ReassignSession: ошибка выключения света, SessionID=%s, BoxID=%s, error=%v", req.SessionID, *session.BoxID, err)
 					// Не прерываем выполнение, логируем ошибку
 				}
@@ -2526,9 +2608,9 @@ func (s *ServiceImpl) ReassignSession(req *models.ReassignSessionRequest) (*mode
 
 			// Выключаем химию (если была включена)
 			if session.WasChemistryOn {
-				chemistryRegister := s.getChemistryRegisterForBox(*session.BoxID)
+				chemistryRegister := s.getChemistryRegisterForBox(ctx, *session.BoxID)
 				if chemistryRegister != "" {
-					if err := s.modbusService.WriteChemistryCoil(*session.BoxID, chemistryRegister, false); err != nil {
+					if err := s.modbusService.WriteChemistryCoil(ctx, *session.BoxID, chemistryRegister, false); err != nil {
 						logger.Printf("ReassignSession: ошибка выключения химии, SessionID=%s, BoxID=%s, error=%v", req.SessionID, *session.BoxID, err)
 						// Не прерываем выполнение, логируем ошибку
 					}
@@ -2554,7 +2636,7 @@ func (s *ServiceImpl) ReassignSession(req *models.ReassignSessionRequest) (*mode
 	session.StatusUpdatedAt = time.Now() // Сбрасываем таймер
 
 	// Обновляем сессию в БД
-	err = s.repo.UpdateSession(session)
+	err = s.repo.UpdateSession(ctx, session)
 	if err != nil {
 		logger.Printf("ReassignSession: ошибка обновления сессии, SessionID=%s, error=%v", req.SessionID, err)
 		return nil, fmt.Errorf("не удалось обновить сессию: %w", err)
@@ -2565,7 +2647,7 @@ func (s *ServiceImpl) ReassignSession(req *models.ReassignSessionRequest) (*mode
 	// Запускаем обработку очереди для назначения на новый бокс
 	if s.washboxService != nil {
 		go func() {
-			err := s.ProcessQueue()
+			err := s.ProcessQueue(ctx)
 			if err != nil {
 				logger.Printf("ReassignSession: ошибка обработки очереди после переназначения, SessionID=%s, error=%v", req.SessionID, err)
 			}
@@ -2582,14 +2664,14 @@ func (s *ServiceImpl) ReassignSession(req *models.ReassignSessionRequest) (*mode
 }
 
 // CheckAndAutoEnableChemistry проверяет и автоматически включает химию для сессий, где время подходит к концу
-func (s *ServiceImpl) CheckAndAutoEnableChemistry() error {
+func (s *ServiceImpl) CheckAndAutoEnableChemistry(ctx context.Context) error {
 	// Если сервис пользователей или телеграм бот не инициализированы, выходим
 	if s.userService == nil || s.telegramBot == nil {
 		return nil
 	}
 
 	// Получаем все сессии со статусом "active"
-	activeSessions, err := s.repo.GetSessionsByStatus(models.SessionStatusActive)
+	activeSessions, err := s.repo.GetSessionsByStatus(ctx, models.SessionStatusActive)
 	if err != nil {
 		return err
 	}
@@ -2647,14 +2729,14 @@ func (s *ServiceImpl) CheckAndAutoEnableChemistry() error {
 				SessionID: session.ID,
 			}
 
-			_, err := s.EnableChemistry(enableReq)
+			_, err := s.EnableChemistry(ctx, enableReq)
 			if err != nil {
 				logger.Printf("CheckAndAutoEnableChemistry: ошибка автоматического включения химии - SessionID=%s, error=%v", session.ID, err)
 				continue
 			}
 
 			// Отправляем уведомление пользователю
-			user, err := s.userService.GetUserByID(session.UserID)
+			user, err := s.userService.GetUserByID(ctx, session.UserID)
 			if err != nil {
 				logger.Printf("CheckAndAutoEnableChemistry: ошибка получения пользователя для уведомления - UserID=%s, error=%v", session.UserID, err)
 				continue
@@ -2676,12 +2758,12 @@ func (s *ServiceImpl) CheckAndAutoEnableChemistry() error {
 }
 
 // getLightRegisterForBox получает регистр света для бокса
-func (s *ServiceImpl) getLightRegisterForBox(boxID uuid.UUID) string {
+func (s *ServiceImpl) getLightRegisterForBox(ctx context.Context, boxID uuid.UUID) string {
 	if s.washboxService == nil {
 		return ""
 	}
 
-	box, err := s.washboxService.GetWashBoxByID(boxID)
+	box, err := s.washboxService.GetWashBoxByID(ctx, boxID)
 	if err != nil {
 		logger.Printf("getLightRegisterForBox: ошибка получения бокса %s: %v", boxID, err)
 		return ""
@@ -2695,12 +2777,12 @@ func (s *ServiceImpl) getLightRegisterForBox(boxID uuid.UUID) string {
 }
 
 // getChemistryRegisterForBox получает регистр химии для бокса
-func (s *ServiceImpl) getChemistryRegisterForBox(boxID uuid.UUID) string {
+func (s *ServiceImpl) getChemistryRegisterForBox(ctx context.Context, boxID uuid.UUID) string {
 	if s.washboxService == nil {
 		return ""
 	}
 
-	box, err := s.washboxService.GetWashBoxByID(boxID)
+	box, err := s.washboxService.GetWashBoxByID(ctx, boxID)
 	if err != nil {
 		logger.Printf("getChemistryRegisterForBox: ошибка получения бокса %s: %v", boxID, err)
 		return ""
@@ -2714,10 +2796,10 @@ func (s *ServiceImpl) getChemistryRegisterForBox(boxID uuid.UUID) string {
 }
 
 // GetActiveSessionByCarNumber получает активную сессию по номеру автомобиля
-func (s *ServiceImpl) GetActiveSessionByCarNumber(carNumber string) (*models.Session, error) {
+func (s *ServiceImpl) GetActiveSessionByCarNumber(ctx context.Context, carNumber string) (*models.Session, error) {
 	logger.Printf("Service - GetActiveSessionByCarNumber: поиск активной сессии по номеру %s", carNumber)
 
-	session, err := s.repo.GetActiveSessionByCarNumber(carNumber)
+	session, err := s.repo.GetActiveSessionByCarNumber(ctx, carNumber)
 	if err != nil {
 		logger.Printf("Service - GetActiveSessionByCarNumber: активная сессия с номером %s не найдена: %v", carNumber, err)
 		return nil, err

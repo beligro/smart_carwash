@@ -2,6 +2,7 @@ package telegram
 
 import (
 	"carwash_backend/internal/logger"
+	"context"
 	"fmt"
 	"strings"
 
@@ -138,8 +139,9 @@ func (b *Bot) handleMessage(message *tgbotapi.Message) {
 
 // handleStartCommand обрабатывает команду /start
 func (b *Bot) handleStartCommand(message *tgbotapi.Message) {
+	ctx := context.Background()
 	// Создаем пользователя
-	_, err := b.service.CreateUser(&models.CreateUserRequest{
+	_, err := b.service.CreateUser(ctx, &models.CreateUserRequest{
 		TelegramID: message.From.ID,
 		Username:   message.From.UserName,
 		FirstName:  message.From.FirstName,

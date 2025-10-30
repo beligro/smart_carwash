@@ -31,7 +31,7 @@ func (h *Handler) RegisterRoutes(router *gin.RouterGroup) {
 		userRoutes.POST("", h.createUser)
 		userRoutes.GET("/by-telegram-id", h.getUserByTelegramID) // telegram_id в query параметре
 		userRoutes.PUT("/car-number", h.updateCarNumber)         // Обновление номера машины
-		userRoutes.PUT("/email", h.updateEmail)                   // Обновление email
+		userRoutes.PUT("/email", h.updateEmail)                  // Обновление email
 	}
 
 	// Административные маршруты
@@ -61,7 +61,7 @@ func (h *Handler) getUserByTelegramID(c *gin.Context) {
 	}
 
 	// Получаем пользователя по telegram_id
-	user, err := h.service.GetUserByTelegramID(telegramID)
+	user, err := h.service.GetUserByTelegramID(c.Request.Context(), telegramID)
 	if err != nil {
 		logger.WithContext(c).Errorf("API Error - getUserByTelegramID: пользователь не найден для telegram_id: %d, error: %v", telegramID, err)
 		c.JSON(http.StatusNotFound, gin.H{"error": "Пользователь не найден. Возможно, вы не зарегистрированы в боте. Пожалуйста, нажмите /start в боте."})
@@ -84,7 +84,7 @@ func (h *Handler) createUser(c *gin.Context) {
 	}
 
 	// Создаем пользователя
-	user, err := h.service.CreateUser(&req)
+	user, err := h.service.CreateUser(c.Request.Context(), &req)
 	if err != nil {
 		logger.WithContext(c).Errorf("API Error - createUser: ошибка создания пользователя, telegram_id: %d, error: %v", req.TelegramID, err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
@@ -113,7 +113,7 @@ func (h *Handler) updateCarNumber(c *gin.Context) {
 	})
 
 	// Обновляем номер машины
-	resp, err := h.service.UpdateCarNumber(&req)
+	resp, err := h.service.UpdateCarNumber(c.Request.Context(), &req)
 	if err != nil {
 		logger.WithContext(c).Errorf("API Error - updateCarNumber: ошибка обновления номера машины, user_id: %s, car_number: %s, error: %v", req.UserID.String(), req.CarNumber, err)
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
@@ -142,7 +142,7 @@ func (h *Handler) updateEmail(c *gin.Context) {
 	})
 
 	// Обновляем email
-	resp, err := h.service.UpdateEmail(&req)
+	resp, err := h.service.UpdateEmail(c.Request.Context(), &req)
 	if err != nil {
 		logger.WithContext(c).Errorf("API Error - updateEmail: ошибка обновления email, user_id: %s, email: %s, error: %v", req.UserID.String(), req.Email, err)
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
@@ -173,7 +173,7 @@ func (h *Handler) adminListUsers(c *gin.Context) {
 	}
 
 	// Получаем список пользователей
-	resp, err := h.service.AdminListUsers(&req)
+	resp, err := h.service.AdminListUsers(c.Request.Context(), &req)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
@@ -209,7 +209,7 @@ func (h *Handler) adminGetUser(c *gin.Context) {
 	req.ID = id
 
 	// Получаем пользователя
-	resp, err := h.service.AdminGetUser(&req)
+	resp, err := h.service.AdminGetUser(c.Request.Context(), &req)
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
 		return

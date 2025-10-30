@@ -95,7 +95,7 @@ func (h *Handler) loginCashier(c *gin.Context) {
 	}
 
 	// Авторизуем кассира
-	resp, err := h.service.LoginCashier(req.Username, req.Password)
+	resp, err := h.service.LoginCashier(c.Request.Context(), req.Username, req.Password)
 	if err != nil {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": err.Error()})
 		return
@@ -112,7 +112,7 @@ func (h *Handler) logout(c *gin.Context) {
 	token = strings.TrimPrefix(token, "Bearer ")
 
 	// Выходим из системы
-	if err := h.service.Logout(token); err != nil {
+	if err := h.service.Logout(c.Request.Context(), token); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
@@ -131,7 +131,7 @@ func (h *Handler) createCashier(c *gin.Context) {
 	}
 
 	// Создаем кассира
-	resp, err := h.service.CreateCashier(&req)
+	resp, err := h.service.CreateCashier(c.Request.Context(), &req)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
@@ -144,7 +144,7 @@ func (h *Handler) createCashier(c *gin.Context) {
 // getCashiers обработчик для получения списка кассиров
 func (h *Handler) getCashiers(c *gin.Context) {
 	// Получаем список кассиров
-	resp, err := h.service.GetCashiers()
+	resp, err := h.service.GetCashiers(c.Request.Context())
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
@@ -170,7 +170,7 @@ func (h *Handler) getCashierByID(c *gin.Context) {
 	}
 
 	// Получаем кассира по ID
-	cashier, err := h.service.GetCashierByID(id)
+	cashier, err := h.service.GetCashierByID(c.Request.Context(), id)
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
 		return
@@ -197,7 +197,7 @@ func (h *Handler) updateCashier(c *gin.Context) {
 	}
 
 	// Обновляем кассира
-	resp, err := h.service.UpdateCashier(&req)
+	resp, err := h.service.UpdateCashier(c.Request.Context(), &req)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
@@ -224,7 +224,7 @@ func (h *Handler) deleteCashier(c *gin.Context) {
 	}
 
 	// Удаляем кассира
-	if err := h.service.DeleteCashier(req.ID); err != nil {
+	if err := h.service.DeleteCashier(c.Request.Context(), req.ID); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
@@ -252,7 +252,7 @@ func (h *Handler) authMiddleware() gin.HandlerFunc {
 		token = strings.TrimPrefix(token, "Bearer ")
 
 		// Проверяем токен
-		claims, err := h.service.ValidateToken(token)
+		claims, err := h.service.ValidateToken(c.Request.Context(), token)
 		if err != nil {
 			c.JSON(http.StatusUnauthorized, gin.H{"error": err.Error()})
 			c.Abort()
@@ -304,7 +304,7 @@ func (h *Handler) cleanerMiddleware() gin.HandlerFunc {
 		token = strings.TrimPrefix(token, "Bearer ")
 
 		// Проверяем токен уборщика
-		claims, err := h.service.ValidateCleanerToken(token)
+		claims, err := h.service.ValidateCleanerToken(c.Request.Context(), token)
 		if err != nil {
 			c.JSON(http.StatusUnauthorized, gin.H{"error": err.Error()})
 			c.Abort()
@@ -340,7 +340,7 @@ func (h *Handler) startShift(c *gin.Context) {
 	}
 
 	// Начинаем смену
-	resp, err := h.service.StartShift(req)
+	resp, err := h.service.StartShift(c.Request.Context(), req)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
@@ -371,7 +371,7 @@ func (h *Handler) endShift(c *gin.Context) {
 	}
 
 	// Завершаем смену
-	resp, err := h.service.EndShift(req)
+	resp, err := h.service.EndShift(c.Request.Context(), req)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
@@ -397,7 +397,7 @@ func (h *Handler) getShiftStatus(c *gin.Context) {
 	}
 
 	// Получаем статус смены
-	resp, err := h.service.GetShiftStatus(cashierID.(uuid.UUID))
+	resp, err := h.service.GetShiftStatus(c.Request.Context(), cashierID.(uuid.UUID))
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
@@ -427,7 +427,7 @@ func (h *Handler) cashierMiddleware() gin.HandlerFunc {
 		}
 
 		// Проверяем токен
-		claims, err := h.service.ValidateToken(token)
+		claims, err := h.service.ValidateToken(c.Request.Context(), token)
 		if err != nil {
 			c.JSON(http.StatusUnauthorized, gin.H{"error": "Недействительный токен"})
 			c.Abort()
@@ -458,7 +458,7 @@ func (h *Handler) loginCleaner(c *gin.Context) {
 	}
 
 	// Авторизуем уборщика
-	resp, err := h.service.LoginCleaner(req.Username, req.Password)
+	resp, err := h.service.LoginCleaner(c.Request.Context(), req.Username, req.Password)
 	if err != nil {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": err.Error()})
 		return
@@ -479,7 +479,7 @@ func (h *Handler) createCleaner(c *gin.Context) {
 	}
 
 	// Создаем уборщика
-	resp, err := h.service.CreateCleaner(&req)
+	resp, err := h.service.CreateCleaner(c.Request.Context(), &req)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
@@ -492,7 +492,7 @@ func (h *Handler) createCleaner(c *gin.Context) {
 // getCleaners обработчик для получения списка уборщиков
 func (h *Handler) getCleaners(c *gin.Context) {
 	// Получаем список уборщиков
-	resp, err := h.service.GetCleaners()
+	resp, err := h.service.GetCleaners(c.Request.Context())
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
@@ -519,7 +519,7 @@ func (h *Handler) getCleanerByID(c *gin.Context) {
 	}
 
 	// Получаем уборщика
-	cleaner, err := h.service.GetCleanerByID(id)
+	cleaner, err := h.service.GetCleanerByID(c.Request.Context(), id)
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
 		return
@@ -540,7 +540,7 @@ func (h *Handler) updateCleaner(c *gin.Context) {
 	}
 
 	// Обновляем уборщика
-	resp, err := h.service.UpdateCleaner(&req)
+	resp, err := h.service.UpdateCleaner(c.Request.Context(), &req)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
@@ -561,7 +561,7 @@ func (h *Handler) deleteCleaner(c *gin.Context) {
 	}
 
 	// Удаляем уборщика
-	err := h.service.DeleteCleaner(req.ID)
+	err := h.service.DeleteCleaner(c.Request.Context(), req.ID)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return

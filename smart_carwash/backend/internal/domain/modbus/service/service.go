@@ -1,8 +1,9 @@
 package service
 
 import (
-	"fmt"
 	"carwash_backend/internal/logger"
+	"context"
+	"fmt"
 	"time"
 
 	"github.com/google/uuid"
@@ -31,19 +32,19 @@ func NewModbusService(db *gorm.DB, config *config.Config) *ModbusService {
 }
 
 // TestCoil тестирует запись в конкретный регистр через HTTP клиент
-func (s *ModbusService) TestCoil(boxID uuid.UUID, register string, value bool) (*models.TestModbusCoilResponse, error) {
+func (s *ModbusService) TestCoil(ctx context.Context, boxID uuid.UUID, register string, value bool) (*models.TestModbusCoilResponse, error) {
 	logger.Printf("Тест записи coil через HTTP клиент - box_id: %s, register: %s, value: %v", boxID, register, value)
 
 	// Проверяем, что бокс существует
-	box, err := s.repository.GetWashBoxByID(boxID)
+	box, err := s.repository.GetWashBoxByID(ctx, boxID)
 	if err != nil {
 		logger.Printf("Бокс не найден для теста coil - box_id: %s, error: %v", boxID, err)
 		return nil, fmt.Errorf("не удалось найти бокс: %v", err)
 	}
 
 	// Используем HTTP клиент для тестирования
-	resp, err := s.httpClient.TestCoil(boxID, register, value)
-	
+	resp, err := s.httpClient.TestCoil(ctx, boxID, register, value)
+
 	// Определяем тип операции по регистру
 	operation := "test_coil"
 	coilType := ""
@@ -54,7 +55,7 @@ func (s *ModbusService) TestCoil(boxID uuid.UUID, register string, value bool) (
 		operation = "test_chemistry"
 		coilType = "chemistry"
 	}
-	
+
 	// Сохраняем операцию в БД
 	modbusOp := &models.ModbusOperation{
 		ID:        uuid.New(),
@@ -65,34 +66,34 @@ func (s *ModbusService) TestCoil(boxID uuid.UUID, register string, value bool) (
 		Success:   err == nil && resp != nil && resp.Success,
 		CreatedAt: time.Now(),
 	}
-	
+
 	if err != nil {
 		modbusOp.Error = err.Error()
 		logger.Printf("Ошибка HTTP клиента для теста coil - box_id: %s, error: %v", boxID, err)
-		
+
 		// Сохраняем операцию с ошибкой
-		if saveErr := s.repository.SaveModbusOperation(modbusOp); saveErr != nil {
+		if saveErr := s.repository.SaveModbusOperation(ctx, modbusOp); saveErr != nil {
 			logger.Printf("Ошибка сохранения операции TestCoil - box_id: %s, error: %v", boxID, saveErr)
 		}
-		
+
 		return &models.TestModbusCoilResponse{
 			Success: false,
 			Message: fmt.Sprintf("Ошибка HTTP клиента: %v", err),
 		}, nil
 	}
-	
+
 	if !resp.Success {
 		modbusOp.Error = resp.Message
 	}
-	
+
 	// Сохраняем операцию
-	if saveErr := s.repository.SaveModbusOperation(modbusOp); saveErr != nil {
+	if saveErr := s.repository.SaveModbusOperation(ctx, modbusOp); saveErr != nil {
 		logger.Printf("Ошибка сохранения операции TestCoil - box_id: %s, error: %v", boxID, saveErr)
 	}
-	
+
 	// Если операция успешна и это известный койл, обновляем его статус
 	if resp.Success && coilType != "" {
-		if updateErr := s.repository.UpdateModbusCoilStatus(boxID, coilType, value); updateErr != nil {
+		if updateErr := s.repository.UpdateModbusCoilStatus(ctx, boxID, coilType, value); updateErr != nil {
 			logger.Printf("Ошибка обновления статуса койла при тесте - box_id: %s, coil_type: %s, error: %v", boxID, coilType, updateErr)
 		}
 	}
@@ -105,18 +106,18 @@ func (s *ModbusService) TestCoil(boxID uuid.UUID, register string, value bool) (
 }
 
 // GetStatus получает статус Modbus устройства для бокса из БД
-func (s *ModbusService) GetStatus(boxID uuid.UUID) (*models.GetModbusStatusResponse, error) {
+func (s *ModbusService) GetStatus(ctx context.Context, boxID uuid.UUID) (*models.GetModbusStatusResponse, error) {
 	logger.Printf("Получение статуса Modbus из БД - box_id: %s", boxID)
 
 	// Получаем информацию о боксе
-	_, err := s.repository.GetWashBoxByID(boxID)
+	_, err := s.repository.GetWashBoxByID(ctx, boxID)
 	if err != nil {
 		logger.Printf("Ошибка поиска бокса для статуса - box_id: %s, error: %v", boxID, err)
 		return nil, fmt.Errorf("не удалось найти бокс: %v", err)
 	}
 
 	// Получаем статус подключения из БД
-	connectionStatus, err := s.repository.GetModbusConnectionStatus(boxID)
+	connectionStatus, err := s.repository.GetModbusConnectionStatus(ctx, boxID)
 	if err != nil && err != gorm.ErrRecordNotFound {
 		logger.Printf("Ошибка получения статуса подключения - box_id: %s, error: %v", boxID, err)
 		return nil, fmt.Errorf("ошибка получения статуса подключения: %v", err)
@@ -145,7 +146,7 @@ func (s *ModbusService) GetStatus(boxID uuid.UUID) (*models.GetModbusStatusRespo
 }
 
 // GetDashboard получает данные для дашборда мониторинга из БД
-func (s *ModbusService) GetDashboard(timeRange string) (*models.GetModbusDashboardResponse, error) {
+func (s *ModbusService) GetDashboard(ctx context.Context, timeRange string) (*models.GetModbusDashboardResponse, error) {
 	logger.Printf("Получение данных дашборда Modbus из БД - time_range: %s", timeRange)
 
 	// Определяем временной диапазон
@@ -164,14 +165,14 @@ func (s *ModbusService) GetDashboard(timeRange string) (*models.GetModbusDashboa
 	}
 
 	// Получаем боксы с настроенным modbus
-	boxes, err := s.repository.GetActiveBoxesWithModbusConfig()
+	boxes, err := s.repository.GetActiveBoxesWithModbusConfig(ctx)
 	if err != nil {
 		logger.Printf("Ошибка получения боксов для дашборда: %v", err)
 		return nil, fmt.Errorf("ошибка получения боксов: %v", err)
 	}
 
 	// Получаем статусы подключений
-	connectionStatuses, err := s.repository.GetAllModbusConnectionStatuses()
+	connectionStatuses, err := s.repository.GetAllModbusConnectionStatuses(ctx)
 	if err != nil {
 		logger.Printf("Ошибка получения статусов подключений: %v", err)
 		return nil, fmt.Errorf("ошибка получения статусов подключений: %v", err)
@@ -204,7 +205,7 @@ func (s *ModbusService) GetDashboard(timeRange string) (*models.GetModbusDashboa
 			boxStatus.LastError = status.LastError
 			boxStatus.LightStatus = status.LightStatus
 			boxStatus.ChemistryStatus = status.ChemistryStatus
-			
+
 			// Бокс считается подключенным, если у него включен свет
 			if status.LightStatus != nil && *status.LightStatus {
 				overview.ConnectedBoxes++
@@ -221,7 +222,7 @@ func (s *ModbusService) GetDashboard(timeRange string) (*models.GetModbusDashboa
 	}
 
 	// Получаем общую статистику операций
-	totalStats, err := s.repository.GetModbusStats(nil, since)
+	totalStats, err := s.repository.GetModbusStats(ctx, nil, since)
 	if err == nil {
 		overview.OperationsLast24h = totalStats.TotalOperations
 		if totalStats.TotalOperations > 0 {
@@ -230,14 +231,14 @@ func (s *ModbusService) GetDashboard(timeRange string) (*models.GetModbusDashboa
 	}
 
 	// Получаем последние операции
-	recentOperations, err := s.repository.GetModbusOperations(nil, 20, 0)
+	recentOperations, err := s.repository.GetModbusOperations(ctx, nil, 20, 0)
 	if err != nil {
 		logger.Printf("Ошибка получения последних операций: %v", err)
 		recentOperations = []models.ModbusOperation{}
 	}
 
 	// Получаем статистику ошибок
-	errorStats, err := s.repository.GetModbusErrorsByType(nil, since)
+	errorStats, err := s.repository.GetModbusErrorsByType(ctx, nil, since)
 	if err != nil {
 		logger.Printf("Ошибка получения статистики ошибок: %v", err)
 		errorStats = make(map[string]int64)
@@ -259,7 +260,7 @@ func (s *ModbusService) GetDashboard(timeRange string) (*models.GetModbusDashboa
 }
 
 // GetHistory получает историю операций Modbus из БД
-func (s *ModbusService) GetHistory(req *models.GetModbusHistoryRequest) (*models.GetModbusHistoryResponse, error) {
+func (s *ModbusService) GetHistory(ctx context.Context, req *models.GetModbusHistoryRequest) (*models.GetModbusHistoryResponse, error) {
 	logger.Printf("Получение истории Modbus из БД - box_id: %v, limit: %d, offset: %d",
 		req.BoxID, req.Limit, req.Offset)
 
@@ -272,14 +273,14 @@ func (s *ModbusService) GetHistory(req *models.GetModbusHistoryRequest) (*models
 	}
 
 	// Получаем операции из БД
-	operations, err := s.repository.GetModbusOperations(req.BoxID, req.Limit, req.Offset)
+	operations, err := s.repository.GetModbusOperations(ctx, req.BoxID, req.Limit, req.Offset)
 	if err != nil {
 		logger.Printf("Ошибка получения истории операций: %v", err)
 		return nil, fmt.Errorf("ошибка получения истории операций: %v", err)
 	}
 
 	// Получаем общее количество операций для пагинации
-	totalCount, err := s.repository.GetModbusOperationsCount(req.BoxID)
+	totalCount, err := s.repository.GetModbusOperationsCount(ctx, req.BoxID)
 	if err != nil {
 		logger.Printf("Ошибка получения общего количества операций: %v", err)
 		// Используем количество полученных операций как fallback
@@ -297,7 +298,7 @@ func (s *ModbusService) GetHistory(req *models.GetModbusHistoryRequest) (*models
 		}
 		filteredOperations = filtered
 	}
-	
+
 	if req.Success != nil {
 		var filtered []models.ModbusOperation
 		for _, op := range filteredOperations {

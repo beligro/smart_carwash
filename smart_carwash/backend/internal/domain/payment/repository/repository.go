@@ -2,8 +2,9 @@ package repository
 
 import (
 	"carwash_backend/internal/domain/payment/models"
-	"fmt"
 	"carwash_backend/internal/logger"
+	"context"
+	"fmt"
 	"sort"
 	"time"
 
@@ -13,17 +14,17 @@ import (
 
 // Repository интерфейс для работы с платежами
 type Repository interface {
-	CreatePayment(payment *models.Payment) error
-	GetPaymentByID(id uuid.UUID) (*models.Payment, error)
-	GetPaymentBySessionID(sessionID uuid.UUID) (*models.Payment, error)
-	GetLastPaymentBySessionID(sessionID uuid.UUID) (*models.Payment, error)
-	GetPaymentsBySessionID(sessionID uuid.UUID) ([]models.Payment, error)
-	GetPaymentByTinkoffID(tinkoffID string) (*models.Payment, error)
-	UpdatePayment(payment *models.Payment) error
-	ListPayments(req *models.AdminListPaymentsRequest) ([]models.Payment, int, error)
-	GetPaymentStatistics(req *models.PaymentStatisticsRequest) (*models.PaymentStatisticsResponse, error)
-	CashierListPayments(req *models.CashierPaymentsRequest) ([]models.Payment, int, error)
-	GetCashierLastShiftStatistics(req *models.CashierLastShiftStatisticsRequest) (*models.CashierLastShiftStatisticsResponse, error)
+	CreatePayment(ctx context.Context, payment *models.Payment) error
+	GetPaymentByID(ctx context.Context, id uuid.UUID) (*models.Payment, error)
+	GetPaymentBySessionID(ctx context.Context, sessionID uuid.UUID) (*models.Payment, error)
+	GetLastPaymentBySessionID(ctx context.Context, sessionID uuid.UUID) (*models.Payment, error)
+	GetPaymentsBySessionID(ctx context.Context, sessionID uuid.UUID) ([]models.Payment, error)
+	GetPaymentByTinkoffID(ctx context.Context, tinkoffID string) (*models.Payment, error)
+	UpdatePayment(ctx context.Context, payment *models.Payment) error
+	ListPayments(ctx context.Context, req *models.AdminListPaymentsRequest) ([]models.Payment, int, error)
+	GetPaymentStatistics(ctx context.Context, req *models.PaymentStatisticsRequest) (*models.PaymentStatisticsResponse, error)
+	CashierListPayments(ctx context.Context, req *models.CashierPaymentsRequest) ([]models.Payment, int, error)
+	GetCashierLastShiftStatistics(ctx context.Context, req *models.CashierLastShiftStatisticsRequest) (*models.CashierLastShiftStatisticsResponse, error)
 }
 
 // repository реализация Repository
@@ -33,18 +34,20 @@ type repository struct {
 
 // NewRepository создает новый экземпляр Repository
 func NewRepository(db *gorm.DB) Repository {
-	return &repository{db: db}
+	return &repository{
+		db: db,
+	}
 }
 
 // CreatePayment создает новый платеж
-func (r *repository) CreatePayment(payment *models.Payment) error {
-	return r.db.Create(payment).Error
+func (r *repository) CreatePayment(ctx context.Context, payment *models.Payment) error {
+	return r.db.WithContext(ctx).Create(payment).Error
 }
 
 // GetPaymentByID получает платеж по ID
-func (r *repository) GetPaymentByID(id uuid.UUID) (*models.Payment, error) {
+func (r *repository) GetPaymentByID(ctx context.Context, id uuid.UUID) (*models.Payment, error) {
 	var payment models.Payment
-	err := r.db.Where("id = ?", id).First(&payment).Error
+	err := r.db.WithContext(ctx).Where("id = ?", id).First(&payment).Error
 	if err != nil {
 		return nil, err
 	}
@@ -52,9 +55,9 @@ func (r *repository) GetPaymentByID(id uuid.UUID) (*models.Payment, error) {
 }
 
 // GetPaymentBySessionID получает последний основной платеж по ID сессии
-func (r *repository) GetPaymentBySessionID(sessionID uuid.UUID) (*models.Payment, error) {
+func (r *repository) GetPaymentBySessionID(ctx context.Context, sessionID uuid.UUID) (*models.Payment, error) {
 	var payment models.Payment
-	err := r.db.Where("session_id = ? AND payment_type = ?", sessionID, models.PaymentTypeMain).Order("created_at DESC").First(&payment).Error
+	err := r.db.WithContext(ctx).Where("session_id = ? AND payment_type = ?", sessionID, models.PaymentTypeMain).Order("created_at DESC").First(&payment).Error
 	if err != nil {
 		return nil, err
 	}
@@ -62,9 +65,9 @@ func (r *repository) GetPaymentBySessionID(sessionID uuid.UUID) (*models.Payment
 }
 
 // GetLastPaymentBySessionID получает последний платеж по ID сессии (любого типа)
-func (r *repository) GetLastPaymentBySessionID(sessionID uuid.UUID) (*models.Payment, error) {
+func (r *repository) GetLastPaymentBySessionID(ctx context.Context, sessionID uuid.UUID) (*models.Payment, error) {
 	var payment models.Payment
-	err := r.db.Where("session_id = ?", sessionID).Order("created_at DESC").First(&payment).Error
+	err := r.db.WithContext(ctx).Where("session_id = ?", sessionID).Order("created_at DESC").First(&payment).Error
 	if err != nil {
 		return nil, err
 	}
@@ -72,9 +75,9 @@ func (r *repository) GetLastPaymentBySessionID(sessionID uuid.UUID) (*models.Pay
 }
 
 // GetPaymentsBySessionID получает все платежи по ID сессии
-func (r *repository) GetPaymentsBySessionID(sessionID uuid.UUID) ([]models.Payment, error) {
+func (r *repository) GetPaymentsBySessionID(ctx context.Context, sessionID uuid.UUID) ([]models.Payment, error) {
 	var payments []models.Payment
-	err := r.db.Where("session_id = ?", sessionID).Order("created_at ASC").Find(&payments).Error
+	err := r.db.WithContext(ctx).Where("session_id = ?", sessionID).Order("created_at ASC").Find(&payments).Error
 	if err != nil {
 		return nil, err
 	}
@@ -82,9 +85,9 @@ func (r *repository) GetPaymentsBySessionID(sessionID uuid.UUID) ([]models.Payme
 }
 
 // GetPaymentByTinkoffID получает платеж по ID в Tinkoff
-func (r *repository) GetPaymentByTinkoffID(tinkoffID string) (*models.Payment, error) {
+func (r *repository) GetPaymentByTinkoffID(ctx context.Context, tinkoffID string) (*models.Payment, error) {
 	var payment models.Payment
-	err := r.db.Where("tinkoff_id = ?", tinkoffID).First(&payment).Error
+	err := r.db.WithContext(ctx).Where("tinkoff_id = ?", tinkoffID).First(&payment).Error
 	if err != nil {
 		return nil, err
 	}
@@ -92,16 +95,16 @@ func (r *repository) GetPaymentByTinkoffID(tinkoffID string) (*models.Payment, e
 }
 
 // UpdatePayment обновляет платеж
-func (r *repository) UpdatePayment(payment *models.Payment) error {
-	return r.db.Save(payment).Error
+func (r *repository) UpdatePayment(ctx context.Context, payment *models.Payment) error {
+	return r.db.WithContext(ctx).Save(payment).Error
 }
 
 // ListPayments получает список платежей с фильтрацией
-func (r *repository) ListPayments(req *models.AdminListPaymentsRequest) ([]models.Payment, int, error) {
+func (r *repository) ListPayments(ctx context.Context, req *models.AdminListPaymentsRequest) ([]models.Payment, int, error) {
 	var payments []models.Payment
 	var total int64
 
-	query := r.db.Model(&models.Payment{})
+	query := r.db.WithContext(ctx).Model(&models.Payment{})
 
 	// Применяем фильтры
 	if req.PaymentID != nil {
@@ -156,20 +159,20 @@ func (r *repository) ListPayments(req *models.AdminListPaymentsRequest) ([]model
 }
 
 // GetPaymentStatistics получает статистику платежей
-func (r *repository) GetPaymentStatistics(req *models.PaymentStatisticsRequest) (*models.PaymentStatisticsResponse, error) {
+func (r *repository) GetPaymentStatistics(ctx context.Context, req *models.PaymentStatisticsRequest) (*models.PaymentStatisticsResponse, error) {
 	// Структура для агрегации данных
 	type StatResult struct {
-		ServiceType    string `json:"service_type"`
-		WithChemistry  bool   `json:"with_chemistry"`
-		SessionCount   int64  `json:"session_count"`
-		TotalAmount    int64  `json:"total_amount"` // сумма с учетом возвратов (amount - refunded_amount)
+		ServiceType   string `json:"service_type"`
+		WithChemistry bool   `json:"with_chemistry"`
+		SessionCount  int64  `json:"session_count"`
+		TotalAmount   int64  `json:"total_amount"` // сумма с учетом возвратов (amount - refunded_amount)
 	}
 
 	var results []StatResult
 
 	// Базовый запрос с JOIN платежей и сессий
 	// Учитываем возвраты: вычитаем refunded_amount из amount
-	query := r.db.Table("payments").
+	query := r.db.WithContext(ctx).Table("payments").
 		Select(`
 			sessions.service_type,
 			sessions.with_chemistry,
@@ -238,11 +241,11 @@ func (r *repository) GetPaymentStatistics(req *models.PaymentStatisticsRequest) 
 }
 
 // CashierListPayments получает список платежей для кассира с начала смены
-func (r *repository) CashierListPayments(req *models.CashierPaymentsRequest) ([]models.Payment, int, error) {
+func (r *repository) CashierListPayments(ctx context.Context, req *models.CashierPaymentsRequest) ([]models.Payment, int, error) {
 	var payments []models.Payment
 	var total int64
 
-	query := r.db.Model(&models.Payment{})
+	query := r.db.WithContext(ctx).Model(&models.Payment{})
 
 	// Фильтруем по дате начала смены
 	query = query.Where("created_at >= ?", req.ShiftStartedAt)
@@ -273,7 +276,7 @@ func (r *repository) CashierListPayments(req *models.CashierPaymentsRequest) ([]
 }
 
 // GetCashierLastShiftStatistics получает статистику последней смены кассира
-func (r *repository) GetCashierLastShiftStatistics(req *models.CashierLastShiftStatisticsRequest) (*models.CashierLastShiftStatisticsResponse, error) {
+func (r *repository) GetCashierLastShiftStatistics(ctx context.Context, req *models.CashierLastShiftStatisticsRequest) (*models.CashierLastShiftStatisticsResponse, error) {
 	// Сначала найдем последнюю смену кассира
 	var lastShift struct {
 		StartedAt time.Time `json:"started_at"`
@@ -282,7 +285,7 @@ func (r *repository) GetCashierLastShiftStatistics(req *models.CashierLastShiftS
 
 	logger.Printf("Searching for last shift for cashier: %s", req.CashierID)
 
-	err := r.db.Table("cashier_shifts").
+	err := r.db.WithContext(ctx).Table("cashier_shifts").
 		Select("started_at, COALESCE(ended_at, expires_at) as ended_at").
 		Where("cashier_id = ? AND (ended_at IS NOT NULL OR expires_at < ?)", req.CashierID, time.Now()).
 		Order("started_at DESC").
@@ -306,19 +309,19 @@ func (r *repository) GetCashierLastShiftStatistics(req *models.CashierLastShiftS
 
 	// Теперь получим статистику для этой смены
 	type StatResult struct {
-		ServiceType    string `json:"service_type"`
-		WithChemistry  bool   `json:"with_chemistry"`
-		PaymentMethod  string `json:"payment_method"`
-		SessionCount   int64  `json:"session_count"`
-		TotalAmount    int64  `json:"total_amount"`
+		ServiceType   string `json:"service_type"`
+		WithChemistry bool   `json:"with_chemistry"`
+		PaymentMethod string `json:"payment_method"`
+		SessionCount  int64  `json:"session_count"`
+		TotalAmount   int64  `json:"total_amount"`
 	}
 
 	var results []StatResult
 
 	// Запрос для получения статистики с группировкой по типу услуги, химии и методу платежа
 	logger.Printf("Querying statistics for period: %v to %v", lastShift.StartedAt, lastShift.EndedAt)
-	
-	query := r.db.Table("payments").
+
+	query := r.db.WithContext(ctx).Table("payments").
 		Select(`
 			sessions.service_type,
 			sessions.with_chemistry,
@@ -345,7 +348,7 @@ func (r *repository) GetCashierLastShiftStatistics(req *models.CashierLastShiftS
 
 	for _, result := range results {
 		key := result.ServiceType + "_" + fmt.Sprintf("%t", result.WithChemistry)
-		
+
 		stat := models.ServiceTypeStatistics{
 			ServiceType:   result.ServiceType,
 			WithChemistry: result.WithChemistry,
@@ -420,11 +423,11 @@ func (r *repository) GetCashierLastShiftStatistics(req *models.CashierLastShiftS
 	})
 
 	statistics := &models.CashierShiftStatistics{
-		ShiftStartedAt:   lastShift.StartedAt,
-		ShiftEndedAt:     lastShift.EndedAt,
-		CashierSessions:  cashierSessions,
-		MiniAppSessions:  miniAppSessions,
-		TotalSessions:    totalSessions,
+		ShiftStartedAt:  lastShift.StartedAt,
+		ShiftEndedAt:    lastShift.EndedAt,
+		CashierSessions: cashierSessions,
+		MiniAppSessions: miniAppSessions,
+		TotalSessions:   totalSessions,
 	}
 
 	return &models.CashierLastShiftStatisticsResponse{
@@ -432,4 +435,4 @@ func (r *repository) GetCashierLastShiftStatistics(req *models.CashierLastShiftS
 		Message:    "Статистика последней смены",
 		HasShift:   true,
 	}, nil
-} 
+}

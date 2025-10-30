@@ -39,7 +39,7 @@ func (h *Handler) cashierListWashBoxes(c *gin.Context) {
 	}
 
 	// Получаем список боксов
-	resp, err := h.service.CashierListWashBoxes(&req)
+	resp, err := h.service.CashierListWashBoxes(c.Request.Context(), &req)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
@@ -70,7 +70,7 @@ func (h *Handler) cashierSetMaintenance(c *gin.Context) {
 	}
 
 	// Переводим бокс в режим обслуживания
-	resp, err := h.service.CashierSetMaintenance(&req)
+	resp, err := h.service.CashierSetMaintenance(c.Request.Context(), &req)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
@@ -85,5 +85,3 @@ func (h *Handler) cashierSetMaintenance(c *gin.Context) {
 
 	c.JSON(http.StatusOK, resp)
 }
-
-

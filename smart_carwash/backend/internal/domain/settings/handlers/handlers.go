@@ -68,7 +68,7 @@ func (h *Handler) GetAvailableRentalTimes(c *gin.Context) {
 		ServiceType: serviceType,
 	}
 
-	resp, err := h.service.GetAvailableRentalTimes(req)
+	resp, err := h.service.GetAvailableRentalTimes(c.Request.Context(), req)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
@@ -95,7 +95,7 @@ func (h *Handler) UpdateAvailableRentalTimes(c *gin.Context) {
 		return
 	}
 
-	resp, err := h.service.UpdateAvailableRentalTimes(&req)
+	resp, err := h.service.UpdateAvailableRentalTimes(c.Request.Context(), &req)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
@@ -116,7 +116,7 @@ func (h *Handler) AdminGetSettings(c *gin.Context) {
 		ServiceType: serviceType,
 	}
 
-	resp, err := h.service.GetSettings(req)
+	resp, err := h.service.GetSettings(c.Request.Context(), req)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
@@ -134,7 +134,7 @@ func (h *Handler) AdminUpdatePrices(c *gin.Context) {
 		return
 	}
 
-	resp, err := h.service.UpdatePrices(&req)
+	resp, err := h.service.UpdatePrices(c.Request.Context(), &req)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
@@ -152,7 +152,7 @@ func (h *Handler) AdminUpdateRentalTimes(c *gin.Context) {
 		return
 	}
 
-	resp, err := h.service.UpdateRentalTimes(&req)
+	resp, err := h.service.UpdateRentalTimes(c.Request.Context(), &req)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
@@ -183,7 +183,7 @@ func (h *Handler) GetAvailableChemistryTimes(c *gin.Context) {
 		ServiceType: serviceType,
 	}
 
-	resp, err := h.service.GetAvailableChemistryTimes(req)
+	resp, err := h.service.GetAvailableChemistryTimes(c.Request.Context(), req)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
@@ -204,7 +204,7 @@ func (h *Handler) AdminGetAvailableChemistryTimes(c *gin.Context) {
 		ServiceType: serviceType,
 	}
 
-	resp, err := h.service.AdminGetAvailableChemistryTimes(req)
+	resp, err := h.service.AdminGetAvailableChemistryTimes(c.Request.Context(), req)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
@@ -222,7 +222,7 @@ func (h *Handler) AdminUpdateAvailableChemistryTimes(c *gin.Context) {
 		return
 	}
 
-	resp, err := h.service.AdminUpdateAvailableChemistryTimes(&req)
+	resp, err := h.service.AdminUpdateAvailableChemistryTimes(c.Request.Context(), &req)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
@@ -233,7 +233,7 @@ func (h *Handler) AdminUpdateAvailableChemistryTimes(c *gin.Context) {
 
 // AdminGetCleaningTimeout получает время уборки (админка)
 func (h *Handler) AdminGetCleaningTimeout(c *gin.Context) {
-	timeout, err := h.service.GetCleaningTimeout()
+	timeout, err := h.service.GetCleaningTimeout(c.Request.Context())
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
@@ -255,7 +255,7 @@ func (h *Handler) AdminUpdateCleaningTimeout(c *gin.Context) {
 		return
 	}
 
-	err := h.service.UpdateCleaningTimeout(req.TimeoutMinutes)
+	err := h.service.UpdateCleaningTimeout(c.Request.Context(), req.TimeoutMinutes)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
@@ -270,7 +270,7 @@ func (h *Handler) AdminUpdateCleaningTimeout(c *gin.Context) {
 
 // AdminGetSessionTimeout получает время ожидания старта мойки (админка)
 func (h *Handler) AdminGetSessionTimeout(c *gin.Context) {
-	timeout, err := h.service.GetSessionTimeout()
+	timeout, err := h.service.GetSessionTimeout(c.Request.Context())
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
@@ -292,7 +292,7 @@ func (h *Handler) AdminUpdateSessionTimeout(c *gin.Context) {
 		return
 	}
 
-	err := h.service.UpdateSessionTimeout(req.TimeoutMinutes)
+	err := h.service.UpdateSessionTimeout(c.Request.Context(), req.TimeoutMinutes)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
@@ -307,7 +307,7 @@ func (h *Handler) AdminUpdateSessionTimeout(c *gin.Context) {
 
 // AdminGetCooldownTimeout получает время блокировки бокса после завершения сессии (админка)
 func (h *Handler) AdminGetCooldownTimeout(c *gin.Context) {
-	timeout, err := h.service.GetCooldownTimeout()
+	timeout, err := h.service.GetCooldownTimeout(c.Request.Context())
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
@@ -329,7 +329,7 @@ func (h *Handler) AdminUpdateCooldownTimeout(c *gin.Context) {
 		return
 	}
 
-	err := h.service.UpdateCooldownTimeout(req.TimeoutMinutes)
+	err := h.service.UpdateCooldownTimeout(c.Request.Context(), req.TimeoutMinutes)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return

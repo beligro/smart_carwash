@@ -96,7 +96,7 @@ func (h *Handler) createSessionWithPayment(c *gin.Context) {
 	}
 
 	// Создаем сессию с платежом
-	response, err := h.service.CreateSessionWithPayment(&req)
+	response, err := h.service.CreateSessionWithPayment(c.Request.Context(), &req)
 	if err != nil {
 		logger.WithContext(c).Errorf("API Error - createSessionWithPayment: ошибка создания сессии с платежом, user_id: %s, service_type: %s, error: %v", req.UserID.String(), req.ServiceType, err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
@@ -125,7 +125,7 @@ func (h *Handler) getUserSession(c *gin.Context) {
 	}
 
 	// Получаем сессию пользователя
-	response, err := h.service.GetUserSession(&models.GetUserSessionRequest{
+	response, err := h.service.GetUserSession(c.Request.Context(), &models.GetUserSessionRequest{
 		UserID: userID,
 	})
 	if err != nil {
@@ -156,7 +156,7 @@ func (h *Handler) checkActiveSession(c *gin.Context) {
 	}
 
 	// Проверяем активную сессию пользователя
-	response, err := h.service.CheckActiveSession(&models.CheckActiveSessionRequest{
+	response, err := h.service.CheckActiveSession(c.Request.Context(), &models.CheckActiveSessionRequest{
 		UserID: userID,
 	})
 	if err != nil {
@@ -187,7 +187,7 @@ func (h *Handler) getUserSessionForPayment(c *gin.Context) {
 	}
 
 	// Получаем сессию пользователя для PaymentPage
-	response, err := h.service.GetUserSessionForPayment(&models.GetUserSessionRequest{
+	response, err := h.service.GetUserSessionForPayment(c.Request.Context(), &models.GetUserSessionRequest{
 		UserID: userID,
 	})
 	if err != nil {
@@ -216,7 +216,7 @@ func (h *Handler) getSessionByID(c *gin.Context) {
 	}
 
 	// Получаем сессию по ID
-	response, err := h.service.GetSession(&models.GetSessionRequest{
+	response, err := h.service.GetSession(c.Request.Context(), &models.GetSessionRequest{
 		SessionID: sessionID,
 	})
 	if err != nil {
@@ -239,7 +239,7 @@ func (h *Handler) startSession(c *gin.Context) {
 	}
 
 	// Запускаем сессию
-	session, err := h.service.StartSession(&req)
+	session, err := h.service.StartSession(c.Request.Context(), &req)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
@@ -260,7 +260,7 @@ func (h *Handler) completeSession(c *gin.Context) {
 	}
 
 	// Завершаем сессию
-	response, err := h.service.CompleteSession(&req)
+	response, err := h.service.CompleteSession(c.Request.Context(), &req)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
@@ -290,7 +290,7 @@ func (h *Handler) extendSessionWithPayment(c *gin.Context) {
 	logger.WithContext(c).Infof("Запрос на продление сессии с оплатой: SessionID=%s, ExtensionTime=%d, ExtensionChemistryTime=%d", req.SessionID, req.ExtensionTimeMinutes, req.ExtensionChemistryTimeMinutes)
 
 	// Продлеваем сессию с оплатой
-	response, err := h.service.ExtendSessionWithPayment(&req)
+	response, err := h.service.ExtendSessionWithPayment(c.Request.Context(), &req)
 	if err != nil {
 		logger.WithContext(c).Errorf("Ошибка продления сессии с оплатой: %v", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
@@ -320,7 +320,7 @@ func (h *Handler) getSessionPayments(c *gin.Context) {
 	logger.WithContext(c).Infof("Запрос на получение платежей сессии: SessionID=%s", sessionID)
 
 	// Получаем платежи сессии
-	response, err := h.service.GetSessionPayments(&models.GetSessionPaymentsRequest{
+	response, err := h.service.GetSessionPayments(c.Request.Context(), &models.GetSessionPaymentsRequest{
 		SessionID: sessionID,
 	})
 	if err != nil {
@@ -347,7 +347,7 @@ func (h *Handler) cancelSession(c *gin.Context) {
 	logger.WithContext(c).Infof("Запрос на отмену сессии: SessionID=%s, UserID=%s", req.SessionID, req.UserID)
 
 	// Отменяем сессию
-	response, err := h.service.CancelSession(&req)
+	response, err := h.service.CancelSession(c.Request.Context(), &req)
 	if err != nil {
 		logger.WithContext(c).Errorf("Ошибка отмены сессии: %v", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
@@ -400,7 +400,7 @@ func (h *Handler) getUserSessionHistory(c *gin.Context) {
 	}
 
 	// Получаем историю сессий
-	sessions, err := h.service.GetUserSessionHistory(&req)
+	sessions, err := h.service.GetUserSessionHistory(c.Request.Context(), &req)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
@@ -485,7 +485,7 @@ func (h *Handler) adminListSessions(c *gin.Context) {
 	}
 
 	// Получаем список сессий
-	resp, err := h.service.AdminListSessions(&req)
+	resp, err := h.service.AdminListSessions(c.Request.Context(), &req)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
@@ -530,7 +530,7 @@ func (h *Handler) adminGetSession(c *gin.Context) {
 	req.ID = id
 
 	// Получаем сессию
-	resp, err := h.service.AdminGetSession(&req)
+	resp, err := h.service.AdminGetSession(c.Request.Context(), &req)
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
 		return
@@ -573,19 +573,25 @@ func (h *Handler) handle1CPaymentCallback(c *gin.Context) {
 	}
 
 	// Логируем входящий запрос
-	logger.WithContext(c).Infof("Received 1C payment callback: ServiceType=%s, WithChemistry=%t, Amount=%d, RentalTimeMinutes=%d, CarNumber=%s",
-		req.ServiceType, req.WithChemistry, req.Amount, req.RentalTimeMinutes, req.CarNumber)
+	logger.WithContext(c).Infof("Received 1C payment callback: ServiceType=%s, WithChemistry=%t, Amount=%d, RentalTimeMinutes=%d, CarNumber=%s, PaymentTime=%s",
+		req.ServiceType, req.WithChemistry, req.Amount, req.RentalTimeMinutes, req.CarNumber, req.PaymentTime.Format(time.RFC3339))
 
 	// Создаем сессию через кассира
-	session, err := h.service.CreateFromCashier(&req)
+	session, err := h.service.CreateFromCashier(c.Request.Context(), &req)
 	if err != nil {
-		logger.WithContext(c).Infof("Error creating session from cashier: %v", err)
+		logger.WithContext(c).Errorf("Error creating session from cashier: %v", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
 
+	// Логируем результат создания сессии (новая или существующая)
+	if req.CarNumber != "" {
+		logger.WithContext(c).Infof("Session processed for car '%s': SessionID=%s, Status=%s, CreatedAt=%s",
+			req.CarNumber, session.ID.String(), session.Status, session.CreatedAt.Format(time.RFC3339))
+	}
+
 	// Создаем платеж для кассира
-	payment, err := h.paymentService.CreateForCashier(session.ID, req.Amount)
+	payment, err := h.paymentService.CreateForCashier(c.Request.Context(), session.ID, req.Amount)
 	if err != nil {
 		logger.WithContext(c).Infof("Error creating payment for cashier: %v", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
@@ -646,7 +652,7 @@ func (h *Handler) cashierListSessions(c *gin.Context) {
 	}
 
 	// Получаем список сессий
-	response, err := h.service.CashierListSessions(req)
+	response, err := h.service.CashierListSessions(c.Request.Context(), req)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
@@ -689,7 +695,7 @@ func (h *Handler) cashierGetActiveSessions(c *gin.Context) {
 	}
 
 	// Получаем активные сессии
-	response, err := h.service.CashierGetActiveSessions(req)
+	response, err := h.service.CashierGetActiveSessions(c.Request.Context(), req)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
@@ -720,7 +726,7 @@ func (h *Handler) cashierStartSession(c *gin.Context) {
 	logger.WithContext(c).Infof("Запрос на запуск сессии кассиром: SessionID=%s", req.SessionID)
 
 	// Запускаем сессию
-	session, err := h.service.CashierStartSession(&req)
+	session, err := h.service.CashierStartSession(c.Request.Context(), &req)
 	if err != nil {
 		logger.WithContext(c).Errorf("Ошибка запуска сессии кассиром: %v", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
@@ -745,7 +751,7 @@ func (h *Handler) cashierCompleteSession(c *gin.Context) {
 	logger.WithContext(c).Infof("Запрос на завершение сессии кассиром: SessionID=%s", req.SessionID)
 
 	// Завершаем сессию
-	session, err := h.service.CashierCompleteSession(&req)
+	session, err := h.service.CashierCompleteSession(c.Request.Context(), &req)
 	if err != nil {
 		logger.WithContext(c).Errorf("Ошибка завершения сессии кассиром: %v", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
@@ -770,7 +776,7 @@ func (h *Handler) cashierCancelSession(c *gin.Context) {
 	logger.WithContext(c).Infof("Запрос на отмену сессии кассиром: SessionID=%s", req.SessionID)
 
 	// Отменяем сессию
-	session, err := h.service.CashierCancelSession(&req)
+	session, err := h.service.CashierCancelSession(c.Request.Context(), &req)
 	if err != nil {
 		logger.WithContext(c).Errorf("Ошибка отмены сессии кассиром: %v", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
@@ -795,7 +801,7 @@ func (h *Handler) cashierMiddleware() gin.HandlerFunc {
 		}
 
 		// Проверяем токен через auth service
-		claims, err := h.authService.ValidateToken(token)
+		claims, err := h.authService.ValidateToken(c.Request.Context(), token)
 		if err != nil {
 			c.JSON(http.StatusUnauthorized, gin.H{"error": "Недействительный токен"})
 			c.Abort()
@@ -829,7 +835,7 @@ func (h *Handler) enableChemistry(c *gin.Context) {
 	logger.WithContext(c).Infof("Запрос на включение химии: SessionID=%s", req.SessionID)
 
 	// Включаем химию
-	response, err := h.service.EnableChemistry(&req)
+	response, err := h.service.EnableChemistry(c.Request.Context(), &req)
 	if err != nil {
 		logger.WithContext(c).Errorf("Ошибка включения химии: %v", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
@@ -854,7 +860,7 @@ func (h *Handler) cashierEnableChemistry(c *gin.Context) {
 	logger.WithContext(c).Infof("Запрос на включение химии кассиром: SessionID=%s", req.SessionID)
 
 	// Включаем химию
-	response, err := h.service.EnableChemistry(&req)
+	response, err := h.service.EnableChemistry(c.Request.Context(), &req)
 	if err != nil {
 		logger.WithContext(c).Errorf("Ошибка включения химии кассиром: %v", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
@@ -912,7 +918,7 @@ func (h *Handler) getChemistryStats(c *gin.Context) {
 	logger.WithContext(c).Infof("Запрос статистики химии: DateFrom=%v, DateTo=%v", dateFrom, dateTo)
 
 	// Получаем статистику
-	response, err := h.service.GetChemistryStats(req)
+	response, err := h.service.GetChemistryStats(c.Request.Context(), req)
 	if err != nil {
 		logger.WithContext(c).Errorf("Ошибка получения статистики химии: %v", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
@@ -937,7 +943,7 @@ func (h *Handler) adminReassignSession(c *gin.Context) {
 	logger.WithContext(c).Infof("Запрос на переназначение сессии администратором: SessionID=%s", req.SessionID)
 
 	// Переназначаем сессию
-	response, err := h.service.ReassignSession(&req)
+	response, err := h.service.ReassignSession(c.Request.Context(), &req)
 	if err != nil {
 		logger.WithContext(c).Errorf("Ошибка переназначения сессии администратором: %v", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
@@ -962,7 +968,7 @@ func (h *Handler) cashierReassignSession(c *gin.Context) {
 	logger.WithContext(c).Infof("Запрос на переназначение сессии кассиром: SessionID=%s", req.SessionID)
 
 	// Переназначаем сессию
-	response, err := h.service.ReassignSession(&req)
+	response, err := h.service.ReassignSession(c.Request.Context(), &req)
 	if err != nil {
 		logger.WithContext(c).Errorf("Ошибка переназначения сессии кассиром: %v", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})

@@ -2,6 +2,7 @@ package repository
 
 import (
 	"carwash_backend/internal/domain/session/models"
+	"context"
 	"fmt"
 	"time"
 
@@ -11,26 +12,26 @@ import (
 
 // Repository интерфейс для работы с сессиями в базе данных
 type Repository interface {
-	CreateSession(session *models.Session) error
-	GetSessionByID(id uuid.UUID) (*models.Session, error)
-	GetActiveSessionByUserID(userID uuid.UUID) (*models.Session, error)
-	GetActiveSessionByCarNumber(carNumber string) (*models.Session, error)
-	GetUserSessionForPayment(userID uuid.UUID) (*models.Session, error)
-	GetSessionByIdempotencyKey(key string) (*models.Session, error)
-	UpdateSession(session *models.Session) error
-	UpdateSessionFields(sessionID uuid.UUID, fields map[string]interface{}) error
-	GetSessionsByStatus(status string) ([]models.Session, error)
-	CountSessionsByStatus(status string) (int, error)
-	GetUserSessionHistory(userID uuid.UUID, limit, offset int) ([]models.Session, error)
+	CreateSession(ctx context.Context, session *models.Session) error
+	GetSessionByID(ctx context.Context, id uuid.UUID) (*models.Session, error)
+	GetActiveSessionByUserID(ctx context.Context, userID uuid.UUID) (*models.Session, error)
+	GetActiveSessionByCarNumber(ctx context.Context, carNumber string) (*models.Session, error)
+	GetUserSessionForPayment(ctx context.Context, userID uuid.UUID) (*models.Session, error)
+	GetSessionByIdempotencyKey(ctx context.Context, key string) (*models.Session, error)
+	UpdateSession(ctx context.Context, session *models.Session) error
+	UpdateSessionFields(ctx context.Context, sessionID uuid.UUID, fields map[string]interface{}) error
+	GetSessionsByStatus(ctx context.Context, status string) ([]models.Session, error)
+	CountSessionsByStatus(ctx context.Context, status string) (int, error)
+	GetUserSessionHistory(ctx context.Context, userID uuid.UUID, limit, offset int) ([]models.Session, error)
 
 	// Административные методы
-	GetSessionsWithFilters(userID *uuid.UUID, boxID *uuid.UUID, boxNumber *int, status *string, serviceType *string, dateFrom *time.Time, dateTo *time.Time, limit int, offset int) ([]models.Session, int, error)
-	
+	GetSessionsWithFilters(ctx context.Context, userID *uuid.UUID, boxID *uuid.UUID, boxNumber *int, status *string, serviceType *string, dateFrom *time.Time, dateTo *time.Time, limit int, offset int) ([]models.Session, int, error)
+
 	// Методы для статистики химии
-	GetChemistryStats(dateFrom *time.Time, dateTo *time.Time) (*models.ChemistryStats, error)
-	
+	GetChemistryStats(ctx context.Context, dateFrom *time.Time, dateTo *time.Time) (*models.ChemistryStats, error)
+
 	// Метод для проверки завершенных сессий между уборками
-	GetCompletedSessionsBetween(boxID uuid.UUID, dateFrom, dateTo time.Time) (int, error)
+	GetCompletedSessionsBetween(ctx context.Context, boxID uuid.UUID, dateFrom, dateTo time.Time) (int, error)
 }
 
 // PostgresRepository реализация Repository для PostgreSQL
@@ -40,18 +41,20 @@ type PostgresRepository struct {
 
 // NewPostgresRepository создает новый экземпляр PostgresRepository
 func NewPostgresRepository(db *gorm.DB) *PostgresRepository {
-	return &PostgresRepository{db: db}
+	return &PostgresRepository{
+		db: db,
+	}
 }
 
 // CreateSession создает новую сессию мойки
-func (r *PostgresRepository) CreateSession(session *models.Session) error {
-	return r.db.Create(session).Error
+func (r *PostgresRepository) CreateSession(ctx context.Context, session *models.Session) error {
+	return r.db.WithContext(ctx).Create(session).Error
 }
 
 // GetSessionByID получает сессию по ID
-func (r *PostgresRepository) GetSessionByID(id uuid.UUID) (*models.Session, error) {
+func (r *PostgresRepository) GetSessionByID(ctx context.Context, id uuid.UUID) (*models.Session, error) {
 	var session models.Session
-	err := r.db.First(&session, id).Error
+	err := r.db.WithContext(ctx).First(&session, id).Error
 	if err != nil {
 		return nil, err
 	}
@@ -59,7 +62,7 @@ func (r *PostgresRepository) GetSessionByID(id uuid.UUID) (*models.Session, erro
 	// Если у сессии есть BoxID, получаем номер бокса
 	if session.BoxID != nil {
 		var boxNumber int
-		err = r.db.Table("wash_boxes").Where("id = ?", *session.BoxID).Select("number").Scan(&boxNumber).Error
+		err = r.db.WithContext(ctx).Table("wash_boxes").Where("id = ?", *session.BoxID).Select("number").Scan(&boxNumber).Error
 		if err == nil {
 			session.BoxNumber = &boxNumber
 		}
@@ -69,9 +72,9 @@ func (r *PostgresRepository) GetSessionByID(id uuid.UUID) (*models.Session, erro
 }
 
 // GetActiveSessionByUserID получает активную сессию пользователя
-func (r *PostgresRepository) GetActiveSessionByUserID(userID uuid.UUID) (*models.Session, error) {
+func (r *PostgresRepository) GetActiveSessionByUserID(ctx context.Context, userID uuid.UUID) (*models.Session, error) {
 	var session models.Session
-	err := r.db.Where("user_id = ? AND status IN (?, ?, ?, ?)",
+	err := r.db.WithContext(ctx).Where("user_id = ? AND status IN (?, ?, ?, ?)",
 		userID,
 		models.SessionStatusCreated,
 		models.SessionStatusInQueue,
@@ -86,7 +89,7 @@ func (r *PostgresRepository) GetActiveSessionByUserID(userID uuid.UUID) (*models
 	// Если у сессии есть BoxID, получаем номер бокса
 	if session.BoxID != nil {
 		var boxNumber int
-		err = r.db.Table("wash_boxes").Where("id = ?", *session.BoxID).Select("number").Scan(&boxNumber).Error
+		err = r.db.WithContext(ctx).Table("wash_boxes").Where("id = ?", *session.BoxID).Select("number").Scan(&boxNumber).Error
 		if err == nil {
 			session.BoxNumber = &boxNumber
 		}
@@ -96,9 +99,9 @@ func (r *PostgresRepository) GetActiveSessionByUserID(userID uuid.UUID) (*models
 }
 
 // GetUserSessionForPayment получает сессию пользователя для PaymentPage (включая payment_failed)
-func (r *PostgresRepository) GetUserSessionForPayment(userID uuid.UUID) (*models.Session, error) {
+func (r *PostgresRepository) GetUserSessionForPayment(ctx context.Context, userID uuid.UUID) (*models.Session, error) {
 	var session models.Session
-	err := r.db.Where("user_id = ? AND status IN (?, ?, ?, ?, ?)",
+	err := r.db.WithContext(ctx).Where("user_id = ? AND status IN (?, ?, ?, ?, ?)",
 		userID,
 		models.SessionStatusCreated,
 		models.SessionStatusInQueue,
@@ -114,7 +117,7 @@ func (r *PostgresRepository) GetUserSessionForPayment(userID uuid.UUID) (*models
 	// Если у сессии есть BoxID, получаем номер бокса
 	if session.BoxID != nil {
 		var boxNumber int
-		err = r.db.Table("wash_boxes").Where("id = ?", *session.BoxID).Select("number").Scan(&boxNumber).Error
+		err = r.db.WithContext(ctx).Table("wash_boxes").Where("id = ?", *session.BoxID).Select("number").Scan(&boxNumber).Error
 		if err == nil {
 			session.BoxNumber = &boxNumber
 		}
@@ -124,15 +127,15 @@ func (r *PostgresRepository) GetUserSessionForPayment(userID uuid.UUID) (*models
 }
 
 // CheckActiveSessionWithLock проверяет активную сессию пользователя с учетом временной блокировки
-func (r *PostgresRepository) CheckActiveSessionWithLock(userID uuid.UUID) (*models.Session, error) {
+func (r *PostgresRepository) CheckActiveSessionWithLock(ctx context.Context, userID uuid.UUID) (*models.Session, error) {
 	var session models.Session
-	err := r.db.Where("user_id = ? AND status IN (?, ?, ?, ?) AND created_at > ?",
+	err := r.db.WithContext(ctx).Where("user_id = ? AND status IN (?, ?, ?, ?) AND created_at > ?",
 		userID,
 		models.SessionStatusCreated,
 		models.SessionStatusInQueue,
 		models.SessionStatusAssigned,
 		models.SessionStatusActive,
-		time.Now().Add(-30*time.Second)). // Проверяем сессии созданные в последние 30 секунд
+		time.Now().Add(-30*time.Second)).
 		Order("created_at DESC").
 		First(&session).Error
 	if err != nil {
@@ -142,7 +145,7 @@ func (r *PostgresRepository) CheckActiveSessionWithLock(userID uuid.UUID) (*mode
 	// Если у сессии есть BoxID, получаем номер бокса
 	if session.BoxID != nil {
 		var boxNumber int
-		err = r.db.Table("wash_boxes").Where("id = ?", *session.BoxID).Select("number").Scan(&boxNumber).Error
+		err = r.db.WithContext(ctx).Table("wash_boxes").Where("id = ?", *session.BoxID).Select("number").Scan(&boxNumber).Error
 		if err == nil {
 			session.BoxNumber = &boxNumber
 		}
@@ -152,9 +155,9 @@ func (r *PostgresRepository) CheckActiveSessionWithLock(userID uuid.UUID) (*mode
 }
 
 // GetSessionByIdempotencyKey получает сессию по ключу идемпотентности
-func (r *PostgresRepository) GetSessionByIdempotencyKey(key string) (*models.Session, error) {
+func (r *PostgresRepository) GetSessionByIdempotencyKey(ctx context.Context, key string) (*models.Session, error) {
 	var session models.Session
-	err := r.db.Where("idempotency_key = ?", key).First(&session).Error
+	err := r.db.WithContext(ctx).Where("idempotency_key = ?", key).First(&session).Error
 	if err != nil {
 		return nil, err
 	}
@@ -162,92 +165,121 @@ func (r *PostgresRepository) GetSessionByIdempotencyKey(key string) (*models.Ses
 }
 
 // UpdateSession обновляет сессию
-func (r *PostgresRepository) UpdateSession(session *models.Session) error {
+func (r *PostgresRepository) UpdateSession(ctx context.Context, session *models.Session) error {
 	// Используем Save для обновления всех полей
 	// ВАЖНО: Save обновляет все поля, включая updated_at (автоматически через GORM)
 	// но НЕ обновляет status_updated_at если мы его явно не изменили
-	return r.db.Save(session).Error
+	return r.db.WithContext(ctx).Save(session).Error
 }
 
 // UpdateSessionFields обновляет только указанные поля сессии
-func (r *PostgresRepository) UpdateSessionFields(sessionID uuid.UUID, fields map[string]interface{}) error {
+func (r *PostgresRepository) UpdateSessionFields(ctx context.Context, sessionID uuid.UUID, fields map[string]interface{}) error {
 	// Используем Updates для обновления только указанных полей
 	// Это безопаснее чем Save, так как не затрагивает другие поля
-	return r.db.Model(&models.Session{}).Where("id = ?", sessionID).Updates(fields).Error
+	return r.db.WithContext(ctx).Model(&models.Session{}).Where("id = ?", sessionID).Updates(fields).Error
 }
 
 // GetSessionsByStatus получает сессии по статусу
-func (r *PostgresRepository) GetSessionsByStatus(status string) ([]models.Session, error) {
+func (r *PostgresRepository) GetSessionsByStatus(ctx context.Context, status string) ([]models.Session, error) {
 	var sessions []models.Session
-	err := r.db.Where("status = ?", status).Order("created_at ASC").Find(&sessions).Error
+	err := r.db.WithContext(ctx).Where("status = ?", status).Order("created_at ASC").Find(&sessions).Error
 	return sessions, err
 }
 
 // CountSessionsByStatus подсчитывает количество сессий с определенным статусом
-func (r *PostgresRepository) CountSessionsByStatus(status string) (int, error) {
+func (r *PostgresRepository) CountSessionsByStatus(ctx context.Context, status string) (int, error) {
 	var count int64
-	err := r.db.Model(&models.Session{}).Where("status = ?", status).Count(&count).Error
+	err := r.db.WithContext(ctx).Model(&models.Session{}).Where("status = ?", status).Count(&count).Error
 	return int(count), err
 }
 
 // GetUserSessionHistory получает историю сессий пользователя
-func (r *PostgresRepository) GetUserSessionHistory(userID uuid.UUID, limit, offset int) ([]models.Session, error) {
+func (r *PostgresRepository) GetUserSessionHistory(ctx context.Context, userID uuid.UUID, limit, offset int) ([]models.Session, error) {
 	var sessions []models.Session
-	query := r.db.Where("user_id = ?", userID).
+	db := r.db.WithContext(ctx)
+	query := db.Where("user_id = ?", userID).
 		Order("created_at DESC")
-
 	if limit > 0 {
 		query = query.Limit(limit)
 	}
-
 	if offset > 0 {
 		query = query.Offset(offset)
 	}
-
 	err := query.Find(&sessions).Error
 	return sessions, err
 }
 
 // GetSessionsWithFilters получает сессии с фильтрацией для администратора
-func (r *PostgresRepository) GetSessionsWithFilters(userID *uuid.UUID, boxID *uuid.UUID, boxNumber *int, status *string, serviceType *string, dateFrom *time.Time, dateTo *time.Time, limit int, offset int) ([]models.Session, int, error) {
+func (r *PostgresRepository) GetSessionsWithFilters(ctx context.Context, userID *uuid.UUID, boxID *uuid.UUID, boxNumber *int, status *string, serviceType *string, dateFrom *time.Time, dateTo *time.Time, limit int, offset int) ([]models.Session, int, error) {
 	var sessions []models.Session
 	var total int64
 
-	query := r.db.Model(&models.Session{})
-
-	// Применяем фильтры
-	if userID != nil {
-		query = query.Where("sessions.user_id = ?", *userID)
-	}
-	if boxID != nil {
-		query = query.Where("sessions.box_id = ?", *boxID)
-	}
-	if boxNumber != nil {
-		// Используем JOIN для фильтрации по номеру бокса
-		query = query.Joins("JOIN wash_boxes ON sessions.box_id = wash_boxes.id").
-			Where("wash_boxes.number = ?", *boxNumber)
-	}
-	if status != nil {
-		query = query.Where("sessions.status = ?", *status)
-	}
-	if serviceType != nil {
-		query = query.Where("sessions.service_type = ?", *serviceType)
-	}
-	if dateFrom != nil {
-		query = query.Where("sessions.created_at >= ?", *dateFrom)
-	}
-	if dateTo != nil {
-		query = query.Where("sessions.created_at <= ?", *dateTo)
-	}
-
 	// Получаем общее количество
-	err := query.Count(&total).Error
+	err := func() error {
+		query := r.db.WithContext(ctx).Model(&models.Session{})
+
+		// Применяем фильтры
+		if userID != nil {
+			query = query.Where("sessions.user_id = ?", *userID)
+		}
+		if boxID != nil {
+			query = query.Where("sessions.box_id = ?", *boxID)
+		}
+		if boxNumber != nil {
+			// Используем JOIN для фильтрации по номеру бокса
+			query = query.Joins("JOIN wash_boxes ON sessions.box_id = wash_boxes.id").
+				Where("wash_boxes.number = ?", *boxNumber)
+		}
+		if status != nil {
+			query = query.Where("sessions.status = ?", *status)
+		}
+		if serviceType != nil {
+			query = query.Where("sessions.service_type = ?", *serviceType)
+		}
+		if dateFrom != nil {
+			query = query.Where("sessions.created_at >= ?", *dateFrom)
+		}
+		if dateTo != nil {
+			query = query.Where("sessions.created_at <= ?", *dateTo)
+		}
+
+		return query.Count(&total).Error
+	}()
 	if err != nil {
 		return nil, 0, err
 	}
 
 	// Получаем данные с пагинацией и сортировкой
-	err = query.Order("sessions.created_at DESC").Limit(limit).Offset(offset).Find(&sessions).Error
+	err = func() error {
+		query := r.db.WithContext(ctx).Model(&models.Session{})
+
+		// Применяем фильтры
+		if userID != nil {
+			query = query.Where("sessions.user_id = ?", *userID)
+		}
+		if boxID != nil {
+			query = query.Where("sessions.box_id = ?", *boxID)
+		}
+		if boxNumber != nil {
+			// Используем JOIN для фильтрации по номеру бокса
+			query = query.Joins("JOIN wash_boxes ON sessions.box_id = wash_boxes.id").
+				Where("wash_boxes.number = ?", *boxNumber)
+		}
+		if status != nil {
+			query = query.Where("sessions.status = ?", *status)
+		}
+		if serviceType != nil {
+			query = query.Where("sessions.service_type = ?", *serviceType)
+		}
+		if dateFrom != nil {
+			query = query.Where("sessions.created_at >= ?", *dateFrom)
+		}
+		if dateTo != nil {
+			query = query.Where("sessions.created_at <= ?", *dateTo)
+		}
+
+		return query.Order("sessions.created_at DESC").Limit(limit).Offset(offset).Find(&sessions).Error
+	}()
 	if err != nil {
 		return nil, 0, err
 	}
@@ -256,7 +288,7 @@ func (r *PostgresRepository) GetSessionsWithFilters(userID *uuid.UUID, boxID *uu
 	for i := range sessions {
 		if sessions[i].BoxID != nil {
 			var boxNumber int
-			err = r.db.Table("wash_boxes").Where("id = ?", *sessions[i].BoxID).Select("number").Scan(&boxNumber).Error
+			err = r.db.WithContext(ctx).Table("wash_boxes").Where("id = ?", *sessions[i].BoxID).Select("number").Scan(&boxNumber).Error
 			if err == nil {
 				sessions[i].BoxNumber = &boxNumber
 			}
@@ -267,37 +299,52 @@ func (r *PostgresRepository) GetSessionsWithFilters(userID *uuid.UUID, boxID *uu
 }
 
 // GetChemistryStats получает статистику использования химии
-func (r *PostgresRepository) GetChemistryStats(dateFrom *time.Time, dateTo *time.Time) (*models.ChemistryStats, error) {
-	query := r.db.Model(&models.Session{})
-	
-	// Применяем фильтры по датам
-	if dateFrom != nil {
-		query = query.Where("created_at >= ?", *dateFrom)
-	}
-	if dateTo != nil {
-		query = query.Where("created_at <= ?", *dateTo)
-	}
-	
-	// Подсчитываем общее количество сессий с химией
+func (r *PostgresRepository) GetChemistryStats(ctx context.Context, dateFrom *time.Time, dateTo *time.Time) (*models.ChemistryStats, error) {
 	var totalWithChemistry int64
-	err := query.Where("with_chemistry = ?", true).Count(&totalWithChemistry).Error
-	if err != nil {
-		return nil, err
-	}
-	
-	// Подсчитываем количество сессий где химия была включена
 	var totalChemistryEnabled int64
-	err = query.Where("with_chemistry = ? AND was_chemistry_on = ?", true, true).Count(&totalChemistryEnabled).Error
+
+	// Подсчитываем общее количество сессий с химией
+	err := func() error {
+		query := r.db.WithContext(ctx).Model(&models.Session{})
+
+		// Применяем фильтры по датам
+		if dateFrom != nil {
+			query = query.Where("created_at >= ?", *dateFrom)
+		}
+		if dateTo != nil {
+			query = query.Where("created_at <= ?", *dateTo)
+		}
+
+		return query.Where("with_chemistry = ?", true).Count(&totalWithChemistry).Error
+	}()
 	if err != nil {
 		return nil, err
 	}
-	
+
+	// Подсчитываем количество сессий где химия была включена
+	err = func() error {
+		query := r.db.WithContext(ctx).Model(&models.Session{})
+
+		// Применяем фильтры по датам
+		if dateFrom != nil {
+			query = query.Where("created_at >= ?", *dateFrom)
+		}
+		if dateTo != nil {
+			query = query.Where("created_at <= ?", *dateTo)
+		}
+
+		return query.Where("with_chemistry = ? AND was_chemistry_on = ?", true, true).Count(&totalChemistryEnabled).Error
+	}()
+	if err != nil {
+		return nil, err
+	}
+
 	// Вычисляем процент использования
 	var usagePercentage float64
 	if totalWithChemistry > 0 {
 		usagePercentage = float64(totalChemistryEnabled) / float64(totalWithChemistry) * 100
 	}
-	
+
 	// Формируем период для отображения
 	period := "все время"
 	if dateFrom != nil && dateTo != nil {
@@ -307,7 +354,7 @@ func (r *PostgresRepository) GetChemistryStats(dateFrom *time.Time, dateTo *time
 	} else if dateTo != nil {
 		period = fmt.Sprintf("по %s", dateTo.Format("02.01.2006"))
 	}
-	
+
 	return &models.ChemistryStats{
 		TotalSessionsWithChemistry: int(totalWithChemistry),
 		TotalChemistryEnabled:      int(totalChemistryEnabled),
@@ -317,19 +364,19 @@ func (r *PostgresRepository) GetChemistryStats(dateFrom *time.Time, dateTo *time
 }
 
 // GetCompletedSessionsBetween получает количество завершенных сессий для бокса между указанными датами
-func (r *PostgresRepository) GetCompletedSessionsBetween(boxID uuid.UUID, dateFrom, dateTo time.Time) (int, error) {
+func (r *PostgresRepository) GetCompletedSessionsBetween(ctx context.Context, boxID uuid.UUID, dateFrom, dateTo time.Time) (int, error) {
 	var count int64
-	err := r.db.Model(&models.Session{}).
-		Where("box_id = ? AND status = ? AND created_at >= ? AND created_at <= ?", 
+	err := r.db.WithContext(ctx).Model(&models.Session{}).
+		Where("box_id = ? AND status = ? AND created_at >= ? AND created_at <= ?",
 			boxID, models.SessionStatusComplete, dateFrom, dateTo).
 		Count(&count).Error
 	return int(count), err
 }
 
 // GetActiveSessionByCarNumber получает активную сессию по номеру автомобиля
-func (r *PostgresRepository) GetActiveSessionByCarNumber(carNumber string) (*models.Session, error) {
+func (r *PostgresRepository) GetActiveSessionByCarNumber(ctx context.Context, carNumber string) (*models.Session, error) {
 	var session models.Session
-	err := r.db.Where("car_number = ? AND status IN (?, ?, ?, ?)",
+	err := r.db.WithContext(ctx).Where("car_number = ? AND status IN (?, ?, ?, ?)",
 		carNumber,
 		models.SessionStatusCreated,
 		models.SessionStatusInQueue,
@@ -344,7 +391,7 @@ func (r *PostgresRepository) GetActiveSessionByCarNumber(carNumber string) (*mod
 	// Если у сессии есть BoxID, получаем номер бокса
 	if session.BoxID != nil {
 		var boxNumber int
-		err = r.db.Table("wash_boxes").Where("id = ?", *session.BoxID).Select("number").Scan(&boxNumber).Error
+		err = r.db.WithContext(ctx).Table("wash_boxes").Where("id = ?", *session.BoxID).Select("number").Scan(&boxNumber).Error
 		if err == nil {
 			session.BoxNumber = &boxNumber
 		}

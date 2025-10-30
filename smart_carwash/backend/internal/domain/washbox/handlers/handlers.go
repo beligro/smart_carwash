@@ -92,7 +92,7 @@ func (h *Handler) adminListWashBoxes(c *gin.Context) {
 	}
 
 	// Получаем список боксов
-	resp, err := h.service.AdminListWashBoxes(&req)
+	resp, err := h.service.AdminListWashBoxes(c.Request.Context(), &req)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
@@ -130,7 +130,7 @@ func (h *Handler) AdminListCleaningLogs(c *gin.Context) {
 		req.Offset = &offset
 	}
 
-	resp, err := h.service.AdminListCleaningLogs(&req)
+	resp, err := h.service.AdminListCleaningLogs(c.Request.Context(), &req)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
@@ -150,7 +150,7 @@ func (h *Handler) adminCreateWashBox(c *gin.Context) {
 	}
 
 	// Создаем бокс
-	resp, err := h.service.AdminCreateWashBox(&req)
+	resp, err := h.service.AdminCreateWashBox(c.Request.Context(), &req)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
@@ -176,7 +176,7 @@ func (h *Handler) adminUpdateWashBox(c *gin.Context) {
 	}
 
 	// Обновляем бокс
-	resp, err := h.service.AdminUpdateWashBox(&req)
+	resp, err := h.service.AdminUpdateWashBox(c.Request.Context(), &req)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
@@ -202,7 +202,7 @@ func (h *Handler) adminDeleteWashBox(c *gin.Context) {
 	}
 
 	// Удаляем бокс
-	resp, err := h.service.AdminDeleteWashBox(&req)
+	resp, err := h.service.AdminDeleteWashBox(c.Request.Context(), &req)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
@@ -215,7 +215,6 @@ func (h *Handler) adminDeleteWashBox(c *gin.Context) {
 
 	c.JSON(http.StatusOK, resp)
 }
-
 
 // adminGetWashBox обработчик для получения бокса мойки по ID
 func (h *Handler) adminGetWashBox(c *gin.Context) {
@@ -237,7 +236,7 @@ func (h *Handler) adminGetWashBox(c *gin.Context) {
 	req.ID = id
 
 	// Получаем бокс
-	resp, err := h.service.AdminGetWashBox(&req)
+	resp, err := h.service.AdminGetWashBox(c.Request.Context(), &req)
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
 		return
@@ -270,7 +269,7 @@ func (h *Handler) cleanerListWashBoxes(c *gin.Context) {
 	}
 
 	// Получаем список боксов
-	resp, err := h.service.CleanerListWashBoxes(&req)
+	resp, err := h.service.CleanerListWashBoxes(c.Request.Context(), &req)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
@@ -278,7 +277,6 @@ func (h *Handler) cleanerListWashBoxes(c *gin.Context) {
 
 	c.JSON(http.StatusOK, resp)
 }
-
 
 // cleanerReserveCleaning обработчик для резервирования уборки
 func (h *Handler) cleanerReserveCleaning(c *gin.Context) {
@@ -304,7 +302,7 @@ func (h *Handler) cleanerReserveCleaning(c *gin.Context) {
 	}
 
 	// Резервируем уборку
-	resp, err := h.service.CleanerReserveCleaning(&req, cleanerID)
+	resp, err := h.service.CleanerReserveCleaning(c.Request.Context(), &req, cleanerID)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
@@ -318,7 +316,6 @@ func (h *Handler) cleanerReserveCleaning(c *gin.Context) {
 
 	c.JSON(http.StatusOK, resp)
 }
-
 
 // cleanerStartCleaning обработчик для начала уборки
 func (h *Handler) cleanerStartCleaning(c *gin.Context) {
@@ -344,7 +341,7 @@ func (h *Handler) cleanerStartCleaning(c *gin.Context) {
 	}
 
 	// Начинаем уборку
-	resp, err := h.service.CleanerStartCleaning(&req, cleanerID)
+	resp, err := h.service.CleanerStartCleaning(c.Request.Context(), &req, cleanerID)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
@@ -358,7 +355,6 @@ func (h *Handler) cleanerStartCleaning(c *gin.Context) {
 
 	c.JSON(http.StatusOK, resp)
 }
-
 
 // cleanerCancelCleaning обработчик для отмены уборки
 func (h *Handler) cleanerCancelCleaning(c *gin.Context) {
@@ -384,7 +380,7 @@ func (h *Handler) cleanerCancelCleaning(c *gin.Context) {
 	}
 
 	// Отменяем уборку
-	resp, err := h.service.CleanerCancelCleaning(&req, cleanerID)
+	resp, err := h.service.CleanerCancelCleaning(c.Request.Context(), &req, cleanerID)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
@@ -398,7 +394,6 @@ func (h *Handler) cleanerCancelCleaning(c *gin.Context) {
 
 	c.JSON(http.StatusOK, resp)
 }
-
 
 // cleanerCompleteCleaning обработчик для завершения уборки
 func (h *Handler) cleanerCompleteCleaning(c *gin.Context) {
@@ -424,7 +419,7 @@ func (h *Handler) cleanerCompleteCleaning(c *gin.Context) {
 	}
 
 	// Завершаем уборку
-	resp, err := h.service.CleanerCompleteCleaning(&req, cleanerID)
+	resp, err := h.service.CleanerCompleteCleaning(c.Request.Context(), &req, cleanerID)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
@@ -438,4 +433,3 @@ func (h *Handler) cleanerCompleteCleaning(c *gin.Context) {
 
 	c.JSON(http.StatusOK, resp)
 }
-

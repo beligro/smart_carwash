@@ -1,11 +1,13 @@
 package service
 
 import (
+	modbusAdapter "carwash_backend/internal/domain/modbus/adapter"
 	modbusRepository "carwash_backend/internal/domain/modbus/repository"
 	sessionRepository "carwash_backend/internal/domain/session/repository"
 	"carwash_backend/internal/domain/settings/service"
 	"carwash_backend/internal/domain/washbox/models"
 	"carwash_backend/internal/domain/washbox/repository"
+	"context"
 	"errors"
 	"math/rand"
 	"time"
@@ -16,48 +18,49 @@ import (
 
 // Service интерфейс для бизнес-логики боксов мойки
 type Service interface {
-	GetWashBoxByID(id uuid.UUID) (*models.WashBox, error)
-	UpdateWashBoxStatus(id uuid.UUID, status string) error
-	GetFreeWashBoxes() ([]models.WashBox, error)
-	GetFreeWashBoxesByServiceType(serviceType string) ([]models.WashBox, error)
-	GetFreeWashBoxesWithChemistry(serviceType string) ([]models.WashBox, error)
-	GetWashBoxesByServiceType(serviceType string) ([]models.WashBox, error)
-	GetAllWashBoxes() ([]models.WashBox, error)
+	GetWashBoxByID(ctx context.Context, id uuid.UUID) (*models.WashBox, error)
+	UpdateWashBoxStatus(ctx context.Context, id uuid.UUID, status string) error
+	GetFreeWashBoxes(ctx context.Context) ([]models.WashBox, error)
+	GetFreeWashBoxesByServiceType(ctx context.Context, serviceType string) ([]models.WashBox, error)
+	GetFreeWashBoxesWithChemistry(ctx context.Context, serviceType string) ([]models.WashBox, error)
+	GetWashBoxesByServiceType(ctx context.Context, serviceType string) ([]models.WashBox, error)
+	GetAllWashBoxes(ctx context.Context) ([]models.WashBox, error)
 
 	// Административные методы
-	AdminCreateWashBox(req *models.AdminCreateWashBoxRequest) (*models.AdminCreateWashBoxResponse, error)
-	AdminUpdateWashBox(req *models.AdminUpdateWashBoxRequest) (*models.AdminUpdateWashBoxResponse, error)
-	AdminDeleteWashBox(req *models.AdminDeleteWashBoxRequest) (*models.AdminDeleteWashBoxResponse, error)
-	AdminGetWashBox(req *models.AdminGetWashBoxRequest) (*models.AdminGetWashBoxResponse, error)
-	AdminListWashBoxes(req *models.AdminListWashBoxesRequest) (*models.AdminListWashBoxesResponse, error)
-	RestoreWashBox(id uuid.UUID, status string, serviceType string) (*models.WashBox, error)
+	AdminCreateWashBox(ctx context.Context, req *models.AdminCreateWashBoxRequest) (*models.AdminCreateWashBoxResponse, error)
+	AdminUpdateWashBox(ctx context.Context, req *models.AdminUpdateWashBoxRequest) (*models.AdminUpdateWashBoxResponse, error)
+	AdminDeleteWashBox(ctx context.Context, req *models.AdminDeleteWashBoxRequest) (*models.AdminDeleteWashBoxResponse, error)
+	AdminGetWashBox(ctx context.Context, req *models.AdminGetWashBoxRequest) (*models.AdminGetWashBoxResponse, error)
+	AdminListWashBoxes(ctx context.Context, req *models.AdminListWashBoxesRequest) (*models.AdminListWashBoxesResponse, error)
+	RestoreWashBox(ctx context.Context, id uuid.UUID, status string, serviceType string) (*models.WashBox, error)
 
 	// Методы для кассира
-	CashierListWashBoxes(req *models.CashierListWashBoxesRequest) (*models.CashierListWashBoxesResponse, error)
-	CashierSetMaintenance(req *models.CashierSetMaintenanceRequest) (*models.CashierSetMaintenanceResponse, error)
+	CashierListWashBoxes(ctx context.Context, req *models.CashierListWashBoxesRequest) (*models.CashierListWashBoxesResponse, error)
+	CashierSetMaintenance(ctx context.Context, req *models.CashierSetMaintenanceRequest) (*models.CashierSetMaintenanceResponse, error)
 
 	// Методы для уборщиков
-	CleanerListWashBoxes(req *models.CleanerListWashBoxesRequest) (*models.CleanerListWashBoxesResponse, error)
-	CleanerReserveCleaning(req *models.CleanerReserveCleaningRequest, cleanerID uuid.UUID) (*models.CleanerReserveCleaningResponse, error)
-	CleanerStartCleaning(req *models.CleanerStartCleaningRequest, cleanerID uuid.UUID) (*models.CleanerStartCleaningResponse, error)
-	CleanerCancelCleaning(req *models.CleanerCancelCleaningRequest, cleanerID uuid.UUID) (*models.CleanerCancelCleaningResponse, error)
-	CleanerCompleteCleaning(req *models.CleanerCompleteCleaningRequest, cleanerID uuid.UUID) (*models.CleanerCompleteCleaningResponse, error)
-	GetCleaningBoxes() ([]models.WashBox, error)
-	AutoCompleteExpiredCleanings() error
-	UpdateCleaningStartedAt(washBoxID uuid.UUID, startedAt time.Time) error
-	ClearCleaningReservation(washBoxID uuid.UUID) error
+	CleanerListWashBoxes(ctx context.Context, req *models.CleanerListWashBoxesRequest) (*models.CleanerListWashBoxesResponse, error)
+	CleanerReserveCleaning(ctx context.Context, req *models.CleanerReserveCleaningRequest, cleanerID uuid.UUID) (*models.CleanerReserveCleaningResponse, error)
+	CleanerStartCleaning(ctx context.Context, req *models.CleanerStartCleaningRequest, cleanerID uuid.UUID) (*models.CleanerStartCleaningResponse, error)
+	CleanerCancelCleaning(ctx context.Context, req *models.CleanerCancelCleaningRequest, cleanerID uuid.UUID) (*models.CleanerCancelCleaningResponse, error)
+	CleanerCompleteCleaning(ctx context.Context, req *models.CleanerCompleteCleaningRequest, cleanerID uuid.UUID) (*models.CleanerCompleteCleaningResponse, error)
+	GetCleaningBoxes(ctx context.Context) ([]models.WashBox, error)
+	AutoCompleteExpiredCleanings(ctx context.Context) error
+	UpdateCleaningStartedAt(ctx context.Context, washBoxID uuid.UUID, startedAt time.Time) error
+	ClearCleaningReservation(ctx context.Context, washBoxID uuid.UUID) error
 
 	// Методы для логов уборки (админка)
-	AdminListCleaningLogs(req *models.AdminListCleaningLogsRequest) (*models.AdminListCleaningLogsResponse, error)
+	AdminListCleaningLogs(ctx context.Context, req *models.AdminListCleaningLogsRequest) (*models.AdminListCleaningLogsResponse, error)
 
 	// Методы для работы с cooldown
-	SetCooldown(boxID uuid.UUID, userID uuid.UUID, cooldownUntil time.Time) error
-	SetCooldownByCarNumber(boxID uuid.UUID, carNumber string, cooldownUntil time.Time) error
-	GetCooldownBoxesForUser(userID uuid.UUID) ([]models.WashBox, error)
-	GetCooldownBoxesByCarNumber(carNumber string) ([]models.WashBox, error)
-	GetAvailableBoxesByServiceType(serviceType string, userID uuid.UUID) ([]models.WashBox, error)
-	GetAvailableBoxesByServiceTypeForCashier(serviceType string, carNumber string) ([]models.WashBox, error)
-	CheckCooldownExpired() error
+	SetCooldown(ctx context.Context, boxID uuid.UUID, userID uuid.UUID, cooldownUntil time.Time) error
+	SetCooldownByCarNumber(ctx context.Context, boxID uuid.UUID, carNumber string, cooldownUntil time.Time) error
+	GetCooldownBoxesForUser(ctx context.Context, userID uuid.UUID) ([]models.WashBox, error)
+	GetCooldownBoxesByCarNumber(ctx context.Context, carNumber string) ([]models.WashBox, error)
+	GetAvailableBoxesByServiceType(ctx context.Context, serviceType string, userID uuid.UUID) ([]models.WashBox, error)
+	GetAvailableBoxesByServiceTypeForCashier(ctx context.Context, serviceType string, carNumber string) ([]models.WashBox, error)
+	ClearCooldown(ctx context.Context, boxID uuid.UUID) error
+	CheckCooldownExpired(ctx context.Context) error
 }
 
 // ServiceImpl реализация Service
@@ -66,6 +69,8 @@ type ServiceImpl struct {
 	sessionRepo     sessionRepository.Repository
 	settingsService service.Service
 	modbusRepo      *modbusRepository.ModbusRepository
+	modbusAdapter   *modbusAdapter.ModbusAdapter
+	// SafeDB удалён; используем контексты вызова
 }
 
 // shuffleBoxesWithSamePriority перемешивает боксы с одинаковым приоритетом
@@ -98,28 +103,29 @@ func shuffleBoxesWithSamePriority(boxes []models.WashBox) []models.WashBox {
 }
 
 // NewService создает новый экземпляр Service
-func NewService(repo repository.Repository, sessionRepo sessionRepository.Repository, settingsService service.Service, db *gorm.DB) *ServiceImpl {
+func NewService(repo repository.Repository, sessionRepo sessionRepository.Repository, settingsService service.Service, db *gorm.DB, modbusAdapterInst *modbusAdapter.ModbusAdapter) *ServiceImpl {
 	return &ServiceImpl{
 		repo:            repo,
 		sessionRepo:     sessionRepo,
 		settingsService: settingsService,
 		modbusRepo:      modbusRepository.NewModbusRepository(db),
+		modbusAdapter:   modbusAdapterInst,
 	}
 }
 
 // GetWashBoxByID получает бокс мойки по ID
-func (s *ServiceImpl) GetWashBoxByID(id uuid.UUID) (*models.WashBox, error) {
-	return s.repo.GetWashBoxByID(id)
+func (s *ServiceImpl) GetWashBoxByID(ctx context.Context, id uuid.UUID) (*models.WashBox, error) {
+	return s.repo.GetWashBoxByID(ctx, id)
 }
 
 // UpdateWashBoxStatus обновляет статус бокса мойки
-func (s *ServiceImpl) UpdateWashBoxStatus(id uuid.UUID, status string) error {
-	return s.repo.UpdateWashBoxStatus(id, status)
+func (s *ServiceImpl) UpdateWashBoxStatus(ctx context.Context, id uuid.UUID, status string) error {
+	return s.repo.UpdateWashBoxStatus(ctx, id, status)
 }
 
 // GetFreeWashBoxes получает все свободные боксы мойки, отсортированные по приоритету с рандомизацией
-func (s *ServiceImpl) GetFreeWashBoxes() ([]models.WashBox, error) {
-	boxes, err := s.repo.GetFreeWashBoxes()
+func (s *ServiceImpl) GetFreeWashBoxes(ctx context.Context) ([]models.WashBox, error) {
+	boxes, err := s.repo.GetFreeWashBoxes(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -127,8 +133,8 @@ func (s *ServiceImpl) GetFreeWashBoxes() ([]models.WashBox, error) {
 }
 
 // GetFreeWashBoxesByServiceType получает все свободные боксы мойки определенного типа, отсортированные по приоритету с рандомизацией
-func (s *ServiceImpl) GetFreeWashBoxesByServiceType(serviceType string) ([]models.WashBox, error) {
-	boxes, err := s.repo.GetFreeWashBoxesByServiceType(serviceType)
+func (s *ServiceImpl) GetFreeWashBoxesByServiceType(ctx context.Context, serviceType string) ([]models.WashBox, error) {
+	boxes, err := s.repo.GetFreeWashBoxesByServiceType(ctx, serviceType)
 	if err != nil {
 		return nil, err
 	}
@@ -136,8 +142,8 @@ func (s *ServiceImpl) GetFreeWashBoxesByServiceType(serviceType string) ([]model
 }
 
 // GetFreeWashBoxesWithChemistry получает все свободные боксы мойки с химией определенного типа, отсортированные по приоритету с рандомизацией
-func (s *ServiceImpl) GetFreeWashBoxesWithChemistry(serviceType string) ([]models.WashBox, error) {
-	boxes, err := s.repo.GetFreeWashBoxesWithChemistry(serviceType)
+func (s *ServiceImpl) GetFreeWashBoxesWithChemistry(ctx context.Context, serviceType string) ([]models.WashBox, error) {
+	boxes, err := s.repo.GetFreeWashBoxesWithChemistry(ctx, serviceType)
 	if err != nil {
 		return nil, err
 	}
@@ -145,28 +151,28 @@ func (s *ServiceImpl) GetFreeWashBoxesWithChemistry(serviceType string) ([]model
 }
 
 // GetWashBoxesByServiceType получает все боксы мойки определенного типа
-func (s *ServiceImpl) GetWashBoxesByServiceType(serviceType string) ([]models.WashBox, error) {
-	return s.repo.GetWashBoxesByServiceType(serviceType)
+func (s *ServiceImpl) GetWashBoxesByServiceType(ctx context.Context, serviceType string) ([]models.WashBox, error) {
+	return s.repo.GetWashBoxesByServiceType(ctx, serviceType)
 }
 
 // GetAllWashBoxes получает все боксы мойки
-func (s *ServiceImpl) GetAllWashBoxes() ([]models.WashBox, error) {
-	return s.repo.GetAllWashBoxes()
+func (s *ServiceImpl) GetAllWashBoxes(ctx context.Context) ([]models.WashBox, error) {
+	return s.repo.GetAllWashBoxes(ctx)
 }
 
 // AdminCreateWashBox создает новый бокс мойки
-func (s *ServiceImpl) AdminCreateWashBox(req *models.AdminCreateWashBoxRequest) (*models.AdminCreateWashBoxResponse, error) {
+func (s *ServiceImpl) AdminCreateWashBox(ctx context.Context, req *models.AdminCreateWashBoxRequest) (*models.AdminCreateWashBoxResponse, error) {
 	// Проверяем, не существует ли уже активный бокс с таким номером
-	existingBox, err := s.repo.GetWashBoxByNumber(req.Number)
+	existingBox, err := s.repo.GetWashBoxByNumber(ctx, req.Number)
 	if err == nil && existingBox != nil {
 		return nil, errors.New("бокс с таким номером уже существует")
 	}
 
 	// Проверяем, есть ли удаленный бокс с таким номером
-	deletedBox, err := s.repo.GetWashBoxByNumberIncludingDeleted(req.Number)
+	deletedBox, err := s.repo.GetWashBoxByNumberIncludingDeleted(ctx, req.Number)
 	if err == nil && deletedBox != nil && deletedBox.DeletedAt.Valid {
 		// Восстанавливаем удаленный бокс
-		restoredBox, err := s.RestoreWashBox(deletedBox.ID, req.Status, req.ServiceType)
+		restoredBox, err := s.RestoreWashBox(ctx, deletedBox.ID, req.Status, req.ServiceType)
 		if err != nil {
 			return nil, err
 		}
@@ -191,7 +197,7 @@ func (s *ServiceImpl) AdminCreateWashBox(req *models.AdminCreateWashBoxRequest) 
 		washBox.ChemistryEnabled = req.ServiceType == "wash"
 	}
 
-	createdBox, err := s.repo.CreateWashBox(washBox)
+	createdBox, err := s.repo.CreateWashBox(ctx, washBox)
 	if err != nil {
 		return nil, err
 	}
@@ -202,9 +208,9 @@ func (s *ServiceImpl) AdminCreateWashBox(req *models.AdminCreateWashBoxRequest) 
 }
 
 // AdminUpdateWashBox обновляет бокс мойки
-func (s *ServiceImpl) AdminUpdateWashBox(req *models.AdminUpdateWashBoxRequest) (*models.AdminUpdateWashBoxResponse, error) {
+func (s *ServiceImpl) AdminUpdateWashBox(ctx context.Context, req *models.AdminUpdateWashBoxRequest) (*models.AdminUpdateWashBoxResponse, error) {
 	// Получаем существующий бокс
-	existingBox, err := s.repo.GetWashBoxByID(req.ID)
+	existingBox, err := s.repo.GetWashBoxByID(ctx, req.ID)
 	if err != nil {
 		return nil, errors.New("бокс не найден")
 	}
@@ -213,7 +219,7 @@ func (s *ServiceImpl) AdminUpdateWashBox(req *models.AdminUpdateWashBoxRequest) 
 	if req.Number != nil {
 		// Проверяем, не существует ли уже бокс с таким номером
 		if *req.Number != existingBox.Number {
-			boxWithNumber, err := s.repo.GetWashBoxByNumber(*req.Number)
+			boxWithNumber, err := s.repo.GetWashBoxByNumber(ctx, *req.Number)
 			if err == nil && boxWithNumber != nil {
 				return nil, errors.New("бокс с таким номером уже существует")
 			}
@@ -248,7 +254,7 @@ func (s *ServiceImpl) AdminUpdateWashBox(req *models.AdminUpdateWashBoxRequest) 
 	}
 
 	// Сохраняем изменения
-	updatedBox, err := s.repo.UpdateWashBox(existingBox)
+	updatedBox, err := s.repo.UpdateWashBox(ctx, existingBox)
 	if err != nil {
 		return nil, err
 	}
@@ -259,9 +265,9 @@ func (s *ServiceImpl) AdminUpdateWashBox(req *models.AdminUpdateWashBoxRequest) 
 }
 
 // AdminDeleteWashBox удаляет бокс мойки
-func (s *ServiceImpl) AdminDeleteWashBox(req *models.AdminDeleteWashBoxRequest) (*models.AdminDeleteWashBoxResponse, error) {
+func (s *ServiceImpl) AdminDeleteWashBox(ctx context.Context, req *models.AdminDeleteWashBoxRequest) (*models.AdminDeleteWashBoxResponse, error) {
 	// Проверяем, существует ли бокс
-	existingBox, err := s.repo.GetWashBoxByID(req.ID)
+	existingBox, err := s.repo.GetWashBoxByID(ctx, req.ID)
 	if err != nil {
 		return nil, errors.New("бокс не найден")
 	}
@@ -272,7 +278,7 @@ func (s *ServiceImpl) AdminDeleteWashBox(req *models.AdminDeleteWashBoxRequest) 
 	}
 
 	// Удаляем бокс
-	err = s.repo.DeleteWashBox(req.ID)
+	err = s.repo.DeleteWashBox(ctx, req.ID)
 	if err != nil {
 		return nil, err
 	}
@@ -283,8 +289,8 @@ func (s *ServiceImpl) AdminDeleteWashBox(req *models.AdminDeleteWashBoxRequest) 
 }
 
 // AdminGetWashBox получает бокс мойки по ID
-func (s *ServiceImpl) AdminGetWashBox(req *models.AdminGetWashBoxRequest) (*models.AdminGetWashBoxResponse, error) {
-	washBox, err := s.repo.GetWashBoxByID(req.ID)
+func (s *ServiceImpl) AdminGetWashBox(ctx context.Context, req *models.AdminGetWashBoxRequest) (*models.AdminGetWashBoxResponse, error) {
+	washBox, err := s.repo.GetWashBoxByID(ctx, req.ID)
 	if err != nil {
 		return nil, errors.New("бокс не найден")
 	}
@@ -295,7 +301,7 @@ func (s *ServiceImpl) AdminGetWashBox(req *models.AdminGetWashBoxRequest) (*mode
 }
 
 // AdminListWashBoxes получает список боксов мойки с фильтрацией
-func (s *ServiceImpl) AdminListWashBoxes(req *models.AdminListWashBoxesRequest) (*models.AdminListWashBoxesResponse, error) {
+func (s *ServiceImpl) AdminListWashBoxes(ctx context.Context, req *models.AdminListWashBoxesRequest) (*models.AdminListWashBoxesResponse, error) {
 	// Устанавливаем значения по умолчанию
 	limit := 50
 	offset := 0
@@ -308,13 +314,13 @@ func (s *ServiceImpl) AdminListWashBoxes(req *models.AdminListWashBoxesRequest) 
 	}
 
 	// Получаем боксы с фильтрацией
-	boxes, total, err := s.repo.GetWashBoxesWithFilters(req.Status, req.ServiceType, limit, offset)
+	boxes, total, err := s.repo.GetWashBoxesWithFilters(ctx, req.Status, req.ServiceType, limit, offset)
 	if err != nil {
 		return nil, err
 	}
 
 	// Получаем статусы modbus для всех боксов
-	modbusStatuses, err := s.modbusRepo.GetAllModbusConnectionStatuses()
+	modbusStatuses, err := s.modbusRepo.GetAllModbusConnectionStatuses(ctx)
 	if err == nil && len(modbusStatuses) > 0 {
 		// Создаем мапу статусов для быстрого доступа
 		statusMap := make(map[uuid.UUID]*bool)
@@ -351,9 +357,9 @@ func (s *ServiceImpl) AdminListWashBoxes(req *models.AdminListWashBoxesRequest) 
 }
 
 // RestoreWashBox восстанавливает удаленный бокс мойки
-func (s *ServiceImpl) RestoreWashBox(id uuid.UUID, status string, serviceType string) (*models.WashBox, error) {
+func (s *ServiceImpl) RestoreWashBox(ctx context.Context, id uuid.UUID, status string, serviceType string) (*models.WashBox, error) {
 	// Восстанавливаем бокс через repository
-	restoredBox, err := s.repo.RestoreWashBox(id, status, serviceType)
+	restoredBox, err := s.repo.RestoreWashBox(ctx, id, status, serviceType)
 	if err != nil {
 		return nil, err
 	}
@@ -362,7 +368,7 @@ func (s *ServiceImpl) RestoreWashBox(id uuid.UUID, status string, serviceType st
 }
 
 // CashierListWashBoxes возвращает список боксов для кассира
-func (s *ServiceImpl) CashierListWashBoxes(req *models.CashierListWashBoxesRequest) (*models.CashierListWashBoxesResponse, error) {
+func (s *ServiceImpl) CashierListWashBoxes(ctx context.Context, req *models.CashierListWashBoxesRequest) (*models.CashierListWashBoxesResponse, error) {
 	// Устанавливаем значения по умолчанию
 	limit := 50
 	offset := 0
@@ -375,7 +381,7 @@ func (s *ServiceImpl) CashierListWashBoxes(req *models.CashierListWashBoxesReque
 	}
 
 	// Получаем боксы с фильтрацией
-	boxes, total, err := s.repo.GetWashBoxesWithFilters(req.Status, req.ServiceType, limit, offset)
+	boxes, total, err := s.repo.GetWashBoxesWithFilters(ctx, req.Status, req.ServiceType, limit, offset)
 	if err != nil {
 		return nil, err
 	}
@@ -389,9 +395,9 @@ func (s *ServiceImpl) CashierListWashBoxes(req *models.CashierListWashBoxesReque
 }
 
 // CashierSetMaintenance переводит бокс в режим обслуживания (только свободные боксы)
-func (s *ServiceImpl) CashierSetMaintenance(req *models.CashierSetMaintenanceRequest) (*models.CashierSetMaintenanceResponse, error) {
+func (s *ServiceImpl) CashierSetMaintenance(ctx context.Context, req *models.CashierSetMaintenanceRequest) (*models.CashierSetMaintenanceResponse, error) {
 	// Получаем бокс по ID
-	washBox, err := s.repo.GetWashBoxByID(req.ID)
+	washBox, err := s.repo.GetWashBoxByID(ctx, req.ID)
 	if err != nil {
 		return nil, errors.New("бокс не найден")
 	}
@@ -403,7 +409,7 @@ func (s *ServiceImpl) CashierSetMaintenance(req *models.CashierSetMaintenanceReq
 
 	// Обновляем статус бокса на maintenance
 	washBox.Status = models.StatusMaintenance
-	updatedBox, err := s.repo.UpdateWashBox(washBox)
+	updatedBox, err := s.repo.UpdateWashBox(ctx, washBox)
 	if err != nil {
 		return nil, err
 	}
@@ -415,7 +421,7 @@ func (s *ServiceImpl) CashierSetMaintenance(req *models.CashierSetMaintenanceReq
 }
 
 // CleanerListWashBoxes получает список боксов для уборщика
-func (s *ServiceImpl) CleanerListWashBoxes(req *models.CleanerListWashBoxesRequest) (*models.CleanerListWashBoxesResponse, error) {
+func (s *ServiceImpl) CleanerListWashBoxes(ctx context.Context, req *models.CleanerListWashBoxesRequest) (*models.CleanerListWashBoxesResponse, error) {
 	limit := 100 // По умолчанию
 	offset := 0
 
@@ -426,14 +432,14 @@ func (s *ServiceImpl) CleanerListWashBoxes(req *models.CleanerListWashBoxesReque
 		offset = *req.Offset
 	}
 
-	boxes, total, err := s.repo.GetWashBoxesForCleaner(limit, offset)
+	boxes, total, err := s.repo.GetWashBoxesForCleaner(ctx, limit, offset)
 	if err != nil {
 		return nil, err
 	}
 
 	// Вычисляем для каждого бокса, можно ли его убирать
 	for i := range boxes {
-		canBeCleaned := s.checkIfBoxCanBeCleaned(boxes[i].ID)
+		canBeCleaned := s.checkIfBoxCanBeCleaned(ctx, boxes[i].ID)
 		boxes[i].CanBeCleaned = &canBeCleaned
 	}
 
@@ -444,9 +450,9 @@ func (s *ServiceImpl) CleanerListWashBoxes(req *models.CleanerListWashBoxesReque
 }
 
 // checkIfBoxCanBeCleaned проверяет, можно ли убирать бокс (не было повторного назначения)
-func (s *ServiceImpl) checkIfBoxCanBeCleaned(boxID uuid.UUID) bool {
+func (s *ServiceImpl) checkIfBoxCanBeCleaned(ctx context.Context, boxID uuid.UUID) bool {
 	// Получаем последний лог уборки для бокса
-	lastLog, err := s.repo.GetLastCleaningLogByBox(boxID)
+	lastLog, err := s.repo.GetLastCleaningLogByBox(ctx, boxID)
 	if err != nil || lastLog == nil {
 		// Если нет логов уборки, бокс можно убирать
 		return true
@@ -459,7 +465,7 @@ func (s *ServiceImpl) checkIfBoxCanBeCleaned(boxID uuid.UUID) bool {
 	}
 
 	// Проверяем, что после последней уборки была хотя бы одна завершенная сессия
-	completedSessionsCount, err := s.sessionRepo.GetCompletedSessionsBetween(
+	completedSessionsCount, err := s.sessionRepo.GetCompletedSessionsBetween(ctx,
 		boxID,
 		*lastLog.CompletedAt,
 		time.Now(),
@@ -474,9 +480,9 @@ func (s *ServiceImpl) checkIfBoxCanBeCleaned(boxID uuid.UUID) bool {
 }
 
 // CleanerReserveCleaning резервирует уборку для бокса
-func (s *ServiceImpl) CleanerReserveCleaning(req *models.CleanerReserveCleaningRequest, cleanerID uuid.UUID) (*models.CleanerReserveCleaningResponse, error) {
+func (s *ServiceImpl) CleanerReserveCleaning(ctx context.Context, req *models.CleanerReserveCleaningRequest, cleanerID uuid.UUID) (*models.CleanerReserveCleaningResponse, error) {
 	// Проверяем, что бокс существует
-	washBox, err := s.repo.GetWashBoxByID(req.WashBoxID)
+	washBox, err := s.repo.GetWashBoxByID(ctx, req.WashBoxID)
 	if err != nil {
 		return nil, err
 	}
@@ -487,18 +493,18 @@ func (s *ServiceImpl) CleanerReserveCleaning(req *models.CleanerReserveCleaningR
 	}
 
 	// Проверяем, что уборщик не убирает другой бокс
-	activeLog, err := s.repo.GetActiveCleaningLogByCleaner(cleanerID)
+	activeLog, err := s.repo.GetActiveCleaningLogByCleaner(ctx, cleanerID)
 	if err == nil && activeLog != nil {
 		return nil, errors.New("уборщик уже убирает другой бокс")
 	}
 
 	// Проверяем, что бокс не убирался в предыдущей сессии
-	lastLog, err := s.repo.GetLastCleaningLogByBox(req.WashBoxID)
+	lastLog, err := s.repo.GetLastCleaningLogByBox(ctx, req.WashBoxID)
 	if err == nil && lastLog != nil {
 		// Проверяем, что последняя уборка была завершена
 		if lastLog.Status == models.CleaningLogStatusCompleted && lastLog.CompletedAt != nil {
 			// Проверяем, что после последней уборки была хотя бы одна завершенная сессия
-			completedSessionsCount, err := s.sessionRepo.GetCompletedSessionsBetween(
+			completedSessionsCount, err := s.sessionRepo.GetCompletedSessionsBetween(ctx,
 				req.WashBoxID,
 				*lastLog.CompletedAt,
 				time.Now(),
@@ -515,7 +521,7 @@ func (s *ServiceImpl) CleanerReserveCleaning(req *models.CleanerReserveCleaningR
 	}
 
 	// Резервируем уборку
-	err = s.repo.ReserveCleaning(req.WashBoxID, cleanerID)
+	err = s.repo.ReserveCleaning(ctx, req.WashBoxID, cleanerID)
 	if err != nil {
 		return nil, err
 	}
@@ -526,9 +532,9 @@ func (s *ServiceImpl) CleanerReserveCleaning(req *models.CleanerReserveCleaningR
 }
 
 // CleanerStartCleaning начинает уборку бокса
-func (s *ServiceImpl) CleanerStartCleaning(req *models.CleanerStartCleaningRequest, cleanerID uuid.UUID) (*models.CleanerStartCleaningResponse, error) {
+func (s *ServiceImpl) CleanerStartCleaning(ctx context.Context, req *models.CleanerStartCleaningRequest, cleanerID uuid.UUID) (*models.CleanerStartCleaningResponse, error) {
 	// Проверяем, что бокс существует
-	washBox, err := s.repo.GetWashBoxByID(req.WashBoxID)
+	washBox, err := s.repo.GetWashBoxByID(ctx, req.WashBoxID)
 	if err != nil {
 		return nil, err
 	}
@@ -540,18 +546,18 @@ func (s *ServiceImpl) CleanerStartCleaning(req *models.CleanerStartCleaningReque
 	}
 
 	// Проверяем, что уборщик не убирает другой бокс
-	activeLog, err := s.repo.GetActiveCleaningLogByCleaner(cleanerID)
+	activeLog, err := s.repo.GetActiveCleaningLogByCleaner(ctx, cleanerID)
 	if err == nil && activeLog != nil {
 		return nil, errors.New("уборщик уже убирает другой бокс")
 	}
 
 	// Проверяем, что бокс не убирался в предыдущей сессии
-	lastLog, err := s.repo.GetLastCleaningLogByBox(req.WashBoxID)
+	lastLog, err := s.repo.GetLastCleaningLogByBox(ctx, req.WashBoxID)
 	if err == nil && lastLog != nil {
 		// Проверяем, что последняя уборка была завершена
 		if lastLog.Status == models.CleaningLogStatusCompleted && lastLog.CompletedAt != nil {
 			// Проверяем, что после последней уборки была хотя бы одна завершенная сессия
-			completedSessionsCount, err := s.sessionRepo.GetCompletedSessionsBetween(
+			completedSessionsCount, err := s.sessionRepo.GetCompletedSessionsBetween(ctx,
 				req.WashBoxID,
 				*lastLog.CompletedAt,
 				time.Now(),
@@ -569,13 +575,13 @@ func (s *ServiceImpl) CleanerStartCleaning(req *models.CleanerStartCleaningReque
 
 	// Начинаем уборку
 	startedAt := time.Now()
-	err = s.repo.StartCleaning(req.WashBoxID)
+	err = s.repo.StartCleaning(ctx, req.WashBoxID)
 	if err != nil {
 		return nil, err
 	}
 
 	// Обновляем время начала уборки в боксе
-	err = s.repo.UpdateCleaningStartedAt(req.WashBoxID, startedAt)
+	err = s.repo.UpdateCleaningStartedAt(ctx, req.WashBoxID, startedAt)
 	if err != nil {
 		return nil, err
 	}
@@ -588,9 +594,14 @@ func (s *ServiceImpl) CleanerStartCleaning(req *models.CleanerStartCleaningReque
 		Status:    models.CleaningLogStatusInProgress,
 	}
 
-	err = s.repo.CreateCleaningLog(cleaningLog)
+	err = s.repo.CreateCleaningLog(ctx, cleaningLog)
 	if err != nil {
 		return nil, err
+	}
+
+	// Включаем свет в боксе, если задан регистр и доступен адаптер Modbus
+	if s.modbusAdapter != nil && washBox.LightCoilRegister != nil && *washBox.LightCoilRegister != "" {
+		_ = s.modbusAdapter.WriteLightCoil(ctx, req.WashBoxID, *washBox.LightCoilRegister, true)
 	}
 
 	return &models.CleanerStartCleaningResponse{
@@ -599,9 +610,9 @@ func (s *ServiceImpl) CleanerStartCleaning(req *models.CleanerStartCleaningReque
 }
 
 // CleanerCancelCleaning отменяет резервирование уборки
-func (s *ServiceImpl) CleanerCancelCleaning(req *models.CleanerCancelCleaningRequest, cleanerID uuid.UUID) (*models.CleanerCancelCleaningResponse, error) {
+func (s *ServiceImpl) CleanerCancelCleaning(ctx context.Context, req *models.CleanerCancelCleaningRequest, cleanerID uuid.UUID) (*models.CleanerCancelCleaningResponse, error) {
 	// Проверяем, что бокс существует
-	washBox, err := s.repo.GetWashBoxByID(req.WashBoxID)
+	washBox, err := s.repo.GetWashBoxByID(ctx, req.WashBoxID)
 	if err != nil {
 		return nil, err
 	}
@@ -612,7 +623,7 @@ func (s *ServiceImpl) CleanerCancelCleaning(req *models.CleanerCancelCleaningReq
 	}
 
 	// Отменяем резервирование
-	err = s.repo.CancelCleaning(req.WashBoxID)
+	err = s.repo.CancelCleaning(ctx, req.WashBoxID)
 	if err != nil {
 		return nil, err
 	}
@@ -623,9 +634,9 @@ func (s *ServiceImpl) CleanerCancelCleaning(req *models.CleanerCancelCleaningReq
 }
 
 // CleanerCompleteCleaning завершает уборку бокса
-func (s *ServiceImpl) CleanerCompleteCleaning(req *models.CleanerCompleteCleaningRequest, cleanerID uuid.UUID) (*models.CleanerCompleteCleaningResponse, error) {
+func (s *ServiceImpl) CleanerCompleteCleaning(ctx context.Context, req *models.CleanerCompleteCleaningRequest, cleanerID uuid.UUID) (*models.CleanerCompleteCleaningResponse, error) {
 	// Проверяем, что бокс существует и в статусе cleaning
-	washBox, err := s.repo.GetWashBoxByID(req.WashBoxID)
+	washBox, err := s.repo.GetWashBoxByID(ctx, req.WashBoxID)
 	if err != nil {
 		return nil, err
 	}
@@ -635,14 +646,14 @@ func (s *ServiceImpl) CleanerCompleteCleaning(req *models.CleanerCompleteCleanin
 	}
 
 	// Находим активный лог уборки для этого уборщика и бокса
-	activeLog, err := s.repo.GetActiveCleaningLogByCleaner(cleanerID)
+	activeLog, err := s.repo.GetActiveCleaningLogByCleaner(ctx, cleanerID)
 	if err != nil || activeLog == nil || activeLog.WashBoxID != req.WashBoxID {
 		return nil, errors.New("активная уборка не найдена")
 	}
 
 	// Завершаем уборку
 	completedAt := time.Now()
-	err = s.repo.CompleteCleaning(req.WashBoxID)
+	err = s.repo.CompleteCleaning(ctx, req.WashBoxID)
 	if err != nil {
 		return nil, err
 	}
@@ -653,9 +664,14 @@ func (s *ServiceImpl) CleanerCompleteCleaning(req *models.CleanerCompleteCleanin
 	activeLog.DurationMinutes = &duration
 	activeLog.Status = models.CleaningLogStatusCompleted
 
-	err = s.repo.UpdateCleaningLog(activeLog)
+	err = s.repo.UpdateCleaningLog(ctx, activeLog)
 	if err != nil {
 		return nil, err
+	}
+
+	// Выключаем свет в боксе, если задан регистр и доступен адаптер Modbus
+	if s.modbusAdapter != nil && washBox.LightCoilRegister != nil && *washBox.LightCoilRegister != "" {
+		_ = s.modbusAdapter.WriteLightCoil(ctx, req.WashBoxID, *washBox.LightCoilRegister, false)
 	}
 
 	return &models.CleanerCompleteCleaningResponse{
@@ -664,12 +680,12 @@ func (s *ServiceImpl) CleanerCompleteCleaning(req *models.CleanerCompleteCleanin
 }
 
 // GetCleaningBoxes получает все боксы в статусе уборки
-func (s *ServiceImpl) GetCleaningBoxes() ([]models.WashBox, error) {
-	return s.repo.GetCleaningBoxes()
+func (s *ServiceImpl) GetCleaningBoxes(ctx context.Context) ([]models.WashBox, error) {
+	return s.repo.GetCleaningBoxes(ctx)
 }
 
 // AdminListCleaningLogs получает логи уборки с фильтрами (админка)
-func (s *ServiceImpl) AdminListCleaningLogs(req *models.AdminListCleaningLogsRequest) (*models.AdminListCleaningLogsResponse, error) {
+func (s *ServiceImpl) AdminListCleaningLogs(ctx context.Context, req *models.AdminListCleaningLogsRequest) (*models.AdminListCleaningLogsResponse, error) {
 
 	// Конвертируем строковые параметры в нужные типы
 	convertedReq := &models.AdminListCleaningLogsInternalRequest{
@@ -704,13 +720,13 @@ func (s *ServiceImpl) AdminListCleaningLogs(req *models.AdminListCleaningLogsReq
 	}
 
 	// Получаем логи
-	logs, err := s.repo.GetCleaningLogs(convertedReq)
+	logs, err := s.repo.GetCleaningLogs(ctx, convertedReq)
 	if err != nil {
 		return nil, err
 	}
 
 	// Получаем общее количество
-	total, err := s.repo.GetCleaningLogsCount(convertedReq)
+	total, err := s.repo.GetCleaningLogsCount(ctx, convertedReq)
 	if err != nil {
 		return nil, err
 	}
@@ -734,18 +750,18 @@ func (s *ServiceImpl) AdminListCleaningLogs(req *models.AdminListCleaningLogsReq
 }
 
 // AutoCompleteExpiredCleanings автоматически завершает просроченные уборки
-func (s *ServiceImpl) AutoCompleteExpiredCleanings() error {
+func (s *ServiceImpl) AutoCompleteExpiredCleanings(ctx context.Context) error {
 	// Получаем настройку времени уборки
 	timeoutMinutes := 3 // По умолчанию 3 минуты
 	if s.settingsService != nil {
-		timeout, err := s.settingsService.GetCleaningTimeout()
+		timeout, err := s.settingsService.GetCleaningTimeout(ctx)
 		if err == nil {
 			timeoutMinutes = timeout
 		}
 	}
 
 	// Получаем просроченные логи уборки
-	expiredLogs, err := s.repo.GetExpiredCleaningLogs(timeoutMinutes)
+	expiredLogs, err := s.repo.GetExpiredCleaningLogs(ctx, timeoutMinutes)
 	if err != nil {
 		return err
 	}
@@ -753,7 +769,7 @@ func (s *ServiceImpl) AutoCompleteExpiredCleanings() error {
 	// Завершаем каждую просроченную уборку
 	for _, log := range expiredLogs {
 		// Завершаем уборку бокса
-		err := s.repo.CompleteCleaning(log.WashBoxID)
+		err := s.repo.CompleteCleaning(ctx, log.WashBoxID)
 		if err != nil {
 			continue // Продолжаем с другими, если одна не удалась
 		}
@@ -765,9 +781,17 @@ func (s *ServiceImpl) AutoCompleteExpiredCleanings() error {
 		log.DurationMinutes = &duration
 		log.Status = models.CleaningLogStatusCompleted
 
-		err = s.repo.UpdateCleaningLog(&log)
+		err = s.repo.UpdateCleaningLog(ctx, &log)
 		if err != nil {
 			continue // Продолжаем с другими, если одна не удалась
+		}
+
+		// Пытаемся выключить свет, если известен регистр
+		if s.modbusAdapter != nil {
+			// Получаем бокс для доступа к регистру света
+			if box, getErr := s.repo.GetWashBoxByID(ctx, log.WashBoxID); getErr == nil && box != nil && box.LightCoilRegister != nil && *box.LightCoilRegister != "" {
+				_ = s.modbusAdapter.WriteLightCoil(ctx, log.WashBoxID, *box.LightCoilRegister, false)
+			}
 		}
 	}
 
@@ -775,24 +799,24 @@ func (s *ServiceImpl) AutoCompleteExpiredCleanings() error {
 }
 
 // UpdateCleaningStartedAt обновляет время начала уборки
-func (s *ServiceImpl) UpdateCleaningStartedAt(washBoxID uuid.UUID, startedAt time.Time) error {
-	return s.repo.UpdateCleaningStartedAt(washBoxID, startedAt)
+func (s *ServiceImpl) UpdateCleaningStartedAt(ctx context.Context, washBoxID uuid.UUID, startedAt time.Time) error {
+	return s.repo.UpdateCleaningStartedAt(ctx, washBoxID, startedAt)
 }
 
 // ClearCleaningReservation очищает резерв уборки
-func (s *ServiceImpl) ClearCleaningReservation(washBoxID uuid.UUID) error {
-	return s.repo.CancelCleaning(washBoxID)
+func (s *ServiceImpl) ClearCleaningReservation(ctx context.Context, washBoxID uuid.UUID) error {
+	return s.repo.CancelCleaning(ctx, washBoxID)
 }
 
 // SetCooldown устанавливает cooldown для бокса после завершения сессии
-func (s *ServiceImpl) SetCooldown(boxID uuid.UUID, userID uuid.UUID, cooldownUntil time.Time) error {
-	return s.repo.SetCooldown(boxID, userID, cooldownUntil)
+func (s *ServiceImpl) SetCooldown(ctx context.Context, boxID uuid.UUID, userID uuid.UUID, cooldownUntil time.Time) error {
+	return s.repo.SetCooldown(ctx, boxID, userID, cooldownUntil)
 }
 
 // GetAvailableBoxesByServiceType получает доступные боксы с учетом cooldown и приоритетов
-func (s *ServiceImpl) GetAvailableBoxesByServiceType(serviceType string, userID uuid.UUID) ([]models.WashBox, error) {
+func (s *ServiceImpl) GetAvailableBoxesByServiceType(ctx context.Context, serviceType string, userID uuid.UUID) ([]models.WashBox, error) {
 	// 1. ПРИОРИТЕТ: Боксы в cooldown для того же пользователя
-	cooldownBoxes, err := s.repo.GetCooldownBoxesForUser(userID)
+	cooldownBoxes, err := s.repo.GetCooldownBoxesForUser(ctx, userID)
 	if err != nil {
 		return nil, err
 	}
@@ -811,7 +835,7 @@ func (s *ServiceImpl) GetAvailableBoxesByServiceType(serviceType string, userID 
 	}
 
 	// 2. Если нет боксов в cooldown - берем свободные боксы
-	freeBoxes, err := s.repo.GetFreeWashBoxesByServiceType(serviceType)
+	freeBoxes, err := s.repo.GetFreeWashBoxesByServiceType(ctx, serviceType)
 	if err != nil {
 		return nil, err
 	}
@@ -820,24 +844,29 @@ func (s *ServiceImpl) GetAvailableBoxesByServiceType(serviceType string, userID 
 }
 
 // GetCooldownBoxesForUser получает боксы в cooldown для конкретного пользователя
-func (s *ServiceImpl) GetCooldownBoxesForUser(userID uuid.UUID) ([]models.WashBox, error) {
-	return s.repo.GetCooldownBoxesForUser(userID)
+func (s *ServiceImpl) GetCooldownBoxesForUser(ctx context.Context, userID uuid.UUID) ([]models.WashBox, error) {
+	return s.repo.GetCooldownBoxesForUser(ctx, userID)
 }
 
 // SetCooldownByCarNumber устанавливает cooldown для бокса по госномеру после завершения сессии
-func (s *ServiceImpl) SetCooldownByCarNumber(boxID uuid.UUID, carNumber string, cooldownUntil time.Time) error {
-	return s.repo.SetCooldownByCarNumber(boxID, carNumber, cooldownUntil)
+func (s *ServiceImpl) SetCooldownByCarNumber(ctx context.Context, boxID uuid.UUID, carNumber string, cooldownUntil time.Time) error {
+	return s.repo.SetCooldownByCarNumber(ctx, boxID, carNumber, cooldownUntil)
 }
 
 // GetCooldownBoxesByCarNumber получает боксы в cooldown для конкретного госномера
-func (s *ServiceImpl) GetCooldownBoxesByCarNumber(carNumber string) ([]models.WashBox, error) {
-	return s.repo.GetCooldownBoxesByCarNumber(carNumber)
+func (s *ServiceImpl) GetCooldownBoxesByCarNumber(ctx context.Context, carNumber string) ([]models.WashBox, error) {
+	return s.repo.GetCooldownBoxesByCarNumber(ctx, carNumber)
+}
+
+// ClearCooldown очищает поля кулдауна у бокса
+func (s *ServiceImpl) ClearCooldown(ctx context.Context, boxID uuid.UUID) error {
+	return s.repo.ClearCooldown(ctx, boxID)
 }
 
 // GetAvailableBoxesByServiceTypeForCashier получает доступные боксы для кассира с учетом cooldown по госномеру
-func (s *ServiceImpl) GetAvailableBoxesByServiceTypeForCashier(serviceType string, carNumber string) ([]models.WashBox, error) {
+func (s *ServiceImpl) GetAvailableBoxesByServiceTypeForCashier(ctx context.Context, serviceType string, carNumber string) ([]models.WashBox, error) {
 	// 1. ПРИОРИТЕТ: Боксы в cooldown для того же госномера
-	cooldownBoxes, err := s.repo.GetCooldownBoxesByCarNumber(carNumber)
+	cooldownBoxes, err := s.repo.GetCooldownBoxesByCarNumber(ctx, carNumber)
 	if err != nil {
 		return nil, err
 	}
@@ -856,7 +885,7 @@ func (s *ServiceImpl) GetAvailableBoxesByServiceTypeForCashier(serviceType strin
 	}
 
 	// 2. Если нет боксов в cooldown - берем свободные боксы
-	freeBoxes, err := s.repo.GetFreeWashBoxesByServiceType(serviceType)
+	freeBoxes, err := s.repo.GetFreeWashBoxesByServiceType(ctx, serviceType)
 	if err != nil {
 		return nil, err
 	}
@@ -865,6 +894,6 @@ func (s *ServiceImpl) GetAvailableBoxesByServiceTypeForCashier(serviceType strin
 }
 
 // CheckCooldownExpired очищает истекшие cooldown'ы
-func (s *ServiceImpl) CheckCooldownExpired() error {
-	return s.repo.CheckCooldownExpired()
+func (s *ServiceImpl) CheckCooldownExpired(ctx context.Context) error {
+	return s.repo.CheckCooldownExpired(ctx)
 }
