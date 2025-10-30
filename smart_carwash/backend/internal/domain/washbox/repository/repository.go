@@ -43,7 +43,8 @@ type Repository interface {
 	GetCleaningLogs(ctx context.Context, req *models.AdminListCleaningLogsInternalRequest) ([]models.CleaningLogWithDetails, error)
 	GetCleaningLogsCount(ctx context.Context, req *models.AdminListCleaningLogsInternalRequest) (int64, error)
 	GetActiveCleaningLogByCleaner(ctx context.Context, cleanerID uuid.UUID) (*models.CleaningLog, error)
-	GetLastCleaningLogByBox(ctx context.Context, washBoxID uuid.UUID) (*models.CleaningLog, error)
+    GetLastCleaningLogByBox(ctx context.Context, washBoxID uuid.UUID) (*models.CleaningLog, error)
+    GetLastCleaningLogsByBoxIDs(ctx context.Context, washBoxIDs []uuid.UUID) (map[uuid.UUID]*models.CleaningLog, error)
 	GetExpiredCleaningLogs(ctx context.Context, timeoutMinutes int) ([]models.CleaningLog, error)
 
 	// Методы для работы с cooldown
@@ -401,6 +402,28 @@ func (r *PostgresRepository) GetLastCleaningLogByBox(ctx context.Context, washBo
 		return nil, err
 	}
 	return &log, nil
+}
+
+// GetLastCleaningLogsByBoxIDs получает последние логи уборки для множества боксов одним запросом
+func (r *PostgresRepository) GetLastCleaningLogsByBoxIDs(ctx context.Context, washBoxIDs []uuid.UUID) (map[uuid.UUID]*models.CleaningLog, error) {
+    if len(washBoxIDs) == 0 {
+        return map[uuid.UUID]*models.CleaningLog{}, nil
+    }
+    // Получаем по каждому боксу последний лог через подзапрос
+    // SELECT DISTINCT ON (wash_box_id) * FROM cleaning_logs WHERE wash_box_id IN (...) ORDER BY wash_box_id, started_at DESC
+    var logs []models.CleaningLog
+    err := r.db.WithContext(ctx).
+        Raw("SELECT DISTINCT ON (wash_box_id) * FROM cleaning_logs WHERE wash_box_id IN ? ORDER BY wash_box_id, started_at DESC", washBoxIDs).
+        Scan(&logs).Error
+    if err != nil {
+        return nil, err
+    }
+    result := make(map[uuid.UUID]*models.CleaningLog, len(logs))
+    for i := range logs {
+        l := logs[i]
+        result[l.WashBoxID] = &l
+    }
+    return result, nil
 }
 
 // GetExpiredCleaningLogs получает логи уборки, которые нужно автоматически завершить

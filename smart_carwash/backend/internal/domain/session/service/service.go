@@ -1804,11 +1804,22 @@ func (s *ServiceImpl) GetUserSessionHistory(ctx context.Context, req *models.Get
 		return nil, err
 	}
 
-	// Заполняем информацию о платежах для каждой сессии
+	// Получаем таймаут один раз
+	sessionTimeout, err := s.settingsService.GetSessionTimeout(ctx)
+	if err != nil {
+		sessionTimeout = 3
+	}
+
+	// Батч: собираем все sessionIDs и получаем платежи одним вызовом
+	sessionIDs := make([]uuid.UUID, 0, len(sessions))
 	for i := range sessions {
-		// Получаем полную информацию о платежах сессии
-		paymentsResp, err := s.paymentService.GetPaymentsBySessionID(ctx, sessions[i].ID)
-		if err == nil && paymentsResp != nil {
+		sessionIDs = append(sessionIDs, sessions[i].ID)
+	}
+	paymentsMap, _ := s.paymentService.GetPaymentsBySessionIDs(ctx, sessionIDs)
+
+	// Заполняем информацию о платежах и таймаут для каждой сессии
+	for i := range sessions {
+		if paymentsResp, ok := paymentsMap[sessions[i].ID]; ok && paymentsResp != nil {
 			// Основной платеж
 			if paymentsResp.MainPayment != nil {
 				sessions[i].MainPayment = &models.Payment{
@@ -1853,12 +1864,6 @@ func (s *ServiceImpl) GetUserSessionHistory(ctx context.Context, req *models.Get
 			}
 		}
 
-		// Заполняем session_timeout_minutes из настроек
-		sessionTimeout, err := s.settingsService.GetSessionTimeout(ctx)
-		if err != nil {
-			// Если не удалось получить настройку, используем значение по умолчанию
-			sessionTimeout = 3
-		}
 		sessions[i].SessionTimeoutMinutes = sessionTimeout
 
 		// Заполняем cooldown_minutes только для завершенных сессий с реальным активным кулдауном

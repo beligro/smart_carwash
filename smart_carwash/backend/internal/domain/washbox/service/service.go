@@ -433,10 +433,69 @@ func (s *ServiceImpl) CleanerListWashBoxes(ctx context.Context, req *models.Clea
 		return nil, err
 	}
 
-	// Вычисляем для каждого бокса, можно ли его убирать
+	// Батч: определяем возможность уборки без N+1
+	// 1) Собираем все boxIDs
+	boxIDs := make([]uuid.UUID, 0, len(boxes))
 	for i := range boxes {
-		canBeCleaned := s.checkIfBoxCanBeCleaned(ctx, boxes[i].ID)
-		boxes[i].CanBeCleaned = &canBeCleaned
+		boxIDs = append(boxIDs, boxes[i].ID)
+	}
+
+	// 2) Получаем последние логи по всем боксам
+	lastLogsMap, err := s.repo.GetLastCleaningLogsByBoxIDs(ctx, boxIDs)
+	if err != nil {
+		// В случае ошибки считаем, что убирать можно (поведение как в checkIfBoxCanBeCleaned при ошибке)
+		for i := range boxes {
+			can := true
+			boxes[i].CanBeCleaned = &can
+		}
+	} else {
+		// 3) Находим минимальную дату CompletedAt среди завершенных логов для ограничения выборки сессий
+		var minSince *time.Time
+		now := time.Now()
+		for _, l := range lastLogsMap {
+			if l != nil && l.Status == models.CleaningLogStatusCompleted && l.CompletedAt != nil {
+				if minSince == nil || l.CompletedAt.Before(*minSince) {
+					t := *l.CompletedAt
+					minSince = &t
+				}
+			}
+		}
+
+		var completedRows []struct {
+			BoxID     uuid.UUID
+			CreatedAt time.Time
+		}
+		if minSince != nil {
+			// 4) Получаем завершенные сессии с minSince для всех боксов одним запросом
+			completedRows, _ = s.sessionRepo.GetCompletedSessionsCreatedAtSinceForBoxes(ctx, boxIDs, *minSince)
+		}
+		// Группируем по боксу с последующей фильтрацией по конкретному CompletedAt
+		createdAtByBox := make(map[uuid.UUID][]time.Time)
+		for _, row := range completedRows {
+			createdAtByBox[row.BoxID] = append(createdAtByBox[row.BoxID], row.CreatedAt)
+		}
+
+		for i := range boxes {
+			lastLog := lastLogsMap[boxes[i].ID]
+			// Если нет логов или последний лог не завершён — можно убирать
+			if lastLog == nil || lastLog.Status != models.CleaningLogStatusCompleted || lastLog.CompletedAt == nil {
+				can := true
+				boxes[i].CanBeCleaned = &can
+				continue
+			}
+			// Иначе проверяем, были ли завершённые сессии после CompletedAt этого лога
+			hasCompletedAfter := false
+			if times, ok := createdAtByBox[boxes[i].ID]; ok {
+				for _, t := range times {
+					if t.After(*lastLog.CompletedAt) && t.Before(now.Add(1*time.Second)) { // небольшой запас по границе
+						hasCompletedAfter = true
+						break
+					}
+				}
+			}
+			can := hasCompletedAfter
+			boxes[i].CanBeCleaned = &can
+		}
 	}
 
 	return &models.CleanerListWashBoxesResponse{

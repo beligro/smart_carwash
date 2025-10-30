@@ -19,6 +19,7 @@ type Repository interface {
 	GetPaymentBySessionID(ctx context.Context, sessionID uuid.UUID) (*models.Payment, error)
 	GetLastPaymentBySessionID(ctx context.Context, sessionID uuid.UUID) (*models.Payment, error)
 	GetPaymentsBySessionID(ctx context.Context, sessionID uuid.UUID) ([]models.Payment, error)
+	GetPaymentsBySessionIDs(ctx context.Context, sessionIDs []uuid.UUID) (map[uuid.UUID][]models.Payment, error)
 	GetPaymentByTinkoffID(ctx context.Context, tinkoffID string) (*models.Payment, error)
 	UpdatePayment(ctx context.Context, payment *models.Payment) error
 	ListPayments(ctx context.Context, req *models.AdminListPaymentsRequest) ([]models.Payment, int, error)
@@ -82,6 +83,25 @@ func (r *repository) GetPaymentsBySessionID(ctx context.Context, sessionID uuid.
 		return nil, err
 	}
 	return payments, nil
+}
+
+// GetPaymentsBySessionIDs получает все платежи по множеству ID сессий и группирует их
+func (r *repository) GetPaymentsBySessionIDs(ctx context.Context, sessionIDs []uuid.UUID) (map[uuid.UUID][]models.Payment, error) {
+	if len(sessionIDs) == 0 {
+		return map[uuid.UUID][]models.Payment{}, nil
+	}
+	var payments []models.Payment
+	if err := r.db.WithContext(ctx).
+		Where("session_id IN ?", sessionIDs).
+		Order("created_at ASC").
+		Find(&payments).Error; err != nil {
+		return nil, err
+	}
+	grouped := make(map[uuid.UUID][]models.Payment)
+	for _, p := range payments {
+		grouped[p.SessionID] = append(grouped[p.SessionID], p)
+	}
+	return grouped, nil
 }
 
 // GetPaymentByTinkoffID получает платеж по ID в Tinkoff

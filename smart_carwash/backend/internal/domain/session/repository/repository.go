@@ -27,7 +27,8 @@ type Repository interface {
 	GetSessionsWithFilters(ctx context.Context, userID *uuid.UUID, boxID *uuid.UUID, boxNumber *int, status *string, serviceType *string, dateFrom *time.Time, dateTo *time.Time, limit int, offset int) ([]models.Session, error)
 
 	// Метод для проверки завершенных сессий между уборками
-	GetCompletedSessionsBetween(ctx context.Context, boxID uuid.UUID, dateFrom, dateTo time.Time) (int, error)
+    GetCompletedSessionsBetween(ctx context.Context, boxID uuid.UUID, dateFrom, dateTo time.Time) (int, error)
+    GetCompletedSessionsCreatedAtSinceForBoxes(ctx context.Context, boxIDs []uuid.UUID, since time.Time) ([]struct{ BoxID uuid.UUID; CreatedAt time.Time }, error)
 }
 
 // PostgresRepository реализация Repository для PostgreSQL
@@ -244,13 +245,41 @@ func (r *PostgresRepository) GetSessionsWithFilters(ctx context.Context, userID 
 		return nil, err
 	}
 
-	// Для каждой сессии получаем номер бокса, если он есть
+	// Для всех сессий одним запросом получаем номера боксов и мапим по id
+	// Сначала собираем уникальные box_id
+	boxIDSet := make(map[uuid.UUID]struct{})
 	for i := range sessions {
 		if sessions[i].BoxID != nil {
-			var boxNumber int
-			err = r.db.WithContext(ctx).Table("wash_boxes").Where("id = ?", *sessions[i].BoxID).Select("number").Scan(&boxNumber).Error
-			if err == nil {
-				sessions[i].BoxNumber = &boxNumber
+			boxIDSet[*sessions[i].BoxID] = struct{}{}
+		}
+	}
+
+	if len(boxIDSet) > 0 {
+		boxIDs := make([]uuid.UUID, 0, len(boxIDSet))
+		for id := range boxIDSet {
+			boxIDs = append(boxIDs, id)
+		}
+
+		type boxRow struct {
+			ID     uuid.UUID
+			Number int
+		}
+		var rows []boxRow
+		if err := r.db.WithContext(ctx).Table("wash_boxes").
+			Select("id, number").
+			Where("id IN ?", boxIDs).
+			Find(&rows).Error; err == nil {
+			numberByID := make(map[uuid.UUID]int, len(rows))
+			for _, row := range rows {
+				numberByID[row.ID] = row.Number
+			}
+			for i := range sessions {
+				if sessions[i].BoxID != nil {
+					if num, ok := numberByID[*sessions[i].BoxID]; ok {
+						n := num
+						sessions[i].BoxNumber = &n
+					}
+				}
 			}
 		}
 	}
@@ -266,6 +295,23 @@ func (r *PostgresRepository) GetCompletedSessionsBetween(ctx context.Context, bo
 			boxID, models.SessionStatusComplete, dateFrom, dateTo).
 		Count(&count).Error
 	return int(count), err
+}
+
+// GetCompletedSessionsCreatedAtSinceForBoxes возвращает пары (box_id, created_at) для завершенных сессий
+// для множества боксов начиная с указанной даты (общей нижней границы)
+func (r *PostgresRepository) GetCompletedSessionsCreatedAtSinceForBoxes(ctx context.Context, boxIDs []uuid.UUID, since time.Time) ([]struct{ BoxID uuid.UUID; CreatedAt time.Time }, error) {
+    if len(boxIDs) == 0 {
+        return nil, nil
+    }
+    var rows []struct{
+        BoxID    uuid.UUID
+        CreatedAt time.Time
+    }
+    err := r.db.WithContext(ctx).Model(&models.Session{}).
+        Select("box_id, created_at").
+        Where("status = ? AND box_id IN ? AND created_at >= ?", models.SessionStatusComplete, boxIDs, since).
+        Find(&rows).Error
+    return rows, err
 }
 
 // GetActiveSessionByCarNumber получает активную сессию по номеру автомобиля

@@ -64,6 +64,7 @@ type Service interface {
 	GetMainPaymentBySessionID(ctx context.Context, sessionID uuid.UUID) (*models.Payment, error)
 	GetLastPaymentBySessionID(ctx context.Context, sessionID uuid.UUID) (*models.Payment, error)
 	GetPaymentsBySessionID(ctx context.Context, sessionID uuid.UUID) (*models.GetPaymentsBySessionResponse, error)
+	GetPaymentsBySessionIDs(ctx context.Context, sessionIDs []uuid.UUID) (map[uuid.UUID]*models.GetPaymentsBySessionResponse, error)
 	GetPaymentStatus(ctx context.Context, req *models.GetPaymentStatusRequest) (*models.GetPaymentStatusResponse, error)
 	HandleWebhook(ctx context.Context, req *models.WebhookRequest) error
 	ListPayments(ctx context.Context, req *models.AdminListPaymentsRequest) (*models.AdminListPaymentsResponse, error)
@@ -432,6 +433,33 @@ func (s *service) GetPaymentsBySessionID(ctx context.Context, sessionID uuid.UUI
 		MainPayment:       mainPayment,
 		ExtensionPayments: extensionPayments,
 	}, nil
+}
+
+// GetPaymentsBySessionIDs получает платежи для множества сессий одним батчем
+func (s *service) GetPaymentsBySessionIDs(ctx context.Context, sessionIDs []uuid.UUID) (map[uuid.UUID]*models.GetPaymentsBySessionResponse, error) {
+	paymentsBySession, err := s.repository.GetPaymentsBySessionIDs(ctx, sessionIDs)
+	if err != nil {
+		return nil, fmt.Errorf("ошибка получения платежей по множеству сессий: %w", err)
+	}
+
+	result := make(map[uuid.UUID]*models.GetPaymentsBySessionResponse, len(paymentsBySession))
+	for sessionID, payments := range paymentsBySession {
+		var mainPayment *models.Payment
+		var extensionPayments []models.Payment
+		for _, p := range payments {
+			if p.PaymentType == models.PaymentTypeMain {
+				cp := p
+				mainPayment = &cp
+			} else if p.PaymentType == models.PaymentTypeExtension {
+				extensionPayments = append(extensionPayments, p)
+			}
+		}
+		result[sessionID] = &models.GetPaymentsBySessionResponse{
+			MainPayment:       mainPayment,
+			ExtensionPayments: extensionPayments,
+		}
+	}
+	return result, nil
 }
 
 // HandleWebhook обрабатывает webhook от Tinkoff
