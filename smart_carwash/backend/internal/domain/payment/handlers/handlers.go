@@ -1,14 +1,14 @@
 package handlers
 
 import (
+	authService "carwash_backend/internal/domain/auth/service"
 	"carwash_backend/internal/domain/payment/models"
 	"carwash_backend/internal/domain/payment/service"
-	authService "carwash_backend/internal/domain/auth/service"
 	"carwash_backend/internal/logger"
 	"net/http"
 	"strconv"
-	"time"
 	"strings"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -70,7 +70,7 @@ func (h *Handler) calculatePrice(c *gin.Context) {
 		return
 	}
 
-	response, err := h.service.CalculatePrice(&req)
+	response, err := h.service.CalculatePrice(c.Request.Context(), &req)
 	if err != nil {
 		logger.WithContext(c).Errorf("API Error - calculatePrice: ошибка расчета цены, service_type: %s, rental_time: %d, with_chemistry: %t, error: %v", req.ServiceType, req.RentalTimeMinutes, req.WithChemistry, err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
@@ -90,7 +90,7 @@ func (h *Handler) calculateExtensionPrice(c *gin.Context) {
 		return
 	}
 
-	response, err := h.service.CalculateExtensionPrice(&req)
+	response, err := h.service.CalculateExtensionPrice(c.Request.Context(), &req)
 	if err != nil {
 		logger.WithContext(c).Errorf("API Error - calculateExtensionPrice: ошибка расчета цены продления, service_type: %s, extension_minutes: %d, error: %v", req.ServiceType, req.ExtensionTimeMinutes, err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
@@ -110,7 +110,7 @@ func (h *Handler) createPayment(c *gin.Context) {
 		return
 	}
 
-	response, err := h.service.CreatePayment(&req)
+	response, err := h.service.CreatePayment(c.Request.Context(), &req)
 	if err != nil {
 		logger.WithContext(c).Errorf("API Error - createPayment: ошибка создания платежа, session_id: %s, amount: %d, error: %v", req.SessionID.String(), req.Amount, err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
@@ -136,7 +136,7 @@ func (h *Handler) getPaymentStatus(c *gin.Context) {
 		return
 	}
 
-	response, err := h.service.GetPaymentStatus(&models.GetPaymentStatusRequest{
+	response, err := h.service.GetPaymentStatus(c.Request.Context(), &models.GetPaymentStatusRequest{
 		PaymentID: paymentID,
 	})
 	if err != nil {
@@ -147,7 +147,6 @@ func (h *Handler) getPaymentStatus(c *gin.Context) {
 
 	c.JSON(http.StatusOK, response)
 }
-
 
 // handleWebhook обработчик для webhook от Tinkoff
 func (h *Handler) handleWebhook(c *gin.Context) {
@@ -160,7 +159,7 @@ func (h *Handler) handleWebhook(c *gin.Context) {
 	}
 
 	// Обрабатываем webhook
-	if err := h.service.HandleWebhook(&webhookReq); err != nil {
+	if err := h.service.HandleWebhook(c.Request.Context(), &webhookReq); err != nil {
 		logger.WithContext(c).Errorf("API Error - handleWebhook: ошибка обработки webhook, terminal_key: %s, order_id: %s, error: %v", webhookReq.TerminalKey, webhookReq.OrderId, err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
@@ -236,17 +235,17 @@ func (h *Handler) adminListPayments(c *gin.Context) {
 	}
 
 	// Логируем запрос с мета-параметрами
-	logger.WithContext(c).Infof("Запрос списка платежей (админка): PaymentID=%v, SessionID=%v, UserID=%v, Status=%v, PaymentType=%v, PaymentMethod=%v, DateFrom=%v, DateTo=%v, Limit=%v, Offset=%v", 
+	logger.WithContext(c).Infof("Запрос списка платежей (админка): PaymentID=%v, SessionID=%v, UserID=%v, Status=%v, PaymentType=%v, PaymentMethod=%v, DateFrom=%v, DateTo=%v, Limit=%v, Offset=%v",
 		req.PaymentID, req.SessionID, req.UserID, req.Status, req.PaymentType, req.PaymentMethod, req.DateFrom, req.DateTo, req.Limit, req.Offset)
 
-	response, err := h.service.ListPayments(&req)
+	response, err := h.service.ListPayments(c.Request.Context(), &req)
 	if err != nil {
 		logger.WithContext(c).Errorf("Ошибка получения списка платежей: %v", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
 
-	logger.WithContext(c).Infof("Получен список платежей: Total=%d, Limit=%d, Offset=%d", 
+	logger.WithContext(c).Infof("Получен список платежей: Total=%d, Limit=%d, Offset=%d",
 		response.Total, response.Limit, response.Offset)
 
 	c.JSON(http.StatusOK, response)
@@ -262,10 +261,10 @@ func (h *Handler) adminRefundPayment(c *gin.Context) {
 	}
 
 	// Логируем запрос с мета-параметрами
-	logger.WithContext(c).Infof("Запрос на возврат платежа (админка): PaymentID=%s, Amount=%d", 
+	logger.WithContext(c).Infof("Запрос на возврат платежа (админка): PaymentID=%s, Amount=%d",
 		req.PaymentID, req.Amount)
 
-	response, err := h.service.RefundPayment(&models.RefundPaymentRequest{
+	response, err := h.service.RefundPayment(c.Request.Context(), &models.RefundPaymentRequest{
 		PaymentID: req.PaymentID,
 		Amount:    req.Amount,
 	})
@@ -282,7 +281,7 @@ func (h *Handler) adminRefundPayment(c *gin.Context) {
 		Message: "Возврат выполнен успешно",
 	}
 
-	logger.WithContext(c).Infof("Успешно выполнен возврат платежа: PaymentID=%s, Amount=%d", 
+	logger.WithContext(c).Infof("Успешно выполнен возврат платежа: PaymentID=%s, Amount=%d",
 		req.PaymentID, req.Amount)
 
 	c.JSON(http.StatusOK, adminResponse)
@@ -327,7 +326,7 @@ func (h *Handler) adminGetPaymentStatistics(c *gin.Context) {
 	logger.WithContext(c).Infof("Admin payment statistics request: user_id=%v, date_from=%v, date_to=%v, service_type=%v",
 		req.UserID, req.DateFrom, req.DateTo, req.ServiceType)
 
-	response, err := h.service.GetPaymentStatistics(&req)
+	response, err := h.service.GetPaymentStatistics(c.Request.Context(), &req)
 	if err != nil {
 		logger.WithContext(c).Infof("Error getting payment statistics: %v", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
@@ -335,7 +334,7 @@ func (h *Handler) adminGetPaymentStatistics(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, response)
-} 
+}
 
 // cashierListPayments обработчик для получения списка платежей кассира
 func (h *Handler) cashierListPayments(c *gin.Context) {
@@ -376,7 +375,7 @@ func (h *Handler) cashierListPayments(c *gin.Context) {
 	}
 
 	// Получаем список платежей
-	response, err := h.service.CashierListPayments(req)
+	response, err := h.service.CashierListPayments(c.Request.Context(), req)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
@@ -392,7 +391,7 @@ func (h *Handler) cashierListPayments(c *gin.Context) {
 
 	// Возвращаем результат
 	c.JSON(http.StatusOK, response)
-} 
+}
 
 // cashierMiddleware middleware для проверки авторизации кассира
 func (h *Handler) cashierMiddleware() gin.HandlerFunc {
@@ -408,7 +407,7 @@ func (h *Handler) cashierMiddleware() gin.HandlerFunc {
 		}
 
 		// Проверяем токен через auth service
-		claims, err := h.authService.ValidateToken(token)
+		claims, err := h.authService.ValidateToken(c.Request.Context(), token)
 		if err != nil {
 			c.JSON(http.StatusUnauthorized, gin.H{"error": "Недействительный токен"})
 			c.Abort()
@@ -452,7 +451,7 @@ func (h *Handler) cashierGetLastShiftStatistics(c *gin.Context) {
 	logger.WithContext(c).Infof("Cashier last shift statistics request: CashierID=%s", cashierID)
 
 	// Получаем статистику
-	response, err := h.service.GetCashierLastShiftStatistics(req)
+	response, err := h.service.GetCashierLastShiftStatistics(c.Request.Context(), req)
 	if err != nil {
 		logger.WithContext(c).Infof("Error getting cashier last shift statistics: %v", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
@@ -470,4 +469,4 @@ func (h *Handler) cashierGetLastShiftStatistics(c *gin.Context) {
 
 	// Возвращаем результат
 	c.JSON(http.StatusOK, response)
-} 
+}

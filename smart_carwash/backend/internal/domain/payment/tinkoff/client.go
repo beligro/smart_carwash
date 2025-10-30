@@ -77,32 +77,6 @@ func (c *Client) CreatePayment(orderID string, amount int, description string, r
 	return &tinkoffResp, nil
 }
 
-// GetPaymentStatus получает статус платежа
-func (c *Client) GetPaymentStatus(paymentID string) (*service.TinkoffPaymentStatusResponse, error) {
-	// Формируем параметры запроса
-	params := map[string]interface{}{
-		"TerminalKey": c.terminalKey,
-		"PaymentId":   paymentID,
-	}
-
-	// Добавляем подпись
-	params["Token"] = c.generateToken(params)
-
-	// Отправляем запрос
-	resp, err := c.sendRequest("POST", "/GetState", params)
-	if err != nil {
-		return nil, fmt.Errorf("ошибка отправки запроса: %w", err)
-	}
-
-	// Парсим ответ
-	var tinkoffResp service.TinkoffPaymentStatusResponse
-	if err := json.Unmarshal(resp, &tinkoffResp); err != nil {
-		return nil, fmt.Errorf("ошибка парсинга ответа: %w", err)
-	}
-
-	return &tinkoffResp, nil
-}
-
 // RefundPayment возвращает деньги за платеж
 func (c *Client) RefundPayment(paymentID string, amount int) (*service.TinkoffRefundResponse, error) {
 	// Формируем параметры запроса
@@ -243,7 +217,7 @@ func (c *Client) buildReceipt(amount int, email string) map[string]interface{} {
 	if receiptEmail == "" {
 		receiptEmail = "yndx-aagrom-ijakag@yandex.ru"
 	}
-	
+
 	receipt := map[string]interface{}{
 		"Email":    receiptEmail,
 		"Taxation": "usn_income_outcome",

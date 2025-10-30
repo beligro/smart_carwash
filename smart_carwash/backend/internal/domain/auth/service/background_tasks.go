@@ -2,6 +2,7 @@ package service
 
 import (
 	"carwash_backend/internal/logger"
+	"context"
 	"time"
 
 	"carwash_backend/internal/domain/auth/repository"
@@ -20,11 +21,11 @@ func NewBackgroundTasks(repo repository.Repository) *BackgroundTasks {
 }
 
 // DeactivateExpiredShifts деактивирует истекшие смены кассиров
-func (bt *BackgroundTasks) DeactivateExpiredShifts() error {
+func (bt *BackgroundTasks) DeactivateExpiredShifts(ctx context.Context) error {
 	logger.Info("Запуск задачи деактивации истекших смен кассиров")
 
 	// Получаем все активные смены
-	activeShifts, err := bt.repo.GetActiveCashierShifts()
+	activeShifts, err := bt.repo.GetActiveCashierShifts(ctx)
 	if err != nil {
 		logger.Printf("Ошибка получения активных смен: %v", err)
 		return err
@@ -41,7 +42,7 @@ func (bt *BackgroundTasks) DeactivateExpiredShifts() error {
 			endedAt := now
 			shift.EndedAt = &endedAt
 
-			if err := bt.repo.UpdateCashierShift(&shift); err != nil {
+			if err := bt.repo.UpdateCashierShift(ctx, &shift); err != nil {
 				logger.Printf("Ошибка деактивации смены %s: %v", shift.ID, err)
 				continue
 			}
@@ -54,21 +55,3 @@ func (bt *BackgroundTasks) DeactivateExpiredShifts() error {
 	logger.Printf("Задача деактивации завершена. Деактивировано смен: %d", deactivatedCount)
 	return nil
 }
-
-// StartPeriodicTasks запускает периодические задачи
-func (bt *BackgroundTasks) StartPeriodicTasks() {
-	// Запускаем задачу деактивации смен каждые 5 минут
-	ticker := time.NewTicker(5 * time.Minute)
-	defer ticker.Stop()
-
-	logger.Info("Запуск периодических задач для кассиров")
-
-	for {
-		select {
-		case <-ticker.C:
-			if err := bt.DeactivateExpiredShifts(); err != nil {
-				logger.Printf("Ошибка выполнения периодической задачи: %v", err)
-			}
-		}
-	}
-} 

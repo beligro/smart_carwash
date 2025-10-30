@@ -31,7 +31,7 @@ func (h *Handler) TestCoil(c *gin.Context) {
 		return
 	}
 
-	response, err := h.modbusService.TestCoil(req.BoxID, req.Register, req.Value)
+	response, err := h.modbusService.TestCoil(c.Request.Context(), req.BoxID, req.Register, req.Value)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
@@ -54,7 +54,7 @@ func (h *Handler) GetStatus(c *gin.Context) {
 		return
 	}
 
-	response, err := h.modbusService.GetStatus(boxID)
+	response, err := h.modbusService.GetStatus(c.Request.Context(), boxID)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
@@ -67,7 +67,7 @@ func (h *Handler) GetStatus(c *gin.Context) {
 func (h *Handler) GetDashboard(c *gin.Context) {
 	timeRange := c.DefaultQuery("time_range", "24h")
 
-	response, err := h.modbusService.GetDashboard(timeRange)
+	response, err := h.modbusService.GetDashboard(c.Request.Context(), timeRange)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
@@ -114,7 +114,7 @@ func (h *Handler) GetHistory(c *gin.Context) {
 		}
 	}
 
-	response, err := h.modbusService.GetHistory(&req)
+	response, err := h.modbusService.GetHistory(c.Request.Context(), &req)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return

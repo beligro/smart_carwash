@@ -6,6 +6,7 @@ import (
 	settingsRepo "carwash_backend/internal/domain/settings/repository"
 	"carwash_backend/internal/logger"
 	"carwash_backend/internal/metrics"
+	"context"
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
@@ -18,18 +19,17 @@ import (
 
 // SessionStatusUpdater интерфейс для обновления статуса сессии
 type SessionStatusUpdater interface {
-	UpdateSessionStatus(sessionID uuid.UUID, status string) error
+	UpdateSessionStatus(ctx context.Context, sessionID uuid.UUID, status string) error
 }
 
 // SessionExtensionUpdater интерфейс для обновления времени продления сессии
 type SessionExtensionUpdater interface {
-	UpdateSessionExtension(sessionID uuid.UUID, extensionTimeMinutes int) error
+	UpdateSessionExtension(ctx context.Context, sessionID uuid.UUID, extensionTimeMinutes int) error
 }
 
 // TinkoffClient интерфейс для работы с Tinkoff API
 type TinkoffClient interface {
 	CreatePayment(orderID string, amount int, description string, receipt map[string]interface{}) (*TinkoffPaymentResponse, error)
-	GetPaymentStatus(paymentID string) (*TinkoffPaymentStatusResponse, error)
 	RefundPayment(paymentID string, amount int) (*TinkoffRefundResponse, error)
 	VerifyWebhookSignature(data []byte, signature string) bool
 }
@@ -45,15 +45,6 @@ type TinkoffPaymentResponse struct {
 	PaymentURL  string `json:"PaymentURL"`
 }
 
-// TinkoffPaymentStatusResponse ответ от Tinkoff API при проверке статуса
-type TinkoffPaymentStatusResponse struct {
-	Success   bool   `json:"Success"`
-	ErrorCode string `json:"ErrorCode"`
-	Status    string `json:"Status"`
-	PaymentId string `json:"PaymentId"`
-	Amount    int    `json:"Amount"`
-}
-
 // TinkoffRefundResponse ответ от Tinkoff API при возврате платежа
 type TinkoffRefundResponse struct {
 	Success   bool   `json:"Success"`
@@ -65,23 +56,24 @@ type TinkoffRefundResponse struct {
 
 // Service интерфейс для бизнес-логики платежей
 type Service interface {
-	CalculatePrice(req *models.CalculatePriceRequest) (*models.CalculatePriceResponse, error)
-	CalculateExtensionPrice(req *models.CalculateExtensionPriceRequest) (*models.CalculateExtensionPriceResponse, error)
-	CreatePayment(req *models.CreatePaymentRequest) (*models.CreatePaymentResponse, error)
-	CreateExtensionPayment(req *models.CreateExtensionPaymentRequest) (*models.CreateExtensionPaymentResponse, error)
-	GetPaymentByID(paymentID uuid.UUID) (*models.Payment, error)
-	GetMainPaymentBySessionID(sessionID uuid.UUID) (*models.Payment, error)
-	GetLastPaymentBySessionID(sessionID uuid.UUID) (*models.Payment, error)
-	GetPaymentsBySessionID(sessionID uuid.UUID) (*models.GetPaymentsBySessionResponse, error)
-	GetPaymentStatus(req *models.GetPaymentStatusRequest) (*models.GetPaymentStatusResponse, error)
-	HandleWebhook(req *models.WebhookRequest) error
-	ListPayments(req *models.AdminListPaymentsRequest) (*models.AdminListPaymentsResponse, error)
-	RefundPayment(req *models.RefundPaymentRequest) (*models.RefundPaymentResponse, error)
-	CalculatePartialRefund(req *models.CalculatePartialRefundRequest) (*models.CalculatePartialRefundResponse, error)
-	GetPaymentStatistics(req *models.PaymentStatisticsRequest) (*models.PaymentStatisticsResponse, error)
-	CreateForCashier(sessionID uuid.UUID, amount int) (*models.Payment, error)
-	CashierListPayments(req *models.CashierPaymentsRequest) (*models.AdminListPaymentsResponse, error)
-	GetCashierLastShiftStatistics(req *models.CashierLastShiftStatisticsRequest) (*models.CashierLastShiftStatisticsResponse, error)
+	CalculatePrice(ctx context.Context, req *models.CalculatePriceRequest) (*models.CalculatePriceResponse, error)
+	CalculateExtensionPrice(ctx context.Context, req *models.CalculateExtensionPriceRequest) (*models.CalculateExtensionPriceResponse, error)
+	CreatePayment(ctx context.Context, req *models.CreatePaymentRequest) (*models.CreatePaymentResponse, error)
+	CreateExtensionPayment(ctx context.Context, req *models.CreateExtensionPaymentRequest) (*models.CreateExtensionPaymentResponse, error)
+	GetPaymentByID(ctx context.Context, paymentID uuid.UUID) (*models.Payment, error)
+	GetMainPaymentBySessionID(ctx context.Context, sessionID uuid.UUID) (*models.Payment, error)
+	GetLastPaymentBySessionID(ctx context.Context, sessionID uuid.UUID) (*models.Payment, error)
+	GetPaymentsBySessionID(ctx context.Context, sessionID uuid.UUID) (*models.GetPaymentsBySessionResponse, error)
+	GetPaymentsBySessionIDs(ctx context.Context, sessionIDs []uuid.UUID) (map[uuid.UUID]*models.GetPaymentsBySessionResponse, error)
+	GetPaymentStatus(ctx context.Context, req *models.GetPaymentStatusRequest) (*models.GetPaymentStatusResponse, error)
+	HandleWebhook(ctx context.Context, req *models.WebhookRequest) error
+	ListPayments(ctx context.Context, req *models.AdminListPaymentsRequest) (*models.AdminListPaymentsResponse, error)
+	RefundPayment(ctx context.Context, req *models.RefundPaymentRequest) (*models.RefundPaymentResponse, error)
+	CalculatePartialRefund(ctx context.Context, req *models.CalculatePartialRefundRequest) (*models.CalculatePartialRefundResponse, error)
+	GetPaymentStatistics(ctx context.Context, req *models.PaymentStatisticsRequest) (*models.PaymentStatisticsResponse, error)
+	CreateForCashier(ctx context.Context, sessionID uuid.UUID, amount int) (*models.Payment, error)
+	CashierListPayments(ctx context.Context, req *models.CashierPaymentsRequest) (*models.AdminListPaymentsResponse, error)
+	GetCashierLastShiftStatistics(ctx context.Context, req *models.CashierLastShiftStatisticsRequest) (*models.CashierLastShiftStatisticsResponse, error)
 }
 
 // service реализация Service
@@ -118,7 +110,7 @@ func NewService(repository repository.Repository, settingsRepo settingsRepo.Repo
 }
 
 // CalculatePrice рассчитывает цену для услуги
-func (s *service) CalculatePrice(req *models.CalculatePriceRequest) (*models.CalculatePriceResponse, error) {
+func (s *service) CalculatePrice(ctx context.Context, req *models.CalculatePriceRequest) (*models.CalculatePriceResponse, error) {
 	logger.WithFields(logrus.Fields{
 		"service_type":        req.ServiceType,
 		"rental_time_minutes": req.RentalTimeMinutes,
@@ -126,7 +118,7 @@ func (s *service) CalculatePrice(req *models.CalculatePriceRequest) (*models.Cal
 	}).Info("Payment Service - CalculatePrice: начало расчета цены")
 
 	// Получаем базовую цену за минуту
-	basePriceSetting, err := s.settingsRepo.GetServiceSetting(req.ServiceType, "price_per_minute")
+	basePriceSetting, err := s.settingsRepo.GetServiceSetting(ctx, req.ServiceType, "price_per_minute")
 	if err != nil {
 		logger.WithFields(logrus.Fields{
 			"service_type": req.ServiceType,
@@ -157,7 +149,7 @@ func (s *service) CalculatePrice(req *models.CalculatePriceRequest) (*models.Cal
 
 	// Если используется химия, добавляем стоимость химии
 	if req.WithChemistry && req.ChemistryTimeMinutes > 0 {
-		chemistryPriceSetting, err := s.settingsRepo.GetServiceSetting(req.ServiceType, "chemistry_price_per_minute")
+		chemistryPriceSetting, err := s.settingsRepo.GetServiceSetting(ctx, req.ServiceType, "chemistry_price_per_minute")
 		if err != nil {
 			return nil, fmt.Errorf("не удалось получить цену химии: %w", err)
 		}
@@ -186,9 +178,9 @@ func (s *service) CalculatePrice(req *models.CalculatePriceRequest) (*models.Cal
 }
 
 // CalculateExtensionPrice рассчитывает цену для продления сессии
-func (s *service) CalculateExtensionPrice(req *models.CalculateExtensionPriceRequest) (*models.CalculateExtensionPriceResponse, error) {
+func (s *service) CalculateExtensionPrice(ctx context.Context, req *models.CalculateExtensionPriceRequest) (*models.CalculateExtensionPriceResponse, error) {
 	// Получаем базовую цену за минуту
-	basePriceSetting, err := s.settingsRepo.GetServiceSetting(req.ServiceType, "price_per_minute")
+	basePriceSetting, err := s.settingsRepo.GetServiceSetting(ctx, req.ServiceType, "price_per_minute")
 	if err != nil {
 		return nil, fmt.Errorf("не удалось получить базовую цену: %w", err)
 	}
@@ -215,7 +207,7 @@ func (s *service) CalculateExtensionPrice(req *models.CalculateExtensionPriceReq
 
 	// Если используется химия при продлении, добавляем стоимость химии только на докупленное время
 	if req.WithChemistry && req.ExtensionChemistryTimeMinutes > 0 {
-		chemistryPriceSetting, err := s.settingsRepo.GetServiceSetting(req.ServiceType, "chemistry_price_per_minute")
+		chemistryPriceSetting, err := s.settingsRepo.GetServiceSetting(ctx, req.ServiceType, "chemistry_price_per_minute")
 		if err != nil {
 			return nil, fmt.Errorf("не удалось получить цену химии: %w", err)
 		}
@@ -244,9 +236,9 @@ func (s *service) CalculateExtensionPrice(req *models.CalculateExtensionPriceReq
 }
 
 // CreatePayment создает платеж в Tinkoff и сохраняет в БД
-func (s *service) CreatePayment(req *models.CreatePaymentRequest) (*models.CreatePaymentResponse, error) {
+func (s *service) CreatePayment(ctx context.Context, req *models.CreatePaymentRequest) (*models.CreatePaymentResponse, error) {
 	// Проверяем, есть ли уже pending платеж для этой сессии
-	existingPayments, err := s.repository.GetPaymentsBySessionID(req.SessionID)
+	existingPayments, err := s.repository.GetPaymentsBySessionID(ctx, req.SessionID)
 	if err == nil {
 		for _, payment := range existingPayments {
 			// Проверяем только основные платежи в статусе pending
@@ -297,7 +289,7 @@ func (s *service) CreatePayment(req *models.CreatePaymentRequest) (*models.Creat
 		ExpiresAt:   &expiresAt,
 	}
 
-	if err := s.repository.CreatePayment(payment); err != nil {
+	if err := s.repository.CreatePayment(ctx, payment); err != nil {
 		return nil, fmt.Errorf("ошибка сохранения платежа: %w", err)
 	}
 
@@ -314,9 +306,9 @@ func (s *service) CreatePayment(req *models.CreatePaymentRequest) (*models.Creat
 }
 
 // CreateExtensionPayment создает платеж продления в Tinkoff и сохраняет в БД
-func (s *service) CreateExtensionPayment(req *models.CreateExtensionPaymentRequest) (*models.CreateExtensionPaymentResponse, error) {
+func (s *service) CreateExtensionPayment(ctx context.Context, req *models.CreateExtensionPaymentRequest) (*models.CreateExtensionPaymentResponse, error) {
 	// Проверяем, есть ли уже pending платеж продления для этой сессии
-	existingPayments, err := s.repository.GetPaymentsBySessionID(req.SessionID)
+	existingPayments, err := s.repository.GetPaymentsBySessionID(ctx, req.SessionID)
 	if err == nil {
 		for _, payment := range existingPayments {
 			// Проверяем только платежи продления в статусе pending
@@ -367,7 +359,7 @@ func (s *service) CreateExtensionPayment(req *models.CreateExtensionPaymentReque
 		ExpiresAt:   &expiresAt,
 	}
 
-	if err := s.repository.CreatePayment(payment); err != nil {
+	if err := s.repository.CreatePayment(ctx, payment); err != nil {
 		return nil, fmt.Errorf("ошибка сохранения платежа продления: %w", err)
 	}
 
@@ -380,8 +372,8 @@ func (s *service) CreateExtensionPayment(req *models.CreateExtensionPaymentReque
 }
 
 // GetPaymentStatus получает статус платежа
-func (s *service) GetPaymentStatus(req *models.GetPaymentStatusRequest) (*models.GetPaymentStatusResponse, error) {
-	payment, err := s.repository.GetPaymentByID(req.PaymentID)
+func (s *service) GetPaymentStatus(ctx context.Context, req *models.GetPaymentStatusRequest) (*models.GetPaymentStatusResponse, error) {
+	payment, err := s.repository.GetPaymentByID(ctx, req.PaymentID)
 	if err != nil {
 		return nil, fmt.Errorf("платеж не найден: %w", err)
 	}
@@ -392,8 +384,8 @@ func (s *service) GetPaymentStatus(req *models.GetPaymentStatusRequest) (*models
 }
 
 // GetPaymentByID получает платеж по ID
-func (s *service) GetPaymentByID(paymentID uuid.UUID) (*models.Payment, error) {
-	payment, err := s.repository.GetPaymentByID(paymentID)
+func (s *service) GetPaymentByID(ctx context.Context, paymentID uuid.UUID) (*models.Payment, error) {
+	payment, err := s.repository.GetPaymentByID(ctx, paymentID)
 	if err != nil {
 		return nil, fmt.Errorf("платеж не найден: %w", err)
 	}
@@ -402,8 +394,8 @@ func (s *service) GetPaymentByID(paymentID uuid.UUID) (*models.Payment, error) {
 }
 
 // GetMainPaymentBySessionID получает основной платеж сессии
-func (s *service) GetMainPaymentBySessionID(sessionID uuid.UUID) (*models.Payment, error) {
-	payment, err := s.repository.GetPaymentBySessionID(sessionID)
+func (s *service) GetMainPaymentBySessionID(ctx context.Context, sessionID uuid.UUID) (*models.Payment, error) {
+	payment, err := s.repository.GetPaymentBySessionID(ctx, sessionID)
 	if err != nil {
 		return nil, fmt.Errorf("ошибка получения основного платежа сессии: %w", err)
 	}
@@ -411,8 +403,8 @@ func (s *service) GetMainPaymentBySessionID(sessionID uuid.UUID) (*models.Paymen
 }
 
 // GetLastPaymentBySessionID получает последний платеж сессии
-func (s *service) GetLastPaymentBySessionID(sessionID uuid.UUID) (*models.Payment, error) {
-	payment, err := s.repository.GetLastPaymentBySessionID(sessionID)
+func (s *service) GetLastPaymentBySessionID(ctx context.Context, sessionID uuid.UUID) (*models.Payment, error) {
+	payment, err := s.repository.GetLastPaymentBySessionID(ctx, sessionID)
 	if err != nil {
 		return nil, fmt.Errorf("ошибка получения последнего платежа сессии: %w", err)
 	}
@@ -420,8 +412,8 @@ func (s *service) GetLastPaymentBySessionID(sessionID uuid.UUID) (*models.Paymen
 }
 
 // GetPaymentsBySessionID получает все платежи сессии
-func (s *service) GetPaymentsBySessionID(sessionID uuid.UUID) (*models.GetPaymentsBySessionResponse, error) {
-	payments, err := s.repository.GetPaymentsBySessionID(sessionID)
+func (s *service) GetPaymentsBySessionID(ctx context.Context, sessionID uuid.UUID) (*models.GetPaymentsBySessionResponse, error) {
+	payments, err := s.repository.GetPaymentsBySessionID(ctx, sessionID)
 	if err != nil {
 		return nil, fmt.Errorf("ошибка получения платежей сессии: %w", err)
 	}
@@ -443,13 +435,40 @@ func (s *service) GetPaymentsBySessionID(sessionID uuid.UUID) (*models.GetPaymen
 	}, nil
 }
 
+// GetPaymentsBySessionIDs получает платежи для множества сессий одним батчем
+func (s *service) GetPaymentsBySessionIDs(ctx context.Context, sessionIDs []uuid.UUID) (map[uuid.UUID]*models.GetPaymentsBySessionResponse, error) {
+	paymentsBySession, err := s.repository.GetPaymentsBySessionIDs(ctx, sessionIDs)
+	if err != nil {
+		return nil, fmt.Errorf("ошибка получения платежей по множеству сессий: %w", err)
+	}
+
+	result := make(map[uuid.UUID]*models.GetPaymentsBySessionResponse, len(paymentsBySession))
+	for sessionID, payments := range paymentsBySession {
+		var mainPayment *models.Payment
+		var extensionPayments []models.Payment
+		for _, p := range payments {
+			if p.PaymentType == models.PaymentTypeMain {
+				cp := p
+				mainPayment = &cp
+			} else if p.PaymentType == models.PaymentTypeExtension {
+				extensionPayments = append(extensionPayments, p)
+			}
+		}
+		result[sessionID] = &models.GetPaymentsBySessionResponse{
+			MainPayment:       mainPayment,
+			ExtensionPayments: extensionPayments,
+		}
+	}
+	return result, nil
+}
+
 // HandleWebhook обрабатывает webhook от Tinkoff
-func (s *service) HandleWebhook(req *models.WebhookRequest) error {
+func (s *service) HandleWebhook(ctx context.Context, req *models.WebhookRequest) error {
 	logger.Printf("Получен webhook от Tinkoff: PaymentId=%d, Status=%s, Success=%v",
 		req.PaymentId, req.Status, req.Success)
 
 	// Получаем платеж по Tinkoff ID
-	payment, err := s.repository.GetPaymentByTinkoffID(fmt.Sprintf("%d", req.PaymentId))
+	payment, err := s.repository.GetPaymentByTinkoffID(ctx, fmt.Sprintf("%d", req.PaymentId))
 	if err != nil {
 		return fmt.Errorf("платеж не найден: %w", err)
 	}
@@ -505,7 +524,7 @@ func (s *service) HandleWebhook(req *models.WebhookRequest) error {
 	}
 
 	// Обновляем платеж только если статус изменился
-	if err := s.repository.UpdatePayment(payment); err != nil {
+	if err := s.repository.UpdatePayment(ctx, payment); err != nil {
 		return fmt.Errorf("ошибка обновления статуса платежа: %w", err)
 	}
 
@@ -513,13 +532,13 @@ func (s *service) HandleWebhook(req *models.WebhookRequest) error {
 
 	// Обновляем статус связанной сессии (только для успешных/неудачных платежей, не для возвратов)
 	if payment.Status != models.PaymentStatusRefunded {
-		if err := s.updateSessionStatus(payment); err != nil {
+		if err := s.updateSessionStatus(ctx, payment); err != nil {
 			logger.Printf("Ошибка обновления статуса сессии: %v", err)
 		}
 
 		// Если платеж успешен и это платеж продления, обновляем время продления сессии
 		if payment.Status == models.PaymentStatusSucceeded && payment.PaymentType == models.PaymentTypeExtension {
-			if err := s.updateSessionExtension(payment); err != nil {
+			if err := s.updateSessionExtension(ctx, payment); err != nil {
 				logger.Printf("Ошибка обновления времени продления сессии: %v", err)
 			}
 		}
@@ -529,7 +548,7 @@ func (s *service) HandleWebhook(req *models.WebhookRequest) error {
 }
 
 // updateSessionStatus обновляет статус сессии в зависимости от статуса платежа
-func (s *service) updateSessionStatus(payment *models.Payment) error {
+func (s *service) updateSessionStatus(ctx context.Context, payment *models.Payment) error {
 	// НОВАЯ ЛОГИКА: Обновляем статус сессии только для успешных платежей
 	// Неудачные платежи НЕ переводят сессию в payment_failed - пользователь остается на странице оплаты
 
@@ -538,7 +557,7 @@ func (s *service) updateSessionStatus(payment *models.Payment) error {
 		logger.Printf("Платеж успешен, обновляем сессию %s в статус 'in_queue'", payment.SessionID)
 
 		// Обновляем статус сессии через Session Status Updater
-		err := s.sessionUpdater.UpdateSessionStatus(payment.SessionID, newSessionStatus)
+		err := s.sessionUpdater.UpdateSessionStatus(ctx, payment.SessionID, newSessionStatus)
 		if err != nil {
 			return fmt.Errorf("ошибка обновления статуса сессии: %w", err)
 		}
@@ -556,9 +575,9 @@ func (s *service) updateSessionStatus(payment *models.Payment) error {
 }
 
 // updateSessionExtension обновляет время продления сессии при успешном платеже продления
-func (s *service) updateSessionExtension(payment *models.Payment) error {
+func (s *service) updateSessionExtension(ctx context.Context, payment *models.Payment) error {
 	// Обновляем время продления сессии через Session Extension Updater
-	err := s.sessionExtensionUpdater.UpdateSessionExtension(payment.SessionID, 0) // 0 означает использовать requested_extension_time_minutes
+	err := s.sessionExtensionUpdater.UpdateSessionExtension(ctx, payment.SessionID, 0) // 0 означает использовать requested_extension_time_minutes
 	if err != nil {
 		return fmt.Errorf("ошибка обновления времени продления сессии: %w", err)
 	}
@@ -568,8 +587,8 @@ func (s *service) updateSessionExtension(payment *models.Payment) error {
 }
 
 // ListPayments получает список платежей для админки
-func (s *service) ListPayments(req *models.AdminListPaymentsRequest) (*models.AdminListPaymentsResponse, error) {
-	payments, total, err := s.repository.ListPayments(req)
+func (s *service) ListPayments(ctx context.Context, req *models.AdminListPaymentsRequest) (*models.AdminListPaymentsResponse, error) {
+	payments, total, err := s.repository.ListPayments(ctx, req)
 	if err != nil {
 		return nil, fmt.Errorf("ошибка получения списка платежей: %w", err)
 	}
@@ -592,9 +611,9 @@ func (s *service) ListPayments(req *models.AdminListPaymentsRequest) (*models.Ad
 }
 
 // RefundPayment возвращает деньги за платеж
-func (s *service) RefundPayment(req *models.RefundPaymentRequest) (*models.RefundPaymentResponse, error) {
+func (s *service) RefundPayment(ctx context.Context, req *models.RefundPaymentRequest) (*models.RefundPaymentResponse, error) {
 	// Получаем платеж по ID
-	payment, err := s.repository.GetPaymentByID(req.PaymentID)
+	payment, err := s.repository.GetPaymentByID(ctx, req.PaymentID)
 	if err != nil {
 		return nil, fmt.Errorf("платеж не найден: %w", err)
 	}
@@ -636,7 +655,7 @@ func (s *service) RefundPayment(req *models.RefundPaymentRequest) (*models.Refun
 	}
 
 	// Сохраняем обновленный платеж
-	if err := s.repository.UpdatePayment(payment); err != nil {
+	if err := s.repository.UpdatePayment(ctx, payment); err != nil {
 		return nil, fmt.Errorf("ошибка обновления платежа: %w", err)
 	}
 
@@ -659,9 +678,9 @@ func (s *service) RefundPayment(req *models.RefundPaymentRequest) (*models.Refun
 }
 
 // CalculatePartialRefund рассчитывает сумму частичного возврата при досрочном завершении сессии
-func (s *service) CalculatePartialRefund(req *models.CalculatePartialRefundRequest) (*models.CalculatePartialRefundResponse, error) {
+func (s *service) CalculatePartialRefund(ctx context.Context, req *models.CalculatePartialRefundRequest) (*models.CalculatePartialRefundResponse, error) {
 	// Получаем платеж по ID
-	payment, err := s.repository.GetPaymentByID(req.PaymentID)
+	payment, err := s.repository.GetPaymentByID(ctx, req.PaymentID)
 	if err != nil {
 		return nil, fmt.Errorf("платеж не найден: %w", err)
 	}
@@ -672,7 +691,7 @@ func (s *service) CalculatePartialRefund(req *models.CalculatePartialRefundReque
 	}
 
 	// Получаем базовую цену за минуту для типа услуги
-	basePriceSetting, err := s.settingsRepo.GetServiceSetting(req.ServiceType, "price_per_minute")
+	basePriceSetting, err := s.settingsRepo.GetServiceSetting(ctx, req.ServiceType, "price_per_minute")
 	if err != nil {
 		return nil, fmt.Errorf("не удалось получить базовую цену: %w", err)
 	}
@@ -744,11 +763,11 @@ func (s *service) CalculatePartialRefund(req *models.CalculatePartialRefundReque
 }
 
 // GetPaymentStatistics получает статистику платежей
-func (s *service) GetPaymentStatistics(req *models.PaymentStatisticsRequest) (*models.PaymentStatisticsResponse, error) {
+func (s *service) GetPaymentStatistics(ctx context.Context, req *models.PaymentStatisticsRequest) (*models.PaymentStatisticsResponse, error) {
 	logger.Printf("Getting payment statistics with filters: user_id=%v, date_from=%v, date_to=%v, service_type=%v",
 		req.UserID, req.DateFrom, req.DateTo, req.ServiceType)
 
-	statistics, err := s.repository.GetPaymentStatistics(req)
+	statistics, err := s.repository.GetPaymentStatistics(ctx, req)
 	if err != nil {
 		logger.Printf("Error getting payment statistics: %v", err)
 		return nil, fmt.Errorf("failed to get payment statistics: %w", err)
@@ -761,7 +780,7 @@ func (s *service) GetPaymentStatistics(req *models.PaymentStatisticsRequest) (*m
 }
 
 // CreateForCashier создает платеж для кассира
-func (s *service) CreateForCashier(sessionID uuid.UUID, amount int) (*models.Payment, error) {
+func (s *service) CreateForCashier(ctx context.Context, sessionID uuid.UUID, amount int) (*models.Payment, error) {
 	logger.Printf("Creating payment for cashier: SessionID=%s, Amount=%d", sessionID, amount)
 
 	// Создаем платеж
@@ -776,7 +795,7 @@ func (s *service) CreateForCashier(sessionID uuid.UUID, amount int) (*models.Pay
 	}
 
 	// Сохраняем платеж в базе данных
-	err := s.repository.CreatePayment(payment)
+	err := s.repository.CreatePayment(ctx, payment)
 	if err != nil {
 		logger.Printf("Error creating payment for cashier: %v", err)
 		return nil, fmt.Errorf("failed to create payment for cashier: %w", err)
@@ -789,8 +808,8 @@ func (s *service) CreateForCashier(sessionID uuid.UUID, amount int) (*models.Pay
 }
 
 // CashierListPayments получает список платежей для кассира
-func (s *service) CashierListPayments(req *models.CashierPaymentsRequest) (*models.AdminListPaymentsResponse, error) {
-	payments, total, err := s.repository.CashierListPayments(req)
+func (s *service) CashierListPayments(ctx context.Context, req *models.CashierPaymentsRequest) (*models.AdminListPaymentsResponse, error) {
+	payments, total, err := s.repository.CashierListPayments(ctx, req)
 	if err != nil {
 		return nil, fmt.Errorf("ошибка получения списка платежей для кассира: %w", err)
 	}
@@ -813,10 +832,10 @@ func (s *service) CashierListPayments(req *models.CashierPaymentsRequest) (*mode
 }
 
 // GetCashierLastShiftStatistics получает статистику последней смены кассира
-func (s *service) GetCashierLastShiftStatistics(req *models.CashierLastShiftStatisticsRequest) (*models.CashierLastShiftStatisticsResponse, error) {
+func (s *service) GetCashierLastShiftStatistics(ctx context.Context, req *models.CashierLastShiftStatisticsRequest) (*models.CashierLastShiftStatisticsResponse, error) {
 	logger.Printf("Getting cashier last shift statistics: CashierID=%s", req.CashierID)
 
-	statistics, err := s.repository.GetCashierLastShiftStatistics(req)
+	statistics, err := s.repository.GetCashierLastShiftStatistics(ctx, req)
 	if err != nil {
 		logger.Printf("Error getting cashier last shift statistics: %v", err)
 		return nil, fmt.Errorf("failed to get cashier last shift statistics: %w", err)

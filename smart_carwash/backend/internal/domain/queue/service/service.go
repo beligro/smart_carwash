@@ -1,6 +1,7 @@
 package service
 
 import (
+	"context"
 	"math"
 	"time"
 
@@ -16,10 +17,10 @@ import (
 
 // Service интерфейс для бизнес-логики очереди
 type Service interface {
-	GetQueueStatus() (*models.QueueStatus, error)
+	GetQueueStatus(ctx context.Context) (*models.QueueStatus, error)
 
 	// Административные методы
-	AdminGetQueueStatus(req *models.AdminQueueStatusRequest) (*models.AdminQueueStatusResponse, error)
+	AdminGetQueueStatus(ctx context.Context, req *models.AdminQueueStatusRequest) (*models.AdminQueueStatusResponse, error)
 }
 
 // ServiceImpl реализация Service
@@ -41,15 +42,15 @@ func NewService(sessionService sessionService.Service, washboxService washboxSer
 }
 
 // getServiceQueueInfo получает информацию об очереди для конкретного типа услуги
-func (s *ServiceImpl) getServiceQueueInfo(serviceType string) (*models.ServiceQueueInfo, error) {
+func (s *ServiceImpl) getServiceQueueInfo(ctx context.Context, serviceType string) (*models.ServiceQueueInfo, error) {
 	// Получаем боксы для данного типа услуги
-	boxes, err := s.washboxService.GetWashBoxesByServiceType(serviceType)
+	boxes, err := s.washboxService.GetWashBoxesByServiceType(ctx, serviceType)
 	if err != nil {
 		return nil, err
 	}
 
 	// Получаем сессии со статусом "created"
-	createdSessions, err := s.sessionService.GetSessionsByStatus(sessionModels.SessionStatusInQueue)
+	createdSessions, err := s.sessionService.GetSessionsByStatus(ctx, sessionModels.SessionStatusInQueue)
 	if err != nil {
 		return nil, err
 	}
@@ -63,7 +64,7 @@ func (s *ServiceImpl) getServiceQueueInfo(serviceType string) (*models.ServiceQu
 			queueSize++
 
 			// Получаем информацию о пользователе
-			user, err := s.userService.GetUserByID(session.UserID)
+			user, err := s.userService.GetUserByID(ctx, session.UserID)
 			if err != nil {
 				// Если не удалось получить пользователя, используем базовую информацию
 				user = &userModels.User{
@@ -90,7 +91,7 @@ func (s *ServiceImpl) getServiceQueueInfo(serviceType string) (*models.ServiceQu
 	}
 
 	// Получаем свободные боксы для данного типа услуги
-	freeBoxes, err := s.washboxService.GetFreeWashBoxesByServiceType(serviceType)
+	freeBoxes, err := s.washboxService.GetFreeWashBoxesByServiceType(ctx, serviceType)
 	if err != nil {
 		return nil, err
 	}
@@ -101,8 +102,7 @@ func (s *ServiceImpl) getServiceQueueInfo(serviceType string) (*models.ServiceQu
 	// Вычисляем время ожидания, если есть очередь
 	var waitTimeMinutes *int
 	if hasQueue && queueSize > 0 {
-		// Получаем активные сессии для данного типа услуги
-		activeSessions, err := s.sessionService.GetSessionsByStatus(sessionModels.SessionStatusActive)
+		activeSessions, err := s.sessionService.GetSessionsByStatus(ctx, sessionModels.SessionStatusActive)
 		if err != nil {
 			return nil, err
 		}
@@ -110,21 +110,21 @@ func (s *ServiceImpl) getServiceQueueInfo(serviceType string) (*models.ServiceQu
 		// Фильтруем сессии по типу услуги и вычисляем оставшееся время
 		minRemainingTime := -1.0
 		now := time.Now()
-		
+
 		for _, session := range activeSessions {
 			if session.ServiceType == serviceType {
 				// Общее время сессии в минутах
 				totalTimeMinutes := session.RentalTimeMinutes + session.ExtensionTimeMinutes
-				
+
 				// Время старта активной сессии (когда статус стал "active")
 				sessionStartTime := session.StatusUpdatedAt
-				
+
 				// Прошедшее время с момента старта сессии в минутах
 				elapsedMinutes := now.Sub(sessionStartTime).Minutes()
-				
+
 				// Оставшееся время в минутах
 				remainingMinutes := float64(totalTimeMinutes) - elapsedMinutes
-				
+
 				// Если время еще осталось, учитываем его
 				if remainingMinutes > 0 {
 					if minRemainingTime == -1 || remainingMinutes < minRemainingTime {
@@ -153,25 +153,25 @@ func (s *ServiceImpl) getServiceQueueInfo(serviceType string) (*models.ServiceQu
 }
 
 // GetQueueStatus получает статус очереди и боксов
-func (s *ServiceImpl) GetQueueStatus() (*models.QueueStatus, error) {
+func (s *ServiceImpl) GetQueueStatus(ctx context.Context) (*models.QueueStatus, error) {
 	// Получаем все боксы мойки
-	allBoxes, err := s.washboxService.GetAllWashBoxes()
+	allBoxes, err := s.washboxService.GetAllWashBoxes(ctx)
 	if err != nil {
 		return nil, err
 	}
 
 	// Получаем информацию об очереди для каждого типа услуги
-	washQueueInfo, err := s.getServiceQueueInfo(washboxModels.ServiceTypeWash)
+	washQueueInfo, err := s.getServiceQueueInfo(ctx, washboxModels.ServiceTypeWash)
 	if err != nil {
 		return nil, err
 	}
 
-	airDryQueueInfo, err := s.getServiceQueueInfo(washboxModels.ServiceTypeAirDry)
+	airDryQueueInfo, err := s.getServiceQueueInfo(ctx, washboxModels.ServiceTypeAirDry)
 	if err != nil {
 		return nil, err
 	}
 
-	vacuumQueueInfo, err := s.getServiceQueueInfo(washboxModels.ServiceTypeVacuum)
+	vacuumQueueInfo, err := s.getServiceQueueInfo(ctx, washboxModels.ServiceTypeVacuum)
 	if err != nil {
 		return nil, err
 	}
@@ -201,9 +201,9 @@ func (s *ServiceImpl) GetQueueStatus() (*models.QueueStatus, error) {
 }
 
 // AdminGetQueueStatus получает детальный статус очереди для администратора
-func (s *ServiceImpl) AdminGetQueueStatus(req *models.AdminQueueStatusRequest) (*models.AdminQueueStatusResponse, error) {
+func (s *ServiceImpl) AdminGetQueueStatus(ctx context.Context, req *models.AdminQueueStatusRequest) (*models.AdminQueueStatusResponse, error) {
 	// Получаем базовый статус очереди
-	queueStatus, err := s.GetQueueStatus()
+	queueStatus, err := s.GetQueueStatus(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -214,7 +214,7 @@ func (s *ServiceImpl) AdminGetQueueStatus(req *models.AdminQueueStatusRequest) (
 
 	// Если запрошены детали, добавляем их
 	if req.IncludeDetails {
-		details, err := s.getQueueDetails()
+		details, err := s.getQueueDetails(ctx)
 		if err != nil {
 			return nil, err
 		}
@@ -225,9 +225,9 @@ func (s *ServiceImpl) AdminGetQueueStatus(req *models.AdminQueueStatusRequest) (
 }
 
 // getQueueDetails получает детальную информацию об очереди
-func (s *ServiceImpl) getQueueDetails() (*models.QueueDetails, error) {
+func (s *ServiceImpl) getQueueDetails(ctx context.Context) (*models.QueueDetails, error) {
 	// Получаем все сессии со статусом "created" (в очереди)
-	createdSessions, err := s.sessionService.GetSessionsByStatus(sessionModels.SessionStatusCreated)
+	createdSessions, err := s.sessionService.GetSessionsByStatus(ctx, sessionModels.SessionStatusCreated)
 	if err != nil {
 		return nil, err
 	}

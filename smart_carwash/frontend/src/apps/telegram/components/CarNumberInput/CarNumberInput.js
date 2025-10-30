@@ -49,6 +49,7 @@ const CarNumberInput = ({
   const [isValid, setIsValid] = useState(true);
   const [errorMessage, setErrorMessage] = useState('');
   const [isFocused, setIsFocused] = useState(false);
+  const [isComposing, setIsComposing] = useState(false);
 
   const themeClass = theme === 'dark' ? styles.dark : styles.light;
 
@@ -146,7 +147,12 @@ const CarNumberInput = ({
   const handleBlur = () => {
     try {
       setIsFocused(false);
-      validateCarNumber(safeValue);
+      // На blur нормализуем и валидируем
+      const normalized = formatCarNumber((safeValue || '').toUpperCase());
+      if (normalized !== safeValue) {
+        onChange(normalized);
+      }
+      validateCarNumber(normalized);
     } catch (error) {
       console.error('Ошибка в handleBlur:', error);
     }
@@ -187,10 +193,39 @@ const CarNumberInput = ({
   // Обработчик ввода с форматированием
   const handleInput = (e) => {
     try {
-      const formatted = formatCarNumber(e.target.value.toUpperCase());
-      onChange(formatted);
+      const currentValue = e.target.value;
+      if (isComposing) {
+        onChange(currentValue);
+        return;
+      }
+      // В обычном режиме не навязываем формат при каждом вводе,
+      // просто передаем текущее значение; нормализуем на blur/compositionend
+      onChange(currentValue);
     } catch (error) {
       console.error('Ошибка в handleInput:', error);
+    }
+  };
+
+  // Композиция ввода для совместимости со старыми клавиатурами Android
+  const handleCompositionStart = () => {
+    try {
+      setIsComposing(true);
+    } catch (error) {
+      console.error('Ошибка в handleCompositionStart:', error);
+    }
+  };
+
+  const handleCompositionEnd = (e) => {
+    try {
+      setIsComposing(false);
+      // Завершение ввода: безопасная нормализация
+      const normalized = formatCarNumber((e.target.value || '').toUpperCase());
+      onChange(normalized);
+      setTimeout(() => {
+        validateCarNumber(normalized);
+      }, 0);
+    } catch (error) {
+      console.error('Ошибка в handleCompositionEnd:', error);
     }
   };
 
@@ -257,11 +292,17 @@ const CarNumberInput = ({
                 type="text"
                 value={safeValue}
                 onChange={handleInput}
+                onCompositionStart={handleCompositionStart}
+                onCompositionEnd={handleCompositionEnd}
                 onFocus={handleFocus}
                 onBlur={handleBlur}
                 placeholder={countryConfig?.placeholder || "А123ВК456"}
                 className={`${styles.input} ${themeClass}`}
                 maxLength={12}
+                autoCapitalize="characters"
+                autoCorrect="off"
+                spellCheck={false}
+                inputMode="text"
               />
             </div>
             <div className={styles.helpText}>

@@ -2,6 +2,7 @@ package client
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -24,13 +25,13 @@ func NewModbusHTTPClient(config *config.Config) *ModbusHTTPClient {
 	return &ModbusHTTPClient{
 		baseURL: fmt.Sprintf("http://%s:%d", config.ModbusServerHost, config.ModbusServerPort),
 		httpClient: &http.Client{
-			Timeout: 30 * time.Second,
+			Timeout: 10 * time.Second, // ✅ Уменьшил таймаут
 		},
 	}
 }
 
 // WriteCoil записывает значение в coil Modbus устройства
-func (c *ModbusHTTPClient) WriteCoil(boxID uuid.UUID, register string, value bool) error {
+func (c *ModbusHTTPClient) WriteCoil(ctx context.Context, boxID uuid.UUID, register string, value bool) error {
 	req := WriteCoilRequest{
 		BoxID:    boxID,
 		Register: register,
@@ -38,9 +39,8 @@ func (c *ModbusHTTPClient) WriteCoil(boxID uuid.UUID, register string, value boo
 	}
 
 	var resp WriteCoilResponse
-	err := c.makeRequest("POST", "/api/v1/modbus/coil", req, &resp)
-	if err != nil {
-		return fmt.Errorf("ошибка HTTP запроса: %v", err)
+	if err := c.makeRequest(ctx, "POST", "/api/v1/modbus/coil", req, &resp); err != nil {
+		return fmt.Errorf("ошибка HTTP запроса: %w", err)
 	}
 
 	if !resp.Success {
@@ -51,7 +51,7 @@ func (c *ModbusHTTPClient) WriteCoil(boxID uuid.UUID, register string, value boo
 }
 
 // WriteLightCoil включает или выключает свет для бокса
-func (c *ModbusHTTPClient) WriteLightCoil(boxID uuid.UUID, register string, value bool) error {
+func (c *ModbusHTTPClient) WriteLightCoil(ctx context.Context, boxID uuid.UUID, register string, value bool) error {
 	req := WriteLightCoilRequest{
 		BoxID:    boxID,
 		Register: register,
@@ -59,9 +59,8 @@ func (c *ModbusHTTPClient) WriteLightCoil(boxID uuid.UUID, register string, valu
 	}
 
 	var resp WriteLightCoilResponse
-	err := c.makeRequest("POST", "/api/v1/modbus/light", req, &resp)
-	if err != nil {
-		return fmt.Errorf("ошибка HTTP запроса: %v", err)
+	if err := c.makeRequest(ctx, "POST", "/api/v1/modbus/light", req, &resp); err != nil {
+		return fmt.Errorf("ошибка HTTP запроса: %w", err)
 	}
 
 	if !resp.Success {
@@ -72,7 +71,7 @@ func (c *ModbusHTTPClient) WriteLightCoil(boxID uuid.UUID, register string, valu
 }
 
 // WriteChemistryCoil включает или выключает химию для бокса
-func (c *ModbusHTTPClient) WriteChemistryCoil(boxID uuid.UUID, register string, value bool) error {
+func (c *ModbusHTTPClient) WriteChemistryCoil(ctx context.Context, boxID uuid.UUID, register string, value bool) error {
 	req := WriteChemistryCoilRequest{
 		BoxID:    boxID,
 		Register: register,
@@ -80,9 +79,8 @@ func (c *ModbusHTTPClient) WriteChemistryCoil(boxID uuid.UUID, register string, 
 	}
 
 	var resp WriteChemistryCoilResponse
-	err := c.makeRequest("POST", "/api/v1/modbus/chemistry", req, &resp)
-	if err != nil {
-		return fmt.Errorf("ошибка HTTP запроса: %v", err)
+	if err := c.makeRequest(ctx, "POST", "/api/v1/modbus/chemistry", req, &resp); err != nil {
+		return fmt.Errorf("ошибка HTTP запроса: %w", err)
 	}
 
 	if !resp.Success {
@@ -93,7 +91,7 @@ func (c *ModbusHTTPClient) WriteChemistryCoil(boxID uuid.UUID, register string, 
 }
 
 // TestCoil тестирует запись в конкретный регистр
-func (c *ModbusHTTPClient) TestCoil(boxID uuid.UUID, register string, value bool) (*TestCoilResponse, error) {
+func (c *ModbusHTTPClient) TestCoil(ctx context.Context, boxID uuid.UUID, register string, value bool) (*TestCoilResponse, error) {
 	req := TestCoilRequest{
 		BoxID:    boxID,
 		Register: register,
@@ -101,27 +99,26 @@ func (c *ModbusHTTPClient) TestCoil(boxID uuid.UUID, register string, value bool
 	}
 
 	var resp TestCoilResponse
-	err := c.makeRequest("POST", "/api/v1/modbus/test-coil", req, &resp)
-	if err != nil {
-		return nil, fmt.Errorf("ошибка HTTP запроса: %v", err)
+	if err := c.makeRequest(ctx, "POST", "/api/v1/modbus/test-coil", req, &resp); err != nil {
+		return nil, fmt.Errorf("ошибка HTTP запроса: %w", err)
 	}
 
 	return &resp, nil
 }
 
-// makeRequest выполняет HTTP запрос
-func (c *ModbusHTTPClient) makeRequest(method, path string, requestBody interface{}, responseBody interface{}) error {
+// makeRequest выполняет HTTP запрос с контекстом
+func (c *ModbusHTTPClient) makeRequest(ctx context.Context, method, path string, requestBody interface{}, responseBody interface{}) error {
 	// Сериализуем тело запроса
 	jsonData, err := json.Marshal(requestBody)
 	if err != nil {
-		return fmt.Errorf("ошибка сериализации запроса: %v", err)
+		return fmt.Errorf("ошибка сериализации запроса: %w", err)
 	}
 
-	// Создаем HTTP запрос
+	// ✅ Создаем HTTP запрос с контекстом
 	url := c.baseURL + path
-	req, err := http.NewRequest(method, url, bytes.NewBuffer(jsonData))
+	req, err := http.NewRequestWithContext(ctx, method, url, bytes.NewBuffer(jsonData))
 	if err != nil {
-		return fmt.Errorf("ошибка создания HTTP запроса: %v", err)
+		return fmt.Errorf("ошибка создания HTTP запроса: %w", err)
 	}
 
 	// Устанавливаем заголовки
@@ -130,14 +127,21 @@ func (c *ModbusHTTPClient) makeRequest(method, path string, requestBody interfac
 	// Выполняем запрос
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
-		return fmt.Errorf("ошибка выполнения HTTP запроса: %v", err)
+		// ✅ Проверяем тип ошибки
+		if ctx.Err() == context.DeadlineExceeded {
+			return fmt.Errorf("таймаут запроса к Modbus серверу: %w", err)
+		}
+		if ctx.Err() == context.Canceled {
+			return fmt.Errorf("запрос к Modbus серверу отменён: %w", err)
+		}
+		return fmt.Errorf("ошибка выполнения HTTP запроса: %w", err)
 	}
 	defer resp.Body.Close()
 
 	// Читаем ответ
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return fmt.Errorf("ошибка чтения ответа: %v", err)
+		return fmt.Errorf("ошибка чтения ответа: %w", err)
 	}
 
 	// Проверяем статус код
@@ -147,9 +151,8 @@ func (c *ModbusHTTPClient) makeRequest(method, path string, requestBody interfac
 
 	// Десериализуем ответ
 	if responseBody != nil {
-		err = json.Unmarshal(body, responseBody)
-		if err != nil {
-			return fmt.Errorf("ошибка десериализации ответа: %v", err)
+		if err := json.Unmarshal(body, responseBody); err != nil {
+			return fmt.Errorf("ошибка десериализации ответа: %w", err)
 		}
 	}
 

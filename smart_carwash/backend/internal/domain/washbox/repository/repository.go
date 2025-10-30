@@ -2,6 +2,7 @@ package repository
 
 import (
 	"carwash_backend/internal/domain/washbox/models"
+	"context"
 	"time"
 
 	"github.com/google/uuid"
@@ -10,47 +11,47 @@ import (
 
 // Repository интерфейс для работы с боксами мойки в базе данных
 type Repository interface {
-	GetAllWashBoxes() ([]models.WashBox, error)
-	GetWashBoxByID(id uuid.UUID) (*models.WashBox, error)
-	UpdateWashBoxStatus(id uuid.UUID, status string) error
-	CreateWashBox(box *models.WashBox) (*models.WashBox, error)
-	GetFreeWashBoxes() ([]models.WashBox, error)
-	GetFreeWashBoxesByServiceType(serviceType string) ([]models.WashBox, error)
-	GetFreeWashBoxesWithChemistry(serviceType string) ([]models.WashBox, error)
-	GetWashBoxesByServiceType(serviceType string) ([]models.WashBox, error)
+	GetAllWashBoxes(ctx context.Context) ([]models.WashBox, error)
+	GetWashBoxByID(ctx context.Context, id uuid.UUID) (*models.WashBox, error)
+	UpdateWashBoxStatus(ctx context.Context, id uuid.UUID, status string) error
+	CreateWashBox(ctx context.Context, box *models.WashBox) (*models.WashBox, error)
+	GetFreeWashBoxes(ctx context.Context) ([]models.WashBox, error)
+	GetFreeWashBoxesByServiceType(ctx context.Context, serviceType string) ([]models.WashBox, error)
+	GetFreeWashBoxesWithChemistry(ctx context.Context, serviceType string) ([]models.WashBox, error)
+	GetWashBoxesByServiceType(ctx context.Context, serviceType string) ([]models.WashBox, error)
 
 	// Административные методы
-	GetWashBoxByNumber(number int) (*models.WashBox, error)
-	GetWashBoxByNumberIncludingDeleted(number int) (*models.WashBox, error)
-	UpdateWashBox(box *models.WashBox) (*models.WashBox, error)
-	DeleteWashBox(id uuid.UUID) error
-	GetWashBoxesWithFilters(status *string, serviceType *string, limit int, offset int) ([]models.WashBox, int, error)
-	RestoreWashBox(id uuid.UUID, status string, serviceType string) (*models.WashBox, error)
+	GetWashBoxByNumber(ctx context.Context, number int) (*models.WashBox, error)
+	GetWashBoxByNumberIncludingDeleted(ctx context.Context, number int) (*models.WashBox, error)
+	UpdateWashBox(ctx context.Context, box *models.WashBox) (*models.WashBox, error)
+	DeleteWashBox(ctx context.Context, id uuid.UUID) error
+	GetWashBoxesWithFilters(ctx context.Context, status *string, serviceType *string, limit int, offset int) ([]models.WashBox, int, error)
+	RestoreWashBox(ctx context.Context, id uuid.UUID, status string, serviceType string) (*models.WashBox, error)
 
 	// Методы для уборщиков
-	GetWashBoxesForCleaner(limit int, offset int) ([]models.WashBox, int, error)
-	ReserveCleaning(washBoxID uuid.UUID, cleanerID uuid.UUID) error
-	StartCleaning(washBoxID uuid.UUID) error
-	CancelCleaning(washBoxID uuid.UUID) error
-	CompleteCleaning(washBoxID uuid.UUID) error
-	GetCleaningBoxes() ([]models.WashBox, error)
-	UpdateCleaningStartedAt(washBoxID uuid.UUID, startedAt time.Time) error
+	GetWashBoxesForCleaner(ctx context.Context, limit int, offset int) ([]models.WashBox, int, error)
+	ReserveCleaning(ctx context.Context, washBoxID uuid.UUID, cleanerID uuid.UUID) error
+	StartCleaning(ctx context.Context, washBoxID uuid.UUID) error
+	CancelCleaning(ctx context.Context, washBoxID uuid.UUID) error
+	CompleteCleaning(ctx context.Context, washBoxID uuid.UUID) error
+	GetCleaningBoxes(ctx context.Context) ([]models.WashBox, error)
+	UpdateCleaningStartedAt(ctx context.Context, washBoxID uuid.UUID, startedAt time.Time) error
 
 	// Методы для логов уборки
-	CreateCleaningLog(log *models.CleaningLog) error
-	UpdateCleaningLog(log *models.CleaningLog) error
-	GetCleaningLogs(req *models.AdminListCleaningLogsInternalRequest) ([]models.CleaningLogWithDetails, error)
-	GetCleaningLogsCount(req *models.AdminListCleaningLogsInternalRequest) (int64, error)
-	GetActiveCleaningLogByCleaner(cleanerID uuid.UUID) (*models.CleaningLog, error)
-	GetLastCleaningLogByBox(washBoxID uuid.UUID) (*models.CleaningLog, error)
-	GetExpiredCleaningLogs(timeoutMinutes int) ([]models.CleaningLog, error)
+	CreateCleaningLog(ctx context.Context, log *models.CleaningLog) error
+	UpdateCleaningLog(ctx context.Context, log *models.CleaningLog) error
+	GetCleaningLogs(ctx context.Context, req *models.AdminListCleaningLogsInternalRequest) ([]models.CleaningLogWithDetails, error)
+	GetCleaningLogsCount(ctx context.Context, req *models.AdminListCleaningLogsInternalRequest) (int64, error)
+	GetActiveCleaningLogByCleaner(ctx context.Context, cleanerID uuid.UUID) (*models.CleaningLog, error)
+    GetLastCleaningLogByBox(ctx context.Context, washBoxID uuid.UUID) (*models.CleaningLog, error)
+    GetLastCleaningLogsByBoxIDs(ctx context.Context, washBoxIDs []uuid.UUID) (map[uuid.UUID]*models.CleaningLog, error)
+	GetExpiredCleaningLogs(ctx context.Context, timeoutMinutes int) ([]models.CleaningLog, error)
 
 	// Методы для работы с cooldown
-	SetCooldown(boxID uuid.UUID, userID uuid.UUID, cooldownUntil time.Time) error
-	SetCooldownByCarNumber(boxID uuid.UUID, carNumber string, cooldownUntil time.Time) error
-	GetCooldownBoxesForUser(userID uuid.UUID) ([]models.WashBox, error)
-	GetCooldownBoxesByCarNumber(carNumber string) ([]models.WashBox, error)
-	CheckCooldownExpired() error
+	SetCooldown(ctx context.Context, boxID uuid.UUID, userID uuid.UUID, cooldownUntil time.Time) error
+	SetCooldownByCarNumber(ctx context.Context, boxID uuid.UUID, carNumber string, cooldownUntil time.Time) error
+	ClearCooldown(ctx context.Context, boxID uuid.UUID) error
+	CheckCooldownExpired(ctx context.Context) error
 }
 
 // PostgresRepository реализация Repository для PostgreSQL
@@ -60,20 +61,22 @@ type PostgresRepository struct {
 
 // NewPostgresRepository создает новый экземпляр PostgresRepository
 func NewPostgresRepository(db *gorm.DB) *PostgresRepository {
-	return &PostgresRepository{db: db}
+	return &PostgresRepository{
+		db: db,
+	}
 }
 
 // GetAllWashBoxes получает все боксы мойки
-func (r *PostgresRepository) GetAllWashBoxes() ([]models.WashBox, error) {
+func (r *PostgresRepository) GetAllWashBoxes(ctx context.Context) ([]models.WashBox, error) {
 	var boxes []models.WashBox
-	err := r.db.Find(&boxes).Error
+	err := r.db.WithContext(ctx).Find(&boxes).Error
 	return boxes, err
 }
 
 // GetWashBoxByID получает бокс мойки по ID
-func (r *PostgresRepository) GetWashBoxByID(id uuid.UUID) (*models.WashBox, error) {
+func (r *PostgresRepository) GetWashBoxByID(ctx context.Context, id uuid.UUID) (*models.WashBox, error) {
 	var box models.WashBox
-	err := r.db.First(&box, id).Error
+	err := r.db.WithContext(ctx).First(&box, id).Error
 	if err != nil {
 		return nil, err
 	}
@@ -81,13 +84,13 @@ func (r *PostgresRepository) GetWashBoxByID(id uuid.UUID) (*models.WashBox, erro
 }
 
 // UpdateWashBoxStatus обновляет статус бокса мойки
-func (r *PostgresRepository) UpdateWashBoxStatus(id uuid.UUID, status string) error {
-	return r.db.Model(&models.WashBox{}).Where("id = ?", id).Update("status", status).Error
+func (r *PostgresRepository) UpdateWashBoxStatus(ctx context.Context, id uuid.UUID, status string) error {
+	return r.db.WithContext(ctx).Model(&models.WashBox{}).Where("id = ?", id).Update("status", status).Error
 }
 
 // CreateWashBox создает новый бокс мойки
-func (r *PostgresRepository) CreateWashBox(box *models.WashBox) (*models.WashBox, error) {
-	err := r.db.Create(box).Error
+func (r *PostgresRepository) CreateWashBox(ctx context.Context, box *models.WashBox) (*models.WashBox, error) {
+	err := r.db.WithContext(ctx).Create(box).Error
 	if err != nil {
 		return nil, err
 	}
@@ -95,37 +98,37 @@ func (r *PostgresRepository) CreateWashBox(box *models.WashBox) (*models.WashBox
 }
 
 // GetFreeWashBoxes получает все свободные боксы мойки, отсортированные по приоритету
-func (r *PostgresRepository) GetFreeWashBoxes() ([]models.WashBox, error) {
+func (r *PostgresRepository) GetFreeWashBoxes(ctx context.Context) ([]models.WashBox, error) {
 	var boxes []models.WashBox
-	err := r.db.Where("status = ?", models.StatusFree).Order("priority ASC, number ASC").Find(&boxes).Error
+	err := r.db.WithContext(ctx).Where("status = ?", models.StatusFree).Order("priority ASC, number ASC").Find(&boxes).Error
 	return boxes, err
 }
 
 // GetFreeWashBoxesByServiceType получает все свободные боксы мойки определенного типа, отсортированные по приоритету
-func (r *PostgresRepository) GetFreeWashBoxesByServiceType(serviceType string) ([]models.WashBox, error) {
+func (r *PostgresRepository) GetFreeWashBoxesByServiceType(ctx context.Context, serviceType string) ([]models.WashBox, error) {
 	var boxes []models.WashBox
-	err := r.db.Where("status = ? AND service_type = ?", models.StatusFree, serviceType).Order("priority ASC, number ASC").Find(&boxes).Error
+	err := r.db.WithContext(ctx).Where("status = ? AND service_type = ?", models.StatusFree, serviceType).Order("priority ASC, number ASC").Find(&boxes).Error
 	return boxes, err
 }
 
 // GetFreeWashBoxesWithChemistry получает все свободные боксы мойки с химией определенного типа, отсортированные по приоритету
-func (r *PostgresRepository) GetFreeWashBoxesWithChemistry(serviceType string) ([]models.WashBox, error) {
+func (r *PostgresRepository) GetFreeWashBoxesWithChemistry(ctx context.Context, serviceType string) ([]models.WashBox, error) {
 	var boxes []models.WashBox
-	err := r.db.Where("status = ? AND service_type = ? AND chemistry_enabled = ?", models.StatusFree, serviceType, true).Order("priority ASC, number ASC").Find(&boxes).Error
+	err := r.db.WithContext(ctx).Where("status = ? AND service_type = ? AND chemistry_enabled = ?", models.StatusFree, serviceType, true).Order("priority ASC, number ASC").Find(&boxes).Error
 	return boxes, err
 }
 
 // GetWashBoxesByServiceType получает все боксы мойки определенного типа
-func (r *PostgresRepository) GetWashBoxesByServiceType(serviceType string) ([]models.WashBox, error) {
+func (r *PostgresRepository) GetWashBoxesByServiceType(ctx context.Context, serviceType string) ([]models.WashBox, error) {
 	var boxes []models.WashBox
-	err := r.db.Where("service_type = ?", serviceType).Find(&boxes).Error
+	err := r.db.WithContext(ctx).Where("service_type = ?", serviceType).Find(&boxes).Error
 	return boxes, err
 }
 
 // GetWashBoxByNumber получает бокс мойки по номеру
-func (r *PostgresRepository) GetWashBoxByNumber(number int) (*models.WashBox, error) {
+func (r *PostgresRepository) GetWashBoxByNumber(ctx context.Context, number int) (*models.WashBox, error) {
 	var box models.WashBox
-	err := r.db.Where("number = ?", number).First(&box).Error
+	err := r.db.WithContext(ctx).Where("number = ?", number).First(&box).Error
 	if err != nil {
 		return nil, err
 	}
@@ -133,9 +136,9 @@ func (r *PostgresRepository) GetWashBoxByNumber(number int) (*models.WashBox, er
 }
 
 // GetWashBoxByNumberIncludingDeleted получает бокс мойки по номеру, включая удаленные
-func (r *PostgresRepository) GetWashBoxByNumberIncludingDeleted(number int) (*models.WashBox, error) {
+func (r *PostgresRepository) GetWashBoxByNumberIncludingDeleted(ctx context.Context, number int) (*models.WashBox, error) {
 	var box models.WashBox
-	err := r.db.Unscoped().Where("number = ?", number).First(&box).Error
+	err := r.db.WithContext(ctx).Unscoped().Where("number = ?", number).First(&box).Error
 	if err != nil {
 		return nil, err
 	}
@@ -143,8 +146,8 @@ func (r *PostgresRepository) GetWashBoxByNumberIncludingDeleted(number int) (*mo
 }
 
 // UpdateWashBox обновляет бокс мойки
-func (r *PostgresRepository) UpdateWashBox(box *models.WashBox) (*models.WashBox, error) {
-	err := r.db.Save(box).Error
+func (r *PostgresRepository) UpdateWashBox(ctx context.Context, box *models.WashBox) (*models.WashBox, error) {
+	err := r.db.WithContext(ctx).Save(box).Error
 	if err != nil {
 		return nil, err
 	}
@@ -152,33 +155,47 @@ func (r *PostgresRepository) UpdateWashBox(box *models.WashBox) (*models.WashBox
 }
 
 // DeleteWashBox удаляет бокс мойки
-func (r *PostgresRepository) DeleteWashBox(id uuid.UUID) error {
-	return r.db.Delete(&models.WashBox{}, id).Error
+func (r *PostgresRepository) DeleteWashBox(ctx context.Context, id uuid.UUID) error {
+	return r.db.WithContext(ctx).Delete(&models.WashBox{}, id).Error
 }
 
 // GetWashBoxesWithFilters получает боксы мойки с фильтрацией
-func (r *PostgresRepository) GetWashBoxesWithFilters(status *string, serviceType *string, limit int, offset int) ([]models.WashBox, int, error) {
+func (r *PostgresRepository) GetWashBoxesWithFilters(ctx context.Context, status *string, serviceType *string, limit int, offset int) ([]models.WashBox, int, error) {
 	var boxes []models.WashBox
 	var total int64
 
-	query := r.db.Model(&models.WashBox{})
-
-	// Применяем фильтры
-	if status != nil {
-		query = query.Where("status = ?", *status)
-	}
-	if serviceType != nil {
-		query = query.Where("service_type = ?", *serviceType)
-	}
-
 	// Получаем общее количество
-	err := query.Count(&total).Error
+	err := func() error {
+		query := r.db.WithContext(ctx).Model(&models.WashBox{})
+
+		// Применяем фильтры
+		if status != nil {
+			query = query.Where("status = ?", *status)
+		}
+		if serviceType != nil {
+			query = query.Where("service_type = ?", *serviceType)
+		}
+
+		return query.Count(&total).Error
+	}()
 	if err != nil {
 		return nil, 0, err
 	}
 
 	// Получаем данные с пагинацией и сортировкой по номеру
-	err = query.Order("number ASC").Limit(limit).Offset(offset).Find(&boxes).Error
+	err = func() error {
+		query := r.db.WithContext(ctx).Model(&models.WashBox{})
+
+		// Применяем фильтры
+		if status != nil {
+			query = query.Where("status = ?", *status)
+		}
+		if serviceType != nil {
+			query = query.Where("service_type = ?", *serviceType)
+		}
+
+		return query.Order("number ASC").Limit(limit).Offset(offset).Find(&boxes).Error
+	}()
 	if err != nil {
 		return nil, 0, err
 	}
@@ -187,10 +204,10 @@ func (r *PostgresRepository) GetWashBoxesWithFilters(status *string, serviceType
 }
 
 // RestoreWashBox восстанавливает удаленный бокс мойки
-func (r *PostgresRepository) RestoreWashBox(id uuid.UUID, status string, serviceType string) (*models.WashBox, error) {
+func (r *PostgresRepository) RestoreWashBox(ctx context.Context, id uuid.UUID, status string, serviceType string) (*models.WashBox, error) {
 	// Получаем удаленный бокс
 	var box models.WashBox
-	err := r.db.Unscoped().First(&box, id).Error
+	err := r.db.WithContext(ctx).Unscoped().First(&box, id).Error
 	if err != nil {
 		return nil, err
 	}
@@ -201,7 +218,7 @@ func (r *PostgresRepository) RestoreWashBox(id uuid.UUID, status string, service
 	box.DeletedAt = gorm.DeletedAt{}
 
 	// Сохраняем обновленный бокс
-	updatedBox, err := r.UpdateWashBox(&box)
+	updatedBox, err := r.UpdateWashBox(ctx, &box)
 	if err != nil {
 		return nil, err
 	}
@@ -210,18 +227,18 @@ func (r *PostgresRepository) RestoreWashBox(id uuid.UUID, status string, service
 }
 
 // GetWashBoxesForCleaner получает список боксов для уборщика
-func (r *PostgresRepository) GetWashBoxesForCleaner(limit int, offset int) ([]models.WashBox, int, error) {
+func (r *PostgresRepository) GetWashBoxesForCleaner(ctx context.Context, limit int, offset int) ([]models.WashBox, int, error) {
 	var boxes []models.WashBox
 	var total int64
 
 	// Подсчитываем общее количество
-	err := r.db.Model(&models.WashBox{}).Count(&total).Error
+	err := r.db.WithContext(ctx).Model(&models.WashBox{}).Count(&total).Error
 	if err != nil {
 		return nil, 0, err
 	}
 
 	// Получаем боксы с пагинацией
-	query := r.db.Order("number ASC")
+	query := r.db.WithContext(ctx).Order("number ASC")
 	if limit > 0 {
 		query = query.Limit(limit)
 	}
@@ -238,16 +255,16 @@ func (r *PostgresRepository) GetWashBoxesForCleaner(limit int, offset int) ([]mo
 }
 
 // ReserveCleaning резервирует уборку для бокса
-func (r *PostgresRepository) ReserveCleaning(washBoxID uuid.UUID, cleanerID uuid.UUID) error {
-	return r.db.Model(&models.WashBox{}).
+func (r *PostgresRepository) ReserveCleaning(ctx context.Context, washBoxID uuid.UUID, cleanerID uuid.UUID) error {
+	return r.db.WithContext(ctx).Model(&models.WashBox{}).
 		Where("id = ?", washBoxID).
 		Update("cleaning_reserved_by", cleanerID).Error
 }
 
 // StartCleaning начинает уборку бокса
-func (r *PostgresRepository) StartCleaning(washBoxID uuid.UUID) error {
+func (r *PostgresRepository) StartCleaning(ctx context.Context, washBoxID uuid.UUID) error {
 	now := time.Now()
-	return r.db.Model(&models.WashBox{}).
+	return r.db.WithContext(ctx).Model(&models.WashBox{}).
 		Where("id = ?", washBoxID).
 		Updates(map[string]interface{}{
 			"status":               models.StatusCleaning,
@@ -257,15 +274,15 @@ func (r *PostgresRepository) StartCleaning(washBoxID uuid.UUID) error {
 }
 
 // CancelCleaning отменяет резервирование уборки
-func (r *PostgresRepository) CancelCleaning(washBoxID uuid.UUID) error {
-	return r.db.Model(&models.WashBox{}).
+func (r *PostgresRepository) CancelCleaning(ctx context.Context, washBoxID uuid.UUID) error {
+	return r.db.WithContext(ctx).Model(&models.WashBox{}).
 		Where("id = ?", washBoxID).
 		Update("cleaning_reserved_by", nil).Error
 }
 
 // CompleteCleaning завершает уборку бокса
-func (r *PostgresRepository) CompleteCleaning(washBoxID uuid.UUID) error {
-	return r.db.Model(&models.WashBox{}).
+func (r *PostgresRepository) CompleteCleaning(ctx context.Context, washBoxID uuid.UUID) error {
+	return r.db.WithContext(ctx).Model(&models.WashBox{}).
 		Where("id = ?", washBoxID).
 		Updates(map[string]interface{}{
 			"status":               models.StatusFree,
@@ -275,35 +292,34 @@ func (r *PostgresRepository) CompleteCleaning(washBoxID uuid.UUID) error {
 }
 
 // GetCleaningBoxes получает все боксы в статусе уборки
-func (r *PostgresRepository) GetCleaningBoxes() ([]models.WashBox, error) {
+func (r *PostgresRepository) GetCleaningBoxes(ctx context.Context) ([]models.WashBox, error) {
 	var boxes []models.WashBox
-	err := r.db.Where("status = ?", models.StatusCleaning).Find(&boxes).Error
+	err := r.db.WithContext(ctx).Where("status = ?", models.StatusCleaning).Find(&boxes).Error
 	return boxes, err
 }
 
 // UpdateCleaningStartedAt обновляет время начала уборки
-func (r *PostgresRepository) UpdateCleaningStartedAt(washBoxID uuid.UUID, startedAt time.Time) error {
-	return r.db.Model(&models.WashBox{}).
+func (r *PostgresRepository) UpdateCleaningStartedAt(ctx context.Context, washBoxID uuid.UUID, startedAt time.Time) error {
+	return r.db.WithContext(ctx).Model(&models.WashBox{}).
 		Where("id = ?", washBoxID).
 		Update("cleaning_started_at", startedAt).Error
 }
 
 // CreateCleaningLog создает новый лог уборки
-func (r *PostgresRepository) CreateCleaningLog(log *models.CleaningLog) error {
-	return r.db.Create(log).Error
+func (r *PostgresRepository) CreateCleaningLog(ctx context.Context, log *models.CleaningLog) error {
+	return r.db.WithContext(ctx).Create(log).Error
 }
 
 // UpdateCleaningLog обновляет лог уборки
-func (r *PostgresRepository) UpdateCleaningLog(log *models.CleaningLog) error {
-	return r.db.Save(log).Error
+func (r *PostgresRepository) UpdateCleaningLog(ctx context.Context, log *models.CleaningLog) error {
+	return r.db.WithContext(ctx).Save(log).Error
 }
 
 // GetCleaningLogs получает логи уборки с фильтрами
-func (r *PostgresRepository) GetCleaningLogs(req *models.AdminListCleaningLogsInternalRequest) ([]models.CleaningLogWithDetails, error) {
+func (r *PostgresRepository) GetCleaningLogs(ctx context.Context, req *models.AdminListCleaningLogsInternalRequest) ([]models.CleaningLogWithDetails, error) {
 	var logs []models.CleaningLogWithDetails
 
-
-	query := r.db.Table("cleaning_logs cl").
+	query := r.db.WithContext(ctx).Table("cleaning_logs cl").
 		Select(`
 			cl.*,
 			c.username as cleaner_username,
@@ -343,10 +359,10 @@ func (r *PostgresRepository) GetCleaningLogs(req *models.AdminListCleaningLogsIn
 }
 
 // GetCleaningLogsCount получает общее количество логов уборки с фильтрами
-func (r *PostgresRepository) GetCleaningLogsCount(req *models.AdminListCleaningLogsInternalRequest) (int64, error) {
+func (r *PostgresRepository) GetCleaningLogsCount(ctx context.Context, req *models.AdminListCleaningLogsInternalRequest) (int64, error) {
 	var count int64
 
-	query := r.db.Model(&models.CleaningLog{})
+	query := r.db.WithContext(ctx).Model(&models.CleaningLog{})
 
 	// Применяем те же фильтры
 	if req.Status != nil {
@@ -366,9 +382,9 @@ func (r *PostgresRepository) GetCleaningLogsCount(req *models.AdminListCleaningL
 }
 
 // GetActiveCleaningLogByCleaner получает активный лог уборки для уборщика
-func (r *PostgresRepository) GetActiveCleaningLogByCleaner(cleanerID uuid.UUID) (*models.CleaningLog, error) {
+func (r *PostgresRepository) GetActiveCleaningLogByCleaner(ctx context.Context, cleanerID uuid.UUID) (*models.CleaningLog, error) {
 	var log models.CleaningLog
-	err := r.db.Where("cleaner_id = ? AND status = ?", cleanerID, models.CleaningLogStatusInProgress).
+	err := r.db.WithContext(ctx).Where("cleaner_id = ? AND status = ?", cleanerID, models.CleaningLogStatusInProgress).
 		First(&log).Error
 	if err != nil {
 		return nil, err
@@ -377,9 +393,9 @@ func (r *PostgresRepository) GetActiveCleaningLogByCleaner(cleanerID uuid.UUID) 
 }
 
 // GetLastCleaningLogByBox получает последний лог уборки для бокса
-func (r *PostgresRepository) GetLastCleaningLogByBox(washBoxID uuid.UUID) (*models.CleaningLog, error) {
+func (r *PostgresRepository) GetLastCleaningLogByBox(ctx context.Context, washBoxID uuid.UUID) (*models.CleaningLog, error) {
 	var log models.CleaningLog
-	err := r.db.Where("wash_box_id = ?", washBoxID).
+	err := r.db.WithContext(ctx).Where("wash_box_id = ?", washBoxID).
 		Order("started_at DESC").
 		First(&log).Error
 	if err != nil {
@@ -388,20 +404,41 @@ func (r *PostgresRepository) GetLastCleaningLogByBox(washBoxID uuid.UUID) (*mode
 	return &log, nil
 }
 
+// GetLastCleaningLogsByBoxIDs получает последние логи уборки для множества боксов одним запросом
+func (r *PostgresRepository) GetLastCleaningLogsByBoxIDs(ctx context.Context, washBoxIDs []uuid.UUID) (map[uuid.UUID]*models.CleaningLog, error) {
+    if len(washBoxIDs) == 0 {
+        return map[uuid.UUID]*models.CleaningLog{}, nil
+    }
+    // Получаем по каждому боксу последний лог через подзапрос
+    // SELECT DISTINCT ON (wash_box_id) * FROM cleaning_logs WHERE wash_box_id IN (...) ORDER BY wash_box_id, started_at DESC
+    var logs []models.CleaningLog
+    err := r.db.WithContext(ctx).
+        Raw("SELECT DISTINCT ON (wash_box_id) * FROM cleaning_logs WHERE wash_box_id IN ? ORDER BY wash_box_id, started_at DESC", washBoxIDs).
+        Scan(&logs).Error
+    if err != nil {
+        return nil, err
+    }
+    result := make(map[uuid.UUID]*models.CleaningLog, len(logs))
+    for i := range logs {
+        l := logs[i]
+        result[l.WashBoxID] = &l
+    }
+    return result, nil
+}
+
 // GetExpiredCleaningLogs получает логи уборки, которые нужно автоматически завершить
-func (r *PostgresRepository) GetExpiredCleaningLogs(timeoutMinutes int) ([]models.CleaningLog, error) {
+func (r *PostgresRepository) GetExpiredCleaningLogs(ctx context.Context, timeoutMinutes int) ([]models.CleaningLog, error) {
 	var logs []models.CleaningLog
 	timeout := time.Now().Add(-time.Duration(timeoutMinutes) * time.Minute)
-
-	err := r.db.Where("status = ? AND started_at <= ?",
+	err := r.db.WithContext(ctx).Where("status = ? AND started_at <= ?",
 		models.CleaningLogStatusInProgress, timeout).
 		Find(&logs).Error
 	return logs, err
 }
 
 // SetCooldown устанавливает cooldown для бокса после завершения сессии
-func (r *PostgresRepository) SetCooldown(boxID uuid.UUID, userID uuid.UUID, cooldownUntil time.Time) error {
-	return r.db.Model(&models.WashBox{}).
+func (r *PostgresRepository) SetCooldown(ctx context.Context, boxID uuid.UUID, userID uuid.UUID, cooldownUntil time.Time) error {
+	return r.db.WithContext(ctx).Model(&models.WashBox{}).
 		Where("id = ?", boxID).
 		Updates(map[string]interface{}{
 			"last_completed_session_user_id": userID,
@@ -410,20 +447,9 @@ func (r *PostgresRepository) SetCooldown(boxID uuid.UUID, userID uuid.UUID, cool
 		}).Error
 }
 
-// GetCooldownBoxesForUser получает боксы в cooldown для конкретного пользователя
-func (r *PostgresRepository) GetCooldownBoxesForUser(userID uuid.UUID) ([]models.WashBox, error) {
-	var boxes []models.WashBox
-	now := time.Now()
-
-	err := r.db.Where("last_completed_session_user_id = ? AND cooldown_until > ?",
-		userID, now).
-		Find(&boxes).Error
-	return boxes, err
-}
-
 // SetCooldownByCarNumber устанавливает cooldown для бокса по госномеру после завершения сессии
-func (r *PostgresRepository) SetCooldownByCarNumber(boxID uuid.UUID, carNumber string, cooldownUntil time.Time) error {
-	return r.db.Model(&models.WashBox{}).
+func (r *PostgresRepository) SetCooldownByCarNumber(ctx context.Context, boxID uuid.UUID, carNumber string, cooldownUntil time.Time) error {
+	return r.db.WithContext(ctx).Model(&models.WashBox{}).
 		Where("id = ?", boxID).
 		Updates(map[string]interface{}{
 			"last_completed_session_car_number": carNumber,
@@ -432,27 +458,28 @@ func (r *PostgresRepository) SetCooldownByCarNumber(boxID uuid.UUID, carNumber s
 		}).Error
 }
 
-// GetCooldownBoxesByCarNumber получает боксы в cooldown для конкретного госномера
-func (r *PostgresRepository) GetCooldownBoxesByCarNumber(carNumber string) ([]models.WashBox, error) {
-	var boxes []models.WashBox
-	now := time.Now()
-
-	err := r.db.Where("last_completed_session_car_number = ? AND cooldown_until > ?",
-		carNumber, now).
-		Find(&boxes).Error
-	return boxes, err
+// ClearCooldown очищает поля кулдауна у бокса
+func (r *PostgresRepository) ClearCooldown(ctx context.Context, boxID uuid.UUID) error {
+	return r.db.WithContext(ctx).Model(&models.WashBox{}).
+		Where("id = ?", boxID).
+		Updates(map[string]interface{}{
+			"last_completed_session_user_id":    nil,
+			"last_completed_session_car_number": nil,
+			"last_completed_at":                 nil,
+			"cooldown_until":                    nil,
+		}).Error
 }
 
 // CheckCooldownExpired очищает истекшие cooldown'ы
-func (r *PostgresRepository) CheckCooldownExpired() error {
+func (r *PostgresRepository) CheckCooldownExpired(ctx context.Context) error {
 	now := time.Now()
-	return r.db.Model(&models.WashBox{}).
+	return r.db.WithContext(ctx).Model(&models.WashBox{}).
 		Where("cooldown_until IS NOT NULL AND cooldown_until <= ?", now).
 		Updates(map[string]interface{}{
-			"last_completed_session_user_id":     nil,
-			"last_completed_session_car_number":   nil,
-			"last_completed_at":                  nil,
+			"last_completed_session_user_id":    nil,
+			"last_completed_session_car_number": nil,
+			"last_completed_at":                 nil,
 			"cooldown_until":                    nil,
-			"status":                             models.StatusFree,
+			"status":                            models.StatusFree,
 		}).Error
 }

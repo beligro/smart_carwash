@@ -119,7 +119,7 @@ func (h *Handler) ANPRWebhook(c *gin.Context) {
 	}
 
 	// Обрабатываем событие
-	response, err := h.dahuaService.ProcessANPREvent(processReq)
+	response, err := h.dahuaService.ProcessANPREvent(c.Request.Context(), processReq)
 	if err != nil {
 		log.Printf("❌ Ошибка обработки ANPR события: %v", err)
 		if contentType == "application/xml" || contentType == "text/xml" {
@@ -250,14 +250,6 @@ func (h *Handler) KeepAlive(c *gin.Context) {
 			// Восстанавливаем body для повторного чтения
 			c.Request.Body = io.NopCloser(strings.NewReader(bodyContent))
 		}
-	}
-
-	// Логируем heartbeat от камеры
-	log.Printf("💓 Heartbeat от камеры на /NotificationInfo/KeepAlive")
-	log.Printf("📋 Method: %s", c.Request.Method)
-	log.Printf("📋 Client IP: %s", c.ClientIP())
-	if bodyContent != "" {
-		log.Printf("💓 Heartbeat body: %s", bodyContent)
 	}
 
 	// Определяем Content-Type для выбора формата ответа

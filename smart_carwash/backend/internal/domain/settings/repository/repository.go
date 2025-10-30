@@ -2,6 +2,7 @@ package repository
 
 import (
 	"carwash_backend/internal/domain/settings/models"
+	"context"
 	"encoding/json"
 	"errors"
 
@@ -11,10 +12,10 @@ import (
 
 // Repository интерфейс для работы с настройками в базе данных
 type Repository interface {
-	GetServiceSetting(serviceType, settingKey string) (*models.ServiceSetting, error)
-	UpdateServiceSetting(serviceType, settingKey string, settingValue interface{}) error
-	GetAvailableRentalTimes(serviceType string) ([]int, error)
-	UpdateAvailableRentalTimes(serviceType string, times []int) error
+	GetServiceSetting(ctx context.Context, serviceType, settingKey string) (*models.ServiceSetting, error)
+	UpdateServiceSetting(ctx context.Context, serviceType, settingKey string, settingValue interface{}) error
+	GetAvailableRentalTimes(ctx context.Context, serviceType string) ([]int, error)
+	UpdateAvailableRentalTimes(ctx context.Context, serviceType string, times []int) error
 }
 
 // RepositoryImpl реализация Repository
@@ -30,22 +31,24 @@ func NewRepository(db *gorm.DB) *RepositoryImpl {
 }
 
 // GetServiceSetting получает настройку для определенного типа услуги и ключа
-func (r *RepositoryImpl) GetServiceSetting(serviceType, settingKey string) (*models.ServiceSetting, error) {
+func (r *RepositoryImpl) GetServiceSetting(ctx context.Context, serviceType, settingKey string) (*models.ServiceSetting, error) {
 	var setting models.ServiceSetting
-	result := r.db.Where("service_type = ? AND setting_key = ?", serviceType, settingKey).First(&setting)
-	if result.Error != nil {
-		if errors.Is(result.Error, gorm.ErrRecordNotFound) {
+	var result *gorm.DB
+	result = r.db.WithContext(ctx).Where("service_type = ? AND setting_key = ?", serviceType, settingKey).First(&setting)
+	err := result.Error
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, nil
 		}
-		return nil, result.Error
+		return nil, err
 	}
 	return &setting, nil
 }
 
 // UpdateServiceSetting обновляет настройку для определенного типа услуги и ключа
-func (r *RepositoryImpl) UpdateServiceSetting(serviceType, settingKey string, settingValue interface{}) error {
+func (r *RepositoryImpl) UpdateServiceSetting(ctx context.Context, serviceType, settingKey string, settingValue interface{}) error {
 	// Сначала проверяем, существует ли настройка
-	setting, err := r.GetServiceSetting(serviceType, settingKey)
+	setting, err := r.GetServiceSetting(ctx, serviceType, settingKey)
 	if err != nil {
 		return err
 	}
@@ -64,19 +67,17 @@ func (r *RepositoryImpl) UpdateServiceSetting(serviceType, settingKey string, se
 			SettingKey:   settingKey,
 			SettingValue: jsonValue,
 		}
-		result := r.db.Create(&newSetting)
-		return result.Error
+		return r.db.WithContext(ctx).Create(&newSetting).Error
 	}
 
 	// Если настройка существует, обновляем ее
 	setting.SettingValue = jsonValue
-	result := r.db.Save(setting)
-	return result.Error
+	return r.db.WithContext(ctx).Save(setting).Error
 }
 
 // GetAvailableRentalTimes получает доступное время мойки для определенного типа услуги
-func (r *RepositoryImpl) GetAvailableRentalTimes(serviceType string) ([]int, error) {
-	setting, err := r.GetServiceSetting(serviceType, "available_rental_times")
+func (r *RepositoryImpl) GetAvailableRentalTimes(ctx context.Context, serviceType string) ([]int, error) {
+	setting, err := r.GetServiceSetting(ctx, serviceType, "available_rental_times")
 	if err != nil {
 		return nil, err
 	}
@@ -96,6 +97,6 @@ func (r *RepositoryImpl) GetAvailableRentalTimes(serviceType string) ([]int, err
 }
 
 // UpdateAvailableRentalTimes обновляет доступное время мойки для определенного типа услуги
-func (r *RepositoryImpl) UpdateAvailableRentalTimes(serviceType string, times []int) error {
-	return r.UpdateServiceSetting(serviceType, "available_rental_times", times)
+func (r *RepositoryImpl) UpdateAvailableRentalTimes(ctx context.Context, serviceType string, times []int) error {
+	return r.UpdateServiceSetting(ctx, serviceType, "available_rental_times", times)
 }

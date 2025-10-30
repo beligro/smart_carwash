@@ -35,7 +35,7 @@ func (h *Handler) RegisterRoutes(router *gin.RouterGroup) {
 // getQueueStatus обработчик для получения статуса очереди и боксов
 func (h *Handler) getQueueStatus(c *gin.Context) {
 	// Получаем статус очереди и боксов
-	queueStatus, err := h.service.GetQueueStatus()
+	queueStatus, err := h.service.GetQueueStatus(c.Request.Context())
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
@@ -52,7 +52,7 @@ func (h *Handler) adminGetQueueStatus(c *gin.Context) {
 	}
 
 	// Получаем детальный статус очереди
-	resp, err := h.service.AdminGetQueueStatus(req)
+	resp, err := h.service.AdminGetQueueStatus(c.Request.Context(), req)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return

@@ -91,15 +91,20 @@ func main() {
 		log.WithField("error", err).Fatal("Ошибка получения соединения с базой данных")
 	}
 
-	// Настраиваем пул соединений
-	sqlDB.SetMaxIdleConns(10)
-	sqlDB.SetMaxOpenConns(100)
-	sqlDB.SetConnMaxLifetime(time.Hour)
+	// Настраиваем пул соединений (оптимизировано для предотвращения исчерпания)
+	sqlDB.SetMaxIdleConns(10)                  // Оптимальное количество idle соединений
+	sqlDB.SetMaxOpenConns(30)                  // Уменьшено до 30 соединений для стабильности
+	sqlDB.SetConnMaxLifetime(5 * time.Minute)  // Уменьшено для быстрого освобождения
+	sqlDB.SetConnMaxIdleTime(30 * time.Second) // Уменьшено для быстрого освобождения
 
 	log.WithFields(logrus.Fields{
-		"max_idle_conns": 10,
-		"max_open_conns": 100,
-	}).Info("Database connected successfully")
+		"max_idle_conns":     10,
+		"max_open_conns":     30,
+		"conn_max_idle_time": "30s",
+		"conn_max_lifetime":  "5m",
+	}).Info("Database connected successfully with optimized connection pool")
+
+	// SafeDB удален; используем контексты HTTP/фоновых задач напрямую
 
 	// Создаем репозитории
 	userRepository := userRepo.NewPostgresRepository(db)
@@ -112,14 +117,14 @@ func main() {
 	// Создаем Tinkoff клиент
 	tinkoffClient := paymentTinkoff.NewClient(cfg.TinkoffTerminalKey, cfg.TinkoffSecretKey, cfg.TinkoffSuccessURL, cfg.TinkoffFailURL)
 
+	// Создаем Modbus HTTP адаптер
+	modbusAdapter := modbusAdapter.NewModbusAdapter(cfg, db)
+
 	// Создаем сервисы
 	userSvc := userService.NewService(userRepository)
 	settingsSvc := settingsService.NewService(settingsRepository)
-	washboxSvc := washboxService.NewService(washboxRepository, sessionRepository, settingsSvc, db)
+	washboxSvc := washboxService.NewService(washboxRepository, sessionRepository, settingsSvc, db, modbusAdapter)
 	authSvc := authService.NewService(authRepository, cfg)
-
-	// Создаем Modbus HTTP адаптер
-	modbusAdapter := modbusAdapter.NewModbusAdapter(cfg, db)
 
 	// Создаем Modbus service для админских операций
 	modbusSvc := modbusService.NewModbusService(db, cfg)
@@ -151,7 +156,7 @@ func main() {
 	}
 
 	// Создаем Dahua сервис
-	dahuaSvc := dahuaService.NewService(userSvc, sessionSvc)
+	dahuaSvc := dahuaService.NewService(sessionSvc)
 
 	// Создаем обработчики
 	userHandler := userHandlers.NewHandler(userSvc)
@@ -186,6 +191,7 @@ func main() {
 	// Инициализируем маршруты
 	api := router.Group("/")
 	api.Use(middleware.LoggingMiddleware())
+	api.Use(middleware.TimeoutMiddleware(10 * time.Second)) // Таймаут 10 секунд
 	{
 		// Регистрируем маршруты для каждого домена
 		userHandler.RegisterRoutes(api)
@@ -221,10 +227,13 @@ func main() {
 		})
 	}
 
-	// Создаем HTTP сервер
+	// Создаем HTTP сервер с таймаутами
 	server := &http.Server{
-		Addr:    ":" + os.Getenv("BACKEND_PORT"),
-		Handler: router,
+		Addr:         ":" + os.Getenv("BACKEND_PORT"),
+		Handler:      router,
+		ReadTimeout:  30 * time.Second,
+		WriteTimeout: 30 * time.Second,
+		IdleTimeout:  60 * time.Second,
 	}
 
 	// Ожидаем сигнала для завершения
@@ -254,7 +263,9 @@ func main() {
 		for {
 			select {
 			case <-ticker.C:
-				if err := sessionSvc.ProcessQueue(); err != nil {
+				ctx2, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+				defer cancel()
+				if err := sessionSvc.ProcessQueue(ctx2); err != nil {
 					log.WithField("error", err).Error("Ошибка обработки очереди")
 				}
 			case <-quit:
@@ -271,7 +282,9 @@ func main() {
 		for {
 			select {
 			case <-ticker.C:
-				if err := sessionSvc.CheckAndCompleteExpiredSessions(); err != nil {
+				ctx2, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+				defer cancel()
+				if err := sessionSvc.CheckAndCompleteExpiredSessions(ctx2); err != nil {
 					log.WithField("error", err).Error("Ошибка проверки истекших сессий")
 				}
 			case <-quit:
@@ -288,7 +301,9 @@ func main() {
 		for {
 			select {
 			case <-ticker.C:
-				if err := sessionSvc.CheckAndAutoEnableChemistry(); err != nil {
+				ctx2, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+				defer cancel()
+				if err := sessionSvc.CheckAndAutoEnableChemistry(ctx2); err != nil {
 					log.WithField("error", err).Error("Ошибка автоматического включения химии")
 				}
 			case <-quit:
@@ -305,7 +320,9 @@ func main() {
 		for {
 			select {
 			case <-ticker.C:
-				if err := sessionSvc.CheckAndExpireReservedSessions(); err != nil {
+				ctx2, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+				defer cancel()
+				if err := sessionSvc.CheckAndExpireReservedSessions(ctx2); err != nil {
 					log.WithField("error", err).Error("Ошибка проверки зарезервированных сессий")
 				}
 			case <-quit:
@@ -322,7 +339,9 @@ func main() {
 		for {
 			select {
 			case <-ticker.C:
-				if err := washboxSvc.CheckCooldownExpired(); err != nil {
+				ctx2, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+				defer cancel()
+				if err := washboxSvc.CheckCooldownExpired(ctx2); err != nil {
 					log.WithField("error", err).Error("Ошибка очистки истекших cooldown'ов")
 				}
 			case <-quit:
@@ -339,7 +358,9 @@ func main() {
 		for {
 			select {
 			case <-ticker.C:
-				if err := washboxSvc.AutoCompleteExpiredCleanings(); err != nil {
+				ctx2, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+				defer cancel()
+				if err := washboxSvc.AutoCompleteExpiredCleanings(ctx2); err != nil {
 					log.WithField("error", err).Error("Ошибка автоматического завершения уборок")
 				}
 			case <-quit:
@@ -356,7 +377,9 @@ func main() {
 		for {
 			select {
 			case <-ticker.C:
-				if err := sessionSvc.CheckAndNotifyExpiringReservedSessions(); err != nil {
+				ctx2, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+				defer cancel()
+				if err := sessionSvc.CheckAndNotifyExpiringReservedSessions(ctx2); err != nil {
 					log.WithField("error", err).Error("Ошибка отправки уведомлений о скором истечении сессий")
 				}
 			case <-quit:
@@ -373,7 +396,9 @@ func main() {
 		for {
 			select {
 			case <-ticker.C:
-				if err := sessionSvc.CheckAndNotifyCompletingSessions(); err != nil {
+				ctx2, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+				defer cancel()
+				if err := sessionSvc.CheckAndNotifyCompletingSessions(ctx2); err != nil {
 					log.WithField("error", err).Error("Ошибка отправки уведомлений о скором завершении сессий")
 				}
 			case <-quit:
@@ -390,7 +415,9 @@ func main() {
 		for {
 			select {
 			case <-ticker.C:
-				if err := backgroundTasks.DeactivateExpiredShifts(); err != nil {
+				ctx2, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+				defer cancel()
+				if err := backgroundTasks.DeactivateExpiredShifts(ctx2); err != nil {
 					log.WithField("error", err).Error("Ошибка деактивации истекших смен кассиров")
 				}
 			case <-quit:
