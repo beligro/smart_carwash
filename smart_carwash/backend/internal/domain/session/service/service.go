@@ -56,7 +56,6 @@ type Service interface {
 	AdminGetSession(ctx context.Context, req *models.AdminGetSessionRequest) (*models.AdminGetSessionResponse, error)
 
 	// Методы для кассира
-	CashierListSessions(ctx context.Context, req *models.CashierSessionsRequest) (*models.AdminListSessionsResponse, error)
 	CashierGetActiveSessions(ctx context.Context, req *models.CashierActiveSessionsRequest) (*models.CashierActiveSessionsResponse, error)
 	CashierStartSession(ctx context.Context, req *models.CashierStartSessionRequest) (*models.Session, error)
 	CashierCompleteSession(ctx context.Context, req *models.CashierCompleteSessionRequest) (*models.Session, error)
@@ -64,7 +63,6 @@ type Service interface {
 
 	// Методы для химии
 	EnableChemistry(ctx context.Context, req *models.EnableChemistryRequest) (*models.EnableChemistryResponse, error)
-	GetChemistryStats(ctx context.Context, req *models.GetChemistryStatsRequest) (*models.GetChemistryStatsResponse, error)
 
 	// Методы для переназначения сессий
 	ReassignSession(ctx context.Context, req *models.ReassignSessionRequest) (*models.ReassignSessionResponse, error)
@@ -1237,6 +1235,12 @@ func (s *ServiceImpl) CheckAndCompleteExpiredSessions(ctx context.Context) error
 	// Текущее время
 	now := time.Now()
 
+	cooldownTimeout, err := s.settingsService.GetCooldownTimeout(ctx)
+	if err != nil {
+		// Если не удалось получить настройку, используем значение по умолчанию
+		cooldownTimeout = 5
+	}
+
 	// Проверяем каждую активную сессию
 	for _, session := range activeSessions {
 		// Время начала сессии - это время последнего обновления статуса на active
@@ -1250,12 +1254,6 @@ func (s *ServiceImpl) CheckAndCompleteExpiredSessions(ctx context.Context) error
 
 		// Учитываем время продления, если оно есть
 		totalTime := rentalTime + session.ExtensionTimeMinutes
-
-		cooldownTimeout, err := s.settingsService.GetCooldownTimeout(ctx)
-		if err != nil {
-			// Если не удалось получить настройку, используем значение по умолчанию
-			cooldownTimeout = 5
-		}
 
 		// Проверяем, прошло ли выбранное время с момента начала сессии
 		if now.Sub(startTime) >= time.Duration(totalTime)*time.Minute {
@@ -1389,6 +1387,12 @@ func (s *ServiceImpl) ProcessQueue(ctx context.Context) error {
 		return nil
 	}
 
+	// Загружаем все боксы один раз для текущей обработки очереди
+	allBoxes, err := s.washboxService.GetAllWashBoxes(ctx)
+	if err != nil {
+		return err
+	}
+
 	// Получаем все сессии со статусом "in_queue" (оплаченные сессии)
 	sessions, err := s.repo.GetSessionsByStatus(ctx, models.SessionStatusInQueue)
 	if err != nil {
@@ -1400,6 +1404,62 @@ func (s *ServiceImpl) ProcessQueue(ctx context.Context) error {
 		return nil
 	}
 
+	// Вспомогательные функции для фильтрации по снимку боксов
+	now := time.Now()
+
+	isInCooldownForUser := func(box washboxModels.WashBox, userID uuid.UUID, serviceType string) bool {
+		if box.ServiceType != serviceType {
+			return false
+		}
+		if box.LastCompletedSessionUserID == nil || box.CooldownUntil == nil {
+			return false
+		}
+		if *box.LastCompletedSessionUserID != userID {
+			return false
+		}
+		return now.Before(*box.CooldownUntil)
+	}
+
+	isInCooldownForCar := func(box washboxModels.WashBox, carNumber string, serviceType string) bool {
+		if box.ServiceType != serviceType {
+			return false
+		}
+		if box.LastCompletedSessionCarNumber == nil || box.CooldownUntil == nil {
+			return false
+		}
+		if *box.LastCompletedSessionCarNumber != carNumber {
+			return false
+		}
+		return now.Before(*box.CooldownUntil)
+	}
+
+	// Пометка бокса зарезервированным в локальном снимке, чтобы исключить повторные назначения в рамках одного запуска
+	markBoxReservedLocal := func(boxID uuid.UUID) {
+		for i := range allBoxes {
+			if allBoxes[i].ID == boxID {
+				allBoxes[i].Status = washboxModels.StatusReserved
+				break
+			}
+		}
+	}
+
+	// Фильтрация доступных боксов по снимку
+	filterAvailable := func(serviceType string, withChemistry bool) []washboxModels.WashBox {
+		result := make([]washboxModels.WashBox, 0, len(allBoxes))
+		for _, b := range allBoxes {
+			if b.ServiceType != serviceType {
+				continue
+			}
+			if withChemistry && serviceType == "wash" && !b.ChemistryEnabled {
+				continue
+			}
+			if b.Status == washboxModels.StatusFree {
+				result = append(result, b)
+			}
+		}
+		return result
+	}
+
 	// Обрабатываем каждую сессию
 	for _, session := range sessions {
 		// Если у сессии не указан тип услуги, пропускаем её
@@ -1407,9 +1467,8 @@ func (s *ServiceImpl) ProcessQueue(ctx context.Context) error {
 			continue
 		}
 
-		// Получаем доступные боксы с учетом cooldown и приоритетов
+		// Получаем доступные боксы по снимку, учитывая приоритет кулдауна
 		var availableBoxes []washboxModels.WashBox
-		var err error
 
 		// Проверяем, является ли это кассирской сессией
 		isCashierSession := false
@@ -1421,67 +1480,37 @@ func (s *ServiceImpl) ProcessQueue(ctx context.Context) error {
 		}
 
 		if isCashierSession && session.CarNumber != "" {
-			// Для кассирских сессий используем логику по госномеру
-			switch session.ServiceType {
-			case "wash":
-				if session.WithChemistry {
-					// Ищем боксы с химией для мойки с учетом cooldown по госномеру
-					availableBoxes, err = s.washboxService.GetAvailableBoxesByServiceTypeForCashier(ctx, "wash", session.CarNumber)
-					// Фильтруем только боксы с химией
-					var filteredBoxes []washboxModels.WashBox
-					for _, box := range availableBoxes {
-						if box.ChemistryEnabled {
-							filteredBoxes = append(filteredBoxes, box)
-						}
+			// Сначала пробуем боксы в кулдауне для этого госномера
+			for _, b := range allBoxes {
+				if isInCooldownForCar(b, session.CarNumber, session.ServiceType) {
+					if session.ServiceType == "wash" && session.WithChemistry && !b.ChemistryEnabled {
+						continue
 					}
-					availableBoxes = filteredBoxes
-				} else {
-					// Ищем любые боксы для мойки с учетом cooldown по госномеру
-					availableBoxes, err = s.washboxService.GetAvailableBoxesByServiceTypeForCashier(ctx, "wash", session.CarNumber)
+					if b.Status == washboxModels.StatusFree { // назначать можно только свободные
+						availableBoxes = append(availableBoxes, b)
+					}
 				}
-			case "air_dry":
-				// Химия недоступна для air_dry
-				availableBoxes, err = s.washboxService.GetAvailableBoxesByServiceTypeForCashier(ctx, "air_dry", session.CarNumber)
-			case "vacuum":
-				// Химия недоступна для vacuum
-				availableBoxes, err = s.washboxService.GetAvailableBoxesByServiceTypeForCashier(ctx, "vacuum", session.CarNumber)
-			default:
-				// Для неизвестных типов услуг
-				availableBoxes, err = s.washboxService.GetAvailableBoxesByServiceTypeForCashier(ctx, session.ServiceType, session.CarNumber)
+			}
+			// Если нет боксов из кулдауна — берём свободные подходящие
+			if len(availableBoxes) == 0 {
+				availableBoxes = filterAvailable(session.ServiceType, session.WithChemistry)
 			}
 		} else {
-			// Для обычных пользователей используем существующую логику
-			switch session.ServiceType {
-			case "wash":
-				if session.WithChemistry {
-					// Ищем боксы с химией для мойки с учетом cooldown
-					availableBoxes, err = s.washboxService.GetAvailableBoxesByServiceType(ctx, "wash", session.UserID)
-					// Фильтруем только боксы с химией
-					var filteredBoxes []washboxModels.WashBox
-					for _, box := range availableBoxes {
-						if box.ChemistryEnabled {
-							filteredBoxes = append(filteredBoxes, box)
-						}
+			// Обычная пользовательская сессия: пробуем кулдаун по user_id
+			for _, b := range allBoxes {
+				if isInCooldownForUser(b, session.UserID, session.ServiceType) {
+					if session.ServiceType == "wash" && session.WithChemistry && !b.ChemistryEnabled {
+						continue
 					}
-					availableBoxes = filteredBoxes
-				} else {
-					// Ищем любые боксы для мойки с учетом cooldown
-					availableBoxes, err = s.washboxService.GetAvailableBoxesByServiceType(ctx, "wash", session.UserID)
+					if b.Status == washboxModels.StatusFree {
+						availableBoxes = append(availableBoxes, b)
+					}
 				}
-			case "air_dry":
-				// Химия недоступна для air_dry
-				availableBoxes, err = s.washboxService.GetAvailableBoxesByServiceType(ctx, "air_dry", session.UserID)
-			case "vacuum":
-				// Химия недоступна для vacuum
-				availableBoxes, err = s.washboxService.GetAvailableBoxesByServiceType(ctx, "vacuum", session.UserID)
-			default:
-				// Для неизвестных типов услуг
-				availableBoxes, err = s.washboxService.GetAvailableBoxesByServiceType(ctx, session.ServiceType, session.UserID)
 			}
-		}
-
-		if err != nil {
-			return err
+			// Если нет — свободные подходящие
+			if len(availableBoxes) == 0 {
+				availableBoxes = filterAvailable(session.ServiceType, session.WithChemistry)
+			}
 		}
 
 		// Если нет подходящих боксов, пропускаем сессию
@@ -1497,6 +1526,8 @@ func (s *ServiceImpl) ProcessQueue(ctx context.Context) error {
 		if err != nil {
 			return err
 		}
+		// Локально помечаем бокс зарезервированным, чтобы не назначить повторно в этом проходе
+		markBoxReservedLocal(box.ID)
 
 		// Обновляем сессию - назначаем бокс, меняем статус и обновляем время изменения статуса
 		session.BoxID = &box.ID
@@ -1508,52 +1539,24 @@ func (s *ServiceImpl) ProcessQueue(ctx context.Context) error {
 			return err
 		}
 
-		// Проверяем, был ли бокс в кулдауне для этого пользователя или госномера
+		// Проверяем, был ли бокс в кулдауне для этого пользователя или госномера по локальному снимку
 		// Если да, то сразу запускаем сессию, пропуская статус assigned
 		if isCashierSession && session.CarNumber != "" {
-			// Для кассирских сессий проверяем кулдаун по госномеру
-			cooldownBoxes, err := s.washboxService.GetCooldownBoxesByCarNumber(ctx, session.CarNumber)
-			if err == nil {
-				// Проверяем, есть ли среди боксов в кулдауне тот, который мы только что назначили
-				for _, cooldownBox := range cooldownBoxes {
-					if cooldownBox.ID == box.ID && cooldownBox.ServiceType == session.ServiceType {
-						// Бокс был в кулдауне для этого госномера - сразу запускаем сессию
-						logger.Printf("ProcessQueue: бокс %s был в кулдауне для госномера %s, запускаем сессию %s автоматически", box.ID, session.CarNumber, session.ID)
-
-						// Запускаем сессию
-						_, err = s.StartSession(ctx, &models.StartSessionRequest{
-							SessionID: session.ID,
-						})
-						if err != nil {
-							logger.Printf("ProcessQueue: ошибка автоматического запуска сессии %s: %v", session.ID, err)
-						} else {
-							logger.Printf("ProcessQueue: сессия %s автоматически запущена для бокса в кулдауне по госномеру", session.ID)
-						}
-						break
-					}
+			if isInCooldownForCar(box, session.CarNumber, session.ServiceType) {
+				logger.Printf("ProcessQueue: бокс %s был в кулдауне для госномера %s, запускаем сессию %s автоматически", box.ID, session.CarNumber, session.ID)
+				if _, err := s.StartSession(ctx, &models.StartSessionRequest{SessionID: session.ID}); err != nil {
+					logger.Printf("ProcessQueue: ошибка автоматического запуска сессии %s: %v", session.ID, err)
+				} else {
+					logger.Printf("ProcessQueue: сессия %s автоматически запущена для бокса в кулдауне по госномеру", session.ID)
 				}
 			}
 		} else {
-			// Для обычных пользователей проверяем кулдаун по user_id
-			cooldownBoxes, err := s.washboxService.GetCooldownBoxesForUser(ctx, session.UserID)
-			if err == nil {
-				// Проверяем, есть ли среди боксов в кулдауне тот, который мы только что назначили
-				for _, cooldownBox := range cooldownBoxes {
-					if cooldownBox.ID == box.ID && cooldownBox.ServiceType == session.ServiceType {
-						// Бокс был в кулдауне для этого пользователя - сразу запускаем сессию
-						logger.Printf("ProcessQueue: бокс %s был в кулдауне для пользователя %s, запускаем сессию %s автоматически", box.ID, session.UserID, session.ID)
-
-						// Запускаем сессию
-						_, err = s.StartSession(ctx, &models.StartSessionRequest{
-							SessionID: session.ID,
-						})
-						if err != nil {
-							logger.Printf("ProcessQueue: ошибка автоматического запуска сессии %s: %v", session.ID, err)
-						} else {
-							logger.Printf("ProcessQueue: сессия %s автоматически запущена для бокса в кулдауне", session.ID)
-						}
-						break
-					}
+			if isInCooldownForUser(box, session.UserID, session.ServiceType) {
+				logger.Printf("ProcessQueue: бокс %s был в кулдауне для пользователя %s, запускаем сессию %s автоматически", box.ID, session.UserID, session.ID)
+				if _, err := s.StartSession(ctx, &models.StartSessionRequest{SessionID: session.ID}); err != nil {
+					logger.Printf("ProcessQueue: ошибка автоматического запуска сессии %s: %v", session.ID, err)
+				} else {
+					logger.Printf("ProcessQueue: сессия %s автоматически запущена для бокса в кулдауне", session.ID)
 				}
 			}
 		}
@@ -1579,13 +1582,6 @@ func (s *ServiceImpl) ProcessQueue(ctx context.Context) error {
 
 // CheckAndExpireReservedSessions проверяет и автоматически запускает сессии, которые не были стартованы в течение 3 минут
 func (s *ServiceImpl) CheckAndExpireReservedSessions(ctx context.Context) error {
-	// Получаем время ожидания старта мойки из настроек
-	sessionTimeout, err := s.settingsService.GetSessionTimeout(ctx)
-	if err != nil {
-		// Если не удалось получить настройку, используем значение по умолчанию
-		sessionTimeout = 3
-	}
-
 	// Получаем все сессии со статусом "assigned"
 	assignedSessions, err := s.repo.GetSessionsByStatus(ctx, models.SessionStatusAssigned)
 	if err != nil {
@@ -1595,6 +1591,13 @@ func (s *ServiceImpl) CheckAndExpireReservedSessions(ctx context.Context) error 
 	// Если нет назначенных сессий, выходим
 	if len(assignedSessions) == 0 {
 		return nil
+	}
+
+	// Получаем время ожидания старта мойки из настроек
+	sessionTimeout, err := s.settingsService.GetSessionTimeout(ctx)
+	if err != nil {
+		// Если не удалось получить настройку, используем значение по умолчанию
+		sessionTimeout = 3
 	}
 
 	// Текущее время
@@ -1788,7 +1791,7 @@ func (s *ServiceImpl) GetUserSessionHistory(ctx context.Context, req *models.Get
 	// Устанавливаем значения по умолчанию, если не указаны
 	limit := req.Limit
 	if limit <= 0 {
-		limit = 10 // По умолчанию возвращаем 10 сессий
+		limit = 5 // По умолчанию возвращаем 5 сессий
 	}
 
 	offset := req.Offset
@@ -2003,7 +2006,7 @@ func (s *ServiceImpl) AdminListSessions(ctx context.Context, req *models.AdminLi
 	}
 
 	// Получаем сессии с фильтрацией
-	sessions, total, err := s.repo.GetSessionsWithFilters(ctx,
+	sessions, err := s.repo.GetSessionsWithFilters(ctx,
 		req.UserID,
 		req.BoxID,
 		req.BoxNumber,
@@ -2030,7 +2033,7 @@ func (s *ServiceImpl) AdminListSessions(ctx context.Context, req *models.AdminLi
 
 	return &models.AdminListSessionsResponse{
 		Sessions: sessions,
-		Total:    total,
+		Total:    len(sessions),
 		Limit:    limit,
 		Offset:   offset,
 	}, nil
@@ -2147,90 +2150,6 @@ func (s *ServiceImpl) UpdateSessionExtension(ctx context.Context, sessionID uuid
 	return nil
 }
 
-// CashierListSessions возвращает список сессий для кассира с начала смены
-func (s *ServiceImpl) CashierListSessions(ctx context.Context, req *models.CashierSessionsRequest) (*models.AdminListSessionsResponse, error) {
-	// Устанавливаем значения по умолчанию для пагинации
-	limit := 50
-	if req.Limit > 0 {
-		limit = req.Limit
-	}
-	offset := 0
-	if req.Offset > 0 {
-		offset = req.Offset
-	}
-
-	// Получаем сессии с начала смены
-	sessions, total, err := s.repo.GetSessionsWithFilters(ctx, nil, nil, nil, nil, nil, &req.ShiftStartedAt, nil, limit, offset)
-	if err != nil {
-		return nil, err
-	}
-
-	// Загружаем платежи для каждой сессии
-	for i := range sessions {
-		payments, err := s.paymentService.GetPaymentsBySessionID(ctx, sessions[i].ID)
-		if err != nil {
-			// Логируем ошибку, но продолжаем работу
-			continue
-		}
-
-		// Устанавливаем основной платеж
-		if payments.MainPayment != nil {
-			sessions[i].MainPayment = &models.Payment{
-				ID:             payments.MainPayment.ID,
-				SessionID:      payments.MainPayment.SessionID,
-				Amount:         payments.MainPayment.Amount,
-				RefundedAmount: payments.MainPayment.RefundedAmount,
-				Currency:       payments.MainPayment.Currency,
-				Status:         payments.MainPayment.Status,
-				PaymentType:    payments.MainPayment.PaymentType,
-				PaymentURL:     payments.MainPayment.PaymentURL,
-				TinkoffID:      payments.MainPayment.TinkoffID,
-				ExpiresAt:      payments.MainPayment.ExpiresAt,
-				RefundedAt:     payments.MainPayment.RefundedAt,
-				CreatedAt:      payments.MainPayment.CreatedAt,
-				UpdatedAt:      payments.MainPayment.UpdatedAt,
-			}
-		}
-
-		// Устанавливаем платежи продления
-		if len(payments.ExtensionPayments) > 0 {
-			sessions[i].ExtensionPayments = make([]models.Payment, len(payments.ExtensionPayments))
-			for j, payment := range payments.ExtensionPayments {
-				sessions[i].ExtensionPayments[j] = models.Payment{
-					ID:             payment.ID,
-					SessionID:      payment.SessionID,
-					Amount:         payment.Amount,
-					RefundedAmount: payment.RefundedAmount,
-					Currency:       payment.Currency,
-					Status:         payment.Status,
-					PaymentType:    payment.PaymentType,
-					PaymentURL:     payment.PaymentURL,
-					TinkoffID:      payment.TinkoffID,
-					ExpiresAt:      payment.ExpiresAt,
-					RefundedAt:     payment.RefundedAt,
-					CreatedAt:      payment.CreatedAt,
-					UpdatedAt:      payment.UpdatedAt,
-				}
-			}
-		}
-
-		// Заполняем session_timeout_minutes из настроек
-		sessionTimeout, err := s.settingsService.GetSessionTimeout(ctx)
-		if err != nil {
-			// Если не удалось получить настройку, используем значение по умолчанию
-			sessionTimeout = 3
-		}
-		sessions[i].SessionTimeoutMinutes = sessionTimeout
-	}
-
-	return &models.AdminListSessionsResponse{
-		Sessions: sessions,
-		Total:    total,
-		Limit:    limit,
-		Offset:   offset,
-	}, nil
-}
-
 // CashierGetActiveSessions возвращает активные сессии кассира
 func (s *ServiceImpl) CashierGetActiveSessions(ctx context.Context, req *models.CashierActiveSessionsRequest) (*models.CashierActiveSessionsResponse, error) {
 	// Устанавливаем значения по умолчанию для пагинации
@@ -2252,7 +2171,7 @@ func (s *ServiceImpl) CashierGetActiveSessions(ctx context.Context, req *models.
 	// Получаем активные сессии кассира (не завершенные)
 	// Активные статусы: created, in_queue, assigned, active
 	// Терминальные статусы: complete, canceled, expired, payment_failed
-	sessions, _, err := s.repo.GetSessionsWithFilters(ctx, &cashierUserID, nil, nil, nil, nil, nil, nil, limit, offset)
+	sessions, err := s.repo.GetSessionsWithFilters(ctx, &cashierUserID, nil, nil, nil, nil, nil, nil, limit, offset)
 	if err != nil {
 		return nil, err
 	}
@@ -2275,53 +2194,6 @@ func (s *ServiceImpl) CashierGetActiveSessions(ctx context.Context, req *models.
 
 	// Загружаем платежи для каждой сессии
 	for i := range activeSessions {
-		payments, err := s.paymentService.GetPaymentsBySessionID(ctx, activeSessions[i].ID)
-		if err != nil {
-			// Логируем ошибку, но продолжаем работу
-			continue
-		}
-
-		// Устанавливаем основной платеж
-		if payments.MainPayment != nil {
-			activeSessions[i].MainPayment = &models.Payment{
-				ID:             payments.MainPayment.ID,
-				SessionID:      payments.MainPayment.SessionID,
-				Amount:         payments.MainPayment.Amount,
-				RefundedAmount: payments.MainPayment.RefundedAmount,
-				Currency:       payments.MainPayment.Currency,
-				Status:         payments.MainPayment.Status,
-				PaymentType:    payments.MainPayment.PaymentType,
-				PaymentURL:     payments.MainPayment.PaymentURL,
-				TinkoffID:      payments.MainPayment.TinkoffID,
-				ExpiresAt:      payments.MainPayment.ExpiresAt,
-				RefundedAt:     payments.MainPayment.RefundedAt,
-				CreatedAt:      payments.MainPayment.CreatedAt,
-				UpdatedAt:      payments.MainPayment.UpdatedAt,
-			}
-		}
-
-		// Устанавливаем платежи продления
-		if len(payments.ExtensionPayments) > 0 {
-			activeSessions[i].ExtensionPayments = make([]models.Payment, len(payments.ExtensionPayments))
-			for j, payment := range payments.ExtensionPayments {
-				activeSessions[i].ExtensionPayments[j] = models.Payment{
-					ID:             payment.ID,
-					SessionID:      payment.SessionID,
-					Amount:         payment.Amount,
-					RefundedAmount: payment.RefundedAmount,
-					Currency:       payment.Currency,
-					Status:         payment.Status,
-					PaymentType:    payment.PaymentType,
-					PaymentURL:     payment.PaymentURL,
-					TinkoffID:      payment.TinkoffID,
-					ExpiresAt:      payment.ExpiresAt,
-					RefundedAt:     payment.RefundedAt,
-					CreatedAt:      payment.CreatedAt,
-					UpdatedAt:      payment.UpdatedAt,
-				}
-			}
-		}
-
 		activeSessions[i].SessionTimeoutMinutes = sessionTimeout
 	}
 
@@ -2545,18 +2417,6 @@ func (s *ServiceImpl) AutoDisableChemistry(ctx context.Context, sessionID uuid.U
 	}()
 }
 
-// GetChemistryStats получает статистику использования химии
-func (s *ServiceImpl) GetChemistryStats(ctx context.Context, req *models.GetChemistryStatsRequest) (*models.GetChemistryStatsResponse, error) {
-	stats, err := s.repo.GetChemistryStats(ctx, req.DateFrom, req.DateTo)
-	if err != nil {
-		return nil, fmt.Errorf("ошибка при получении статистики химии: %w", err)
-	}
-
-	return &models.GetChemistryStatsResponse{
-		Stats: *stats,
-	}, nil
-}
-
 // ReassignSession переназначает сессию на другой бокс
 func (s *ServiceImpl) ReassignSession(ctx context.Context, req *models.ReassignSessionRequest) (*models.ReassignSessionResponse, error) {
 	logger.Printf("ReassignSession: начало переназначения сессии, SessionID=%s", req.SessionID)
@@ -2578,52 +2438,58 @@ func (s *ServiceImpl) ReassignSession(ctx context.Context, req *models.ReassignS
 		}, nil
 	}
 
-	// Если у сессии есть бокс, переводим его в статус maintenance и выключаем оборудование
-	if session.BoxID != nil {
-		logger.Printf("ReassignSession: перевод бокса в maintenance, SessionID=%s, BoxID=%s", req.SessionID, *session.BoxID)
+	if session.BoxID == nil {
+		logger.Printf("ReassignSession: сессия не имеет назначенного бокса, SessionID=%s", req.SessionID)
+		return &models.ReassignSessionResponse{
+			Success: false,
+			Message: "Сессия не имеет назначенного бокса",
+			Session: *session,
+		}, nil
+	}
 
-		// Переводим бокс в статус maintenance
-		if s.washboxService != nil {
-			err = s.washboxService.UpdateWashBoxStatus(ctx, *session.BoxID, washboxModels.StatusMaintenance)
-			if err != nil {
-				logger.Printf("ReassignSession: ошибка перевода бокса в maintenance, SessionID=%s, BoxID=%s, error=%v", req.SessionID, *session.BoxID, err)
-				return nil, fmt.Errorf("не удалось перевести бокс в статус обслуживания: %w", err)
+	logger.Printf("ReassignSession: перевод бокса в maintenance, SessionID=%s, BoxID=%s", req.SessionID, *session.BoxID)
+
+	// Переводим бокс в статус maintenance
+	if s.washboxService != nil {
+		err = s.washboxService.UpdateWashBoxStatus(ctx, *session.BoxID, washboxModels.StatusMaintenance)
+		if err != nil {
+			logger.Printf("ReassignSession: ошибка перевода бокса в maintenance, SessionID=%s, BoxID=%s, error=%v", req.SessionID, *session.BoxID, err)
+			return nil, fmt.Errorf("не удалось перевести бокс в статус обслуживания: %w", err)
+		}
+	}
+
+	// Выключаем свет и химию через Modbus
+	if s.modbusService != nil {
+		logger.Printf("ReassignSession: выключение оборудования, SessionID=%s, BoxID=%s", req.SessionID, *session.BoxID)
+
+		// Выключаем свет
+		lightRegister := s.getLightRegisterForBox(ctx, *session.BoxID)
+		if lightRegister != "" {
+			if err := s.modbusService.WriteLightCoil(ctx, *session.BoxID, lightRegister, false); err != nil {
+				logger.Printf("ReassignSession: ошибка выключения света, SessionID=%s, BoxID=%s, error=%v", req.SessionID, *session.BoxID, err)
+				// Не прерываем выполнение, логируем ошибку
 			}
+		} else {
+			logger.Printf("ReassignSession: не найден регистр света для бокса %s", *session.BoxID)
 		}
 
-		// Выключаем свет и химию через Modbus
-		if s.modbusService != nil {
-			logger.Printf("ReassignSession: выключение оборудования, SessionID=%s, BoxID=%s", req.SessionID, *session.BoxID)
-
-			// Выключаем свет
-			lightRegister := s.getLightRegisterForBox(ctx, *session.BoxID)
-			if lightRegister != "" {
-				if err := s.modbusService.WriteLightCoil(ctx, *session.BoxID, lightRegister, false); err != nil {
-					logger.Printf("ReassignSession: ошибка выключения света, SessionID=%s, BoxID=%s, error=%v", req.SessionID, *session.BoxID, err)
+		// Выключаем химию (если была включена)
+		if session.WasChemistryOn {
+			chemistryRegister := s.getChemistryRegisterForBox(ctx, *session.BoxID)
+			if chemistryRegister != "" {
+				if err := s.modbusService.WriteChemistryCoil(ctx, *session.BoxID, chemistryRegister, false); err != nil {
+					logger.Printf("ReassignSession: ошибка выключения химии, SessionID=%s, BoxID=%s, error=%v", req.SessionID, *session.BoxID, err)
 					// Не прерываем выполнение, логируем ошибку
 				}
 			} else {
-				logger.Printf("ReassignSession: не найден регистр света для бокса %s", *session.BoxID)
-			}
-
-			// Выключаем химию (если была включена)
-			if session.WasChemistryOn {
-				chemistryRegister := s.getChemistryRegisterForBox(ctx, *session.BoxID)
-				if chemistryRegister != "" {
-					if err := s.modbusService.WriteChemistryCoil(ctx, *session.BoxID, chemistryRegister, false); err != nil {
-						logger.Printf("ReassignSession: ошибка выключения химии, SessionID=%s, BoxID=%s, error=%v", req.SessionID, *session.BoxID, err)
-						// Не прерываем выполнение, логируем ошибку
-					}
-				} else {
-					logger.Printf("ReassignSession: не найден регистр химии для бокса %s", *session.BoxID)
-				}
+				logger.Printf("ReassignSession: не найден регистр химии для бокса %s", *session.BoxID)
 			}
 		}
-
-		// Обнуляем связь с боксом
-		session.BoxID = nil
-		session.BoxNumber = nil
 	}
+
+	// Обнуляем связь с боксом
+	session.BoxID = nil
+	session.BoxNumber = nil
 
 	// Сбрасываем флаги химии - будто химия не была использована вообще
 	session.WasChemistryOn = false
@@ -2643,18 +2509,6 @@ func (s *ServiceImpl) ReassignSession(ctx context.Context, req *models.ReassignS
 	}
 
 	logger.Printf("ReassignSession: сессия возвращена в очередь, SessionID=%s", req.SessionID)
-
-	// Запускаем обработку очереди для назначения на новый бокс
-	if s.washboxService != nil {
-		go func() {
-			err := s.ProcessQueue(ctx)
-			if err != nil {
-				logger.Printf("ReassignSession: ошибка обработки очереди после переназначения, SessionID=%s, error=%v", req.SessionID, err)
-			}
-		}()
-	}
-
-	logger.Printf("ReassignSession: успешно переназначена, SessionID=%s", req.SessionID)
 
 	return &models.ReassignSessionResponse{
 		Success: true,

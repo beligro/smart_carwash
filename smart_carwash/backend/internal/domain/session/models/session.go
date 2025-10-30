@@ -73,7 +73,7 @@ type CreateSessionRequest struct {
 	ChemistryTimeMinutes int       `json:"chemistry_time_minutes"` // Выбранное время химии в минутах
 	CarNumber            string    `json:"car_number" binding:"required"`
 	CarNumberCountry     string    `json:"car_number_country"` // Страна гос номера
-	Email                string    `json:"email"` // Email для чека
+	Email                string    `json:"email"`              // Email для чека
 	RentalTimeMinutes    int       `json:"rental_time_minutes" binding:"required"`
 	IdempotencyKey       string    `json:"idempotency_key" binding:"required"`
 }
@@ -86,7 +86,7 @@ type CreateSessionWithPaymentRequest struct {
 	ChemistryTimeMinutes int       `json:"chemistry_time_minutes"` // Выбранное время химии в минутах
 	CarNumber            string    `json:"car_number" binding:"required"`
 	CarNumberCountry     string    `json:"car_number_country"` // Страна гос номера
-	Email                string    `json:"email"` // Email для чека
+	Email                string    `json:"email"`              // Email для чека
 	RentalTimeMinutes    int       `json:"rental_time_minutes" binding:"required"`
 	IdempotencyKey       string    `json:"idempotency_key" binding:"required"`
 }
@@ -321,23 +321,4 @@ type EnableChemistryRequest struct {
 // EnableChemistryResponse представляет ответ на включение химии
 type EnableChemistryResponse struct {
 	Session Session `json:"session"`
-}
-
-// ChemistryStats представляет статистику использования химии
-type ChemistryStats struct {
-	TotalSessionsWithChemistry int     `json:"total_sessions_with_chemistry"` // Общее количество сессий с химией
-	TotalChemistryEnabled      int     `json:"total_chemistry_enabled"`       // Количество сессий где химия была включена
-	UsagePercentage            float64 `json:"usage_percentage"`              // Процент использования химии
-	Period                     string  `json:"period"`                        // Период статистики
-}
-
-// GetChemistryStatsRequest представляет запрос на получение статистики химии
-type GetChemistryStatsRequest struct {
-	DateFrom *time.Time `json:"date_from"`
-	DateTo   *time.Time `json:"date_to"`
-}
-
-// GetChemistryStatsResponse представляет ответ на получение статистики химии
-type GetChemistryStatsResponse struct {
-	Stats ChemistryStats `json:"stats"`
 }

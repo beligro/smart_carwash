@@ -55,10 +55,6 @@ type Service interface {
 	// Методы для работы с cooldown
 	SetCooldown(ctx context.Context, boxID uuid.UUID, userID uuid.UUID, cooldownUntil time.Time) error
 	SetCooldownByCarNumber(ctx context.Context, boxID uuid.UUID, carNumber string, cooldownUntil time.Time) error
-	GetCooldownBoxesForUser(ctx context.Context, userID uuid.UUID) ([]models.WashBox, error)
-	GetCooldownBoxesByCarNumber(ctx context.Context, carNumber string) ([]models.WashBox, error)
-	GetAvailableBoxesByServiceType(ctx context.Context, serviceType string, userID uuid.UUID) ([]models.WashBox, error)
-	GetAvailableBoxesByServiceTypeForCashier(ctx context.Context, serviceType string, carNumber string) ([]models.WashBox, error)
 	ClearCooldown(ctx context.Context, boxID uuid.UUID) error
 	CheckCooldownExpired(ctx context.Context) error
 }
@@ -813,84 +809,14 @@ func (s *ServiceImpl) SetCooldown(ctx context.Context, boxID uuid.UUID, userID u
 	return s.repo.SetCooldown(ctx, boxID, userID, cooldownUntil)
 }
 
-// GetAvailableBoxesByServiceType получает доступные боксы с учетом cooldown и приоритетов
-func (s *ServiceImpl) GetAvailableBoxesByServiceType(ctx context.Context, serviceType string, userID uuid.UUID) ([]models.WashBox, error) {
-	// 1. ПРИОРИТЕТ: Боксы в cooldown для того же пользователя
-	cooldownBoxes, err := s.repo.GetCooldownBoxesForUser(ctx, userID)
-	if err != nil {
-		return nil, err
-	}
-
-	// Фильтруем по типу услуги
-	var availableBoxes []models.WashBox
-	for _, box := range cooldownBoxes {
-		if box.ServiceType == serviceType {
-			availableBoxes = append(availableBoxes, box)
-		}
-	}
-
-	// Если есть боксы в cooldown для пользователя - возвращаем их
-	if len(availableBoxes) > 0 {
-		return availableBoxes, nil
-	}
-
-	// 2. Если нет боксов в cooldown - берем свободные боксы
-	freeBoxes, err := s.repo.GetFreeWashBoxesByServiceType(ctx, serviceType)
-	if err != nil {
-		return nil, err
-	}
-
-	return freeBoxes, nil
-}
-
-// GetCooldownBoxesForUser получает боксы в cooldown для конкретного пользователя
-func (s *ServiceImpl) GetCooldownBoxesForUser(ctx context.Context, userID uuid.UUID) ([]models.WashBox, error) {
-	return s.repo.GetCooldownBoxesForUser(ctx, userID)
-}
-
 // SetCooldownByCarNumber устанавливает cooldown для бокса по госномеру после завершения сессии
 func (s *ServiceImpl) SetCooldownByCarNumber(ctx context.Context, boxID uuid.UUID, carNumber string, cooldownUntil time.Time) error {
 	return s.repo.SetCooldownByCarNumber(ctx, boxID, carNumber, cooldownUntil)
 }
 
-// GetCooldownBoxesByCarNumber получает боксы в cooldown для конкретного госномера
-func (s *ServiceImpl) GetCooldownBoxesByCarNumber(ctx context.Context, carNumber string) ([]models.WashBox, error) {
-	return s.repo.GetCooldownBoxesByCarNumber(ctx, carNumber)
-}
-
 // ClearCooldown очищает поля кулдауна у бокса
 func (s *ServiceImpl) ClearCooldown(ctx context.Context, boxID uuid.UUID) error {
 	return s.repo.ClearCooldown(ctx, boxID)
-}
-
-// GetAvailableBoxesByServiceTypeForCashier получает доступные боксы для кассира с учетом cooldown по госномеру
-func (s *ServiceImpl) GetAvailableBoxesByServiceTypeForCashier(ctx context.Context, serviceType string, carNumber string) ([]models.WashBox, error) {
-	// 1. ПРИОРИТЕТ: Боксы в cooldown для того же госномера
-	cooldownBoxes, err := s.repo.GetCooldownBoxesByCarNumber(ctx, carNumber)
-	if err != nil {
-		return nil, err
-	}
-
-	// Фильтруем по типу услуги
-	var availableBoxes []models.WashBox
-	for _, box := range cooldownBoxes {
-		if box.ServiceType == serviceType {
-			availableBoxes = append(availableBoxes, box)
-		}
-	}
-
-	// Если есть боксы в cooldown для госномера - возвращаем их
-	if len(availableBoxes) > 0 {
-		return availableBoxes, nil
-	}
-
-	// 2. Если нет боксов в cooldown - берем свободные боксы
-	freeBoxes, err := s.repo.GetFreeWashBoxesByServiceType(ctx, serviceType)
-	if err != nil {
-		return nil, err
-	}
-
-	return freeBoxes, nil
 }
 
 // CheckCooldownExpired очищает истекшие cooldown'ы

@@ -363,15 +363,6 @@ const SessionCardComponent = ({ session, onStart, onComplete, onCancel, onEnable
             {formatDateTime(session.created_at)}
           </DetailValue>
         </DetailItem>
-
-        {session.main_payment && (
-          <DetailItem>
-            <DetailLabel theme={theme}>Сумма</DetailLabel>
-            <DetailValue theme={theme}>
-              {formatAmount(session.main_payment.amount)}
-            </DetailValue>
-          </DetailItem>
-        )}
       </SessionDetails>
 
       <ActionButtons>

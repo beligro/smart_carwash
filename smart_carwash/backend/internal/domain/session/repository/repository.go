@@ -3,7 +3,6 @@ package repository
 import (
 	"carwash_backend/internal/domain/session/models"
 	"context"
-	"fmt"
 	"time"
 
 	"github.com/google/uuid"
@@ -25,10 +24,7 @@ type Repository interface {
 	GetUserSessionHistory(ctx context.Context, userID uuid.UUID, limit, offset int) ([]models.Session, error)
 
 	// Административные методы
-	GetSessionsWithFilters(ctx context.Context, userID *uuid.UUID, boxID *uuid.UUID, boxNumber *int, status *string, serviceType *string, dateFrom *time.Time, dateTo *time.Time, limit int, offset int) ([]models.Session, int, error)
-
-	// Методы для статистики химии
-	GetChemistryStats(ctx context.Context, dateFrom *time.Time, dateTo *time.Time) (*models.ChemistryStats, error)
+	GetSessionsWithFilters(ctx context.Context, userID *uuid.UUID, boxID *uuid.UUID, boxNumber *int, status *string, serviceType *string, dateFrom *time.Time, dateTo *time.Time, limit int, offset int) ([]models.Session, error)
 
 	// Метод для проверки завершенных сессий между уборками
 	GetCompletedSessionsBetween(ctx context.Context, boxID uuid.UUID, dateFrom, dateTo time.Time) (int, error)
@@ -210,47 +206,11 @@ func (r *PostgresRepository) GetUserSessionHistory(ctx context.Context, userID u
 }
 
 // GetSessionsWithFilters получает сессии с фильтрацией для администратора
-func (r *PostgresRepository) GetSessionsWithFilters(ctx context.Context, userID *uuid.UUID, boxID *uuid.UUID, boxNumber *int, status *string, serviceType *string, dateFrom *time.Time, dateTo *time.Time, limit int, offset int) ([]models.Session, int, error) {
+func (r *PostgresRepository) GetSessionsWithFilters(ctx context.Context, userID *uuid.UUID, boxID *uuid.UUID, boxNumber *int, status *string, serviceType *string, dateFrom *time.Time, dateTo *time.Time, limit int, offset int) ([]models.Session, error) {
 	var sessions []models.Session
-	var total int64
-
-	// Получаем общее количество
-	err := func() error {
-		query := r.db.WithContext(ctx).Model(&models.Session{})
-
-		// Применяем фильтры
-		if userID != nil {
-			query = query.Where("sessions.user_id = ?", *userID)
-		}
-		if boxID != nil {
-			query = query.Where("sessions.box_id = ?", *boxID)
-		}
-		if boxNumber != nil {
-			// Используем JOIN для фильтрации по номеру бокса
-			query = query.Joins("JOIN wash_boxes ON sessions.box_id = wash_boxes.id").
-				Where("wash_boxes.number = ?", *boxNumber)
-		}
-		if status != nil {
-			query = query.Where("sessions.status = ?", *status)
-		}
-		if serviceType != nil {
-			query = query.Where("sessions.service_type = ?", *serviceType)
-		}
-		if dateFrom != nil {
-			query = query.Where("sessions.created_at >= ?", *dateFrom)
-		}
-		if dateTo != nil {
-			query = query.Where("sessions.created_at <= ?", *dateTo)
-		}
-
-		return query.Count(&total).Error
-	}()
-	if err != nil {
-		return nil, 0, err
-	}
 
 	// Получаем данные с пагинацией и сортировкой
-	err = func() error {
+	err := func() error {
 		query := r.db.WithContext(ctx).Model(&models.Session{})
 
 		// Применяем фильтры
@@ -281,7 +241,7 @@ func (r *PostgresRepository) GetSessionsWithFilters(ctx context.Context, userID 
 		return query.Order("sessions.created_at DESC").Limit(limit).Offset(offset).Find(&sessions).Error
 	}()
 	if err != nil {
-		return nil, 0, err
+		return nil, err
 	}
 
 	// Для каждой сессии получаем номер бокса, если он есть
@@ -295,72 +255,7 @@ func (r *PostgresRepository) GetSessionsWithFilters(ctx context.Context, userID 
 		}
 	}
 
-	return sessions, int(total), nil
-}
-
-// GetChemistryStats получает статистику использования химии
-func (r *PostgresRepository) GetChemistryStats(ctx context.Context, dateFrom *time.Time, dateTo *time.Time) (*models.ChemistryStats, error) {
-	var totalWithChemistry int64
-	var totalChemistryEnabled int64
-
-	// Подсчитываем общее количество сессий с химией
-	err := func() error {
-		query := r.db.WithContext(ctx).Model(&models.Session{})
-
-		// Применяем фильтры по датам
-		if dateFrom != nil {
-			query = query.Where("created_at >= ?", *dateFrom)
-		}
-		if dateTo != nil {
-			query = query.Where("created_at <= ?", *dateTo)
-		}
-
-		return query.Where("with_chemistry = ?", true).Count(&totalWithChemistry).Error
-	}()
-	if err != nil {
-		return nil, err
-	}
-
-	// Подсчитываем количество сессий где химия была включена
-	err = func() error {
-		query := r.db.WithContext(ctx).Model(&models.Session{})
-
-		// Применяем фильтры по датам
-		if dateFrom != nil {
-			query = query.Where("created_at >= ?", *dateFrom)
-		}
-		if dateTo != nil {
-			query = query.Where("created_at <= ?", *dateTo)
-		}
-
-		return query.Where("with_chemistry = ? AND was_chemistry_on = ?", true, true).Count(&totalChemistryEnabled).Error
-	}()
-	if err != nil {
-		return nil, err
-	}
-
-	// Вычисляем процент использования
-	var usagePercentage float64
-	if totalWithChemistry > 0 {
-		usagePercentage = float64(totalChemistryEnabled) / float64(totalWithChemistry) * 100
-	}
-
-	// Формируем период для отображения
-	period := "все время"
-	if dateFrom != nil && dateTo != nil {
-		period = fmt.Sprintf("с %s по %s", dateFrom.Format("02.01.2006"), dateTo.Format("02.01.2006"))
-	} else if dateFrom != nil {
-		period = fmt.Sprintf("с %s", dateFrom.Format("02.01.2006"))
-	} else if dateTo != nil {
-		period = fmt.Sprintf("по %s", dateTo.Format("02.01.2006"))
-	}
-
-	return &models.ChemistryStats{
-		TotalSessionsWithChemistry: int(totalWithChemistry),
-		TotalChemistryEnabled:      int(totalChemistryEnabled),
-		UsagePercentage:            usagePercentage,
-		Period:                     period,
-	}, nil
+	return sessions, nil
 }
 
 // GetCompletedSessionsBetween получает количество завершенных сессий для бокса между указанными датами

@@ -49,8 +49,6 @@ type Repository interface {
 	// Методы для работы с cooldown
 	SetCooldown(ctx context.Context, boxID uuid.UUID, userID uuid.UUID, cooldownUntil time.Time) error
 	SetCooldownByCarNumber(ctx context.Context, boxID uuid.UUID, carNumber string, cooldownUntil time.Time) error
-	GetCooldownBoxesForUser(ctx context.Context, userID uuid.UUID) ([]models.WashBox, error)
-	GetCooldownBoxesByCarNumber(ctx context.Context, carNumber string) ([]models.WashBox, error)
 	ClearCooldown(ctx context.Context, boxID uuid.UUID) error
 	CheckCooldownExpired(ctx context.Context) error
 }
@@ -426,17 +424,6 @@ func (r *PostgresRepository) SetCooldown(ctx context.Context, boxID uuid.UUID, u
 		}).Error
 }
 
-// GetCooldownBoxesForUser получает боксы в cooldown для конкретного пользователя
-func (r *PostgresRepository) GetCooldownBoxesForUser(ctx context.Context, userID uuid.UUID) ([]models.WashBox, error) {
-	var boxes []models.WashBox
-	now := time.Now()
-
-	err := r.db.WithContext(ctx).Where("last_completed_session_user_id = ? AND cooldown_until > ?",
-		userID, now).
-		Find(&boxes).Error
-	return boxes, err
-}
-
 // SetCooldownByCarNumber устанавливает cooldown для бокса по госномеру после завершения сессии
 func (r *PostgresRepository) SetCooldownByCarNumber(ctx context.Context, boxID uuid.UUID, carNumber string, cooldownUntil time.Time) error {
 	return r.db.WithContext(ctx).Model(&models.WashBox{}).
@@ -446,17 +433,6 @@ func (r *PostgresRepository) SetCooldownByCarNumber(ctx context.Context, boxID u
 			"last_completed_at":                 time.Now(),
 			"cooldown_until":                    cooldownUntil,
 		}).Error
-}
-
-// GetCooldownBoxesByCarNumber получает боксы в cooldown для конкретного госномера
-func (r *PostgresRepository) GetCooldownBoxesByCarNumber(ctx context.Context, carNumber string) ([]models.WashBox, error) {
-	var boxes []models.WashBox
-	now := time.Now()
-
-	err := r.db.WithContext(ctx).Where("last_completed_session_car_number = ? AND cooldown_until > ?",
-		carNumber, now).
-		Find(&boxes).Error
-	return boxes, err
 }
 
 // ClearCooldown очищает поля кулдауна у бокса

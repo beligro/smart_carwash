@@ -61,14 +61,12 @@ func (h *Handler) RegisterRoutes(router *gin.RouterGroup) {
 	{
 		adminRoutes.GET("", h.adminListSessions)
 		adminRoutes.GET("/by-id", h.adminGetSession)
-		adminRoutes.GET("/chemistry-stats", h.getChemistryStats) // статистика химии
-		adminRoutes.POST("/reassign", h.adminReassignSession)    // переназначение сессии администратором
+		adminRoutes.POST("/reassign", h.adminReassignSession) // переназначение сессии администратором
 	}
 
 	// Маршруты для кассира
 	cashierRoutes := router.Group("/cashier/sessions", h.cashierMiddleware())
 	{
-		cashierRoutes.GET("", h.cashierListSessions)
 		cashierRoutes.GET("/active", h.cashierGetActiveSessions)
 		cashierRoutes.POST("/start", h.cashierStartSession)
 		cashierRoutes.POST("/complete", h.cashierCompleteSession)
@@ -377,7 +375,7 @@ func (h *Handler) getUserSessionHistory(c *gin.Context) {
 	}
 
 	// Получаем параметры пагинации
-	limit := 10
+	limit := 5
 	offset := 0
 
 	if limitStr := c.Query("limit"); limitStr != "" {
@@ -613,63 +611,6 @@ func (h *Handler) handle1CPaymentCallback(c *gin.Context) {
 	c.JSON(http.StatusOK, response)
 }
 
-// cashierListSessions обработчик для получения списка сессий кассира
-func (h *Handler) cashierListSessions(c *gin.Context) {
-	// Получаем время начала смены из query параметра
-	shiftStartedAtStr := c.Query("shift_started_at")
-	if shiftStartedAtStr == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Не указано время начала смены"})
-		return
-	}
-
-	shiftStartedAt, err := time.Parse(time.RFC3339, shiftStartedAtStr)
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Некорректный формат времени"})
-		return
-	}
-
-	// Получаем параметры пагинации
-	limitStr := c.DefaultQuery("limit", "50")
-	offsetStr := c.DefaultQuery("offset", "0")
-
-	limit, err := strconv.Atoi(limitStr)
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Некорректный параметр limit"})
-		return
-	}
-
-	offset, err := strconv.Atoi(offsetStr)
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Некорректный параметр offset"})
-		return
-	}
-
-	// Создаем запрос
-	req := &models.CashierSessionsRequest{
-		ShiftStartedAt: shiftStartedAt,
-		Limit:          limit,
-		Offset:         offset,
-	}
-
-	// Получаем список сессий
-	response, err := h.service.CashierListSessions(c.Request.Context(), req)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-		return
-	}
-
-	// Логируем мета-параметры
-	c.Set("meta", gin.H{
-		"shift_started_at": shiftStartedAt,
-		"limit":            limit,
-		"offset":           offset,
-		"total_sessions":   response.Total,
-	})
-
-	// Возвращаем результат
-	c.JSON(http.StatusOK, response)
-}
-
 // cashierGetActiveSessions обработчик для получения активных сессий кассира
 func (h *Handler) cashierGetActiveSessions(c *gin.Context) {
 	// Получаем параметры пагинации
@@ -868,64 +809,6 @@ func (h *Handler) cashierEnableChemistry(c *gin.Context) {
 	}
 
 	logger.WithContext(c).Infof("Успешно включена химия кассиром: SessionID=%s", req.SessionID)
-	c.JSON(http.StatusOK, response)
-}
-
-// getChemistryStats обработчик для получения статистики химии
-func (h *Handler) getChemistryStats(c *gin.Context) {
-	// Парсим параметры запроса
-	dateFromStr := c.Query("date_from")
-	dateToStr := c.Query("date_to")
-
-	var dateFrom, dateTo *time.Time
-
-	// Парсим дату начала периода (поддерживаем ISO 8601 с timezone)
-	if dateFromStr != "" {
-		parsedDateFrom, err := time.Parse(time.RFC3339, dateFromStr)
-		if err != nil {
-			// Пробуем парсить как простую дату для обратной совместимости
-			parsedDateFrom, err = time.Parse("2006-01-02", dateFromStr)
-			if err != nil {
-				c.JSON(http.StatusBadRequest, gin.H{"error": "Неверный формат даты начала периода"})
-				return
-			}
-		}
-		dateFrom = &parsedDateFrom
-	}
-
-	// Парсим дату окончания периода (поддерживаем ISO 8601 с timezone)
-	if dateToStr != "" {
-		parsedDateTo, err := time.Parse(time.RFC3339, dateToStr)
-		if err != nil {
-			// Пробуем парсить как простую дату для обратной совместимости
-			parsedDateTo, err = time.Parse("2006-01-02", dateToStr)
-			if err != nil {
-				c.JSON(http.StatusBadRequest, gin.H{"error": "Неверный формат даты окончания периода"})
-				return
-			}
-			// Устанавливаем время на конец дня только для простых дат
-			parsedDateTo = parsedDateTo.Add(23*time.Hour + 59*time.Minute + 59*time.Second)
-		}
-		dateTo = &parsedDateTo
-	}
-
-	req := &models.GetChemistryStatsRequest{
-		DateFrom: dateFrom,
-		DateTo:   dateTo,
-	}
-
-	// Логируем запрос
-	logger.WithContext(c).Infof("Запрос статистики химии: DateFrom=%v, DateTo=%v", dateFrom, dateTo)
-
-	// Получаем статистику
-	response, err := h.service.GetChemistryStats(c.Request.Context(), req)
-	if err != nil {
-		logger.WithContext(c).Errorf("Ошибка получения статистики химии: %v", err)
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-		return
-	}
-
-	logger.WithContext(c).Infof("Успешно получена статистика химии")
 	c.JSON(http.StatusOK, response)
 }
 

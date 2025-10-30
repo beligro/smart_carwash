@@ -399,7 +399,7 @@ const ApiService = {
   },
   
   // Получение истории сессий пользователя
-  getUserSessionHistory: async (userId, limit = 10, offset = 0) => {
+  getUserSessionHistory: async (userId, limit = 5, offset = 0) => {
     try {
       const response = await api.get(`/sessions/history?user_id=${userId}&limit=${limit}&offset=${offset}`);
       return response.data;
@@ -523,17 +523,6 @@ const ApiService = {
       return response.data;
     } catch (error) {
       console.error('Ошибка завершения смены:', error);
-      throw error;
-    }
-  },
-
-  // Получить сессии кассира
-  getCashierSessions: async (shiftStartedAt, limit = 50, offset = 0) => {
-    try {
-      const response = await api.get(`/cashier/sessions?shift_started_at=${shiftStartedAt}&limit=${limit}&offset=${offset}`);
-      return response.data;
-    } catch (error) {
-      console.error('Ошибка получения сессий кассира:', error);
       throw error;
     }
   },
