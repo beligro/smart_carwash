@@ -5,6 +5,7 @@ import (
 	"log"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/goburrow/modbus"
@@ -15,14 +16,83 @@ import (
 
 // ModbusService предоставляет методы для работы с Modbus устройствами
 type ModbusService struct {
-	config *config.Config
+	config    *config.Config
+	handler   *modbus.TCPClientHandler
+	client    modbus.Client
+	mu        sync.Mutex
+	connected bool
 }
 
 // NewModbusService создает новый экземпляр ModbusService
 func NewModbusService(config *config.Config) *ModbusService {
-	return &ModbusService{
+	s := &ModbusService{
 		config: config,
 	}
+
+	// Инициализируем соединение при старте, если включен Modbus
+	if s.config.ModbusEnabled {
+		if s.config.ModbusHost == "" {
+			log.Fatalf("MODBUS_HOST не задан в конфигурации")
+		}
+
+		handler := modbus.NewTCPClientHandler(fmt.Sprintf("%s:%d", s.config.ModbusHost, s.config.ModbusPort))
+		handler.Timeout = 10 * time.Second
+		handler.SlaveId = 1
+
+		if err := handler.Connect(); err != nil {
+			log.Fatalf("Не удалось установить соединение с Modbus при старте: %v", err)
+		}
+
+		client := modbus.NewClient(handler)
+		s.handler = handler
+		s.client = client
+		s.connected = true
+		log.Printf("Modbus подключение установлено при старте: %s:%d", s.config.ModbusHost, s.config.ModbusPort)
+	}
+
+	return s
+}
+
+// Close закрывает соединение с Modbus, используется при остановке сервера
+func (s *ModbusService) Close() {
+	if s.handler == nil {
+		return
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	_ = s.handler.Close()
+	s.connected = false
+}
+
+// ensureConnectedLocked проверяет и при необходимости восстанавливает соединение (требует удержания mu)
+func (s *ModbusService) ensureConnectedLocked() error {
+	if !s.config.ModbusEnabled {
+		return fmt.Errorf("Modbus протокол отключен в конфигурации")
+	}
+	if s.handler == nil {
+		handler := modbus.NewTCPClientHandler(fmt.Sprintf("%s:%d", s.config.ModbusHost, s.config.ModbusPort))
+		handler.Timeout = 10 * time.Second
+		handler.SlaveId = 1
+		s.handler = handler
+		s.client = modbus.NewClient(handler)
+	}
+	if s.connected {
+		return nil
+	}
+	// Пытаемся переподключиться с небольшим бэкоффом
+	var lastErr error
+	for attempt := 1; attempt <= 3; attempt++ {
+		if err := s.handler.Connect(); err != nil {
+			lastErr = err
+			log.Printf("Modbus reconnect попытка %d неудачна: %v", attempt, err)
+			time.Sleep(time.Duration(attempt) * time.Second)
+			continue
+		}
+		s.connected = true
+		log.Printf("Modbus reconnect успешен")
+		return nil
+	}
+	return fmt.Errorf("не удалось переподключиться к Modbus после 3 попыток: %v", lastErr)
 }
 
 // WriteCoil записывает значение в coil Modbus устройства
@@ -48,16 +118,13 @@ func (s *ModbusService) WriteCoil(req *models.WriteCoilRequest) *models.WriteCoi
 		}
 	}
 
-	// Создаем Modbus клиент
-	client, handler, err := s.createModbusClient()
-	if err != nil {
-		log.Printf("Ошибка создания Modbus клиента - box_id: %s, error: %v", req.BoxID, err)
-		return &models.WriteCoilResponse{
-			Success: false,
-			Message: fmt.Sprintf("Не удалось создать Modbus клиент: %v", err),
-		}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if err := s.ensureConnectedLocked(); err != nil {
+		log.Printf("Modbus не готов - box_id: %s, error: %v", req.BoxID, err)
+		return &models.WriteCoilResponse{Success: false, Message: err.Error()}
 	}
-	defer handler.Close()
 
 	// Конвертируем hex регистр в uint16
 	address, err := s.hexToUint16(req.Register)
@@ -72,8 +139,7 @@ func (s *ModbusService) WriteCoil(req *models.WriteCoilRequest) *models.WriteCoi
 	// Выполняем запись с retry механизмом
 	var lastError error
 	for attempt := 1; attempt <= 3; attempt++ {
-		// Записываем значение в coil
-		_, err := client.WriteSingleCoil(address, uint16(boolToUint16(req.Value)))
+		_, err := s.client.WriteSingleCoil(address, uint16(boolToUint16(req.Value)))
 		if err == nil {
 			log.Printf("Modbus: успешно записано значение %v в регистр %s - box_id: %s, register: %s, value: %v",
 				req.Value, req.Register, req.BoxID, req.Register, req.Value)
@@ -87,6 +153,12 @@ func (s *ModbusService) WriteCoil(req *models.WriteCoilRequest) *models.WriteCoi
 		log.Printf("Modbus: попытка %d неудачна - box_id: %s, register: %s, attempt: %d, error: %v",
 			attempt, req.BoxID, req.Register, attempt, err)
 
+		// Пробуем переподключиться и повторить
+		s.connected = false
+		_ = s.handler.Close()
+		if recErr := s.ensureConnectedLocked(); recErr != nil {
+			log.Printf("Modbus: не удалось переподключиться после ошибки: %v", recErr)
+		}
 		if attempt < 3 {
 			time.Sleep(2 * time.Second)
 		}
@@ -184,19 +256,15 @@ func (s *ModbusService) TestConnection(req *models.TestConnectionRequest) *model
 		}
 	}
 
-	// Создаем Modbus клиент
-	client, handler, err := s.createModbusClient()
-	if err != nil {
-		log.Printf("Ошибка создания Modbus клиента для теста - box_id: %s, error: %v", req.BoxID, err)
-		return &models.TestConnectionResponse{
-			Success: false,
-			Message: fmt.Sprintf("Не удалось создать Modbus клиент: %v", err),
-		}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if err := s.ensureConnectedLocked(); err != nil {
+		log.Printf("Modbus не готов для теста - box_id: %s, error: %v", req.BoxID, err)
+		return &models.TestConnectionResponse{Success: false, Message: err.Error()}
 	}
-	defer handler.Close()
 
 	// Пытаемся прочитать регистр для проверки соединения
-	_, err = client.ReadCoils(1, 1)
+	_, err := s.client.ReadCoils(1, 1)
 	if err != nil {
 		log.Printf("Ошибка чтения coil для теста - box_id: %s, error: %v", req.BoxID, err)
 		return &models.TestConnectionResponse{
@@ -249,25 +317,7 @@ func (s *ModbusService) TestCoil(req *models.TestCoilRequest) *models.TestCoilRe
 	}
 }
 
-// createModbusClient создает Modbus TCP клиент
-func (s *ModbusService) createModbusClient() (modbus.Client, *modbus.TCPClientHandler, error) {
-	// Проверяем, включен ли Modbus
-	if !s.config.ModbusEnabled {
-		return nil, nil, fmt.Errorf("Modbus протокол отключен в конфигурации")
-	}
-
-	if s.config.ModbusHost == "" {
-		return nil, nil, fmt.Errorf("MODBUS_HOST не задан в конфигурации")
-	}
-
-	// Создаем TCP клиент с таймаутами для реального ПЛК
-	handler := modbus.NewTCPClientHandler(fmt.Sprintf("%s:%d", s.config.ModbusHost, s.config.ModbusPort))
-	handler.Timeout = 10 * time.Second
-	handler.SlaveId = 1
-
-	client := modbus.NewClient(handler)
-	return client, handler, nil
-}
+// удалено: создание клиента на каждый запрос, используем долгоживущее соединение
 
 // isValidHexRegister проверяет, что регистр в правильном hex формате
 func (s *ModbusService) isValidHexRegister(register string) bool {
