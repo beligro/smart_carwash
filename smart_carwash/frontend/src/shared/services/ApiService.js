@@ -693,19 +693,6 @@ const ApiService = {
     }
   },
 
-  // Резервирование уборки
-  reserveCleaning: async (washBoxId) => {
-    try {
-      const response = await api.post('/cleaner/washboxes/reserve-cleaning', {
-        wash_box_id: washBoxId,
-      });
-      return response.data;
-    } catch (error) {
-      console.error('Ошибка при резервировании уборки:', error);
-      throw error;
-    }
-  },
-
   // Начало уборки
   startCleaning: async (washBoxId) => {
     try {
@@ -715,19 +702,6 @@ const ApiService = {
       return response.data;
     } catch (error) {
       console.error('Ошибка при начале уборки:', error);
-      throw error;
-    }
-  },
-
-  // Отмена уборки
-  cancelCleaning: async (washBoxId) => {
-    try {
-      const response = await api.post('/cleaner/washboxes/cancel-cleaning', {
-        wash_box_id: washBoxId,
-      });
-      return response.data;
-    } catch (error) {
-      console.error('Ошибка при отмене уборки:', error);
       throw error;
     }
   },
@@ -863,6 +837,28 @@ api.interceptors.response.use(
     // Обрабатываем ошибки
     if (error.response) {
       // Ошибка от сервера
+      // Если сервер вернул 401, значит токен истек или недействителен
+      if (error.response.status === 401) {
+        // Удаляем токен и перенаправляем на страницу входа
+        localStorage.removeItem('token');
+        localStorage.removeItem('user');
+        localStorage.removeItem('expiresAt');
+        
+        // Определяем, какой тип пользователя был авторизован
+        const isAdmin = localStorage.getItem('isAdmin') === 'true';
+        localStorage.removeItem('isAdmin');
+        
+        // Перенаправляем на соответствующую страницу входа
+        if (isAdmin) {
+          window.location.href = '/admin/login';
+        } else {
+          window.location.href = '/cashier/login';
+        }
+        
+        // Не продолжаем выполнение - запрос завершается здесь
+        return Promise.reject(error);
+      }
+      
       console.error('Ошибка сервера:', error.response.data);
     } else if (error.request) {
       // Нет ответа от сервера

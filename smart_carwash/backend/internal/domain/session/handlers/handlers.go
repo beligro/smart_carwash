@@ -7,7 +7,6 @@ import (
 	"io"
 	"net/http"
 	"strconv"
-	"strings"
 	"time"
 
 	authService "carwash_backend/internal/domain/auth/service"
@@ -15,6 +14,7 @@ import (
 	"carwash_backend/internal/domain/session/middleware"
 	"carwash_backend/internal/domain/session/models"
 	"carwash_backend/internal/domain/session/service"
+	authMiddleware "carwash_backend/internal/middleware"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -65,7 +65,7 @@ func (h *Handler) RegisterRoutes(router *gin.RouterGroup) {
 	}
 
 	// Маршруты для кассира
-	cashierRoutes := router.Group("/cashier/sessions", h.cashierMiddleware())
+	cashierRoutes := router.Group("/cashier/sessions", authMiddleware.CashierMiddleware(h.authService))
 	{
 		cashierRoutes.GET("/active", h.cashierGetActiveSessions)
 		cashierRoutes.POST("/start", h.cashierStartSession)
@@ -726,40 +726,6 @@ func (h *Handler) cashierCancelSession(c *gin.Context) {
 
 	logger.WithContext(c).Infof("Успешно отменена сессия кассиром: SessionID=%s", req.SessionID)
 	c.JSON(http.StatusOK, models.CashierCancelSessionResponse{Session: *session})
-}
-
-// cashierMiddleware middleware для проверки авторизации кассира
-func (h *Handler) cashierMiddleware() gin.HandlerFunc {
-	return func(c *gin.Context) {
-		// Получаем токен из заголовка
-		token := c.GetHeader("Authorization")
-		token = strings.TrimPrefix(token, "Bearer ")
-
-		if token == "" {
-			c.JSON(http.StatusUnauthorized, gin.H{"error": "Токен не предоставлен"})
-			c.Abort()
-			return
-		}
-
-		// Проверяем токен через auth service
-		claims, err := h.authService.ValidateToken(c.Request.Context(), token)
-		if err != nil {
-			c.JSON(http.StatusUnauthorized, gin.H{"error": "Недействительный токен"})
-			c.Abort()
-			return
-		}
-
-		// Проверяем, что это кассир, а не администратор
-		if claims.IsAdmin {
-			c.JSON(http.StatusForbidden, gin.H{"error": "Доступ запрещен"})
-			c.Abort()
-			return
-		}
-
-		// Устанавливаем ID кассира в контекст
-		c.Set("cashier_id", claims.ID)
-		c.Next()
-	}
 }
 
 // enableChemistry обработчик для включения химии

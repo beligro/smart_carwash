@@ -2,27 +2,75 @@ version: '3.8'
 
 services:
   postgres:
-    image: postgres:latest
+    image: postgres:18                      # Точная версия (не latest!)
     container_name: carwash_postgres
-    restart: always
-    ports:
-      - "127.0.0.1:5432:5432"  # Только локальный доступ
+    restart: unless-stopped                 # Автозапуск при reboot
+    
+    # КОМАНДА С ОПТИМИЗАЦИЯМИ (все параметры напрямую, БЕЗ конфиг файла!)
+    command: >
+      postgres
+      -c checkpoint_timeout=15min
+      -c max_wal_size=2GB
+      -c min_wal_size=512MB
+      -c shared_buffers=512MB
+      -c effective_cache_size=2GB
+      -c work_mem=32MB
+      -c maintenance_work_mem=128MB
+      -c wal_buffers=32MB
+      -c random_page_cost=1.1
+      -c effective_io_concurrency=200
+      -c checkpoint_completion_target=0.9
+      -c synchronous_commit=off
+      -c wal_compression=on
+      -c wal_writer_delay=10ms
+      -c bgwriter_delay=50ms
+      -c bgwriter_lru_maxpages=500
+      -c bgwriter_lru_multiplier=2.0
+      -c autovacuum=on
+      -c autovacuum_max_workers=3
+      -c autovacuum_naptime=1min
+      -c log_checkpoints=on
+      -c log_connections=on
+      -c log_disconnections=on
+      -c log_lock_waits=on
+      -c log_min_duration_statement=1000
+      -c max_parallel_workers_per_gather=2
+      -c max_parallel_workers=4
+    
+    # VOLUMES (данные отдельно от контейнера!)
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - postgres_wal:/var/lib/postgresql/wal
+    
+    # ENVIRONMENT
     environment:
-      - POSTGRES_HOST=${POSTGRES_HOST}
       - POSTGRES_USER=${POSTGRES_USER}
       - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
       - POSTGRES_DB=${POSTGRES_DB}
-      - POSTGRES_INITDB_ARGS=--data-checksums
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
-      - ./postgres_security.conf:/etc/postgresql/postgresql.conf:ro
-    command: ["postgres", "-c", "config_file=/etc/postgresql/postgresql.conf"]
+      - PGDATA=/var/lib/postgresql/data/18/docker  # Путь к данным PG18
+    
+    # СЕТЬ (статический IP для бэкенда!)
     networks:
-      - carwash_network
+      carwash_network:
+        ipv4_address: 172.18.0.2            # Бэкенд ищет postgres по этому IP!
+    
+    # ПОРТЫ (только localhost!)
+    ports:
+      - "127.0.0.1:5432:5432"
+    
+    # HEALTHCHECK
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    
+    # ЛОГИ (ограничить размер)
     logging:
       driver: "json-file"
       options:
-        max-size: "10m"
+        max-size: "50m"
         max-file: "3"
 
   backend:
@@ -35,6 +83,8 @@ services:
       - postgres
     env_file:
       - .env
+    ports:
+      - "127.0.0.1:6060:6060"  # pprof для профилирования (только локальный доступ)
     volumes:
       - backend_logs:/var/log/backend
     networks:
@@ -54,6 +104,8 @@ services:
       context: ./frontend
       dockerfile: Dockerfile
     container_name: carwash_frontend
+    depends_on:
+      - postgres
     restart: always
     environment:
       REACT_APP_API_URL: ${REACT_APP_API_URL}
@@ -171,6 +223,8 @@ services:
   prometheus:
     image: prom/prometheus:latest
     container_name: carwash_prometheus
+    depends_on:
+      - backend
     restart: always
     ports:
       - "9090:9090"
@@ -201,6 +255,8 @@ services:
   node-exporter:
     image: prom/node-exporter:latest
     container_name: carwash_node_exporter
+    depends_on:
+      - backend
     restart: always
     ports:
       - "9100:9100"
@@ -258,9 +314,18 @@ services:
 networks:
   carwash_network:
     driver: bridge
+    ipam:
+      config:
+        - subnet: 172.18.0.0/16
+          gateway: 172.18.0.1
 
 volumes:
   postgres_data:
+    name: smart_carwash_postgres_data
+    external: true
+  postgres_wal:
+    name: smart_carwash_postgres_wal
+    external: true 
   loki_data:
   prometheus_data:
   grafana_data:

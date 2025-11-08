@@ -74,6 +74,7 @@ type Service interface {
 	CreateForCashier(ctx context.Context, sessionID uuid.UUID, amount int) (*models.Payment, error)
 	CashierListPayments(ctx context.Context, req *models.CashierPaymentsRequest) (*models.AdminListPaymentsResponse, error)
 	GetCashierLastShiftStatistics(ctx context.Context, req *models.CashierLastShiftStatisticsRequest) (*models.CashierLastShiftStatisticsResponse, error)
+	Shutdown() // Завершение работы сервиса (остановка очереди webhook'ов)
 }
 
 // service реализация Service
@@ -86,6 +87,7 @@ type service struct {
 	terminalKey             string
 	secretKey               string
 	metrics                 *metrics.Metrics
+	webhookQueue            *WebhookQueue
 }
 
 // generateRandomString генерирует короткую случайную строку
@@ -97,7 +99,7 @@ func generateRandomString(length int) string {
 
 // NewService создает новый экземпляр Service
 func NewService(repository repository.Repository, settingsRepo settingsRepo.Repository, sessionUpdater SessionStatusUpdater, sessionExtensionUpdater SessionExtensionUpdater, tinkoffClient TinkoffClient, terminalKey, secretKey string, metrics *metrics.Metrics) Service {
-	return &service{
+	s := &service{
 		repository:              repository,
 		settingsRepo:            settingsRepo,
 		sessionUpdater:          sessionUpdater,
@@ -107,6 +109,11 @@ func NewService(repository repository.Repository, settingsRepo settingsRepo.Repo
 		secretKey:               secretKey,
 		metrics:                 metrics,
 	}
+
+	// Инициализируем очередь для webhook'ов (3 воркера)
+	s.webhookQueue = NewWebhookQueue(s, 3)
+
+	return s
 }
 
 // CalculatePrice рассчитывает цену для услуги
@@ -462,11 +469,23 @@ func (s *service) GetPaymentsBySessionIDs(ctx context.Context, sessionIDs []uuid
 	return result, nil
 }
 
-// HandleWebhook обрабатывает webhook от Tinkoff
+// HandleWebhook обрабатывает webhook от Tinkoff (синхронно кладет в очередь и сразу возвращает успех)
 func (s *service) HandleWebhook(ctx context.Context, req *models.WebhookRequest) error {
 	logger.Printf("Получен webhook от Tinkoff: PaymentId=%d, Status=%s, Success=%v",
 		req.PaymentId, req.Status, req.Success)
 
+	// Кладем webhook в очередь для асинхронной обработки
+	if err := s.webhookQueue.Enqueue(req); err != nil {
+		logger.Printf("Ошибка добавления webhook в очередь PaymentId=%d: %v", req.PaymentId, err)
+		return fmt.Errorf("ошибка добавления webhook в очередь: %w", err)
+	}
+
+	// Сразу возвращаем успех, не ждем обработки
+	return nil
+}
+
+// processWebhook обрабатывает webhook асинхронно (вызывается из воркера очереди)
+func (s *service) processWebhook(ctx context.Context, req *models.WebhookRequest) error {
 	// Получаем платеж по Tinkoff ID
 	payment, err := s.repository.GetPaymentByTinkoffID(ctx, fmt.Sprintf("%d", req.PaymentId))
 	if err != nil {
@@ -545,6 +564,13 @@ func (s *service) HandleWebhook(ctx context.Context, req *models.WebhookRequest)
 	}
 
 	return nil
+}
+
+// Shutdown завершает работу сервиса (останавливает очередь webhook'ов)
+func (s *service) Shutdown() {
+	if s.webhookQueue != nil {
+		s.webhookQueue.Shutdown()
+	}
 }
 
 // updateSessionStatus обновляет статус сессии в зависимости от статуса платежа

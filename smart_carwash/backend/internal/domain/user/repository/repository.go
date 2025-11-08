@@ -14,6 +14,7 @@ type Repository interface {
 	CreateUser(ctx context.Context, user *models.User) error
 	GetUserByTelegramID(ctx context.Context, telegramID int64) (*models.User, error)
 	GetUserByID(ctx context.Context, id uuid.UUID) (*models.User, error)
+	GetUsersByIDs(ctx context.Context, ids []uuid.UUID) (map[uuid.UUID]*models.User, error)
 	GetUserByCarNumber(ctx context.Context, carNumber string) (*models.User, error)
 	UpdateUser(ctx context.Context, user *models.User) error
 
@@ -56,6 +57,26 @@ func (r *PostgresRepository) GetUserByID(ctx context.Context, id uuid.UUID) (*mo
 		return nil, err
 	}
 	return &user, nil
+}
+
+// GetUsersByIDs получает пользователей по списку ID
+func (r *PostgresRepository) GetUsersByIDs(ctx context.Context, ids []uuid.UUID) (map[uuid.UUID]*models.User, error) {
+	if len(ids) == 0 {
+		return make(map[uuid.UUID]*models.User), nil
+	}
+
+	var users []models.User
+	err := r.db.WithContext(ctx).Where("id IN ?", ids).Find(&users).Error
+	if err != nil {
+		return nil, err
+	}
+
+	result := make(map[uuid.UUID]*models.User, len(users))
+	for i := range users {
+		result[users[i].ID] = &users[i]
+	}
+
+	return result, nil
 }
 
 // GetUserByCarNumber получает пользователя по номеру автомобиля

@@ -2,15 +2,16 @@ package handlers
 
 import (
 	"io"
-	"log"
 	"net/http"
 	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/sirupsen/logrus"
 
 	"carwash_backend/internal/domain/dahua/models"
 	"carwash_backend/internal/domain/dahua/service"
+	"carwash_backend/internal/logger"
 )
 
 // Handler представляет HTTP обработчики для Dahua интеграции
@@ -31,7 +32,11 @@ func (h *Handler) ANPRWebhook(c *gin.Context) {
 	// Читаем тело запроса для логирования
 	body, err := io.ReadAll(c.Request.Body)
 	if err != nil {
-		log.Printf("❌ Ошибка чтения запроса: %v", err)
+		logger.WithFields(logrus.Fields{
+			"handler": "dahua",
+			"method":  "ANPRWebhook",
+			"error":   err,
+		}).Error("Ошибка чтения запроса")
 		c.Header("Content-Type", "application/xml")
 		c.String(http.StatusBadRequest, `<?xml version="1.0" encoding="UTF-8"?>
 <Response>
@@ -55,7 +60,13 @@ func (h *Handler) ANPRWebhook(c *gin.Context) {
 		// Парсинг XML формата ITSAPI
 		var xmlReq models.DahuaWebhookRequest
 		if err := c.ShouldBindXML(&xmlReq); err != nil {
-			log.Printf("❌ Ошибка парсинга XML: %v", err)
+			logger.WithFields(logrus.Fields{
+				"handler":     "dahua",
+				"method":      "ANPRWebhook",
+				"format":      "XML",
+				"content_type": contentType,
+				"error":       err,
+			}).Error("Ошибка парсинга XML")
 			c.Header("Content-Type", "application/xml")
 			c.String(http.StatusBadRequest, `<?xml version="1.0" encoding="UTF-8"?>
 <Response>
@@ -70,7 +81,13 @@ func (h *Handler) ANPRWebhook(c *gin.Context) {
 		// Парсинг JSON формата (реальная структура от камеры Dahua)
 		var jsonReq models.DahuaWebhookRequestJSON
 		if err := c.ShouldBindJSON(&jsonReq); err != nil {
-			log.Printf("❌ Ошибка парсинга JSON: %v", err)
+			logger.WithFields(logrus.Fields{
+				"handler":      "dahua",
+				"method":       "ANPRWebhook",
+				"format":       "JSON",
+				"content_type": contentType,
+				"error":        err,
+			}).Error("Ошибка парсинга JSON")
 			c.JSON(http.StatusBadRequest, models.DahuaWebhookResponseJSON{
 				Success: false,
 				Message: "Неверный формат JSON: " + err.Error(),
@@ -80,7 +97,11 @@ func (h *Handler) ANPRWebhook(c *gin.Context) {
 
 		// Проверяем, что номер автомобиля существует
 		if !jsonReq.ValidatePlateNumber() {
-			log.Printf("❌ Номер автомобиля не найден в данных")
+			logger.WithFields(logrus.Fields{
+				"handler": "dahua",
+				"method":  "ANPRWebhook",
+				"format":  "JSON",
+			}).Error("Номер автомобиля не найден в данных")
 			c.JSON(http.StatusBadRequest, models.DahuaWebhookResponseJSON{
 				Success: false,
 				Message: "Номер автомобиля не найден",
@@ -121,7 +142,13 @@ func (h *Handler) ANPRWebhook(c *gin.Context) {
 	// Обрабатываем событие
 	response, err := h.dahuaService.ProcessANPREvent(c.Request.Context(), processReq)
 	if err != nil {
-		log.Printf("❌ Ошибка обработки ANPR события: %v", err)
+		logger.WithFields(logrus.Fields{
+			"handler":      "dahua",
+			"method":       "ANPRWebhook",
+			"license_plate": webhookReq.LicensePlate,
+			"direction":     webhookReq.Direction,
+			"error":        err,
+		}).Error("Ошибка обработки ANPR события")
 		if contentType == "application/xml" || contentType == "text/xml" {
 			c.Header("Content-Type", "application/xml")
 			c.String(http.StatusInternalServerError, `<?xml version="1.0" encoding="UTF-8"?>
@@ -139,13 +166,18 @@ func (h *Handler) ANPRWebhook(c *gin.Context) {
 	}
 
 	// Логируем результат обработки
-	log.Printf("✅ ANPR событие обработано успешно: %s", response.Message)
-	if response.UserFound {
-		log.Printf("👤 Пользователь найден: %s", webhookReq.LicensePlate)
+	logFields := logrus.Fields{
+		"handler":       "dahua",
+		"method":        "ANPRWebhook",
+		"license_plate":  webhookReq.LicensePlate,
+		"direction":      webhookReq.Direction,
+		"success":       response.Success,
+		"message":       response.Message,
 	}
 	if response.SessionFound {
-		log.Printf("🎯 Активная сессия найдена: %s", response.SessionID)
+		logFields["session_id"] = response.SessionID
 	}
+	logger.WithFields(logFields).Info("ANPR событие обработано")
 
 	// Возвращаем ответ в соответствующем формате
 	if contentType == "application/xml" || contentType == "text/xml" {
@@ -187,7 +219,11 @@ func (h *Handler) DeviceInfo(c *gin.Context) {
 	// Читаем тело запроса для логирования
 	body, err := io.ReadAll(c.Request.Body)
 	if err != nil {
-		log.Printf("❌ Ошибка чтения запроса: %v", err)
+		logger.WithFields(logrus.Fields{
+			"handler": "dahua",
+			"method":  "DeviceInfo",
+			"error":   err,
+		}).Error("Ошибка чтения запроса")
 		c.JSON(http.StatusBadRequest, gin.H{
 			"Result":  "Error",
 			"Message": "Ошибка чтения запроса",
@@ -202,18 +238,25 @@ func (h *Handler) DeviceInfo(c *gin.Context) {
 	contentType := c.GetHeader("Content-Type")
 
 	// Логируем все параметры запроса
-	log.Printf("📨 Запрос на /NotificationInfo/DeviceInfo")
-	log.Printf("📋 Method: %s", c.Request.Method)
-	log.Printf("📋 Headers: %v", c.Request.Header)
-	log.Printf("📄 Body: %s", string(body))
-	log.Printf("📋 Query params: %v", c.Request.URL.Query())
-	log.Printf("📋 Content-Type: %s", contentType)
-	log.Printf("📋 Client IP: %s", c.ClientIP())
+	logger.WithFields(logrus.Fields{
+		"handler":      "dahua",
+		"method":       "DeviceInfo",
+		"http_method":  c.Request.Method,
+		"headers":      c.Request.Header,
+		"body":         string(body),
+		"query_params": c.Request.URL.Query(),
+		"content_type": contentType,
+		"client_ip":    c.ClientIP(),
+	}).Info("Запрос на регистрацию устройства")
 
 	// Пытаемся распарсить как JSON (регистрация устройства)
 	var deviceInfo models.DahuaDeviceRegistration
 	if err := c.ShouldBindJSON(&deviceInfo); err != nil {
-		log.Printf("❌ Ошибка парсинга JSON от камеры: %v", err)
+		logger.WithFields(logrus.Fields{
+			"handler": "dahua",
+			"method":  "DeviceInfo",
+			"error":   err,
+		}).Error("Ошибка парсинга JSON от камеры")
 		c.JSON(http.StatusBadRequest, gin.H{
 			"Result":  "Error",
 			"Message": "Invalid JSON format",
@@ -231,8 +274,15 @@ func (h *Handler) DeviceInfo(c *gin.Context) {
 		Status:    "Online",
 	}
 
-	log.Printf("✅ Камера успешно зарегистрирована: %s (%s)",
-		deviceInfo.DeviceName, deviceInfo.IPAddress)
+	logger.WithFields(logrus.Fields{
+		"handler":     "dahua",
+		"method":      "DeviceInfo",
+		"device_id":   deviceInfo.DeviceID,
+		"device_name": deviceInfo.DeviceName,
+		"ip_address":  deviceInfo.IPAddress,
+		"device_type": deviceInfo.DeviceType,
+		"manufacturer": deviceInfo.Manufacturer,
+	}).Info("Камера успешно зарегистрирована")
 
 	c.Header("Content-Type", "application/json;charset=UTF-8")
 	c.JSON(http.StatusOK, response)

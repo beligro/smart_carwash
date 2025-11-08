@@ -476,6 +476,11 @@ const ActiveSessions = () => {
         return prevSessions;
       });
     } catch (error) {
+      // Если 401 - ApiService уже перенаправит на логин, просто прекращаем поллинг
+      if (error.response && error.response.status === 401) {
+        // Перенаправление уже произошло в ApiService interceptor
+        return;
+      }
       console.error('Ошибка поллинга активных сессий:', error);
       // Не показываем ошибку при поллинге, чтобы не мешать пользователю
     }

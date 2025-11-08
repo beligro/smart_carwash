@@ -1,12 +1,14 @@
 package middleware
 
 import (
-	"log"
 	"net"
 	"os"
 	"strings"
 
 	"github.com/gin-gonic/gin"
+	"github.com/sirupsen/logrus"
+
+	"carwash_backend/internal/logger"
 )
 
 // DahuaIPWhitelistMiddleware создает middleware для проверки IP whitelist
@@ -21,7 +23,11 @@ func DahuaIPWhitelistMiddleware() gin.HandlerFunc {
 		
 		// Проверяем, разрешен ли IP адрес
 		if !isIPAllowed(clientIP, allowedIPs) {
-			log.Printf("❌ IP адрес не разрешен: %s", clientIP)
+			logger.WithFields(logrus.Fields{
+				"middleware": "dahua_ip_whitelist",
+				"client_ip":  clientIP,
+				"allowed_ips": allowedIPs,
+			}).Warn("IP адрес не разрешен")
 			c.JSON(403, gin.H{
 				"success": false,
 				"message": "IP адрес не разрешен",

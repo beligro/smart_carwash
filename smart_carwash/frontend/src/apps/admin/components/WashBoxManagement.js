@@ -25,6 +25,32 @@ modbusApi.interceptors.request.use((config) => {
   return config;
 });
 
+// Добавляем перехватчик для обработки ошибок авторизации
+modbusApi.interceptors.response.use(
+  (response) => response,
+  (error) => {
+    if (error.response && error.response.status === 401) {
+      // Если сервер вернул 401, значит токен истек или недействителен
+      // Удаляем токен и перенаправляем на страницу входа
+      localStorage.removeItem('token');
+      localStorage.removeItem('user');
+      localStorage.removeItem('expiresAt');
+      
+      // Определяем, какой тип пользователя был авторизован
+      const isAdmin = localStorage.getItem('isAdmin') === 'true';
+      localStorage.removeItem('isAdmin');
+      
+      // Перенаправляем на соответствующую страницу входа
+      if (isAdmin) {
+        window.location.href = '/admin/login';
+      } else {
+        window.location.href = '/cashier/login';
+      }
+    }
+    return Promise.reject(error);
+  }
+);
+
 const Container = styled.div`
   padding: 20px;
 `;
@@ -840,6 +866,7 @@ const WashBoxManagement = () => {
           <option value="busy">Занят</option>
           <option value="reserved">Зарезервирован</option>
           <option value="maintenance">Сервис</option>
+          <option value="cleaning">На уборке</option>
         </FilterSelect>
 
         <FilterSelect
@@ -1333,6 +1360,7 @@ const WashBoxManagement = () => {
                     <option value="busy">Занят</option>
                     <option value="reserved">Зарезервирован</option>
                     <option value="maintenance">Сервис</option>
+                    <option value="cleaning">На уборке</option>
                   </Select>
                 </FormGroup>
                 

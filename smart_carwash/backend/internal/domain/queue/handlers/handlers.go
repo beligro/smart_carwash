@@ -33,9 +33,10 @@ func (h *Handler) RegisterRoutes(router *gin.RouterGroup) {
 }
 
 // getQueueStatus обработчик для получения статуса очереди и боксов
+// Для мини-приложения не загружаем пользователей (includeUsers=false) для оптимизации
 func (h *Handler) getQueueStatus(c *gin.Context) {
-	// Получаем статус очереди и боксов
-	queueStatus, err := h.service.GetQueueStatus(c.Request.Context())
+	// Получаем статус очереди и боксов без пользователей (для мини-приложения)
+	queueStatus, err := h.service.GetQueueStatus(c.Request.Context(), false)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return

@@ -5,9 +5,9 @@ import (
 	"carwash_backend/internal/domain/payment/models"
 	"carwash_backend/internal/domain/payment/service"
 	"carwash_backend/internal/logger"
+	"carwash_backend/internal/middleware"
 	"net/http"
 	"strconv"
-	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -48,13 +48,13 @@ func (h *Handler) RegisterRoutes(router *gin.RouterGroup) {
 	}
 
 	// Маршруты для кассира
-	cashierRoutes := router.Group("/cashier/payments", h.cashierMiddleware())
+	cashierRoutes := router.Group("/cashier/payments", middleware.CashierMiddleware(h.authService))
 	{
 		cashierRoutes.GET("", h.cashierListPayments)
 	}
 
 	// Маршруты для статистики кассира
-	cashierStatsRoutes := router.Group("/cashier/statistics", h.cashierMiddleware())
+	cashierStatsRoutes := router.Group("/cashier/statistics", middleware.CashierMiddleware(h.authService))
 	{
 		cashierStatsRoutes.GET("/last-shift", h.cashierGetLastShiftStatistics)
 	}
@@ -391,40 +391,6 @@ func (h *Handler) cashierListPayments(c *gin.Context) {
 
 	// Возвращаем результат
 	c.JSON(http.StatusOK, response)
-}
-
-// cashierMiddleware middleware для проверки авторизации кассира
-func (h *Handler) cashierMiddleware() gin.HandlerFunc {
-	return func(c *gin.Context) {
-		// Получаем токен из заголовка
-		token := c.GetHeader("Authorization")
-		token = strings.TrimPrefix(token, "Bearer ")
-
-		if token == "" {
-			c.JSON(http.StatusUnauthorized, gin.H{"error": "Токен не предоставлен"})
-			c.Abort()
-			return
-		}
-
-		// Проверяем токен через auth service
-		claims, err := h.authService.ValidateToken(c.Request.Context(), token)
-		if err != nil {
-			c.JSON(http.StatusUnauthorized, gin.H{"error": "Недействительный токен"})
-			c.Abort()
-			return
-		}
-
-		// Проверяем, что это кассир, а не администратор
-		if claims.IsAdmin {
-			c.JSON(http.StatusForbidden, gin.H{"error": "Доступ запрещен"})
-			c.Abort()
-			return
-		}
-
-		// Устанавливаем ID кассира в контекст
-		c.Set("cashier_id", claims.ID)
-		c.Next()
-	}
 }
 
 // cashierGetLastShiftStatistics обработчик для получения статистики последней смены кассира

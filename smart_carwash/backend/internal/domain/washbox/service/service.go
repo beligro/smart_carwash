@@ -40,14 +40,11 @@ type Service interface {
 
 	// Методы для уборщиков
 	CleanerListWashBoxes(ctx context.Context, req *models.CleanerListWashBoxesRequest) (*models.CleanerListWashBoxesResponse, error)
-	CleanerReserveCleaning(ctx context.Context, req *models.CleanerReserveCleaningRequest, cleanerID uuid.UUID) (*models.CleanerReserveCleaningResponse, error)
 	CleanerStartCleaning(ctx context.Context, req *models.CleanerStartCleaningRequest, cleanerID uuid.UUID) (*models.CleanerStartCleaningResponse, error)
-	CleanerCancelCleaning(ctx context.Context, req *models.CleanerCancelCleaningRequest, cleanerID uuid.UUID) (*models.CleanerCancelCleaningResponse, error)
 	CleanerCompleteCleaning(ctx context.Context, req *models.CleanerCompleteCleaningRequest, cleanerID uuid.UUID) (*models.CleanerCompleteCleaningResponse, error)
 	GetCleaningBoxes(ctx context.Context) ([]models.WashBox, error)
 	AutoCompleteExpiredCleanings(ctx context.Context) error
 	UpdateCleaningStartedAt(ctx context.Context, washBoxID uuid.UUID, startedAt time.Time) error
-	ClearCleaningReservation(ctx context.Context, washBoxID uuid.UUID) error
 
 	// Методы для логов уборки (админка)
 	AdminListCleaningLogs(ctx context.Context, req *models.AdminListCleaningLogsRequest) (*models.AdminListCleaningLogsResponse, error)
@@ -121,6 +118,9 @@ func (s *ServiceImpl) UpdateWashBoxStatus(ctx context.Context, id uuid.UUID, sta
 
 // GetFreeWashBoxes получает все свободные боксы мойки, отсортированные по приоритету с рандомизацией
 func (s *ServiceImpl) GetFreeWashBoxes(ctx context.Context) ([]models.WashBox, error) {
+	if ctx.Err() != nil {
+		return nil, ctx.Err()
+	}
 	boxes, err := s.repo.GetFreeWashBoxes(ctx)
 	if err != nil {
 		return nil, err
@@ -130,29 +130,47 @@ func (s *ServiceImpl) GetFreeWashBoxes(ctx context.Context) ([]models.WashBox, e
 
 // GetFreeWashBoxesByServiceType получает все свободные боксы мойки определенного типа, отсортированные по приоритету с рандомизацией
 func (s *ServiceImpl) GetFreeWashBoxesByServiceType(ctx context.Context, serviceType string) ([]models.WashBox, error) {
+	if ctx.Err() != nil {
+		return nil, ctx.Err()
+	}
 	boxes, err := s.repo.GetFreeWashBoxesByServiceType(ctx, serviceType)
 	if err != nil {
 		return nil, err
+	}
+	if ctx.Err() != nil {
+		return nil, ctx.Err()
 	}
 	return shuffleBoxesWithSamePriority(boxes), nil
 }
 
 // GetFreeWashBoxesWithChemistry получает все свободные боксы мойки с химией определенного типа, отсортированные по приоритету с рандомизацией
 func (s *ServiceImpl) GetFreeWashBoxesWithChemistry(ctx context.Context, serviceType string) ([]models.WashBox, error) {
+	if ctx.Err() != nil {
+		return nil, ctx.Err()
+	}
 	boxes, err := s.repo.GetFreeWashBoxesWithChemistry(ctx, serviceType)
 	if err != nil {
 		return nil, err
+	}
+	if ctx.Err() != nil {
+		return nil, ctx.Err()
 	}
 	return shuffleBoxesWithSamePriority(boxes), nil
 }
 
 // GetWashBoxesByServiceType получает все боксы мойки определенного типа
 func (s *ServiceImpl) GetWashBoxesByServiceType(ctx context.Context, serviceType string) ([]models.WashBox, error) {
+	if ctx.Err() != nil {
+		return nil, ctx.Err()
+	}
 	return s.repo.GetWashBoxesByServiceType(ctx, serviceType)
 }
 
 // GetAllWashBoxes получает все боксы мойки
 func (s *ServiceImpl) GetAllWashBoxes(ctx context.Context) ([]models.WashBox, error) {
+	if ctx.Err() != nil {
+		return nil, ctx.Err()
+	}
 	return s.repo.GetAllWashBoxes(ctx)
 }
 
@@ -309,10 +327,20 @@ func (s *ServiceImpl) AdminListWashBoxes(ctx context.Context, req *models.AdminL
 		offset = *req.Offset
 	}
 
+	// Проверяем контекст перед DB запросами
+	if ctx.Err() != nil {
+		return nil, ctx.Err()
+	}
+
 	// Получаем боксы с фильтрацией
 	boxes, total, err := s.repo.GetWashBoxesWithFilters(ctx, req.Status, req.ServiceType, limit, offset)
 	if err != nil {
 		return nil, err
+	}
+
+	// Проверяем контекст после запроса боксов
+	if ctx.Err() != nil {
+		return nil, ctx.Err()
 	}
 
 	// Получаем статусы modbus для всех боксов
@@ -534,58 +562,6 @@ func (s *ServiceImpl) checkIfBoxCanBeCleaned(ctx context.Context, boxID uuid.UUI
 	return completedSessionsCount > 0
 }
 
-// CleanerReserveCleaning резервирует уборку для бокса
-func (s *ServiceImpl) CleanerReserveCleaning(ctx context.Context, req *models.CleanerReserveCleaningRequest, cleanerID uuid.UUID) (*models.CleanerReserveCleaningResponse, error) {
-	// Проверяем, что бокс существует
-	washBox, err := s.repo.GetWashBoxByID(ctx, req.WashBoxID)
-	if err != nil {
-		return nil, err
-	}
-
-	// Проверяем, что бокс не в статусе cleaning
-	if washBox.Status == models.StatusCleaning {
-		return nil, errors.New("бокс уже на уборке")
-	}
-
-	// Проверяем, что уборщик не убирает другой бокс
-	activeLog, err := s.repo.GetActiveCleaningLogByCleaner(ctx, cleanerID)
-	if err == nil && activeLog != nil {
-		return nil, errors.New("уборщик уже убирает другой бокс")
-	}
-
-	// Проверяем, что бокс не убирался в предыдущей сессии
-	lastLog, err := s.repo.GetLastCleaningLogByBox(ctx, req.WashBoxID)
-	if err == nil && lastLog != nil {
-		// Проверяем, что последняя уборка была завершена
-		if lastLog.Status == models.CleaningLogStatusCompleted && lastLog.CompletedAt != nil {
-			// Проверяем, что после последней уборки была хотя бы одна завершенная сессия
-			completedSessionsCount, err := s.sessionRepo.GetCompletedSessionsBetween(ctx,
-				req.WashBoxID,
-				*lastLog.CompletedAt,
-				time.Now(),
-			)
-			if err != nil {
-				return nil, err
-			}
-
-			// Если нет завершенных сессий между уборками, запрещаем повторную уборку
-			if completedSessionsCount == 0 {
-				return nil, errors.New("уборщик не может 2 раза подряд брать уборку на одном и том же боксе, если между его уборками не было завершенной сессии")
-			}
-		}
-	}
-
-	// Резервируем уборку
-	err = s.repo.ReserveCleaning(ctx, req.WashBoxID, cleanerID)
-	if err != nil {
-		return nil, err
-	}
-
-	return &models.CleanerReserveCleaningResponse{
-		Success: true,
-	}, nil
-}
-
 // CleanerStartCleaning начинает уборку бокса
 func (s *ServiceImpl) CleanerStartCleaning(ctx context.Context, req *models.CleanerStartCleaningRequest, cleanerID uuid.UUID) (*models.CleanerStartCleaningResponse, error) {
 	// Проверяем, что бокс существует
@@ -594,10 +570,9 @@ func (s *ServiceImpl) CleanerStartCleaning(ctx context.Context, req *models.Clea
 		return nil, err
 	}
 
-	// Проверяем, что бокс свободен или зарезервирован этим уборщиком
-	if washBox.Status != models.StatusFree &&
-		(washBox.CleaningReservedBy == nil || *washBox.CleaningReservedBy != cleanerID) {
-		return nil, errors.New("бокс недоступен для уборки")
+	// Проверяем, что бокс свободен
+	if washBox.Status != models.StatusFree {
+		return nil, errors.New("бокс недоступен для уборки (бокс должен быть свободен)")
 	}
 
 	// Проверяем, что уборщик не убирает другой бокс
@@ -654,36 +629,15 @@ func (s *ServiceImpl) CleanerStartCleaning(ctx context.Context, req *models.Clea
 		return nil, err
 	}
 
-	// Включаем свет в боксе, если задан регистр и доступен адаптер Modbus
+	// Включаем свет в боксе при начале уборки, если задан регистр и доступен адаптер Modbus
 	if s.modbusAdapter != nil && washBox.LightCoilRegister != nil && *washBox.LightCoilRegister != "" {
-		_ = s.modbusAdapter.WriteLightCoil(ctx, req.WashBoxID, *washBox.LightCoilRegister, true)
+		if err := s.modbusAdapter.WriteLightCoil(ctx, req.WashBoxID, *washBox.LightCoilRegister, true); err != nil {
+			// Логируем ошибку, но не прерываем процесс уборки
+			// Свет может быть недоступен, но уборка должна продолжаться
+		}
 	}
 
 	return &models.CleanerStartCleaningResponse{
-		Success: true,
-	}, nil
-}
-
-// CleanerCancelCleaning отменяет резервирование уборки
-func (s *ServiceImpl) CleanerCancelCleaning(ctx context.Context, req *models.CleanerCancelCleaningRequest, cleanerID uuid.UUID) (*models.CleanerCancelCleaningResponse, error) {
-	// Проверяем, что бокс существует
-	washBox, err := s.repo.GetWashBoxByID(ctx, req.WashBoxID)
-	if err != nil {
-		return nil, err
-	}
-
-	// Проверяем, что уборка зарезервирована этим уборщиком
-	if washBox.CleaningReservedBy == nil || *washBox.CleaningReservedBy != cleanerID {
-		return nil, errors.New("уборка не зарезервирована этим уборщиком")
-	}
-
-	// Отменяем резервирование
-	err = s.repo.CancelCleaning(ctx, req.WashBoxID)
-	if err != nil {
-		return nil, err
-	}
-
-	return &models.CleanerCancelCleaningResponse{
 		Success: true,
 	}, nil
 }
@@ -724,9 +678,12 @@ func (s *ServiceImpl) CleanerCompleteCleaning(ctx context.Context, req *models.C
 		return nil, err
 	}
 
-	// Выключаем свет в боксе, если задан регистр и доступен адаптер Modbus
+	// Выключаем свет в боксе при завершении уборки, если задан регистр и доступен адаптер Modbus
 	if s.modbusAdapter != nil && washBox.LightCoilRegister != nil && *washBox.LightCoilRegister != "" {
-		_ = s.modbusAdapter.WriteLightCoil(ctx, req.WashBoxID, *washBox.LightCoilRegister, false)
+		if err := s.modbusAdapter.WriteLightCoil(ctx, req.WashBoxID, *washBox.LightCoilRegister, false); err != nil {
+			// Логируем ошибку, но не прерываем процесс завершения уборки
+			// Свет может быть недоступен, но уборка должна быть завершена
+		}
 	}
 
 	return &models.CleanerCompleteCleaningResponse{
@@ -856,11 +813,6 @@ func (s *ServiceImpl) AutoCompleteExpiredCleanings(ctx context.Context) error {
 // UpdateCleaningStartedAt обновляет время начала уборки
 func (s *ServiceImpl) UpdateCleaningStartedAt(ctx context.Context, washBoxID uuid.UUID, startedAt time.Time) error {
 	return s.repo.UpdateCleaningStartedAt(ctx, washBoxID, startedAt)
-}
-
-// ClearCleaningReservation очищает резерв уборки
-func (s *ServiceImpl) ClearCleaningReservation(ctx context.Context, washBoxID uuid.UUID) error {
-	return s.repo.CancelCleaning(ctx, washBoxID)
 }
 
 // SetCooldown устанавливает cooldown для бокса после завершения сессии

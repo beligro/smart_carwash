@@ -622,6 +622,33 @@ const WashInfo = ({ washInfo, theme = 'light', onCreateSession, onViewHistory, o
               </div>
             )}
             
+            {/* Текст для назначенной сессии */}
+            {userSession.status === 'assigned' && (userSession.boxNumber || userSession.box_number || userSession.boxId || userSession.box_id) && (
+              <div style={{
+                marginTop: '12px',
+                padding: '12px',
+                backgroundColor: '#F5F5F5',
+                borderRadius: '8px',
+                border: '1px solid #DDD'
+              }}>
+                <p style={{ 
+                  margin: '0 0 8px 0', 
+                  fontSize: '14px', 
+                  fontWeight: 'bold',
+                  color: '#1976D2'
+                }}>
+                  Бокс №{userSession.boxNumber || userSession.box_number || allBoxes.find(box => box.id === (userSession.boxId || userSession.box_id))?.number || 'Неизвестный бокс'} назначен
+                </p>
+                <p style={{ 
+                  margin: '0', 
+                  fontSize: '13px', 
+                  color: '#666'
+                }}>
+                  Если занят - предыдущий клиент задержался. Поторопите его, пожалуйста.
+                </p>
+              </div>
+            )}
+            
             {/* Таймеры для активной сессии */}
             {userSession.status === 'active' && timeLeft !== null && (
               <>

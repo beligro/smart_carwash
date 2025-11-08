@@ -5,6 +5,8 @@ import (
 	"math"
 	"time"
 
+	"github.com/google/uuid"
+
 	"carwash_backend/internal/domain/queue/models"
 	sessionModels "carwash_backend/internal/domain/session/models"
 	sessionService "carwash_backend/internal/domain/session/service"
@@ -17,7 +19,7 @@ import (
 
 // Service интерфейс для бизнес-логики очереди
 type Service interface {
-	GetQueueStatus(ctx context.Context) (*models.QueueStatus, error)
+	GetQueueStatus(ctx context.Context, includeUsers bool) (*models.QueueStatus, error)
 
 	// Административные методы
 	AdminGetQueueStatus(ctx context.Context, req *models.AdminQueueStatusRequest) (*models.AdminQueueStatusResponse, error)
@@ -42,11 +44,21 @@ func NewService(sessionService sessionService.Service, washboxService washboxSer
 }
 
 // getServiceQueueInfo получает информацию об очереди для конкретного типа услуги
-func (s *ServiceImpl) getServiceQueueInfo(ctx context.Context, serviceType string) (*models.ServiceQueueInfo, error) {
+func (s *ServiceImpl) getServiceQueueInfo(ctx context.Context, serviceType string, includeUsers bool) (*models.ServiceQueueInfo, error) {
+	// Проверяем контекст перед DB запросами
+	if ctx.Err() != nil {
+		return nil, ctx.Err()
+	}
+
 	// Получаем боксы для данного типа услуги
 	boxes, err := s.washboxService.GetWashBoxesByServiceType(ctx, serviceType)
 	if err != nil {
 		return nil, err
+	}
+
+	// Проверяем контекст после запроса боксов
+	if ctx.Err() != nil {
+		return nil, ctx.Err()
 	}
 
 	// Получаем сессии со статусом "created"
@@ -55,18 +67,53 @@ func (s *ServiceImpl) getServiceQueueInfo(ctx context.Context, serviceType strin
 		return nil, err
 	}
 
+	// Проверяем контекст после запроса сессий
+	if ctx.Err() != nil {
+		return nil, ctx.Err()
+	}
+
 	// Подсчитываем количество сессий для данного типа услуги и собираем пользователей в очереди
 	queueSize := 0
 	var usersInQueue []models.QueueUser
+	var sessionUserIDs []uuid.UUID
+	sessionsByType := make([]sessionModels.Session, 0)
 
+	// Собираем сессии нужного типа и ID пользователей
 	for _, session := range createdSessions {
 		if session.ServiceType == serviceType {
 			queueSize++
+			sessionUserIDs = append(sessionUserIDs, session.UserID)
+			sessionsByType = append(sessionsByType, session)
+		}
+	}
 
-			// Получаем информацию о пользователе
-			user, err := s.userService.GetUserByID(ctx, session.UserID)
-			if err != nil {
-				// Если не удалось получить пользователя, используем базовую информацию
+	// Загружаем пользователей батчем только если нужно
+	var usersMap map[uuid.UUID]*userModels.User
+	if includeUsers && len(sessionUserIDs) > 0 {
+		// Проверяем контекст перед запросом пользователей
+		if ctx.Err() != nil {
+			return nil, ctx.Err()
+		}
+
+		var err error
+		usersMap, err = s.userService.GetUsersByIDs(ctx, sessionUserIDs)
+		if err != nil {
+			// Если не удалось получить пользователей батчем, используем пустую карту
+			usersMap = make(map[uuid.UUID]*userModels.User)
+		}
+
+		// Проверяем контекст после запроса пользователей
+		if ctx.Err() != nil {
+			return nil, ctx.Err()
+		}
+	}
+
+	// Формируем список пользователей в очереди
+	if includeUsers {
+		for i, session := range sessionsByType {
+			user, ok := usersMap[session.UserID]
+			if !ok {
+				// Если пользователь не найден, используем базовую информацию
 				user = &userModels.User{
 					ID:        session.UserID,
 					Username:  "Неизвестный пользователь",
@@ -82,7 +129,7 @@ func (s *ServiceImpl) getServiceQueueInfo(ctx context.Context, serviceType strin
 				FirstName:    user.FirstName,
 				LastName:     user.LastName,
 				ServiceType:  serviceType,
-				Position:     queueSize, // Позиция в очереди
+				Position:     i + 1, // Позиция в очереди
 				WaitingSince: session.CreatedAt.Format("2006-01-02 15:04:05"),
 				CarNumber:    session.CarNumber, // Номер машины из сессии
 			}
@@ -153,25 +200,43 @@ func (s *ServiceImpl) getServiceQueueInfo(ctx context.Context, serviceType strin
 }
 
 // GetQueueStatus получает статус очереди и боксов
-func (s *ServiceImpl) GetQueueStatus(ctx context.Context) (*models.QueueStatus, error) {
+func (s *ServiceImpl) GetQueueStatus(ctx context.Context, includeUsers bool) (*models.QueueStatus, error) {
+	// Проверяем контекст перед DB запросами
+	if ctx.Err() != nil {
+		return nil, ctx.Err()
+	}
+
 	// Получаем все боксы мойки
 	allBoxes, err := s.washboxService.GetAllWashBoxes(ctx)
 	if err != nil {
 		return nil, err
 	}
 
+	// Проверяем контекст после каждого шага
+	if ctx.Err() != nil {
+		return nil, ctx.Err()
+	}
+
 	// Получаем информацию об очереди для каждого типа услуги
-	washQueueInfo, err := s.getServiceQueueInfo(ctx, washboxModels.ServiceTypeWash)
+	washQueueInfo, err := s.getServiceQueueInfo(ctx, washboxModels.ServiceTypeWash, includeUsers)
 	if err != nil {
 		return nil, err
 	}
 
-	airDryQueueInfo, err := s.getServiceQueueInfo(ctx, washboxModels.ServiceTypeAirDry)
+	if ctx.Err() != nil {
+		return nil, ctx.Err()
+	}
+
+	airDryQueueInfo, err := s.getServiceQueueInfo(ctx, washboxModels.ServiceTypeAirDry, includeUsers)
 	if err != nil {
 		return nil, err
 	}
 
-	vacuumQueueInfo, err := s.getServiceQueueInfo(ctx, washboxModels.ServiceTypeVacuum)
+	if ctx.Err() != nil {
+		return nil, ctx.Err()
+	}
+
+	vacuumQueueInfo, err := s.getServiceQueueInfo(ctx, washboxModels.ServiceTypeVacuum, includeUsers)
 	if err != nil {
 		return nil, err
 	}
@@ -202,8 +267,8 @@ func (s *ServiceImpl) GetQueueStatus(ctx context.Context) (*models.QueueStatus, 
 
 // AdminGetQueueStatus получает детальный статус очереди для администратора
 func (s *ServiceImpl) AdminGetQueueStatus(ctx context.Context, req *models.AdminQueueStatusRequest) (*models.AdminQueueStatusResponse, error) {
-	// Получаем базовый статус очереди
-	queueStatus, err := s.GetQueueStatus(ctx)
+	// Получаем базовый статус очереди (для админки всегда включаем пользователей)
+	queueStatus, err := s.GetQueueStatus(ctx, true)
 	if err != nil {
 		return nil, err
 	}

@@ -3,12 +3,13 @@ package service
 import (
 	"context"
 	"fmt"
-	"log"
 
 	"github.com/google/uuid"
+	"github.com/sirupsen/logrus"
 
 	"carwash_backend/internal/domain/dahua/models"
 	sessionModels "carwash_backend/internal/domain/session/models"
+	"carwash_backend/internal/logger"
 	"carwash_backend/internal/utils"
 )
 
@@ -38,11 +39,21 @@ func NewService(sessionService SessionService) Service {
 
 // ProcessANPREvent обрабатывает ANPR событие от камеры Dahua
 func (s *ServiceImpl) ProcessANPREvent(ctx context.Context, req *models.ProcessANPREventRequest) (*models.ProcessANPREventResponse, error) {
-	log.Printf("ProcessANPREvent: обработка события ANPR - LicensePlate=%s, Direction=%s", req.LicensePlate, req.Direction)
+	logger.WithFields(logrus.Fields{
+		"service":      "dahua",
+		"method":       "ProcessANPREvent",
+		"license_plate": req.LicensePlate,
+		"direction":    req.Direction,
+	}).Info("Обработка события ANPR")
 
 	// Проверяем, что это событие выезда
 	if req.Direction != "out" {
-		log.Printf("ProcessANPREvent: событие не является выездом (direction=%s), пропускаем", req.Direction)
+		logger.WithFields(logrus.Fields{
+			"service":      "dahua",
+			"method":       "ProcessANPREvent",
+			"license_plate": req.LicensePlate,
+			"direction":    req.Direction,
+		}).Info("Событие не является выездом, пропускаем")
 		return &models.ProcessANPREventResponse{
 			Success:      true,
 			Message:      "Событие не является выездом, обработка не требуется",
@@ -53,12 +64,23 @@ func (s *ServiceImpl) ProcessANPREvent(ctx context.Context, req *models.ProcessA
 
 	// Нормализуем номер от камеры для поиска
 	normalizedLicensePlate := utils.NormalizeLicensePlateForSearch(req.LicensePlate)
-	log.Printf("ProcessANPREvent: номер нормализован '%s' -> '%s'", req.LicensePlate, normalizedLicensePlate)
+	logger.WithFields(logrus.Fields{
+		"service":              "dahua",
+		"method":               "ProcessANPREvent",
+		"license_plate":        req.LicensePlate,
+		"normalized_license_plate": normalizedLicensePlate,
+	}).Info("Номер нормализован")
 
 	// Ищем активную сессию напрямую по номеру автомобиля
 	activeSession, err := s.sessionService.GetActiveSessionByCarNumber(ctx, normalizedLicensePlate)
 	if err != nil {
-		log.Printf("ProcessANPREvent: активная сессия с номером %s не найдена: %v", req.LicensePlate, err)
+		logger.WithFields(logrus.Fields{
+			"service":      "dahua",
+			"method":       "ProcessANPREvent",
+			"license_plate": req.LicensePlate,
+			"normalized_license_plate": normalizedLicensePlate,
+			"error":        err,
+		}).Info("Активная сессия с номером не найдена")
 		return &models.ProcessANPREventResponse{
 			Success:      true,
 			Message:      fmt.Sprintf("Активная сессия с номером %s не найдена", req.LicensePlate),
@@ -67,13 +89,25 @@ func (s *ServiceImpl) ProcessANPREvent(ctx context.Context, req *models.ProcessA
 		}, nil
 	}
 
-	log.Printf("ProcessANPREvent: активная сессия найдена - SessionID=%s, Status=%s, CarNumber=%s",
-		activeSession.ID, activeSession.Status, activeSession.CarNumber)
+	logger.WithFields(logrus.Fields{
+		"service":      "dahua",
+		"method":       "ProcessANPREvent",
+		"session_id":    activeSession.ID,
+		"license_plate": req.LicensePlate,
+		"session_status": activeSession.Status,
+		"car_number":    activeSession.CarNumber,
+	}).Info("Активная сессия найдена")
 
 	// Завершаем сессию БЕЗ частичного возврата
 	err = s.sessionService.CompleteSessionWithoutRefund(ctx, activeSession.ID)
 	if err != nil {
-		log.Printf("ProcessANPREvent: ошибка завершения сессии %s: %v", activeSession.ID, err)
+		logger.WithFields(logrus.Fields{
+			"service":      "dahua",
+			"method":       "ProcessANPREvent",
+			"session_id":   activeSession.ID,
+			"license_plate": req.LicensePlate,
+			"error":        err,
+		}).Error("Ошибка завершения сессии")
 		return &models.ProcessANPREventResponse{
 			Success:       false,
 			Message:       fmt.Sprintf("Ошибка завершения сессии: %v", err),
@@ -84,8 +118,12 @@ func (s *ServiceImpl) ProcessANPREvent(ctx context.Context, req *models.ProcessA
 		}, err
 	}
 
-	log.Printf("ProcessANPREvent: сессия успешно завершена БЕЗ возврата - SessionID=%s, CarNumber=%s",
-		activeSession.ID, req.LicensePlate)
+	logger.WithFields(logrus.Fields{
+		"service":      "dahua",
+		"method":       "ProcessANPREvent",
+		"session_id":   activeSession.ID,
+		"license_plate": req.LicensePlate,
+	}).Info("Сессия успешно завершена БЕЗ возврата")
 
 	return &models.ProcessANPREventResponse{
 		Success:       true,

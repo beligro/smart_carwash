@@ -55,9 +55,7 @@ func (h *Handler) RegisterRoutes(router *gin.RouterGroup, cleanerMiddleware gin.
 	cleanerRoutes := router.Group("/cleaner/washboxes", cleanerMiddleware)
 	{
 		cleanerRoutes.GET("", h.cleanerListWashBoxes)
-		cleanerRoutes.POST("/reserve-cleaning", h.cleanerReserveCleaning)
 		cleanerRoutes.POST("/start-cleaning", h.cleanerStartCleaning)
-		cleanerRoutes.POST("/cancel-cleaning", h.cleanerCancelCleaning)
 		cleanerRoutes.POST("/complete-cleaning", h.cleanerCompleteCleaning)
 	}
 }
@@ -278,45 +276,6 @@ func (h *Handler) cleanerListWashBoxes(c *gin.Context) {
 	c.JSON(http.StatusOK, resp)
 }
 
-// cleanerReserveCleaning обработчик для резервирования уборки
-func (h *Handler) cleanerReserveCleaning(c *gin.Context) {
-	var req models.CleanerReserveCleaningRequest
-
-	// Парсим JSON из тела запроса
-	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-		return
-	}
-
-	// Получаем ID уборщика из контекста
-	cleanerIDInterface, exists := c.Get("cleaner_id")
-	if !exists {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "Необходима авторизация"})
-		return
-	}
-
-	cleanerID, ok := cleanerIDInterface.(uuid.UUID)
-	if !ok {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Ошибка получения ID уборщика"})
-		return
-	}
-
-	// Резервируем уборку
-	resp, err := h.service.CleanerReserveCleaning(c.Request.Context(), &req, cleanerID)
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-		return
-	}
-
-	// Логируем мета-параметры
-	c.Set("meta", gin.H{
-		"washbox_id": req.WashBoxID,
-		"cleaner_id": cleanerID,
-	})
-
-	c.JSON(http.StatusOK, resp)
-}
-
 // cleanerStartCleaning обработчик для начала уборки
 func (h *Handler) cleanerStartCleaning(c *gin.Context) {
 	var req models.CleanerStartCleaningRequest
@@ -342,45 +301,6 @@ func (h *Handler) cleanerStartCleaning(c *gin.Context) {
 
 	// Начинаем уборку
 	resp, err := h.service.CleanerStartCleaning(c.Request.Context(), &req, cleanerID)
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-		return
-	}
-
-	// Логируем мета-параметры
-	c.Set("meta", gin.H{
-		"washbox_id": req.WashBoxID,
-		"cleaner_id": cleanerID,
-	})
-
-	c.JSON(http.StatusOK, resp)
-}
-
-// cleanerCancelCleaning обработчик для отмены уборки
-func (h *Handler) cleanerCancelCleaning(c *gin.Context) {
-	var req models.CleanerCancelCleaningRequest
-
-	// Парсим JSON из тела запроса
-	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-		return
-	}
-
-	// Получаем ID уборщика из контекста
-	cleanerIDInterface, exists := c.Get("cleaner_id")
-	if !exists {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "Необходима авторизация"})
-		return
-	}
-
-	cleanerID, ok := cleanerIDInterface.(uuid.UUID)
-	if !ok {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Ошибка получения ID уборщика"})
-		return
-	}
-
-	// Отменяем уборку
-	resp, err := h.service.CleanerCancelCleaning(c.Request.Context(), &req, cleanerID)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return

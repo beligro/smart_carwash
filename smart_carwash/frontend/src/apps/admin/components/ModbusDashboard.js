@@ -21,6 +21,32 @@ api.interceptors.request.use((config) => {
   return config;
 });
 
+// Добавляем перехватчик для обработки ошибок авторизации
+api.interceptors.response.use(
+  (response) => response,
+  (error) => {
+    if (error.response && error.response.status === 401) {
+      // Если сервер вернул 401, значит токен истек или недействителен
+      // Удаляем токен и перенаправляем на страницу входа
+      localStorage.removeItem('token');
+      localStorage.removeItem('user');
+      localStorage.removeItem('expiresAt');
+      
+      // Определяем, какой тип пользователя был авторизован
+      const isAdmin = localStorage.getItem('isAdmin') === 'true';
+      localStorage.removeItem('isAdmin');
+      
+      // Перенаправляем на соответствующую страницу входа
+      if (isAdmin) {
+        window.location.href = '/admin/login';
+      } else {
+        window.location.href = '/cashier/login';
+      }
+    }
+    return Promise.reject(error);
+  }
+);
+
 const Container = styled.div`
   padding: 24px;
   max-width: 1200px;

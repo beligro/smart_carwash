@@ -24,11 +24,18 @@ type Repository interface {
 	GetUserSessionHistory(ctx context.Context, userID uuid.UUID, limit, offset int) ([]models.Session, error)
 
 	// Административные методы
-	GetSessionsWithFilters(ctx context.Context, userID *uuid.UUID, boxID *uuid.UUID, boxNumber *int, status *string, serviceType *string, dateFrom *time.Time, dateTo *time.Time, limit int, offset int) ([]models.Session, error)
+	GetSessionsWithFilters(ctx context.Context, userID *uuid.UUID, boxID *uuid.UUID, boxNumber *int, status *string, serviceType *string, dateFrom *time.Time, dateTo *time.Time, limit int, offset int) ([]models.Session, int, error)
 
 	// Метод для проверки завершенных сессий между уборками
-    GetCompletedSessionsBetween(ctx context.Context, boxID uuid.UUID, dateFrom, dateTo time.Time) (int, error)
-    GetCompletedSessionsCreatedAtSinceForBoxes(ctx context.Context, boxIDs []uuid.UUID, since time.Time) ([]struct{ BoxID uuid.UUID; CreatedAt time.Time }, error)
+	GetCompletedSessionsBetween(ctx context.Context, boxID uuid.UUID, dateFrom, dateTo time.Time) (int, error)
+	GetCompletedSessionsCreatedAtSinceForBoxes(ctx context.Context, boxIDs []uuid.UUID, since time.Time) ([]struct {
+		BoxID     uuid.UUID
+		CreatedAt time.Time
+	}, error)
+
+	// Методы с блокировкой для предотвращения дедлоков
+	GetSessionByIDForUpdate(ctx context.Context, id uuid.UUID) (*models.Session, error)
+	UpdateSessionInTransaction(ctx context.Context, session *models.Session) error
 }
 
 // PostgresRepository реализация Repository для PostgreSQL
@@ -207,13 +214,11 @@ func (r *PostgresRepository) GetUserSessionHistory(ctx context.Context, userID u
 }
 
 // GetSessionsWithFilters получает сессии с фильтрацией для администратора
-func (r *PostgresRepository) GetSessionsWithFilters(ctx context.Context, userID *uuid.UUID, boxID *uuid.UUID, boxNumber *int, status *string, serviceType *string, dateFrom *time.Time, dateTo *time.Time, limit int, offset int) ([]models.Session, error) {
+func (r *PostgresRepository) GetSessionsWithFilters(ctx context.Context, userID *uuid.UUID, boxID *uuid.UUID, boxNumber *int, status *string, serviceType *string, dateFrom *time.Time, dateTo *time.Time, limit int, offset int) ([]models.Session, int, error) {
 	var sessions []models.Session
 
-	// Получаем данные с пагинацией и сортировкой
-	err := func() error {
-		query := r.db.WithContext(ctx).Model(&models.Session{})
-
+	// Создаем функцию для применения фильтров к запросу
+	applyFilters := func(query *gorm.DB) *gorm.DB {
 		// Применяем фильтры
 		if userID != nil {
 			query = query.Where("sessions.user_id = ?", *userID)
@@ -238,11 +243,25 @@ func (r *PostgresRepository) GetSessionsWithFilters(ctx context.Context, userID 
 		if dateTo != nil {
 			query = query.Where("sessions.created_at <= ?", *dateTo)
 		}
+		return query
+	}
 
+	// Подсчитываем общее количество сессий с фильтрами (без пагинации)
+	var total int64
+	countQuery := r.db.WithContext(ctx).Model(&models.Session{})
+	countQuery = applyFilters(countQuery)
+	if err := countQuery.Count(&total).Error; err != nil {
+		return nil, 0, err
+	}
+
+	// Получаем данные с пагинацией и сортировкой
+	err := func() error {
+		query := r.db.WithContext(ctx).Model(&models.Session{})
+		query = applyFilters(query)
 		return query.Order("sessions.created_at DESC").Limit(limit).Offset(offset).Find(&sessions).Error
 	}()
 	if err != nil {
-		return nil, err
+		return nil, 0, err
 	}
 
 	// Для всех сессий одним запросом получаем номера боксов и мапим по id
@@ -284,7 +303,7 @@ func (r *PostgresRepository) GetSessionsWithFilters(ctx context.Context, userID 
 		}
 	}
 
-	return sessions, nil
+	return sessions, int(total), nil
 }
 
 // GetCompletedSessionsBetween получает количество завершенных сессий для бокса между указанными датами
@@ -299,19 +318,48 @@ func (r *PostgresRepository) GetCompletedSessionsBetween(ctx context.Context, bo
 
 // GetCompletedSessionsCreatedAtSinceForBoxes возвращает пары (box_id, created_at) для завершенных сессий
 // для множества боксов начиная с указанной даты (общей нижней границы)
-func (r *PostgresRepository) GetCompletedSessionsCreatedAtSinceForBoxes(ctx context.Context, boxIDs []uuid.UUID, since time.Time) ([]struct{ BoxID uuid.UUID; CreatedAt time.Time }, error) {
-    if len(boxIDs) == 0 {
-        return nil, nil
-    }
-    var rows []struct{
-        BoxID    uuid.UUID
-        CreatedAt time.Time
-    }
-    err := r.db.WithContext(ctx).Model(&models.Session{}).
-        Select("box_id, created_at").
-        Where("status = ? AND box_id IN ? AND created_at >= ?", models.SessionStatusComplete, boxIDs, since).
-        Find(&rows).Error
-    return rows, err
+func (r *PostgresRepository) GetCompletedSessionsCreatedAtSinceForBoxes(ctx context.Context, boxIDs []uuid.UUID, since time.Time) ([]struct {
+	BoxID     uuid.UUID
+	CreatedAt time.Time
+}, error) {
+	if len(boxIDs) == 0 {
+		return nil, nil
+	}
+	var rows []struct {
+		BoxID     uuid.UUID
+		CreatedAt time.Time
+	}
+	err := r.db.WithContext(ctx).Model(&models.Session{}).
+		Select("box_id, created_at").
+		Where("status = ? AND box_id IN ? AND created_at >= ?", models.SessionStatusComplete, boxIDs, since).
+		Find(&rows).Error
+	return rows, err
+}
+
+// GetSessionByIDForUpdate получает сессию по ID (без блокировки)
+func (r *PostgresRepository) GetSessionByIDForUpdate(ctx context.Context, id uuid.UUID) (*models.Session, error) {
+	var session models.Session
+	err := r.db.WithContext(ctx).First(&session, id).Error
+	if err != nil {
+		return nil, err
+	}
+
+	// Если у сессии есть BoxID, получаем номер бокса
+	if session.BoxID != nil {
+		var boxNumber int
+		err = r.db.WithContext(ctx).Table("wash_boxes").Where("id = ?", *session.BoxID).Select("number").Scan(&boxNumber).Error
+		if err == nil {
+			session.BoxNumber = &boxNumber
+		}
+	}
+
+	return &session, nil
+}
+
+// UpdateSessionInTransaction обновляет сессию в рамках транзакции
+// Этот метод должен вызываться внутри транзакции
+func (r *PostgresRepository) UpdateSessionInTransaction(ctx context.Context, session *models.Session) error {
+	return r.db.WithContext(ctx).Save(session).Error
 }
 
 // GetActiveSessionByCarNumber получает активную сессию по номеру автомобиля

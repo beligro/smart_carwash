@@ -18,8 +18,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/google/uuid"
@@ -83,11 +85,12 @@ type ServiceImpl struct {
 	settingsService settingsService.Service
 	cashierUserID   string
 	metrics         *metrics.Metrics
-	// SafeDB удалён; используем контексты вызова
+	db              *gorm.DB
+	processQueueMu  sync.Mutex // Мьютекс для исключения одновременного запуска ProcessQueue
 }
 
 // NewService создает новый экземпляр Service
-func NewService(repo repository.Repository, washboxService washboxService.Service, userService userService.Service, telegramBot telegram.NotificationService, paymentService paymentService.Service, modbusService modbus.ModbusServiceInterface, settingsService settingsService.Service, cashierUserID string, metrics *metrics.Metrics) *ServiceImpl {
+func NewService(repo repository.Repository, washboxService washboxService.Service, userService userService.Service, telegramBot telegram.NotificationService, paymentService paymentService.Service, modbusService modbus.ModbusServiceInterface, settingsService settingsService.Service, cashierUserID string, metrics *metrics.Metrics, db *gorm.DB) *ServiceImpl {
 	return &ServiceImpl{
 		repo:            repo,
 		washboxService:  washboxService,
@@ -98,6 +101,8 @@ func NewService(repo repository.Repository, washboxService washboxService.Servic
 		settingsService: settingsService,
 		cashierUserID:   cashierUserID,
 		metrics:         metrics,
+		db:              db,
+		processQueueMu:  sync.Mutex{}, // Мьютекс инициализируется автоматически, но явно указываем для ясности
 	}
 }
 
@@ -531,35 +536,75 @@ func (s *ServiceImpl) StartSession(ctx context.Context, req *models.StartSession
 		return session, nil
 	}
 
-	// Получаем информацию о боксе
-	box, err := s.washboxService.GetWashBoxByID(ctx, *session.BoxID)
+	var box *washboxModels.WashBox
+
+	// Используем транзакцию для атомарного обновления бокса и сессии
+	err = s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		// Получаем бокс для обновления
+		var lockedBox washboxModels.WashBox
+		if err := tx.First(&lockedBox, *session.BoxID).Error; err != nil {
+			return fmt.Errorf("ошибка получения бокса: %w", err)
+		}
+
+		// Обновляем статус бокса на busy
+		if err := tx.Model(&washboxModels.WashBox{}).
+			Where("id = ?", *session.BoxID).
+			Update("status", washboxModels.StatusBusy).Error; err != nil {
+			return fmt.Errorf("ошибка обновления статуса бокса: %w", err)
+		}
+
+		// Очищаем любые поля кулдауна у бокса
+		if err := tx.Model(&washboxModels.WashBox{}).
+			Where("id = ?", *session.BoxID).
+			Updates(map[string]interface{}{
+				"last_completed_session_user_id":    nil,
+				"last_completed_session_car_number": nil,
+				"last_completed_at":                 nil,
+				"cooldown_until":                    nil,
+			}).Error; err != nil {
+			logger.Printf("StartSessionWarning: не удалось очистить кулдаун у бокса %s, session_id=%s, err=%v", *session.BoxID, session.ID, err)
+		}
+
+		// Получаем сессию для обновления
+		var lockedSession models.Session
+		if err := tx.First(&lockedSession, session.ID).Error; err != nil {
+			return fmt.Errorf("ошибка получения сессии: %w", err)
+		}
+
+		// Проверяем, что сессия все еще в статусе assigned
+		if lockedSession.Status != models.SessionStatusAssigned {
+			return fmt.Errorf("сессия %s уже не в статусе assigned, текущий статус: %s", lockedSession.ID, lockedSession.Status)
+		}
+
+		// Обновляем статус сессии на active, время обновления статуса и сбрасываем флаг уведомления
+		lockedSession.Status = models.SessionStatusActive
+		lockedSession.StatusUpdatedAt = time.Now()
+		lockedSession.IsExpiringNotificationSent = false
+
+		if err := tx.Save(&lockedSession).Error; err != nil {
+			return fmt.Errorf("ошибка обновления сессии: %w", err)
+		}
+
+		// Обновляем локальную копию
+		session.Status = lockedSession.Status
+		session.StatusUpdatedAt = lockedSession.StatusUpdatedAt
+		session.IsExpiringNotificationSent = lockedSession.IsExpiringNotificationSent
+		box = &lockedBox
+
+		return nil
+	})
+
 	if err != nil {
-		logger.Printf("StartSessionError: ошибка получения информации о боксе %s", *session.BoxID)
+		logger.Printf("StartSessionError: ошибка в транзакции для сессии %s: %v", session.ID, err)
 		return nil, err
 	}
 
-	// Обновляем статус бокса на busy
-	err = s.washboxService.UpdateWashBoxStatus(ctx, *session.BoxID, washboxModels.StatusBusy)
-	if err != nil {
-		logger.Printf("StartSessionError: ошибка обновления статуса бокса %s", *session.BoxID)
-		return nil, err
-	}
-
-	// Очищаем любые поля кулдауна у бокса, чтобы фоновые джобы не перезаписали статус
-	if clearErr := s.washboxService.ClearCooldown(ctx, *session.BoxID); clearErr != nil {
-		logger.Printf("StartSessionWarning: не удалось очистить кулдаун у бокса %s, session_id=%s, err=%v", *session.BoxID, session.ID, clearErr)
-	}
-
-	// Обновляем статус сессии на active, время обновления статуса и сбрасываем флаг уведомления
-	session.Status = models.SessionStatusActive
-	session.StatusUpdatedAt = time.Now()       // Обновляем время изменения статуса
-	session.IsExpiringNotificationSent = false // Сбрасываем флаг, чтобы уведомление могло быть отправлено снова
-	err = s.repo.UpdateSession(ctx, session)
-	if err != nil {
-		// Если не удалось обновить сессию, возвращаем статус бокса обратно
-		s.washboxService.UpdateWashBoxStatus(ctx, *session.BoxID, box.Status)
-		logger.Printf("StartSessionError: ошибка обновления статуса сессии %s", session.ID)
-		return nil, err
+	// Получаем полную информацию о боксе после транзакции (для Modbus операций)
+	if box == nil {
+		box, err = s.washboxService.GetWashBoxByID(ctx, *session.BoxID)
+		if err != nil {
+			logger.Printf("StartSessionError: ошибка получения информации о боксе %s", *session.BoxID)
+		}
 	}
 
 	// Включаем свет в боксе через Modbus
@@ -631,57 +676,60 @@ func (s *ServiceImpl) CompleteSession(ctx context.Context, req *models.CompleteS
 		return &models.CompleteSessionResponse{Session: session}, nil
 	}
 
-	// Проверяем, есть ли резерв уборки для этого бокса
-	box, err := s.washboxService.GetWashBoxByID(ctx, *session.BoxID)
-	if err != nil {
-		return nil, err
-	}
+	// Используем транзакцию для атомарного обновления бокса и сессии
+	var box washboxModels.WashBox
+	err = s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		// Получаем бокс для обновления
+		if err := tx.First(&box, *session.BoxID).Error; err != nil {
+			return fmt.Errorf("ошибка получения бокса: %w", err)
+		}
 
-	// Если есть резерв уборки, переводим бокс в статус cleaning
-	if box.CleaningReservedBy != nil {
-		err = s.washboxService.UpdateWashBoxStatus(ctx, *session.BoxID, washboxModels.StatusCleaning)
-		if err != nil {
-			return nil, err
+		// Переводим бокс в статус free после завершения сессии
+		if err := tx.Model(&washboxModels.WashBox{}).
+			Where("id = ?", *session.BoxID).
+			Update("status", washboxModels.StatusFree).Error; err != nil {
+			return fmt.Errorf("ошибка обновления статуса бокса: %w", err)
 		}
-		// Устанавливаем время начала уборки
-		now := time.Now()
-		err = s.washboxService.UpdateCleaningStartedAt(ctx, *session.BoxID, now)
-		if err != nil {
-			return nil, err
+
+		// Получаем сессию для обновления
+		var lockedSession models.Session
+		if err := tx.First(&lockedSession, session.ID).Error; err != nil {
+			return fmt.Errorf("ошибка получения сессии: %w", err)
 		}
-		// Очищаем резерв
-		err = s.washboxService.ClearCleaningReservation(ctx, *session.BoxID)
-		if err != nil {
-			return nil, err
+
+		// Проверяем, что сессия все еще в статусе active
+		if lockedSession.Status != models.SessionStatusActive {
+			return fmt.Errorf("сессия %s уже не в статусе active, текущий статус: %s", lockedSession.ID, lockedSession.Status)
 		}
-		// Включаем свет при начале уборки (если есть регистр)
-		if s.modbusService != nil {
-			if box.LightCoilRegister != nil && *box.LightCoilRegister != "" {
-				if err := s.modbusService.WriteLightCoil(ctx, *session.BoxID, *box.LightCoilRegister, true); err != nil {
-					s.modbusService.HandleModbusError(*session.BoxID, "light_on", session.ID, err)
-				}
-			}
+
+		// Обновляем статус сессии на complete, время обновления статуса и сбрасываем флаг уведомления
+		lockedSession.Status = models.SessionStatusComplete
+		lockedSession.StatusUpdatedAt = time.Now()
+		lockedSession.IsCompletingNotificationSent = false
+
+		if err := tx.Save(&lockedSession).Error; err != nil {
+			return fmt.Errorf("ошибка обновления сессии: %w", err)
 		}
-	} else {
-		// Если нет резерва уборки, переводим в статус free
-		err = s.washboxService.UpdateWashBoxStatus(ctx, *session.BoxID, washboxModels.StatusFree)
-		if err != nil {
-			return nil, err
-		}
+
+		// Обновляем локальную копию
+		session.Status = lockedSession.Status
+		session.StatusUpdatedAt = lockedSession.StatusUpdatedAt
+		session.IsCompletingNotificationSent = lockedSession.IsCompletingNotificationSent
+
+		return nil
+	})
+
+	if err != nil {
+		logger.Printf("CompleteSession: ошибка в транзакции для сессии %s: %v", session.ID, err)
+		return nil, err
 	}
 
 	// Рассчитываем использованное время сессии в секундах
-	startTime := session.StatusUpdatedAt
-	now := time.Now()
-	usedTimeSeconds := int(now.Sub(startTime).Seconds())
-
-	// Обновляем статус сессии на complete, время обновления статуса и сбрасываем флаг уведомления
-	session.Status = models.SessionStatusComplete
-	session.StatusUpdatedAt = time.Now()         // Обновляем время изменения статуса
-	session.IsCompletingNotificationSent = false // Сбрасываем флаг, чтобы уведомление могло быть отправлено снова
-	err = s.repo.UpdateSession(ctx, session)
-	if err != nil {
-		return nil, err
+	usedTimeSeconds := 0
+	if session.StatusUpdatedAt.Unix() > 0 {
+		startTime := session.StatusUpdatedAt
+		now := time.Now()
+		usedTimeSeconds = int(now.Sub(startTime).Seconds())
 	}
 
 	// Если химия была включена, но еще не выключена - выключаем ее
@@ -757,19 +805,22 @@ func (s *ServiceImpl) CompleteSession(ctx context.Context, req *models.CompleteS
 		s.metrics.RecordSession("completed", session.ServiceType, strconv.FormatBool(session.WithChemistry))
 	}
 
-	// Отправляем уведомление о завершении сессии
+	// Отправляем уведомление о завершении сессии асинхронно
 	if s.telegramBot != nil {
-		user, err := s.userService.GetUserByID(ctx, session.UserID)
-		if err == nil && user != nil {
-			err = s.telegramBot.SendSessionNotification(user.TelegramID, telegram.NotificationTypeSessionCompleted, nil)
-			if err != nil {
-				logger.Printf("CompleteSession: ошибка отправки уведомления о завершении сессии: %v", err)
+		go func(sessionID uuid.UUID, userID uuid.UUID) {
+			ctxAsync := context.Background()
+			user, err := s.userService.GetUserByID(ctxAsync, userID)
+			if err == nil && user != nil {
+				err = s.telegramBot.SendSessionNotification(user.TelegramID, telegram.NotificationTypeSessionCompleted, nil)
+				if err != nil {
+					logger.Printf("CompleteSession: ошибка отправки уведомления о завершении сессии: %v", err)
+				} else {
+					logger.Printf("CompleteSession: уведомление о завершении сессии отправлено пользователю %d, SessionID=%s", user.TelegramID, sessionID)
+				}
 			} else {
-				logger.Printf("CompleteSession: уведомление о завершении сессии отправлено пользователю %d, SessionID=%s", user.TelegramID, session.ID)
+				logger.Printf("CompleteSession: не удалось получить данные пользователя для отправки уведомления: %v", err)
 			}
-		} else {
-			logger.Printf("CompleteSession: не удалось получить данные пользователя для отправки уведомления: %v", err)
-		}
+		}(session.ID, session.UserID)
 	}
 
 	return &models.CompleteSessionResponse{
@@ -807,51 +858,51 @@ func (s *ServiceImpl) CompleteSessionWithoutRefund(ctx context.Context, sessionI
 		return nil
 	}
 
-	// Проверяем, есть ли резерв уборки для этого бокса
-	box, err := s.washboxService.GetWashBoxByID(ctx, *session.BoxID)
-	if err != nil {
-		return err
-	}
+	// Используем транзакцию для атомарного обновления бокса и сессии
+	var box washboxModels.WashBox
+	err = s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		// Получаем бокс для обновления
+		if err := tx.First(&box, *session.BoxID).Error; err != nil {
+			return fmt.Errorf("ошибка получения бокса: %w", err)
+		}
 
-	// Если есть резерв уборки, переводим бокс в статус cleaning
-	if box.CleaningReservedBy != nil {
-		err = s.washboxService.UpdateWashBoxStatus(ctx, *session.BoxID, washboxModels.StatusCleaning)
-		if err != nil {
-			return err
+		// Переводим бокс в статус free после завершения сессии
+		if err := tx.Model(&washboxModels.WashBox{}).
+			Where("id = ?", *session.BoxID).
+			Update("status", washboxModels.StatusFree).Error; err != nil {
+			return fmt.Errorf("ошибка обновления статуса бокса: %w", err)
 		}
-		// Устанавливаем время начала уборки
-		now := time.Now()
-		err = s.washboxService.UpdateCleaningStartedAt(ctx, *session.BoxID, now)
-		if err != nil {
-			return err
-		}
-		// Очищаем резерв
-		err = s.washboxService.ClearCleaningReservation(ctx, *session.BoxID)
-		if err != nil {
-			return err
-		}
-		// Включаем свет при начале уборки (если есть регистр)
-		if s.modbusService != nil {
-			if box.LightCoilRegister != nil && *box.LightCoilRegister != "" {
-				if err := s.modbusService.WriteLightCoil(ctx, *session.BoxID, *box.LightCoilRegister, true); err != nil {
-					s.modbusService.HandleModbusError(*session.BoxID, "light_on", session.ID, err)
-				}
-			}
-		}
-	} else {
-		// Если нет резерва уборки, переводим в статус free
-		err = s.washboxService.UpdateWashBoxStatus(ctx, *session.BoxID, washboxModels.StatusFree)
-		if err != nil {
-			return err
-		}
-	}
 
-	// Обновляем статус сессии на complete, время обновления статуса и сбрасываем флаг уведомления
-	session.Status = models.SessionStatusComplete
-	session.StatusUpdatedAt = time.Now()         // Обновляем время изменения статуса
-	session.IsCompletingNotificationSent = false // Сбрасываем флаг, чтобы уведомление могло быть отправлено снова
-	err = s.repo.UpdateSession(ctx, session)
+		// Получаем сессию для обновления
+		var lockedSession models.Session
+		if err := tx.First(&lockedSession, session.ID).Error; err != nil {
+			return fmt.Errorf("ошибка получения сессии: %w", err)
+		}
+
+		// Проверяем, что сессия все еще в статусе active
+		if lockedSession.Status != models.SessionStatusActive {
+			return fmt.Errorf("сессия %s уже не в статусе active, текущий статус: %s", lockedSession.ID, lockedSession.Status)
+		}
+
+		// Обновляем статус сессии на complete, время обновления статуса и сбрасываем флаг уведомления
+		lockedSession.Status = models.SessionStatusComplete
+		lockedSession.StatusUpdatedAt = time.Now()
+		lockedSession.IsCompletingNotificationSent = false
+
+		if err := tx.Save(&lockedSession).Error; err != nil {
+			return fmt.Errorf("ошибка обновления сессии: %w", err)
+		}
+
+		// Обновляем локальную копию
+		session.Status = lockedSession.Status
+		session.StatusUpdatedAt = lockedSession.StatusUpdatedAt
+		session.IsCompletingNotificationSent = lockedSession.IsCompletingNotificationSent
+
+		return nil
+	})
+
 	if err != nil {
+		logger.Printf("CompleteSessionWithoutRefund: ошибка в транзакции для сессии %s: %v", session.ID, err)
 		return err
 	}
 
@@ -904,19 +955,22 @@ func (s *ServiceImpl) CompleteSessionWithoutRefund(ctx context.Context, sessionI
 		s.metrics.RecordSession("completed", session.ServiceType, strconv.FormatBool(session.WithChemistry))
 	}
 
-	// Отправляем уведомление о завершении сессии
+	// Отправляем уведомление о завершении сессии асинхронно
 	if s.telegramBot != nil {
-		user, err := s.userService.GetUserByID(ctx, session.UserID)
-		if err == nil && user != nil {
-			err = s.telegramBot.SendSessionNotification(user.TelegramID, telegram.NotificationTypeSessionCompleted, nil)
-			if err != nil {
-				logger.Printf("CompleteSessionWithoutRefund: ошибка отправки уведомления о завершении сессии: %v", err)
+		go func(sessionID uuid.UUID, userID uuid.UUID) {
+			ctxAsync := context.Background()
+			user, err := s.userService.GetUserByID(ctxAsync, userID)
+			if err == nil && user != nil {
+				err = s.telegramBot.SendSessionNotification(user.TelegramID, telegram.NotificationTypeSessionCompleted, nil)
+				if err != nil {
+					logger.Printf("CompleteSessionWithoutRefund: ошибка отправки уведомления о завершении сессии: %v", err)
+				} else {
+					logger.Printf("CompleteSessionWithoutRefund: уведомление о завершении сессии отправлено пользователю %d, SessionID=%s", user.TelegramID, sessionID)
+				}
 			} else {
-				logger.Printf("CompleteSessionWithoutRefund: уведомление о завершении сессии отправлено пользователю %d, SessionID=%s", user.TelegramID, session.ID)
+				logger.Printf("CompleteSessionWithoutRefund: не удалось получить данные пользователя для отправки уведомления: %v", err)
 			}
-		} else {
-			logger.Printf("CompleteSessionWithoutRefund: не удалось получить данные пользователя для отправки уведомления: %v", err)
-		}
+		}(session.ID, session.UserID)
 	}
 
 	logger.Printf("CompleteSessionWithoutRefund: сессия завершена БЕЗ возврата - SessionID=%s, BoxID=%s", session.ID, *session.BoxID)
@@ -1198,19 +1252,22 @@ func (s *ServiceImpl) CancelSession(ctx context.Context, req *models.CancelSessi
 		}
 	}
 
-	// Отправляем уведомление о возврате денег при отмене сессии
+	// Отправляем уведомление о возврате денег при отмене сессии асинхронно
 	if s.telegramBot != nil {
-		user, err := s.userService.GetUserByID(ctx, session.UserID)
-		if err == nil && user != nil {
-			err = s.telegramBot.SendSessionNotification(user.TelegramID, telegram.NotificationTypeSessionExpiredOrCanceled, nil)
-			if err != nil {
-				logger.Printf("CancelSession: ошибка отправки уведомления о возврате денег: %v", err)
+		go func(sessionID uuid.UUID, userID uuid.UUID) {
+			ctxAsync := context.Background()
+			user, err := s.userService.GetUserByID(ctxAsync, userID)
+			if err == nil && user != nil {
+				err = s.telegramBot.SendSessionNotification(user.TelegramID, telegram.NotificationTypeSessionExpiredOrCanceled, nil)
+				if err != nil {
+					logger.Printf("CancelSession: ошибка отправки уведомления о возврате денег: %v", err)
+				} else {
+					logger.Printf("CancelSession: уведомление о возврате денег отправлено пользователю %d, SessionID=%s", user.TelegramID, sessionID)
+				}
 			} else {
-				logger.Printf("CancelSession: уведомление о возврате денег отправлено пользователю %d, SessionID=%s", user.TelegramID, session.ID)
+				logger.Printf("CancelSession: не удалось получить данные пользователя для отправки уведомления: %v", err)
 			}
-		} else {
-			logger.Printf("CancelSession: не удалось получить данные пользователя для отправки уведомления: %v", err)
-		}
+		}(session.ID, session.UserID)
 	}
 
 	// Обновляем сессию в ответе
@@ -1221,6 +1278,12 @@ func (s *ServiceImpl) CancelSession(ctx context.Context, req *models.CancelSessi
 
 // CheckAndCompleteExpiredSessions проверяет и завершает истекшие сессии
 func (s *ServiceImpl) CheckAndCompleteExpiredSessions(ctx context.Context) error {
+	startTime := time.Now()
+	defer func() {
+		duration := time.Since(startTime)
+		logger.Printf("CheckAndCompleteExpiredSessions: выполнение заняло %v", duration)
+	}()
+
 	// Получаем все активные сессии
 	activeSessions, err := s.repo.GetSessionsByStatus(ctx, models.SessionStatusActive)
 	if err != nil {
@@ -1364,12 +1427,15 @@ func (s *ServiceImpl) CheckAndCompleteExpiredSessions(ctx context.Context) error
 						}
 					}
 
-					err = s.telegramBot.SendSessionNotification(user.TelegramID, telegram.NotificationTypeSessionCompleted, cooldownMinutes)
-					if err != nil {
-						logger.Printf("CheckAndCompleteExpiredSessions: ошибка отправки уведомления о завершении сессии: %v", err)
-					} else {
-						logger.Printf("CheckAndCompleteExpiredSessions: уведомление о завершении сессии отправлено пользователю %d, SessionID=%s", user.TelegramID, session.ID)
-					}
+					// Отправляем уведомление асинхронно
+					go func(sessionID uuid.UUID, telegramID int64, cooldown *int) {
+						err := s.telegramBot.SendSessionNotification(telegramID, telegram.NotificationTypeSessionCompleted, cooldown)
+						if err != nil {
+							logger.Printf("CheckAndCompleteExpiredSessions: ошибка отправки уведомления о завершении сессии: %v", err)
+						} else {
+							logger.Printf("CheckAndCompleteExpiredSessions: уведомление о завершении сессии отправлено пользователю %d, SessionID=%s", telegramID, sessionID)
+						}
+					}(session.ID, user.TelegramID, cooldownMinutes)
 				} else {
 					logger.Printf("CheckAndCompleteExpiredSessions: не удалось получить данные пользователя для отправки уведомления: %v", err)
 				}
@@ -1382,9 +1448,24 @@ func (s *ServiceImpl) CheckAndCompleteExpiredSessions(ctx context.Context) error
 
 // ProcessQueue обрабатывает очередь сессий
 func (s *ServiceImpl) ProcessQueue(ctx context.Context) error {
+	startTime := time.Now()
+	defer func() {
+		duration := time.Since(startTime)
+		logger.Printf("ProcessQueue: выполнение заняло %v", duration)
+	}()
+
+	// Блокируем мьютекс для исключения одновременного запуска
+	s.processQueueMu.Lock()
+	defer s.processQueueMu.Unlock()
+
 	// Если сервис боксов не инициализирован, выходим
 	if s.washboxService == nil {
 		return nil
+	}
+
+	// Проверяем контекст перед DB запросами
+	if ctx.Err() != nil {
+		return ctx.Err()
 	}
 
 	// Загружаем все боксы один раз для текущей обработки очереди
@@ -1393,10 +1474,20 @@ func (s *ServiceImpl) ProcessQueue(ctx context.Context) error {
 		return err
 	}
 
+	// Проверяем контекст после запроса боксов
+	if ctx.Err() != nil {
+		return ctx.Err()
+	}
+
 	// Получаем все сессии со статусом "in_queue" (оплаченные сессии)
 	sessions, err := s.repo.GetSessionsByStatus(ctx, models.SessionStatusInQueue)
 	if err != nil {
 		return err
+	}
+
+	// Проверяем контекст после запроса сессий
+	if ctx.Err() != nil {
+		return ctx.Err()
 	}
 
 	// Если нет сессий в очереди, выходим
@@ -1486,9 +1577,7 @@ func (s *ServiceImpl) ProcessQueue(ctx context.Context) error {
 					if session.ServiceType == "wash" && session.WithChemistry && !b.ChemistryEnabled {
 						continue
 					}
-					if b.Status == washboxModels.StatusFree { // назначать можно только свободные
-						availableBoxes = append(availableBoxes, b)
-					}
+					availableBoxes = append(availableBoxes, b)
 				}
 			}
 			// Если нет боксов из кулдауна — берём свободные подходящие
@@ -1502,9 +1591,7 @@ func (s *ServiceImpl) ProcessQueue(ctx context.Context) error {
 					if session.ServiceType == "wash" && session.WithChemistry && !b.ChemistryEnabled {
 						continue
 					}
-					if b.Status == washboxModels.StatusFree {
-						availableBoxes = append(availableBoxes, b)
-					}
+					availableBoxes = append(availableBoxes, b)
 				}
 			}
 			// Если нет — свободные подходящие
@@ -1518,62 +1605,146 @@ func (s *ServiceImpl) ProcessQueue(ctx context.Context) error {
 			continue
 		}
 
-		// Берем первый доступный бокс
+		// Сортируем доступные боксы по приоритету (A -> Z)
+		sort.Slice(availableBoxes, func(i, j int) bool {
+			return availableBoxes[i].Priority < availableBoxes[j].Priority
+		})
+
+		// Берем первый доступный бокс (с наивысшим приоритетом)
 		box := availableBoxes[0]
 
-		// Обновляем статус бокса на "reserved"
-		err = s.washboxService.UpdateWashBoxStatus(ctx, box.ID, washboxModels.StatusReserved)
-		if err != nil {
-			return err
-		}
 		// Локально помечаем бокс зарезервированным, чтобы не назначить повторно в этом проходе
 		markBoxReservedLocal(box.ID)
 
-		// Обновляем сессию - назначаем бокс, меняем статус и обновляем время изменения статуса
-		session.BoxID = &box.ID
-		session.BoxNumber = &box.Number
-		session.Status = models.SessionStatusAssigned
-		session.StatusUpdatedAt = time.Now() // Обновляем время изменения статуса
-		err = s.repo.UpdateSession(ctx, &session)
+		// Используем транзакцию для атомарного обновления бокса и сессии
+		err = s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+			// Получаем бокс для обновления с блокировкой строки (SELECT FOR UPDATE)
+			var lockedBox washboxModels.WashBox
+			if err := tx.First(&lockedBox, box.ID).Error; err != nil {
+				return fmt.Errorf("ошибка получения бокса: %w", err)
+			}
+
+			// Проверяем доступность бокса
+			// Разрешаем боксы в статусе Free или Busy (если они в кулдауне для того же пользователя/госномера)
+			boxIsAvailable := false
+
+			if lockedBox.Status == washboxModels.StatusFree {
+				// Бокс свободен - доступен
+				boxIsAvailable = true
+			} else if lockedBox.Status == washboxModels.StatusBusy {
+				// Бокс занят, проверяем кулдаун
+				if isCashierSession && session.CarNumber != "" {
+					// Для кассирских сессий проверяем кулдаун по госномеру
+					if lockedBox.LastCompletedSessionCarNumber != nil &&
+						*lockedBox.LastCompletedSessionCarNumber == session.CarNumber &&
+						lockedBox.CooldownUntil != nil &&
+						now.Before(*lockedBox.CooldownUntil) {
+						boxIsAvailable = true
+					}
+				} else {
+					// Для обычных сессий проверяем кулдаун по user_id
+					if lockedBox.LastCompletedSessionUserID != nil &&
+						*lockedBox.LastCompletedSessionUserID == session.UserID &&
+						lockedBox.CooldownUntil != nil &&
+						now.Before(*lockedBox.CooldownUntil) {
+						boxIsAvailable = true
+					}
+				}
+			}
+
+			if !boxIsAvailable {
+				return fmt.Errorf("бокс %s недоступен, статус: %s", lockedBox.ID, lockedBox.Status)
+			}
+
+			// Обновляем статус бокса на "reserved" в транзакции
+			if err := tx.Model(&washboxModels.WashBox{}).
+				Where("id = ?", box.ID).
+				Update("status", washboxModels.StatusReserved).Error; err != nil {
+				return fmt.Errorf("ошибка обновления статуса бокса: %w", err)
+			}
+
+			// Получаем сессию для обновления
+			var lockedSession models.Session
+			if err := tx.First(&lockedSession, session.ID).Error; err != nil {
+				return fmt.Errorf("ошибка получения сессии: %w", err)
+			}
+
+			// Проверяем, что сессия все еще в очереди
+			if lockedSession.Status != models.SessionStatusInQueue {
+				return fmt.Errorf("сессия %s уже не в очереди, статус: %s", lockedSession.ID, lockedSession.Status)
+			}
+
+			// Обновляем сессию - назначаем бокс, меняем статус и обновляем время изменения статуса
+			lockedSession.BoxID = &box.ID
+			lockedSession.BoxNumber = &box.Number
+			lockedSession.Status = models.SessionStatusAssigned
+			lockedSession.StatusUpdatedAt = time.Now()
+
+			if err := tx.Save(&lockedSession).Error; err != nil {
+				return fmt.Errorf("ошибка обновления сессии: %w", err)
+			}
+
+			// Обновляем локальную копию сессии
+			session.BoxID = lockedSession.BoxID
+			session.BoxNumber = lockedSession.BoxNumber
+			session.Status = lockedSession.Status
+			session.StatusUpdatedAt = lockedSession.StatusUpdatedAt
+
+			return nil
+		})
+
 		if err != nil {
-			return err
+			logger.Printf("ProcessQueue: ошибка в транзакции для сессии %s: %v", session.ID, err)
+			continue // Переходим к следующей сессии вместо остановки всей очереди
 		}
 
 		// Проверяем, был ли бокс в кулдауне для этого пользователя или госномера по локальному снимку
-		// Если да, то сразу запускаем сессию, пропуская статус assigned
+		// Если да, то сразу запускаем сессию, пропуская статус assigned (асинхронно)
 		if isCashierSession && session.CarNumber != "" {
 			if isInCooldownForCar(box, session.CarNumber, session.ServiceType) {
 				logger.Printf("ProcessQueue: бокс %s был в кулдауне для госномера %s, запускаем сессию %s автоматически", box.ID, session.CarNumber, session.ID)
-				if _, err := s.StartSession(ctx, &models.StartSessionRequest{SessionID: session.ID}); err != nil {
-					logger.Printf("ProcessQueue: ошибка автоматического запуска сессии %s: %v", session.ID, err)
-				} else {
-					logger.Printf("ProcessQueue: сессия %s автоматически запущена для бокса в кулдауне по госномеру", session.ID)
-				}
+				// Запускаем асинхронно, не ждем завершения
+				go func(sessionID uuid.UUID) {
+					ctxAsync := context.Background()
+					if _, err := s.StartSession(ctxAsync, &models.StartSessionRequest{SessionID: sessionID}); err != nil {
+						logger.Printf("ProcessQueue: ошибка автоматического запуска сессии %s: %v", sessionID, err)
+					} else {
+						logger.Printf("ProcessQueue: сессия %s автоматически запущена для бокса в кулдауне по госномеру", sessionID)
+					}
+				}(session.ID)
 			}
 		} else {
 			if isInCooldownForUser(box, session.UserID, session.ServiceType) {
 				logger.Printf("ProcessQueue: бокс %s был в кулдауне для пользователя %s, запускаем сессию %s автоматически", box.ID, session.UserID, session.ID)
-				if _, err := s.StartSession(ctx, &models.StartSessionRequest{SessionID: session.ID}); err != nil {
-					logger.Printf("ProcessQueue: ошибка автоматического запуска сессии %s: %v", session.ID, err)
-				} else {
-					logger.Printf("ProcessQueue: сессия %s автоматически запущена для бокса в кулдауне", session.ID)
-				}
+				// Запускаем асинхронно, не ждем завершения
+				go func(sessionID uuid.UUID) {
+					ctxAsync := context.Background()
+					if _, err := s.StartSession(ctxAsync, &models.StartSessionRequest{SessionID: sessionID}); err != nil {
+						logger.Printf("ProcessQueue: ошибка автоматического запуска сессии %s: %v", sessionID, err)
+					} else {
+						logger.Printf("ProcessQueue: сессия %s автоматически запущена для бокса в кулдауне", sessionID)
+					}
+				}(session.ID)
 			}
 		}
 
-		// Отправляем уведомление о назначении бокса (только если сессия не была автоматически запущена)
+		// Отправляем уведомление о назначении бокса (только если сессия не была автоматически запущена) асинхронно
 		if session.Status == models.SessionStatusAssigned && s.userService != nil && s.telegramBot != nil {
-			// Получаем пользователя
-			user, err := s.userService.GetUserByID(ctx, session.UserID)
-			if err == nil {
-				// Отправляем уведомление с номером бокса
-				err = s.telegramBot.SendBoxAssignmentNotification(user.TelegramID, box.Number)
-				if err != nil {
-					logger.Printf("ProcessQueue: ошибка отправки уведомления о назначении бокса для сессии %s: %v", session.ID, err)
+			// Отправляем асинхронно, не ждем завершения
+			go func(sessionID uuid.UUID, userID uuid.UUID, boxNumber int) {
+				ctxAsync := context.Background()
+				// Получаем пользователя
+				user, err := s.userService.GetUserByID(ctxAsync, userID)
+				if err == nil && user != nil {
+					// Отправляем уведомление с номером бокса
+					err = s.telegramBot.SendBoxAssignmentNotification(user.TelegramID, boxNumber)
+					if err != nil {
+						logger.Printf("ProcessQueue: ошибка отправки уведомления о назначении бокса для сессии %s: %v", sessionID, err)
+					}
+				} else {
+					logger.Printf("ProcessQueue: ошибка получения пользователя для сессии %s: %v", sessionID, err)
 				}
-			} else {
-				logger.Printf("ProcessQueue: ошибка получения пользователя для сессии %s: %v", session.ID, err)
-			}
+			}(session.ID, session.UserID, box.Number)
 		}
 	}
 
@@ -1582,6 +1753,12 @@ func (s *ServiceImpl) ProcessQueue(ctx context.Context) error {
 
 // CheckAndExpireReservedSessions проверяет и автоматически запускает сессии, которые не были стартованы в течение 3 минут
 func (s *ServiceImpl) CheckAndExpireReservedSessions(ctx context.Context) error {
+	startTime := time.Now()
+	defer func() {
+		duration := time.Since(startTime)
+		logger.Printf("CheckAndExpireReservedSessions: выполнение заняло %v", duration)
+	}()
+
 	// Получаем все сессии со статусом "assigned"
 	assignedSessions, err := s.repo.GetSessionsByStatus(ctx, models.SessionStatusAssigned)
 	if err != nil {
@@ -1621,19 +1798,22 @@ func (s *ServiceImpl) CheckAndExpireReservedSessions(ctx context.Context) error 
 					continue
 				}
 
-				// Отправляем уведомление об автоматическом запуске сессии
+				// Отправляем уведомление об автоматическом запуске сессии асинхронно
 				if s.telegramBot != nil {
-					user, err := s.userService.GetUserByID(ctx, session.UserID)
-					if err == nil && user != nil {
-						err = s.telegramBot.SendSessionNotification(user.TelegramID, telegram.NotificationTypeSessionAutoStarted, nil)
-						if err != nil {
-							logger.Printf("CheckAndExpireReservedSessions: ошибка отправки уведомления об автоматическом запуске: %v", err)
+					go func(sessionID uuid.UUID, userID uuid.UUID) {
+						ctxAsync := context.Background()
+						user, err := s.userService.GetUserByID(ctxAsync, userID)
+						if err == nil && user != nil {
+							err = s.telegramBot.SendSessionNotification(user.TelegramID, telegram.NotificationTypeSessionAutoStarted, nil)
+							if err != nil {
+								logger.Printf("CheckAndExpireReservedSessions: ошибка отправки уведомления об автоматическом запуске: %v", err)
+							} else {
+								logger.Printf("CheckAndExpireReservedSessions: уведомление об автоматическом запуске отправлено пользователю %d, SessionID=%s", user.TelegramID, sessionID)
+							}
 						} else {
-							logger.Printf("CheckAndExpireReservedSessions: уведомление об автоматическом запуске отправлено пользователю %d, SessionID=%s", user.TelegramID, session.ID)
+							logger.Printf("CheckAndExpireReservedSessions: не удалось получить данные пользователя для отправки уведомления: %v", err)
 						}
-					} else {
-						logger.Printf("CheckAndExpireReservedSessions: не удалось получить данные пользователя для отправки уведомления: %v", err)
-					}
+					}(session.ID, session.UserID)
 				}
 
 				logger.Printf("CheckAndExpireReservedSessions: сессия автоматически запущена - SessionID=%s, BoxID=%s", session.ID, *session.BoxID)
@@ -1646,6 +1826,12 @@ func (s *ServiceImpl) CheckAndExpireReservedSessions(ctx context.Context) error 
 
 // CheckAndNotifyExpiringReservedSessions проверяет и отправляет уведомления для сессий, которые скоро истекут
 func (s *ServiceImpl) CheckAndNotifyExpiringReservedSessions(ctx context.Context) error {
+	startTime := time.Now()
+	defer func() {
+		duration := time.Since(startTime)
+		logger.Printf("CheckAndNotifyExpiringReservedSessions: выполнение заняло %v", duration)
+	}()
+
 	// Если сервис пользователей или телеграм бот не инициализированы, выходим
 	if s.userService == nil || s.telegramBot == nil {
 		return nil
@@ -1688,21 +1874,24 @@ func (s *ServiceImpl) CheckAndNotifyExpiringReservedSessions(ctx context.Context
 					continue
 				}
 
-				// Отправляем уведомление
-				err = s.telegramBot.SendSessionNotification(user.TelegramID, telegram.NotificationTypeSessionExpiringSoon, nil)
-				if err != nil {
-					continue
-				}
+				// Отправляем уведомление асинхронно
+				go func(sessionID uuid.UUID, telegramID int64) {
+					ctxAsync := context.Background()
+					err := s.telegramBot.SendSessionNotification(telegramID, telegram.NotificationTypeSessionExpiringSoon, nil)
+					if err != nil {
+						logger.Printf("CheckAndNotifyExpiringSessions: ошибка отправки уведомления для сессии %s: %v", sessionID, err)
+						return
+					}
 
-				// Помечаем, что уведомление отправлено
-				err = s.repo.UpdateSessionFields(ctx, session.ID, map[string]interface{}{
-					"is_expiring_notification_sent": true,
-					"updated_at":                    time.Now(),
-				})
-				if err != nil {
-					logger.Printf("CheckAndNotifyExpiringSessions: ошибка обновления флага уведомления для сессии %s: %v", session.ID, err)
-					continue
-				}
+					// Помечаем, что уведомление отправлено (только после успешной отправки)
+					err = s.repo.UpdateSessionFields(ctxAsync, sessionID, map[string]interface{}{
+						"is_expiring_notification_sent": true,
+						"updated_at":                    time.Now(),
+					})
+					if err != nil {
+						logger.Printf("CheckAndNotifyExpiringSessions: ошибка обновления флага уведомления для сессии %s: %v", sessionID, err)
+					}
+				}(session.ID, user.TelegramID)
 			}
 		}
 	}
@@ -1712,6 +1901,12 @@ func (s *ServiceImpl) CheckAndNotifyExpiringReservedSessions(ctx context.Context
 
 // CheckAndNotifyCompletingSessions проверяет и отправляет уведомления для сессий, которые скоро завершатся
 func (s *ServiceImpl) CheckAndNotifyCompletingSessions(ctx context.Context) error {
+	startTime := time.Now()
+	defer func() {
+		duration := time.Since(startTime)
+		logger.Printf("CheckAndNotifyCompletingSessions: выполнение заняло %v", duration)
+	}()
+
 	// Если сервис пользователей или телеграм бот не инициализированы, выходим
 	if s.userService == nil || s.telegramBot == nil {
 		return nil
@@ -1754,21 +1949,24 @@ func (s *ServiceImpl) CheckAndNotifyCompletingSessions(ctx context.Context) erro
 					continue
 				}
 
-				// Отправляем уведомление
-				err = s.telegramBot.SendSessionNotification(user.TelegramID, telegram.NotificationTypeSessionCompletingSoon, nil)
-				if err != nil {
-					continue
-				}
+				// Отправляем уведомление асинхронно
+				go func(sessionID uuid.UUID, telegramID int64) {
+					ctxAsync := context.Background()
+					err := s.telegramBot.SendSessionNotification(telegramID, telegram.NotificationTypeSessionCompletingSoon, nil)
+					if err != nil {
+						logger.Printf("CheckAndNotifyCompletingSessions: ошибка отправки уведомления для сессии %s: %v", sessionID, err)
+						return
+					}
 
-				// Помечаем, что уведомление отправлено
-				err = s.repo.UpdateSessionFields(ctx, session.ID, map[string]interface{}{
-					"is_completing_notification_sent": true,
-					"updated_at":                      time.Now(),
-				})
-				if err != nil {
-					logger.Printf("CheckAndNotifyCompletingSessions: ошибка обновления флага уведомления для сессии %s: %v", session.ID, err)
-					continue
-				}
+					// Помечаем, что уведомление отправлено (только после успешной отправки)
+					err = s.repo.UpdateSessionFields(ctxAsync, sessionID, map[string]interface{}{
+						"is_completing_notification_sent": true,
+						"updated_at":                      time.Now(),
+					})
+					if err != nil {
+						logger.Printf("CheckAndNotifyCompletingSessions: ошибка обновления флага уведомления для сессии %s: %v", sessionID, err)
+					}
+				}(session.ID, user.TelegramID)
 			}
 		}
 	}
@@ -1783,6 +1981,9 @@ func (s *ServiceImpl) CountSessionsByStatus(ctx context.Context, status string) 
 
 // GetSessionsByStatus получает сессии по статусу
 func (s *ServiceImpl) GetSessionsByStatus(ctx context.Context, status string) ([]models.Session, error) {
+	if ctx.Err() != nil {
+		return nil, ctx.Err()
+	}
 	return s.repo.GetSessionsByStatus(ctx, status)
 }
 
@@ -1799,15 +2000,30 @@ func (s *ServiceImpl) GetUserSessionHistory(ctx context.Context, req *models.Get
 		offset = 0
 	}
 
+	// Проверяем контекст перед DB запросами
+	if ctx.Err() != nil {
+		return nil, ctx.Err()
+	}
+
 	sessions, err := s.repo.GetUserSessionHistory(ctx, req.UserID, limit, offset)
 	if err != nil {
 		return nil, err
+	}
+
+	// Проверяем контекст после запроса сессий
+	if ctx.Err() != nil {
+		return nil, ctx.Err()
 	}
 
 	// Получаем таймаут один раз
 	sessionTimeout, err := s.settingsService.GetSessionTimeout(ctx)
 	if err != nil {
 		sessionTimeout = 3
+	}
+
+	// Проверяем контекст перед запросом платежей
+	if ctx.Err() != nil {
+		return nil, ctx.Err()
 	}
 
 	// Батч: собираем все sessionIDs и получаем платежи одним вызовом
@@ -1944,8 +2160,12 @@ func (s *ServiceImpl) CreateFromCashier(ctx context.Context, req *models.Cashier
 				s.metrics.RecordMultipleSession("duplicate_car_number", normalizedCarNumber, "0")
 			}
 
-			// Возвращаем существующую сессию вместо создания новой
-			return existingSession, nil
+			// Возвращаем ошибку с информацией о боксе
+			errorMsg := fmt.Sprintf("уже существует активная сессия с номером автомобиля '%s'", req.CarNumber)
+			if existingSession.BoxNumber != nil {
+				errorMsg = fmt.Sprintf("уже существует активная сессия с номером автомобиля '%s' в боксе №%d", req.CarNumber, *existingSession.BoxNumber)
+			}
+			return nil, fmt.Errorf(errorMsg)
 		}
 	}
 
@@ -2011,7 +2231,7 @@ func (s *ServiceImpl) AdminListSessions(ctx context.Context, req *models.AdminLi
 	}
 
 	// Получаем сессии с фильтрацией
-	sessions, err := s.repo.GetSessionsWithFilters(ctx,
+	sessions, total, err := s.repo.GetSessionsWithFilters(ctx,
 		req.UserID,
 		req.BoxID,
 		req.BoxNumber,
@@ -2038,7 +2258,7 @@ func (s *ServiceImpl) AdminListSessions(ctx context.Context, req *models.AdminLi
 
 	return &models.AdminListSessionsResponse{
 		Sessions: sessions,
-		Total:    len(sessions),
+		Total:    total,
 		Limit:    limit,
 		Offset:   offset,
 	}, nil
@@ -2173,12 +2393,22 @@ func (s *ServiceImpl) CashierGetActiveSessions(ctx context.Context, req *models.
 		return nil, fmt.Errorf("некорректный ID кассира: %w", err)
 	}
 
+	// Проверяем контекст перед DB запросом
+	if ctx.Err() != nil {
+		return nil, ctx.Err()
+	}
+
 	// Получаем активные сессии кассира (не завершенные)
 	// Активные статусы: created, in_queue, assigned, active
 	// Терминальные статусы: complete, canceled, expired, payment_failed
-	sessions, err := s.repo.GetSessionsWithFilters(ctx, &cashierUserID, nil, nil, nil, nil, nil, nil, limit, offset)
+	sessions, total, err := s.repo.GetSessionsWithFilters(ctx, &cashierUserID, nil, nil, nil, nil, nil, nil, limit, offset)
 	if err != nil {
 		return nil, err
+	}
+
+	// Проверяем контекст после DB запроса (может быть отменен во время запроса)
+	if ctx.Err() != nil {
+		return nil, ctx.Err()
 	}
 
 	// Фильтруем только активные сессии
@@ -2188,6 +2418,11 @@ func (s *ServiceImpl) CashierGetActiveSessions(ctx context.Context, req *models.
 			session.Status == "assigned" || session.Status == "active" {
 			activeSessions = append(activeSessions, session)
 		}
+	}
+
+	// Проверяем контекст перед запросом настроек
+	if ctx.Err() != nil {
+		return nil, ctx.Err()
 	}
 
 	// Заполняем session_timeout_minutes из настроек
@@ -2204,7 +2439,7 @@ func (s *ServiceImpl) CashierGetActiveSessions(ctx context.Context, req *models.
 
 	return &models.CashierActiveSessionsResponse{
 		Sessions: activeSessions,
-		Total:    len(activeSessions),
+		Total:    total,
 		Limit:    limit,
 		Offset:   offset,
 	}, nil
@@ -2358,7 +2593,7 @@ func (s *ServiceImpl) EnableChemistry(ctx context.Context, req *models.EnableChe
 
 	// Запускаем автоматическое выключение химии через указанное время
 	if session.ChemistryTimeMinutes > 0 {
-		s.AutoDisableChemistry(ctx, session.ID, session.ChemistryTimeMinutes)
+		s.AutoDisableChemistry(session.ID, session.ChemistryTimeMinutes)
 	}
 
 	return &models.EnableChemistryResponse{
@@ -2367,16 +2602,17 @@ func (s *ServiceImpl) EnableChemistry(ctx context.Context, req *models.EnableChe
 }
 
 // AutoDisableChemistry автоматически выключает химию через указанное количество минут
-func (s *ServiceImpl) AutoDisableChemistry(ctx context.Context, sessionID uuid.UUID, chemistryTimeMinutes int) {
-	// Запускаем в отдельной горутине
-	go func() {
-		logger.Printf("AutoDisableChemistry: запланировано автовыключение химии через %d минут, SessionID=%s", chemistryTimeMinutes, sessionID)
+func (s *ServiceImpl) AutoDisableChemistry(sessionID uuid.UUID, chemistryTimeMinutes int) {
+	// Планируем отключение без долгого блокирующего sleep и без захвата краткоживущего ctx
+	logger.Printf("AutoDisableChemistry: запланировано автовыключение химии через %d минут, SessionID=%s", chemistryTimeMinutes, sessionID)
 
-		// Ждем указанное время
-		time.Sleep(time.Duration(chemistryTimeMinutes) * time.Minute)
+	time.AfterFunc(time.Duration(chemistryTimeMinutes)*time.Minute, func() {
+		// Локальный краткоживущий контекст для каждой операции (не наследует отменённый исходный ctx)
+		opCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
 
 		// Получаем сессию
-		session, err := s.repo.GetSessionByID(ctx, sessionID)
+		session, err := s.repo.GetSessionByID(opCtx, sessionID)
 		if err != nil {
 			logger.Printf("AutoDisableChemistry: ошибка получения сессии для автовыключения химии: %v, SessionID=%s", err, sessionID)
 			return
@@ -2386,11 +2622,12 @@ func (s *ServiceImpl) AutoDisableChemistry(ctx context.Context, sessionID uuid.U
 		if session.ChemistryStartedAt != nil && session.ChemistryEndedAt == nil {
 			// Выключаем химию через Modbus
 			if s.modbusService != nil && session.BoxID != nil {
-				// Получаем регистр химии для бокса
-				chemistryRegister := s.getChemistryRegisterForBox(ctx, *session.BoxID)
+				chemistryRegister := s.getChemistryRegisterForBox(opCtx, *session.BoxID)
 				if chemistryRegister != "" {
-					err := s.modbusService.WriteChemistryCoil(ctx, *session.BoxID, chemistryRegister, false)
-					if err != nil {
+					// Отдельный контекст для Modbus операции
+					modbusCtx, modbusCancel := context.WithTimeout(context.Background(), 10*time.Second)
+					defer modbusCancel()
+					if err := s.modbusService.WriteChemistryCoil(modbusCtx, *session.BoxID, chemistryRegister, false); err != nil {
 						logger.Printf("AutoDisableChemistry: ошибка автовыключения химии через Modbus: %v, SessionID=%s, BoxID=%s", err, sessionID, *session.BoxID)
 					} else {
 						logger.Printf("AutoDisableChemistry: химия успешно выключена через Modbus, SessionID=%s, BoxID=%s", sessionID, *session.BoxID)
@@ -2402,16 +2639,12 @@ func (s *ServiceImpl) AutoDisableChemistry(ctx context.Context, sessionID uuid.U
 
 			// Обновляем время выключения химии
 			now := time.Now()
-
-			// ВАЖНО: Обновляем только нужные поля, не трогаем StatusUpdatedAt, RentalTimeMinutes, ExtensionTimeMinutes!
 			logger.Printf("AutoDisableChemistry: выключение химии - SessionID=%s", sessionID)
 
-			// Используем Updates для обновления только нужных полей
-			err = s.repo.UpdateSessionFields(ctx, sessionID, map[string]interface{}{
+			if err := s.repo.UpdateSessionFields(opCtx, sessionID, map[string]interface{}{
 				"chemistry_ended_at": now,
 				"updated_at":         now,
-			})
-			if err != nil {
+			}); err != nil {
 				logger.Printf("AutoDisableChemistry: ошибка обновления сессии: %v, SessionID=%s", err, sessionID)
 			} else {
 				logger.Printf("AutoDisableChemistry: химия автоматически выключена, SessionID=%s", sessionID)
@@ -2419,7 +2652,7 @@ func (s *ServiceImpl) AutoDisableChemistry(ctx context.Context, sessionID uuid.U
 		} else {
 			logger.Printf("AutoDisableChemistry: химия уже была выключена, SessionID=%s", sessionID)
 		}
-	}()
+	})
 }
 
 // ReassignSession переназначает сессию на другой бокс
@@ -2524,6 +2757,12 @@ func (s *ServiceImpl) ReassignSession(ctx context.Context, req *models.ReassignS
 
 // CheckAndAutoEnableChemistry проверяет и автоматически включает химию для сессий, где время подходит к концу
 func (s *ServiceImpl) CheckAndAutoEnableChemistry(ctx context.Context) error {
+	startTime := time.Now()
+	defer func() {
+		duration := time.Since(startTime)
+		logger.Printf("CheckAndAutoEnableChemistry: выполнение заняло %v", duration)
+	}()
+
 	// Если сервис пользователей или телеграм бот не инициализированы, выходим
 	if s.userService == nil || s.telegramBot == nil {
 		return nil
@@ -2594,22 +2833,25 @@ func (s *ServiceImpl) CheckAndAutoEnableChemistry(ctx context.Context) error {
 				continue
 			}
 
-			// Отправляем уведомление пользователю
-			user, err := s.userService.GetUserByID(ctx, session.UserID)
-			if err != nil {
-				logger.Printf("CheckAndAutoEnableChemistry: ошибка получения пользователя для уведомления - UserID=%s, error=%v", session.UserID, err)
-				continue
-			}
+			// Отправляем уведомление пользователю асинхронно
+			go func(sessionID uuid.UUID, userID uuid.UUID) {
+				ctxAsync := context.Background()
+				user, err := s.userService.GetUserByID(ctxAsync, userID)
+				if err != nil {
+					logger.Printf("CheckAndAutoEnableChemistry: ошибка получения пользователя для уведомления - UserID=%s, error=%v", userID, err)
+					return
+				}
 
-			// Отправляем уведомление через Telegram
-			err = s.telegramBot.SendSessionNotification(user.TelegramID, telegram.NotificationTypeChemistryAutoEnabled, nil)
-			if err != nil {
-				logger.Printf("CheckAndAutoEnableChemistry: ошибка отправки уведомления - UserID=%s, TelegramID=%s, error=%v",
-					user.ID, user.TelegramID, err)
-			} else {
-				logger.Printf("CheckAndAutoEnableChemistry: уведомление отправлено - UserID=%s, TelegramID=%s",
-					user.ID, user.TelegramID)
-			}
+				// Отправляем уведомление через Telegram
+				err = s.telegramBot.SendSessionNotification(user.TelegramID, telegram.NotificationTypeChemistryAutoEnabled, nil)
+				if err != nil {
+					logger.Printf("CheckAndAutoEnableChemistry: ошибка отправки уведомления - UserID=%s, TelegramID=%s, error=%v",
+						user.ID, user.TelegramID, err)
+				} else {
+					logger.Printf("CheckAndAutoEnableChemistry: уведомление отправлено - UserID=%s, TelegramID=%s",
+						user.ID, user.TelegramID)
+				}
+			}(session.ID, session.UserID)
 		}
 	}
 

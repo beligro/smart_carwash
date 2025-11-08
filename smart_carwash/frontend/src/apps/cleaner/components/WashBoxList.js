@@ -184,24 +184,6 @@ const WashBoxList = ({ onCleaningAction }) => {
     return defaultMessage;
   };
 
-  const handleReserveCleaning = async (washBoxId) => {
-    setActionLoading(prev => ({ ...prev, [washBoxId]: true }));
-    
-    try {
-      await ApiService.reserveCleaning(washBoxId);
-      await loadWashBoxes();
-      // Обновляем таймер уборки
-      if (onCleaningAction) {
-        onCleaningAction();
-      }
-    } catch (error) {
-      setError(getErrorMessage(error, 'Ошибка при резервировании уборки'));
-      console.error(error);
-    } finally {
-      setActionLoading(prev => ({ ...prev, [washBoxId]: false }));
-    }
-  };
-
   const handleStartCleaning = async (washBoxId) => {
     setActionLoading(prev => ({ ...prev, [washBoxId]: true }));
     
@@ -214,24 +196,6 @@ const WashBoxList = ({ onCleaningAction }) => {
       }
     } catch (error) {
       setError(getErrorMessage(error, 'Ошибка при начале уборки'));
-      console.error(error);
-    } finally {
-      setActionLoading(prev => ({ ...prev, [washBoxId]: false }));
-    }
-  };
-
-  const handleCancelCleaning = async (washBoxId) => {
-    setActionLoading(prev => ({ ...prev, [washBoxId]: true }));
-    
-    try {
-      await ApiService.cancelCleaning(washBoxId);
-      await loadWashBoxes();
-      // Обновляем таймер уборки
-      if (onCleaningAction) {
-        onCleaningAction();
-      }
-    } catch (error) {
-      setError(getErrorMessage(error, 'Ошибка при отмене уборки'));
       console.error(error);
     } finally {
       setActionLoading(prev => ({ ...prev, [washBoxId]: false }));
@@ -309,17 +273,6 @@ const WashBoxList = ({ onCleaningAction }) => {
           </ActionButton>
         );
       
-      case 'busy':
-        return (
-          <ActionButton
-            className="reserve"
-            onClick={() => handleReserveCleaning(washBox.id)}
-            disabled={isLoading}
-          >
-            {isLoading ? 'Резервируем...' : 'Зарезервировать уборку'}
-          </ActionButton>
-        );
-      
       case 'cleaning':
         return (
           <ActionButton
@@ -332,17 +285,6 @@ const WashBoxList = ({ onCleaningAction }) => {
         );
       
       default:
-        if (washBox.cleaning_reserved_by) {
-          return (
-            <ActionButton
-              className="cancel"
-              onClick={() => handleCancelCleaning(washBox.id)}
-              disabled={isLoading}
-            >
-              {isLoading ? 'Отменяем...' : 'Отменить резерв'}
-            </ActionButton>
-          );
-        }
         return null;
     }
   };

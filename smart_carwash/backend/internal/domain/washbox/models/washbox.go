@@ -115,16 +115,6 @@ type CleanerListWashBoxesResponse struct {
 	Total     int       `json:"total"`
 }
 
-// CleanerReserveCleaningRequest запрос на резервирование уборки
-type CleanerReserveCleaningRequest struct {
-	WashBoxID uuid.UUID `json:"wash_box_id" binding:"required"`
-}
-
-// CleanerReserveCleaningResponse ответ на резервирование уборки
-type CleanerReserveCleaningResponse struct {
-	Success bool `json:"success"`
-}
-
 // CleanerStartCleaningRequest запрос на начало уборки
 type CleanerStartCleaningRequest struct {
 	WashBoxID uuid.UUID `json:"wash_box_id" binding:"required"`
@@ -132,16 +122,6 @@ type CleanerStartCleaningRequest struct {
 
 // CleanerStartCleaningResponse ответ на начало уборки
 type CleanerStartCleaningResponse struct {
-	Success bool `json:"success"`
-}
-
-// CleanerCancelCleaningRequest запрос на отмену уборки
-type CleanerCancelCleaningRequest struct {
-	WashBoxID uuid.UUID `json:"wash_box_id" binding:"required"`
-}
-
-// CleanerCancelCleaningResponse ответ на отмену уборки
-type CleanerCancelCleaningResponse struct {
 	Success bool `json:"success"`
 }
 

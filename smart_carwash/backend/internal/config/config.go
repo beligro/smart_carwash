@@ -82,7 +82,7 @@ func LoadConfig() (*Config, error) {
 		PostgresUser:     getEnv("POSTGRES_USER", "postgres"),
 		PostgresPassword: getEnv("POSTGRES_PASSWORD", "postgres"),
 		PostgresDB:       getEnv("POSTGRES_DB", "carwash"),
-		PostgresHost:     getEnv("POSTGRES_HOST", "localhost"),
+		PostgresHost:     getEnv("POSTGRES_HOST", "172.18.0.2"), // Используем статический IP для избежания DNS запросов
 		PostgresPort:     postgresPort,
 		BackendPort:      backendPort,
 		TelegramToken:    getEnv("TELEGRAM_BOT_TOKEN", ""),
@@ -122,7 +122,7 @@ func LoadConfig() (*Config, error) {
 
 // GetDSN возвращает строку подключения к PostgreSQL
 func (c *Config) GetDSN() string {
-	return fmt.Sprintf("host=%s user=%s password=%s dbname=%s port=%d sslmode=disable TimeZone=Europe/Moscow",
+	return fmt.Sprintf("host=%s user=%s password=%s dbname=%s port=%d sslmode=disable TimeZone=Europe/Moscow connect_timeout=10",
 		c.PostgresHost, c.PostgresUser, c.PostgresPassword, c.PostgresDB, c.PostgresPort)
 }
 

@@ -207,7 +207,7 @@ func (b *Bot) SendSessionNotification(telegramID int64, notificationType Notific
 		messageText = "Ваше время закончилось, спасибо! Надеюсь, что вам все понравилось! Всегда рады видеть вас снова!"
 		// Добавляем информацию о кулдауне, если она передана
 		if cooldownMinutes != nil && *cooldownMinutes > 0 {
-			messageText += fmt.Sprintf("\n\nУ вас есть %d минут, чтобы продлить ваш бокс в приоритетном порядке. Просто оплатите заново и продолжайте.", *cooldownMinutes)
+			messageText += fmt.Sprintf("\n\nУ вас есть %d минут, чтобы продлить ваш бокс в приоритетном порядке. Просто оплатите заново и продолжайте. Если вы закончили мойку, освободите, пожалуйста, бокс для других клиентов", *cooldownMinutes)
 		}
 	case NotificationTypeSessionExpiredOrCanceled:
 		messageText = "Мы вернули вашу оплату на ваш банковский счет. Обычно деньги поступают быстро, но это зависит от вашего банка"
@@ -233,7 +233,7 @@ func (b *Bot) SendSessionNotification(telegramID int64, notificationType Notific
 
 // SendBoxAssignmentNotification отправляет уведомление о назначении бокса
 func (b *Bot) SendBoxAssignmentNotification(telegramID int64, boxNumber int) error {
-	messageText := fmt.Sprintf("Вам назначен бокс №%d! Добро пожаловать. Будьте осторожны и заезжайте в бокс! Начните мойку в мини приложении.\n\nПерейдите в мини приложение по кнопке в левом нижнем углу ↙️↙️↙️ и нажмите на кнопку \"Включить бокс\"", boxNumber)
+	messageText := fmt.Sprintf("Вам назначен бокс №%d! Добро пожаловать. Будьте осторожны и заезжайте в бокс! Если бокс занят - предыдущий клиент задержался, поторопите его, пожалуйста! Начните мойку в мини приложении.\n\nПерейдите в мини приложение по кнопке в левом нижнем углу ↙️↙️↙️ и нажмите на кнопку \"Включить бокс\"", boxNumber)
 
 	// Отправляем сообщение без клавиатуры
 	msg := tgbotapi.NewMessage(telegramID, messageText)

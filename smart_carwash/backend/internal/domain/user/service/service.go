@@ -17,6 +17,7 @@ type Service interface {
 	CreateUser(ctx context.Context, req *models.CreateUserRequest) (*models.User, error)
 	GetUserByTelegramID(ctx context.Context, telegramID int64) (*models.User, error)
 	GetUserByID(ctx context.Context, id uuid.UUID) (*models.User, error)
+	GetUsersByIDs(ctx context.Context, ids []uuid.UUID) (map[uuid.UUID]*models.User, error)
 	GetUserByCarNumber(ctx context.Context, carNumber string) (*models.User, error)
 	UpdateCarNumber(ctx context.Context, req *models.UpdateCarNumberRequest) (*models.UpdateCarNumberResponse, error)
 	UpdateEmail(ctx context.Context, req *models.UpdateEmailRequest) (*models.UpdateEmailResponse, error)
@@ -71,6 +72,11 @@ func (s *ServiceImpl) GetUserByTelegramID(ctx context.Context, telegramID int64)
 // GetUserByID получает пользователя по ID
 func (s *ServiceImpl) GetUserByID(ctx context.Context, id uuid.UUID) (*models.User, error) {
 	return s.repo.GetUserByID(ctx, id)
+}
+
+// GetUsersByIDs получает пользователей по списку ID
+func (s *ServiceImpl) GetUsersByIDs(ctx context.Context, ids []uuid.UUID) (map[uuid.UUID]*models.User, error) {
+	return s.repo.GetUsersByIDs(ctx, ids)
 }
 
 // GetUserByCarNumber получает пользователя по номеру автомобиля

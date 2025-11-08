@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"sync"
 	"time"
 
 	"carwash_backend/internal/config"
@@ -71,18 +72,33 @@ type Service interface {
 	VerifyTwoFactorCode(ctx context.Context, userID uuid.UUID, code string) (bool, error)
 }
 
+// invalidTokenCacheEntry запись в кэше невалидных токенов
+type invalidTokenCacheEntry struct {
+	expiresAt time.Time
+}
+
 // ServiceImpl реализация Service
 type ServiceImpl struct {
 	repo   repository.Repository
 	config *config.Config
+	// Кэш невалидных токенов: токен -> время истечения кэша
+	// TTL = 5 минут - чтобы не забивать память навсегда
+	invalidTokenCache sync.Map
+	cacheTTL          time.Duration
 }
 
 // NewService создает новый экземпляр Service
 func NewService(repo repository.Repository, config *config.Config) *ServiceImpl {
-	return &ServiceImpl{
-		repo:   repo,
-		config: config,
+	service := &ServiceImpl{
+		repo:     repo,
+		config:   config,
+		cacheTTL: 5 * time.Minute, // TTL для кэша невалидных токенов
 	}
+
+	// Запускаем фоновую очистку кэша
+	go service.cleanupInvalidTokenCache()
+
+	return service
 }
 
 // LoginAdmin авторизует администратора
@@ -185,8 +201,69 @@ func (s *ServiceImpl) LoginCashier(ctx context.Context, username, password strin
 	}, nil
 }
 
+// addToInvalidTokenCache добавляет токен в кэш невалидных токенов
+func (s *ServiceImpl) addToInvalidTokenCache(tokenString string) {
+	entry := invalidTokenCacheEntry{
+		expiresAt: time.Now().Add(s.cacheTTL),
+	}
+	s.invalidTokenCache.Store(tokenString, entry)
+}
+
+// removeFromInvalidTokenCache удаляет токен из кэша невалидных токенов
+// Используется при логауте или успешном логине
+func (s *ServiceImpl) removeFromInvalidTokenCache(tokenString string) {
+	s.invalidTokenCache.Delete(tokenString)
+}
+
+// isInInvalidTokenCache проверяет, есть ли токен в кэше невалидных токенов
+func (s *ServiceImpl) isInInvalidTokenCache(tokenString string) bool {
+	value, ok := s.invalidTokenCache.Load(tokenString)
+	if !ok {
+		return false
+	}
+
+	entry, ok := value.(invalidTokenCacheEntry)
+	if !ok {
+		// Невалидная запись, удаляем
+		s.invalidTokenCache.Delete(tokenString)
+		return false
+	}
+
+	// Проверяем, не истек ли TTL
+	if time.Now().After(entry.expiresAt) {
+		// TTL истек, удаляем запись
+		s.invalidTokenCache.Delete(tokenString)
+		return false
+	}
+
+	return true
+}
+
+// cleanupInvalidTokenCache периодически очищает истекшие записи из кэша
+// Вызывается в фоне при старте сервиса
+func (s *ServiceImpl) cleanupInvalidTokenCache() {
+	for {
+		time.Sleep(1 * time.Minute) // Очистка каждую минуту
+
+		now := time.Now()
+		s.invalidTokenCache.Range(func(key, value interface{}) bool {
+			entry, ok := value.(invalidTokenCacheEntry)
+			if !ok || now.After(entry.expiresAt) {
+				// Запись истекла, удаляем
+				s.invalidTokenCache.Delete(key)
+			}
+			return true
+		})
+	}
+}
+
 // ValidateToken проверяет JWT токен и возвращает данные пользователя
 func (s *ServiceImpl) ValidateToken(ctx context.Context, tokenString string) (*models.TokenClaims, error) {
+	// Сначала проверяем кэш невалидных токенов
+	if s.isInInvalidTokenCache(tokenString) {
+		return nil, errors.New("токен недействителен")
+	}
+
 	// Парсим токен
 	token, err := jwt.Parse(tokenString, func(token *jwt.Token) (interface{}, error) {
 		// Проверяем метод подписи
@@ -197,23 +274,31 @@ func (s *ServiceImpl) ValidateToken(ctx context.Context, tokenString string) (*m
 	})
 
 	if err != nil {
+		// Токен невалидный, добавляем в кэш
+		s.addToInvalidTokenCache(tokenString)
 		return nil, err
 	}
 
 	// Проверяем валидность токена
 	if !token.Valid {
+		// Токен невалидный, добавляем в кэш
+		s.addToInvalidTokenCache(tokenString)
 		return nil, errors.New("недействительный токен")
 	}
 
 	// Получаем данные из токена
 	claims, ok := token.Claims.(jwt.MapClaims)
 	if !ok {
+		// Токен невалидный, добавляем в кэш
+		s.addToInvalidTokenCache(tokenString)
 		return nil, errors.New("недействительные данные токена")
 	}
 
 	// Проверяем, не истек ли токен
 	if exp, ok := claims["exp"].(float64); ok {
 		if time.Now().Unix() > int64(exp) {
+			// Токен истек, добавляем в кэш
+			s.addToInvalidTokenCache(tokenString)
 			return nil, errors.New("токен истек")
 		}
 	}
@@ -221,12 +306,31 @@ func (s *ServiceImpl) ValidateToken(ctx context.Context, tokenString string) (*m
 	// Если это токен кассира, проверяем, существует ли сессия
 	isAdmin, _ := claims["is_admin"].(bool)
 	if !isAdmin {
+		// Проверяем контекст перед DB запросом
+		if ctx.Err() != nil {
+			return nil, ctx.Err()
+		}
+
+		// Создаем отдельный контекст с коротким таймаутом для DB запроса (2 секунды)
+		// Это предотвратит зависание на долгих запросах к БД
+		dbCtx, dbCancel := context.WithTimeout(ctx, 2*time.Second)
+		defer dbCancel()
+
 		// Получаем сессию по токену
-		session, err := s.repo.GetCashierSessionByToken(ctx, tokenString)
+		session, err := s.repo.GetCashierSessionByToken(dbCtx, tokenString)
+		
+		// Проверяем, был ли отменен контекст или превышен таймаут
+		if dbCtx.Err() != nil {
+			return nil, dbCtx.Err()
+		}
+
 		if err != nil {
+			// Ошибка при запросе к БД, не добавляем в кэш (может быть временная ошибка)
 			return nil, err
 		}
 		if session == nil {
+			// Сессия не найдена, добавляем в кэш невалидных токенов
+			s.addToInvalidTokenCache(tokenString)
 			return nil, errors.New("сессия не найдена или истекла")
 		}
 	}
@@ -249,6 +353,11 @@ func (s *ServiceImpl) ValidateToken(ctx context.Context, tokenString string) (*m
 
 // ValidateCleanerToken проверяет токен уборщика и возвращает данные из него
 func (s *ServiceImpl) ValidateCleanerToken(ctx context.Context, tokenString string) (*models.TokenClaims, error) {
+	// Сначала проверяем кэш невалидных токенов
+	if s.isInInvalidTokenCache(tokenString) {
+		return nil, errors.New("токен недействителен")
+	}
+
 	// Парсим токен
 	token, err := jwt.Parse(tokenString, func(token *jwt.Token) (interface{}, error) {
 		// Проверяем метод подписи
@@ -258,20 +367,32 @@ func (s *ServiceImpl) ValidateCleanerToken(ctx context.Context, tokenString stri
 		return []byte(s.config.JWTSecret), nil
 	})
 
+	if err != nil {
+		// Токен невалидный, добавляем в кэш
+		s.addToInvalidTokenCache(tokenString)
+		return nil, err
+	}
+
 	// Проверяем валидность токена
 	if !token.Valid {
+		// Токен невалидный, добавляем в кэш
+		s.addToInvalidTokenCache(tokenString)
 		return nil, errors.New("недействительный токен")
 	}
 
 	// Получаем данные из токена
 	claims, ok := token.Claims.(jwt.MapClaims)
 	if !ok {
+		// Токен невалидный, добавляем в кэш
+		s.addToInvalidTokenCache(tokenString)
 		return nil, errors.New("недействительные данные токена")
 	}
 
 	// Проверяем, не истек ли токен
 	if exp, ok := claims["exp"].(float64); ok {
 		if time.Now().Unix() > int64(exp) {
+			// Токен истек, добавляем в кэш
+			s.addToInvalidTokenCache(tokenString)
 			return nil, errors.New("токен истек")
 		}
 	}
@@ -279,15 +400,36 @@ func (s *ServiceImpl) ValidateCleanerToken(ctx context.Context, tokenString stri
 	// Проверяем, что это токен уборщика (не администратора)
 	isAdmin, _ := claims["is_admin"].(bool)
 	if isAdmin {
+		// Токен не для уборщика, добавляем в кэш
+		s.addToInvalidTokenCache(tokenString)
 		return nil, errors.New("этот токен не для уборщика")
 	}
 
+	// Проверяем контекст перед DB запросом
+	if ctx.Err() != nil {
+		return nil, ctx.Err()
+	}
+
+	// Создаем отдельный контекст с коротким таймаутом для DB запроса (2 секунды)
+	// Это предотвратит зависание на долгих запросах к БД
+	dbCtx, dbCancel := context.WithTimeout(ctx, 2*time.Second)
+	defer dbCancel()
+
 	// Получаем сессию уборщика по токену
-	session, err := s.repo.GetCleanerSessionByToken(ctx, tokenString)
+	session, err := s.repo.GetCleanerSessionByToken(dbCtx, tokenString)
+	
+	// Проверяем, был ли отменен контекст или превышен таймаут
+	if dbCtx.Err() != nil {
+		return nil, dbCtx.Err()
+	}
+
 	if err != nil {
+		// Ошибка при запросе к БД, не добавляем в кэш (может быть временная ошибка)
 		return nil, err
 	}
 	if session == nil {
+		// Сессия не найдена, добавляем в кэш невалидных токенов
+		s.addToInvalidTokenCache(tokenString)
 		return nil, errors.New("сессия уборщика не найдена или истекла")
 	}
 
@@ -314,6 +456,9 @@ func (s *ServiceImpl) Logout(ctx context.Context, token string) error {
 	if err != nil {
 		return err
 	}
+
+	// Удаляем токен из кэша невалидных токенов (если был там)
+	s.removeFromInvalidTokenCache(token)
 
 	// Если это администратор, просто возвращаем успех
 	if claims.IsAdmin {

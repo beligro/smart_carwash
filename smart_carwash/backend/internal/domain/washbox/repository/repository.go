@@ -30,9 +30,7 @@ type Repository interface {
 
 	// Методы для уборщиков
 	GetWashBoxesForCleaner(ctx context.Context, limit int, offset int) ([]models.WashBox, int, error)
-	ReserveCleaning(ctx context.Context, washBoxID uuid.UUID, cleanerID uuid.UUID) error
 	StartCleaning(ctx context.Context, washBoxID uuid.UUID) error
-	CancelCleaning(ctx context.Context, washBoxID uuid.UUID) error
 	CompleteCleaning(ctx context.Context, washBoxID uuid.UUID) error
 	GetCleaningBoxes(ctx context.Context) ([]models.WashBox, error)
 	UpdateCleaningStartedAt(ctx context.Context, washBoxID uuid.UUID, startedAt time.Time) error
@@ -43,8 +41,8 @@ type Repository interface {
 	GetCleaningLogs(ctx context.Context, req *models.AdminListCleaningLogsInternalRequest) ([]models.CleaningLogWithDetails, error)
 	GetCleaningLogsCount(ctx context.Context, req *models.AdminListCleaningLogsInternalRequest) (int64, error)
 	GetActiveCleaningLogByCleaner(ctx context.Context, cleanerID uuid.UUID) (*models.CleaningLog, error)
-    GetLastCleaningLogByBox(ctx context.Context, washBoxID uuid.UUID) (*models.CleaningLog, error)
-    GetLastCleaningLogsByBoxIDs(ctx context.Context, washBoxIDs []uuid.UUID) (map[uuid.UUID]*models.CleaningLog, error)
+	GetLastCleaningLogByBox(ctx context.Context, washBoxID uuid.UUID) (*models.CleaningLog, error)
+	GetLastCleaningLogsByBoxIDs(ctx context.Context, washBoxIDs []uuid.UUID) (map[uuid.UUID]*models.CleaningLog, error)
 	GetExpiredCleaningLogs(ctx context.Context, timeoutMinutes int) ([]models.CleaningLog, error)
 
 	// Методы для работы с cooldown
@@ -52,6 +50,10 @@ type Repository interface {
 	SetCooldownByCarNumber(ctx context.Context, boxID uuid.UUID, carNumber string, cooldownUntil time.Time) error
 	ClearCooldown(ctx context.Context, boxID uuid.UUID) error
 	CheckCooldownExpired(ctx context.Context) error
+
+	// Методы с блокировкой для предотвращения дедлоков
+	GetWashBoxByIDForUpdate(ctx context.Context, id uuid.UUID) (*models.WashBox, error)
+	UpdateWashBoxStatusInTransaction(ctx context.Context, id uuid.UUID, status string) error
 }
 
 // PostgresRepository реализация Repository для PostgreSQL
@@ -254,13 +256,6 @@ func (r *PostgresRepository) GetWashBoxesForCleaner(ctx context.Context, limit i
 	return boxes, int(total), nil
 }
 
-// ReserveCleaning резервирует уборку для бокса
-func (r *PostgresRepository) ReserveCleaning(ctx context.Context, washBoxID uuid.UUID, cleanerID uuid.UUID) error {
-	return r.db.WithContext(ctx).Model(&models.WashBox{}).
-		Where("id = ?", washBoxID).
-		Update("cleaning_reserved_by", cleanerID).Error
-}
-
 // StartCleaning начинает уборку бокса
 func (r *PostgresRepository) StartCleaning(ctx context.Context, washBoxID uuid.UUID) error {
 	now := time.Now()
@@ -271,13 +266,6 @@ func (r *PostgresRepository) StartCleaning(ctx context.Context, washBoxID uuid.U
 			"cleaning_started_at":  now,
 			"cleaning_reserved_by": nil,
 		}).Error
-}
-
-// CancelCleaning отменяет резервирование уборки
-func (r *PostgresRepository) CancelCleaning(ctx context.Context, washBoxID uuid.UUID) error {
-	return r.db.WithContext(ctx).Model(&models.WashBox{}).
-		Where("id = ?", washBoxID).
-		Update("cleaning_reserved_by", nil).Error
 }
 
 // CompleteCleaning завершает уборку бокса
@@ -406,24 +394,24 @@ func (r *PostgresRepository) GetLastCleaningLogByBox(ctx context.Context, washBo
 
 // GetLastCleaningLogsByBoxIDs получает последние логи уборки для множества боксов одним запросом
 func (r *PostgresRepository) GetLastCleaningLogsByBoxIDs(ctx context.Context, washBoxIDs []uuid.UUID) (map[uuid.UUID]*models.CleaningLog, error) {
-    if len(washBoxIDs) == 0 {
-        return map[uuid.UUID]*models.CleaningLog{}, nil
-    }
-    // Получаем по каждому боксу последний лог через подзапрос
-    // SELECT DISTINCT ON (wash_box_id) * FROM cleaning_logs WHERE wash_box_id IN (...) ORDER BY wash_box_id, started_at DESC
-    var logs []models.CleaningLog
-    err := r.db.WithContext(ctx).
-        Raw("SELECT DISTINCT ON (wash_box_id) * FROM cleaning_logs WHERE wash_box_id IN ? ORDER BY wash_box_id, started_at DESC", washBoxIDs).
-        Scan(&logs).Error
-    if err != nil {
-        return nil, err
-    }
-    result := make(map[uuid.UUID]*models.CleaningLog, len(logs))
-    for i := range logs {
-        l := logs[i]
-        result[l.WashBoxID] = &l
-    }
-    return result, nil
+	if len(washBoxIDs) == 0 {
+		return map[uuid.UUID]*models.CleaningLog{}, nil
+	}
+	// Получаем по каждому боксу последний лог через подзапрос
+	// SELECT DISTINCT ON (wash_box_id) * FROM cleaning_logs WHERE wash_box_id IN (...) ORDER BY wash_box_id, started_at DESC
+	var logs []models.CleaningLog
+	err := r.db.WithContext(ctx).
+		Raw("SELECT DISTINCT ON (wash_box_id) * FROM cleaning_logs WHERE wash_box_id IN ? ORDER BY wash_box_id, started_at DESC", washBoxIDs).
+		Scan(&logs).Error
+	if err != nil {
+		return nil, err
+	}
+	result := make(map[uuid.UUID]*models.CleaningLog, len(logs))
+	for i := range logs {
+		l := logs[i]
+		result[l.WashBoxID] = &l
+	}
+	return result, nil
 }
 
 // GetExpiredCleaningLogs получает логи уборки, которые нужно автоматически завершить
@@ -482,4 +470,20 @@ func (r *PostgresRepository) CheckCooldownExpired(ctx context.Context) error {
 			"cooldown_until":                    nil,
 			"status":                            models.StatusFree,
 		}).Error
+}
+
+// GetWashBoxByIDForUpdate получает бокс по ID (без блокировки)
+func (r *PostgresRepository) GetWashBoxByIDForUpdate(ctx context.Context, id uuid.UUID) (*models.WashBox, error) {
+	var box models.WashBox
+	err := r.db.WithContext(ctx).First(&box, id).Error
+	if err != nil {
+		return nil, err
+	}
+	return &box, nil
+}
+
+// UpdateWashBoxStatusInTransaction обновляет статус бокса в рамках транзакции
+// Этот метод должен вызываться внутри транзакции
+func (r *PostgresRepository) UpdateWashBoxStatusInTransaction(ctx context.Context, id uuid.UUID, status string) error {
+	return r.db.WithContext(ctx).Model(&models.WashBox{}).Where("id = ?", id).Update("status", status).Error
 }
