@@ -261,6 +261,16 @@ type AdminGetSessionResponse struct {
 	Session Session `json:"session"`
 }
 
+// AdminCancelSessionRequest представляет запрос на отмену сессии администратором
+type AdminCancelSessionRequest struct {
+	SessionID uuid.UUID `json:"session_id" binding:"required"`
+}
+
+// AdminCancelSessionResponse представляет ответ на отмену сессии администратором
+type AdminCancelSessionResponse struct {
+	Session Session `json:"session"`
+}
+
 // CashierSessionsRequest представляет запрос на получение сессий кассира
 type CashierSessionsRequest struct {
 	ShiftStartedAt time.Time `json:"shift_started_at" binding:"required"`

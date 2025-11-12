@@ -56,6 +56,7 @@ type Service interface {
 	// Административные методы
 	AdminListSessions(ctx context.Context, req *models.AdminListSessionsRequest) (*models.AdminListSessionsResponse, error)
 	AdminGetSession(ctx context.Context, req *models.AdminGetSessionRequest) (*models.AdminGetSessionResponse, error)
+	AdminCancelSession(ctx context.Context, req *models.AdminCancelSessionRequest) (*models.AdminCancelSessionResponse, error)
 
 	// Методы для кассира
 	CashierGetActiveSessions(ctx context.Context, req *models.CashierActiveSessionsRequest) (*models.CashierActiveSessionsResponse, error)
@@ -2508,10 +2509,40 @@ func (s *ServiceImpl) CashierCancelSession(ctx context.Context, req *models.Cash
 		return nil, fmt.Errorf("сессия не найдена: %w", err)
 	}
 
-	// Кассир может отменять любые сессии в статусе in_queue или assigned
+	// Определяем, является ли сессия кассирской
+	isCashierSession := false
+	if s.cashierUserID != "" {
+		cashierUserID, err := uuid.Parse(s.cashierUserID)
+		if err == nil && session.UserID == cashierUserID {
+			isCashierSession = true
+		}
+	}
 
-	// Проверяем статус сессии
-	if session.Status != "in_queue" && session.Status != "assigned" {
+	// Определяем разрешенные статусы в зависимости от типа сессии
+	var allowedStatuses []string
+	if isCashierSession {
+		// Кассир может отменять свои сессии в любом статусе, кроме начатых (active)
+		allowedStatuses = []string{
+			models.SessionStatusCreated,
+			models.SessionStatusInQueue,
+			models.SessionStatusAssigned,
+		}
+	} else {
+		// Кассир может отменять сессии из telegram только в статусе created
+		allowedStatuses = []string{
+			models.SessionStatusCreated,
+		}
+	}
+
+	isAllowedStatus := false
+	for _, status := range allowedStatuses {
+		if session.Status == status {
+			isAllowedStatus = true
+			break
+		}
+	}
+
+	if !isAllowedStatus {
 		return nil, fmt.Errorf("нельзя отменить сессию со статусом: %s", session.Status)
 	}
 
@@ -2526,6 +2557,34 @@ func (s *ServiceImpl) CashierCancelSession(ctx context.Context, req *models.Cash
 	}
 
 	return &response.Session, nil
+}
+
+// AdminCancelSession отменяет сессию администратором
+func (s *ServiceImpl) AdminCancelSession(ctx context.Context, req *models.AdminCancelSessionRequest) (*models.AdminCancelSessionResponse, error) {
+	// Получаем сессию
+	session, err := s.repo.GetSessionByID(ctx, req.SessionID)
+	if err != nil {
+		return nil, fmt.Errorf("сессия не найдена: %w", err)
+	}
+
+	// Администратор может отменять любые сессии только в статусе created
+	if session.Status != models.SessionStatusCreated {
+		return nil, fmt.Errorf("нельзя отменить сессию со статусом: %s (можно отменять только сессии в статусе created)", session.Status)
+	}
+
+	// Отменяем сессию
+	response, err := s.CancelSession(ctx, &models.CancelSessionRequest{
+		SessionID:  req.SessionID,
+		UserID:     session.UserID, // Используем ID владельца сессии
+		SkipRefund: true,           // Для created сессий возврат не нужен
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	return &models.AdminCancelSessionResponse{
+		Session: response.Session,
+	}, nil
 }
 
 // EnableChemistry включает химию в сессии

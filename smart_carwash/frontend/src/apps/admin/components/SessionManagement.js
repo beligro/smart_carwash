@@ -651,6 +651,25 @@ const SessionManagement = () => {
     setPagination(prev => ({ ...prev, offset: newOffset }));
   };
 
+  // Обработчик отмены сессии
+  const handleCancelSession = async (sessionId) => {
+    if (!window.confirm('Вы уверены, что хотите отменить эту сессию?')) {
+      return;
+    }
+
+    setReassignLoading(true);
+    
+    try {
+      await ApiService.adminCancelSession(sessionId);
+      await fetchSessions(); // Перезагружаем список
+    } catch (error) {
+      console.error('Ошибка отмены сессии:', error);
+      setError('Ошибка отмены сессии: ' + (error.response?.data?.error || error.message));
+    } finally {
+      setReassignLoading(false);
+    }
+  };
+
   // Обработчики переназначения сессии
   const handleReassignSession = async (sessionId) => {
     setReassignLoading(true);
@@ -915,6 +934,18 @@ const SessionManagement = () => {
                 >
                   Платежи
                 </ActionButton>
+
+                {/* Кнопка отмены сессии (только для created) */}
+                {session.status === 'created' && (
+                  <ActionButton 
+                    theme={theme} 
+                    onClick={() => handleCancelSession(session.id)}
+                    style={{ marginLeft: '8px', backgroundColor: '#dc3545', color: 'white' }}
+                    disabled={reassignLoading}
+                  >
+                    Отменить
+                  </ActionButton>
+                )}
                 
                 {/* Кнопка переназначения сессии */}
                 {(session.status === 'active') && (
@@ -1026,6 +1057,17 @@ const SessionManagement = () => {
               >
                 Платежи
               </MobileActionButton>
+              {/* Кнопка отмены сессии (только для created) */}
+              {session.status === 'created' && (
+                <MobileActionButton 
+                  className="secondary"
+                  onClick={() => handleCancelSession(session.id)}
+                  disabled={reassignLoading}
+                  style={{ backgroundColor: '#dc3545', color: 'white' }}
+                >
+                  Отменить
+                </MobileActionButton>
+              )}
             </MobileCardActions>
           </MobileCard>
         ))}

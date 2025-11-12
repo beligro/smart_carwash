@@ -62,6 +62,7 @@ func (h *Handler) RegisterRoutes(router *gin.RouterGroup) {
 		adminRoutes.GET("", h.adminListSessions)
 		adminRoutes.GET("/by-id", h.adminGetSession)
 		adminRoutes.POST("/reassign", h.adminReassignSession) // переназначение сессии администратором
+		adminRoutes.POST("/cancel", h.adminCancelSession)       // отмена сессии администратором
 	}
 
 	// Маршруты для кассира
@@ -775,6 +776,31 @@ func (h *Handler) cashierEnableChemistry(c *gin.Context) {
 	}
 
 	logger.WithContext(c).Infof("Успешно включена химия кассиром: SessionID=%s", req.SessionID)
+	c.JSON(http.StatusOK, response)
+}
+
+// adminCancelSession обработчик для отмены сессии администратором
+func (h *Handler) adminCancelSession(c *gin.Context) {
+	var req models.AdminCancelSessionRequest
+
+	// Парсим JSON из тела запроса
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	// Логируем мета-параметр для поиска
+	logger.WithContext(c).Infof("Запрос на отмену сессии администратором: SessionID=%s", req.SessionID)
+
+	// Отменяем сессию
+	response, err := h.service.AdminCancelSession(c.Request.Context(), &req)
+	if err != nil {
+		logger.WithContext(c).Errorf("Ошибка отмены сессии администратором: %v", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	logger.WithContext(c).Infof("Успешно отменена сессия администратором: SessionID=%s", req.SessionID)
 	c.JSON(http.StatusOK, response)
 }
 

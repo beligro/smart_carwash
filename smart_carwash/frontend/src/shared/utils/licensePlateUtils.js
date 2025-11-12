@@ -22,25 +22,25 @@ const LICENSE_PLATE_COUNTRIES = {
         examples: ['A123BC77', 'O111OO799', 'M456TY123']
     },
     KAZ: {
-        // Казахстан: 123ABC01
-        pattern: /^(\d{3})([A-Z]{3})(\d{2})$/i,
+        // Казахстан: поддержка форматов 143ABA12, 927PK06, A000AAA
+        pattern: /^(?:\d{3}[A-Z]{2,3}\d{2}|[A-Z]\d{3}[A-Z]{3})$/i,
         name: 'Казахстан',
         placeholder: '123ABC01',
-        examples: ['123ABC01', '456KZT02', '789NUR05']
+        examples: ['143ABA12', '927PK06', 'A000AAA']
     },
     KGZ: {
-        // Киргизия: 01KA12345
-        pattern: /^(\d{2})([A-Z]{2})(\d{5})$/i,
-        name: 'Киргизия',
-        placeholder: '01KA12345',
-        examples: ['01KA12345', '02BB67890']
+        // Кыргызстан: поддержка всех форматов номеров
+        pattern: /^(?:\d{3}[A-Z]{2}|\d{4}[A-Z]{2}|[A-Z]\d{4}[A-Z]{1,2}|\d{3}[A-Z]{3}|\d{4}[A-Z]{3}|\d{2}[A-Z]{2}\d{3}[A-Z]{3})$/i,
+        name: 'Кыргызстан',
+        placeholder: '1234AB',
+        examples: ['123AB', '1234AB', 'B1234A', 'B1234AB', 'E1233E', '123ABC', '1234ABC', '01KG123ABC']
     },
     UZB: {
-        // Узбекистан: 01A123BC
-        pattern: /^(\d{2})([A-Z])(\d{3})([A-Z]{2})$/i,
+        // Узбекистан: поддержка форматов 01A123BC, 10AA1234
+        pattern: /^(?:\d{2}[A-Z]\d{3}[A-Z]{2}|\d{2}[A-Z]{2}\d{4})$/i,
         name: 'Узбекистан',
         placeholder: '01A123BC',
-        examples: ['01A123BC', '02B456KD']
+        examples: ['01A123BC', '10AA1234']
     },
     TJK: {
         // Таджикистан: 1234AB01
@@ -50,18 +50,18 @@ const LICENSE_PLATE_COUNTRIES = {
         examples: ['1234AB01', '5678CD02']
     },
     ARM: {
-        // Армения: 123AB45
-        pattern: /^(\d{3})([A-Z]{2})(\d{2})$/i,
+        // Армения: поддержка форматов 123AB45, 01AA123
+        pattern: /^(?:\d{3}[A-Z]{2}\d{2}|\d{2}[A-Z]{2}\d{3})$/i,
         name: 'Армения',
         placeholder: '123AB45',
-        examples: ['123AB45', '456CD67']
+        examples: ['123AB45', '01AA123']
     },
     BLR: {
-        // Беларусь: 1234AB1 или 1234AB-1
-        pattern: /^(\d{4})([A-Z]{2})-?(\d)$/i,
+        // Беларусь: поддержка форматов 0000AA-7, AA00AA00, AA1234-7 (дефис удаляется при валидации)
+        pattern: /^(?:\d{4}[A-Z]{2}\d|[A-Z]{2}\d{2}[A-Z]{2}\d{2}|[A-Z]{2}\d{4}\d)$/i,
         name: 'Беларусь',
         placeholder: '1234AB1',
-        examples: ['1234AB1', '5678CD2']
+        examples: ['0000AA7', 'AA00AA00', 'AA12347']
     }
 };
 
@@ -169,7 +169,12 @@ export const isValidLicensePlate = (licensePlate, country = 'RUS') => {
       return false;
     }
     
-    return countryConfig.pattern.test(licensePlate);
+    // Нормализуем номер перед проверкой (удаляем пробелы и дефисы, заменяем русские буквы)
+    const cleaned = licensePlate.replace(/[\s-]/g, '');
+    const upper = cleaned.toUpperCase();
+    const normalized = replaceRussianWithEnglish(upper);
+    
+    return countryConfig.pattern.test(normalized);
   } catch (error) {
     console.error('Ошибка проверки госномера:', error);
     return false;
