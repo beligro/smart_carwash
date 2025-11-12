@@ -15,6 +15,7 @@ type Repository interface {
 	GetSessionByID(ctx context.Context, id uuid.UUID) (*models.Session, error)
 	GetActiveSessionByUserID(ctx context.Context, userID uuid.UUID) (*models.Session, error)
 	GetActiveSessionByCarNumber(ctx context.Context, carNumber string) (*models.Session, error)
+	GetLastSessionByCarNumber(ctx context.Context, carNumber string) (*models.Session, error)
 	GetUserSessionForPayment(ctx context.Context, userID uuid.UUID) (*models.Session, error)
 	GetSessionByIdempotencyKey(ctx context.Context, key string) (*models.Session, error)
 	UpdateSession(ctx context.Context, session *models.Session) error
@@ -371,6 +372,28 @@ func (r *PostgresRepository) GetActiveSessionByCarNumber(ctx context.Context, ca
 		models.SessionStatusInQueue,
 		models.SessionStatusAssigned,
 		models.SessionStatusActive).
+		Order("created_at DESC").
+		First(&session).Error
+	if err != nil {
+		return nil, err
+	}
+
+	// Если у сессии есть BoxID, получаем номер бокса
+	if session.BoxID != nil {
+		var boxNumber int
+		err = r.db.WithContext(ctx).Table("wash_boxes").Where("id = ?", *session.BoxID).Select("number").Scan(&boxNumber).Error
+		if err == nil {
+			session.BoxNumber = &boxNumber
+		}
+	}
+
+	return &session, nil
+}
+
+// GetLastSessionByCarNumber получает последнюю сессию по номеру автомобиля (любой статус)
+func (r *PostgresRepository) GetLastSessionByCarNumber(ctx context.Context, carNumber string) (*models.Session, error) {
+	var session models.Session
+	err := r.db.WithContext(ctx).Where("car_number = ?", carNumber).
 		Order("created_at DESC").
 		First(&session).Error
 	if err != nil {

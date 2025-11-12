@@ -250,6 +250,124 @@ const SuccessMessage = styled.div`
   margin-bottom: 20px;
 `;
 
+const CarwashStatusContainer = styled.div`
+  background-color: ${props => props.theme.cardBackground};
+  padding: 25px;
+  border-radius: 8px;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+  margin-bottom: 20px;
+  border: 2px solid ${props => props.isClosed ? '#dc3545' : '#28a745'};
+`;
+
+const CarwashStatusTitle = styled.h2`
+  margin: 0 0 20px 0;
+  color: ${props => props.theme.textColor};
+  font-size: 1.5rem;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+`;
+
+const StatusIndicator = styled.span`
+  font-size: 1.2rem;
+`;
+
+const WarningText = styled.div`
+  padding: 15px;
+  background-color: #fff3cd;
+  border: 1px solid #ffc107;
+  border-radius: 4px;
+  color: #856404;
+  margin-bottom: 20px;
+  font-size: 0.9rem;
+  line-height: 1.5;
+`;
+
+const ModalOverlay = styled.div`
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+`;
+
+const ModalContent = styled.div`
+  background-color: ${props => props.theme.cardBackground};
+  padding: 30px;
+  border-radius: 8px;
+  max-width: 500px;
+  width: 90%;
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+`;
+
+const ModalTitle = styled.h3`
+  margin: 0 0 20px 0;
+  color: ${props => props.theme.textColor};
+  font-size: 1.3rem;
+`;
+
+const ModalText = styled.p`
+  margin: 0 0 20px 0;
+  color: ${props => props.theme.textColor};
+  line-height: 1.5;
+`;
+
+const ModalTextarea = styled.textarea`
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid ${props => props.theme.borderColor};
+  border-radius: 4px;
+  background-color: ${props => props.theme.inputBackground};
+  color: ${props => props.theme.textColor};
+  font-size: 1rem;
+  min-height: 80px;
+  margin-bottom: 20px;
+  font-family: inherit;
+  resize: vertical;
+
+  &:focus {
+    outline: none;
+    border-color: ${props => props.theme.primaryColor};
+  }
+`;
+
+const ModalButtonGroup = styled.div`
+  display: flex;
+  gap: 10px;
+  justify-content: flex-end;
+`;
+
+const DangerButton = styled(Button)`
+  background-color: #dc3545;
+  
+  &:hover {
+    background-color: #c82333;
+  }
+  
+  &:disabled {
+    background-color: #6c757d;
+    cursor: not-allowed;
+  }
+`;
+
+const SuccessButtonStyled = styled(Button)`
+  background-color: #28a745;
+  
+  &:hover {
+    background-color: #218838;
+  }
+  
+  &:disabled {
+    background-color: #6c757d;
+    cursor: not-allowed;
+  }
+`;
+
 const SettingsManagement = () => {
   const theme = getTheme('light');
   const [selectedService, setSelectedService] = useState('wash');
@@ -271,6 +389,12 @@ const SettingsManagement = () => {
   const [sessionTimeoutLoading, setSessionTimeoutLoading] = useState(false);
   const [cooldownTimeout, setCooldownTimeout] = useState('');
   const [cooldownTimeoutLoading, setCooldownTimeoutLoading] = useState(false);
+  const [carwashStatus, setCarwashStatus] = useState(null);
+  const [carwashStatusLoading, setCarwashStatusLoading] = useState(false);
+  const [carwashActionLoading, setCarwashActionLoading] = useState(false);
+  const [showCloseConfirm, setShowCloseConfirm] = useState(false);
+  const [showOpenConfirm, setShowOpenConfirm] = useState(false);
+  const [closeReason, setCloseReason] = useState('');
 
   const serviceOptions = [
     { value: 'wash', label: 'Мойка' },
@@ -319,7 +443,55 @@ const SettingsManagement = () => {
     loadCleaningTimeout();
     loadSessionTimeout();
     loadCooldownTimeout();
+    loadCarwashStatus();
   }, [selectedService]);
+
+  const loadCarwashStatus = async () => {
+    setCarwashStatusLoading(true);
+    try {
+      const response = await ApiService.getCarwashStatusAdmin();
+      setCarwashStatus(response);
+    } catch (err) {
+      console.warn('Не удалось загрузить статус мойки:', err);
+    } finally {
+      setCarwashStatusLoading(false);
+    }
+  };
+
+  const handleCloseCarwash = async () => {
+    setCarwashActionLoading(true);
+    setError('');
+    setSuccess('');
+
+    try {
+      const response = await ApiService.closeCarwash(closeReason || null);
+      setSuccess(`Мойка закрыта. Завершено сессий: ${response.completed_sessions}, отменено сессий: ${response.canceled_sessions}`);
+      setShowCloseConfirm(false);
+      setCloseReason('');
+      await loadCarwashStatus();
+    } catch (err) {
+      setError('Ошибка при закрытии мойки: ' + (err.message || 'Неизвестная ошибка'));
+    } finally {
+      setCarwashActionLoading(false);
+    }
+  };
+
+  const handleOpenCarwash = async () => {
+    setCarwashActionLoading(true);
+    setError('');
+    setSuccess('');
+
+    try {
+      await ApiService.openCarwash();
+      setSuccess('Мойка открыта');
+      setShowOpenConfirm(false);
+      await loadCarwashStatus();
+    } catch (err) {
+      setError('Ошибка при открытии мойки: ' + (err.message || 'Неизвестная ошибка'));
+    } finally {
+      setCarwashActionLoading(false);
+    }
+  };
 
   const loadCleaningTimeout = async () => {
     setCleaningTimeoutLoading(true);
@@ -566,6 +738,124 @@ const SettingsManagement = () => {
 
       {error && <ErrorMessage>{error}</ErrorMessage>}
       {success && <SuccessMessage>{success}</SuccessMessage>}
+
+      {/* Кнопка управления статусом мойки */}
+      <CarwashStatusContainer theme={theme} isClosed={carwashStatus?.is_closed}>
+        <CarwashStatusTitle theme={theme}>
+          <StatusIndicator>{carwashStatus?.is_closed ? '🔴' : '🟢'}</StatusIndicator>
+          Статус мойки: {carwashStatus?.is_closed ? 'Закрыта' : 'Открыта'}
+        </CarwashStatusTitle>
+        
+        {carwashStatus?.is_closed && carwashStatus?.closed_reason && (
+          <WarningText>
+            <strong>Причина закрытия:</strong> {carwashStatus.closed_reason}
+          </WarningText>
+        )}
+
+        {!carwashStatus?.is_closed && (
+          <WarningText>
+            <strong>Внимание!</strong> При закрытии мойки будут выполнены следующие действия:
+            <ul style={{ margin: '10px 0', paddingLeft: '20px' }}>
+              <li>Все активные сессии будут завершены (выключится свет и химия в боксах)</li>
+              <li>Все сессии в очереди/назначенные и созданные будут отменены с возвратом денег</li>
+              <li>В mini app пользователи увидят сообщение о технических проблемах</li>
+            </ul>
+          </WarningText>
+        )}
+
+        <ButtonGroup>
+          {carwashStatus?.is_closed ? (
+            <SuccessButtonStyled
+              theme={theme}
+              onClick={() => setShowOpenConfirm(true)}
+              disabled={carwashActionLoading || carwashStatusLoading}
+            >
+              {carwashActionLoading ? 'Открытие...' : 'Открыть мойку'}
+            </SuccessButtonStyled>
+          ) : (
+            <DangerButton
+              theme={theme}
+              onClick={() => setShowCloseConfirm(true)}
+              disabled={carwashActionLoading || carwashStatusLoading}
+            >
+              {carwashActionLoading ? 'Закрытие...' : 'Закрыть мойку'}
+            </DangerButton>
+          )}
+        </ButtonGroup>
+      </CarwashStatusContainer>
+
+      {/* Модальное окно подтверждения закрытия */}
+      {showCloseConfirm && (
+        <ModalOverlay onClick={() => !carwashActionLoading && setShowCloseConfirm(false)}>
+          <ModalContent theme={theme} onClick={(e) => e.stopPropagation()}>
+            <ModalTitle theme={theme}>Подтверждение закрытия мойки</ModalTitle>
+            <ModalText theme={theme}>
+              Вы уверены, что хотите закрыть мойку? Это действие приведет к:
+            </ModalText>
+            <ul style={{ margin: '0 0 20px 0', paddingLeft: '20px', color: theme.textColor }}>
+              <li>Завершению всех активных сессий (выключится свет и химия)</li>
+              <li>Отмене всех сессий в очереди/назначенных/созданных с возвратом денег</li>
+              <li>Скрытию всех кнопок в mini app для пользователей</li>
+            </ul>
+            <FormLabel theme={theme}>Причина закрытия (опционально):</FormLabel>
+            <ModalTextarea
+              theme={theme}
+              value={closeReason}
+              onChange={(e) => setCloseReason(e.target.value)}
+              placeholder="Например: Отключена вода"
+            />
+            <ModalButtonGroup>
+              <Button
+                theme={theme}
+                onClick={() => {
+                  setShowCloseConfirm(false);
+                  setCloseReason('');
+                }}
+                disabled={carwashActionLoading}
+                style={{ backgroundColor: '#6c757d' }}
+              >
+                Отмена
+              </Button>
+              <DangerButton
+                theme={theme}
+                onClick={handleCloseCarwash}
+                disabled={carwashActionLoading}
+              >
+                {carwashActionLoading ? 'Закрытие...' : 'Закрыть мойку'}
+              </DangerButton>
+            </ModalButtonGroup>
+          </ModalContent>
+        </ModalOverlay>
+      )}
+
+      {/* Модальное окно подтверждения открытия */}
+      {showOpenConfirm && (
+        <ModalOverlay onClick={() => !carwashActionLoading && setShowOpenConfirm(false)}>
+          <ModalContent theme={theme} onClick={(e) => e.stopPropagation()}>
+            <ModalTitle theme={theme}>Подтверждение открытия мойки</ModalTitle>
+            <ModalText theme={theme}>
+              Вы уверены, что хотите открыть мойку? После открытия пользователи снова смогут создавать сессии.
+            </ModalText>
+            <ModalButtonGroup>
+              <Button
+                theme={theme}
+                onClick={() => setShowOpenConfirm(false)}
+                disabled={carwashActionLoading}
+                style={{ backgroundColor: '#6c757d' }}
+              >
+                Отмена
+              </Button>
+              <SuccessButtonStyled
+                theme={theme}
+                onClick={handleOpenCarwash}
+                disabled={carwashActionLoading}
+              >
+                {carwashActionLoading ? 'Открытие...' : 'Открыть мойку'}
+              </SuccessButtonStyled>
+            </ModalButtonGroup>
+          </ModalContent>
+        </ModalOverlay>
+      )}
 
       <ServiceSelector>
         <ServiceLabel theme={theme}>Выберите тип услуги:</ServiceLabel>

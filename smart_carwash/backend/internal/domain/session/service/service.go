@@ -1,6 +1,7 @@
 package service
 
 import (
+	carwashStatusRepo "carwash_backend/internal/domain/carwash_status/repository"
 	"carwash_backend/internal/domain/modbus"
 	paymentModels "carwash_backend/internal/domain/payment/models"
 	paymentService "carwash_backend/internal/domain/payment/service"
@@ -77,17 +78,18 @@ type Service interface {
 
 // ServiceImpl реализация Service
 type ServiceImpl struct {
-	repo            repository.Repository
-	washboxService  washboxService.Service
-	userService     userService.Service
-	telegramBot     telegram.NotificationService
-	paymentService  paymentService.Service
-	modbusService   modbus.ModbusServiceInterface
-	settingsService settingsService.Service
-	cashierUserID   string
-	metrics         *metrics.Metrics
-	db              *gorm.DB
-	processQueueMu  sync.Mutex // Мьютекс для исключения одновременного запуска ProcessQueue
+	repo              repository.Repository
+	washboxService    washboxService.Service
+	userService       userService.Service
+	telegramBot       telegram.NotificationService
+	paymentService    paymentService.Service
+	modbusService     modbus.ModbusServiceInterface
+	settingsService   settingsService.Service
+	carwashStatusRepo carwashStatusRepo.Repository // Опциональный репозиторий статуса мойки
+	cashierUserID     string
+	metrics           *metrics.Metrics
+	db                *gorm.DB
+	processQueueMu    sync.Mutex // Мьютекс для исключения одновременного запуска ProcessQueue
 }
 
 // NewService создает новый экземпляр Service
@@ -105,6 +107,11 @@ func NewService(repo repository.Repository, washboxService washboxService.Servic
 		db:              db,
 		processQueueMu:  sync.Mutex{}, // Мьютекс инициализируется автоматически, но явно указываем для ясности
 	}
+}
+
+// SetCarwashStatusRepo устанавливает репозиторий статуса мойки (для избежания циклических зависимостей)
+func (s *ServiceImpl) SetCarwashStatusRepo(carwashStatusRepo carwashStatusRepo.Repository) {
+	s.carwashStatusRepo = carwashStatusRepo
 }
 
 // CreateSession создает новую сессию
@@ -2966,6 +2973,22 @@ func (s *ServiceImpl) GetActiveSessionByCarNumber(ctx context.Context, carNumber
 	}
 
 	logger.Printf("Service - GetActiveSessionByCarNumber: найдена активная сессия - SessionID=%s, CarNumber=%s, Status=%s",
+		session.ID, session.CarNumber, session.Status)
+
+	return session, nil
+}
+
+// GetLastSessionByCarNumber получает последнюю сессию по номеру автомобиля (любой статус)
+func (s *ServiceImpl) GetLastSessionByCarNumber(ctx context.Context, carNumber string) (*models.Session, error) {
+	logger.Printf("Service - GetLastSessionByCarNumber: поиск последней сессии по номеру %s", carNumber)
+
+	session, err := s.repo.GetLastSessionByCarNumber(ctx, carNumber)
+	if err != nil {
+		logger.Printf("Service - GetLastSessionByCarNumber: сессия с номером %s не найдена: %v", carNumber, err)
+		return nil, err
+	}
+
+	logger.Printf("Service - GetLastSessionByCarNumber: найдена сессия - SessionID=%s, CarNumber=%s, Status=%s",
 		session.ID, session.CarNumber, session.Status)
 
 	return session, nil

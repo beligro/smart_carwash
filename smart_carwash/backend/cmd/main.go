@@ -18,6 +18,7 @@ import (
 	authHandlers "carwash_backend/internal/domain/auth/handlers"
 	authRepo "carwash_backend/internal/domain/auth/repository"
 	authService "carwash_backend/internal/domain/auth/service"
+	carwashStatusService "carwash_backend/internal/domain/carwash_status/service"
 	dahuaHandlers "carwash_backend/internal/domain/dahua/handlers"
 	dahuaService "carwash_backend/internal/domain/dahua/service"
 	modbusAdapter "carwash_backend/internal/domain/modbus/adapter"
@@ -115,6 +116,7 @@ func main() {
 	settingsRepository := settingsRepo.NewRepository(db)
 	authRepository := authRepo.NewPostgresRepository(db)
 	paymentRepository := paymentRepo.NewRepository(db)
+	carwashStatusRepository := carwashStatusRepo.NewPostgresRepository(db)
 
 	// Создаем Tinkoff клиент
 	tinkoffClient := paymentTinkoff.NewClient(cfg.TinkoffTerminalKey, cfg.TinkoffSecretKey, cfg.TinkoffSuccessURL, cfg.TinkoffFailURL)
@@ -158,7 +160,13 @@ func main() {
 	}
 
 	// Создаем Dahua сервис
-	dahuaSvc := dahuaService.NewService(sessionSvc)
+	dahuaSvc := dahuaService.NewService(sessionSvc, washboxSvc)
+
+	// Создаем сервис статуса мойки
+	carwashStatusSvc := carwashStatusService.NewService(carwashStatusRepository, sessionSvc)
+
+	// Устанавливаем carwashStatusRepo в sessionSvc для проверки статуса при создании сессий
+	sessionSvc.SetCarwashStatusRepo(carwashStatusRepository)
 
 	// Создаем обработчики
 	userHandler := userHandlers.NewHandler(userSvc)
@@ -170,6 +178,7 @@ func main() {
 	paymentHandler := paymentHandlers.NewHandler(paymentSvc, authSvc)
 	modbusHandler := modbusHandlers.NewHandler(modbusSvc)
 	dahuaHandler := dahuaHandlers.NewHandler(dahuaSvc)
+	carwashStatusHandler := carwashStatusHandlers.NewHandler(carwashStatusSvc, authHandler.GetAdminMiddleware())
 
 	// Создаем роутер
 	router := gin.Default()
@@ -208,12 +217,14 @@ func main() {
 		userHandler.RegisterRoutes(api)
 		washboxHandler.RegisterRoutes(api, authHandler.GetCleanerMiddleware())
 		sessionHandler.RegisterRoutes(api)
-		queueHandler.RegisterRoutes(api)
+		queueCashierMiddleware := middleware.CashierMiddleware(authSvc)
+		queueHandler.RegisterRoutes(api, queueCashierMiddleware)
 		settingsHandler.RegisterRoutes(api)
 		authHandler.RegisterRoutes(api)
 		paymentHandler.RegisterRoutes(api)
 		modbusHandler.RegisterRoutes(api)
 		dahuaHandlers.SetupRoutes(api, dahuaHandler)
+		carwashStatusHandler.RegisterRoutes(api)
 
 		// Вебхук для Telegram бота
 		api.POST("/webhook", func(c *gin.Context) {
@@ -376,7 +387,7 @@ func main() {
 
 	// Запускаем периодическую задачу для очистки истекших cooldown'ов (старт через 4 сек)
 	go func() {
-		time.Sleep(4 * time.Second) // Разносим запуск задач
+		time.Sleep(4 * time.Second)               // Разносим запуск задач
 		ticker := time.NewTicker(5 * time.Second) // Проверяем каждые 5 секунд
 		defer ticker.Stop()
 
@@ -398,7 +409,7 @@ func main() {
 
 	// Запускаем периодическую задачу для автоматического завершения просроченных уборок (старт через 5 сек)
 	go func() {
-		time.Sleep(5 * time.Second) // Разносим запуск задач
+		time.Sleep(5 * time.Second)                // Разносим запуск задач
 		ticker := time.NewTicker(10 * time.Second) // Проверяем каждые 30 секунд
 		defer ticker.Stop()
 
@@ -612,9 +623,9 @@ func systemMonitor(done chan struct{}) {
 			goroutines := runtime.NumGoroutine()
 
 			log.WithFields(logrus.Fields{
-				"goroutines":  goroutines,
-				"memory_alloc": m.Alloc / 1024 / 1024,      // MB
-				"memory_sys":   m.Sys / 1024 / 1024,        // MB
+				"goroutines":   goroutines,
+				"memory_alloc": m.Alloc / 1024 / 1024, // MB
+				"memory_sys":   m.Sys / 1024 / 1024,   // MB
 				"num_gc":       m.NumGC,
 				"time":         time.Now().Format("15:04:05"),
 			}).Info("📊 SYSTEM STATS")

@@ -44,6 +44,8 @@ const TelegramApp = () => {
   const [error, setError] = useState(null);
   const [theme, setTheme] = useState('light');
   const [user, setUser] = useState(null);
+  const [carwashStatus, setCarwashStatus] = useState(null);
+  const [carwashStatusLoading, setCarwashStatusLoading] = useState(true);
   
   // Refs для управления интервалами поллинга
   const queuePollingInterval = useRef(null);
@@ -261,6 +263,12 @@ const TelegramApp = () => {
   
   // Функция для создания сессии с платежом
   const handleCreateSessionWithPayment = async (serviceData) => {
+    // Проверяем статус мойки перед созданием сессии
+    if (carwashStatus?.is_closed) {
+      setError('Мойка временно закрыта из-за технических проблем');
+      return;
+    }
+
     try {
       setLoading(true);
       setError(null);
@@ -410,9 +418,33 @@ const TelegramApp = () => {
     
     return sessionPollingInterval.current;
   };
+
+  // Функция для загрузки статуса мойки
+  const fetchCarwashStatus = async () => {
+    try {
+      const response = await ApiService.getCarwashStatus();
+      setCarwashStatus(response);
+    } catch (err) {
+      console.error('Ошибка при получении статуса мойки:', err);
+      // Если ошибка, считаем что мойка открыта (по умолчанию)
+      setCarwashStatus({ is_closed: false });
+    } finally {
+      setCarwashStatusLoading(false);
+    }
+  };
+
+  // Загружаем статус мойки при первой загрузке (независимо от пользователя)
+  useEffect(() => {
+    fetchCarwashStatus();
+  }, []);
   
   // Запускаем поллинг при монтировании компонента
   useEffect(() => {
+    // Не загружаем данные о сессиях и очереди, если мойка закрыта
+    if (carwashStatus?.is_closed) {
+      return;
+    }
+
     if (user) {
       const loadData = async () => {
         try {
@@ -509,7 +541,7 @@ const TelegramApp = () => {
       
       loadData();
     }
-  }, [user]);
+  }, [user, carwashStatus]);
 
   // Очистка интервалов при размонтировании компонента
   useEffect(() => {
@@ -688,6 +720,36 @@ const TelegramApp = () => {
   // Определяем, нужно ли показывать стрелку назад
   const showBackButton = location.pathname !== '/telegram/' && location.pathname !== '/telegram';
 
+  // Компонент для отображения сообщения о закрытии мойки
+  const CarwashClosedMessage = () => (
+    <div style={{
+      padding: '40px 20px',
+      textAlign: 'center',
+      display: 'flex',
+      flexDirection: 'column',
+      alignItems: 'center',
+      justifyContent: 'center',
+      minHeight: '60vh'
+    }}>
+      <div style={{
+        fontSize: '28px',
+        fontWeight: 'bold',
+        color: themeObject.textColor,
+        marginBottom: '30px',
+        lineHeight: '1.5'
+      }}>
+        Не работает из-за технических проблем.
+      </div>
+      <div style={{
+        fontSize: '20px',
+        color: themeObject.textColor,
+        marginTop: '20px'
+      }}>
+        Справки по телефону 287-03-78
+      </div>
+    </div>
+  );
+
   return (
     <AppContainer theme={themeObject}>
       <Header theme={theme} onBack={showBackButton ? handleBackToHome : undefined} />
@@ -697,7 +759,11 @@ const TelegramApp = () => {
               path="/" 
               element={
                 <>
-                  {loading ? (
+                  {carwashStatusLoading ? (
+                    <p>Загрузка информации о мойке...</p>
+                  ) : carwashStatus?.is_closed ? (
+                    <CarwashClosedMessage />
+                  ) : loading ? (
                     <p>Загрузка информации о мойке...</p>
                   ) : error ? (
                     <p style={{ color: 'red' }}>{error}</p>

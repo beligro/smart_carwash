@@ -115,6 +115,17 @@ const ApiService = {
     }
   },
 
+  // Получение статуса очереди для кассира
+  getCashierQueueStatus: async () => {
+    try {
+      const response = await api.get('/cashier/queue/status');
+      return response.data;
+    } catch (error) {
+      console.error('Ошибка при получении статуса очереди кассира:', error);
+      throw error;
+    }
+  },
+
   // Удаление из очереди
   removeFromQueue: async (id) => {
     try {
@@ -839,6 +850,39 @@ const ApiService = {
       console.error('Ошибка при переназначении сессии кассиром:', error);
       throw error;
     }
+  },
+
+  // === МЕТОДЫ ДЛЯ РАБОТЫ СО СТАТУСОМ МОЙКИ ===
+  
+  // Получение текущего статуса мойки (публичный)
+  getCarwashStatus: async () => {
+    const response = await api.get('/carwash/status');
+    return response.data;
+  },
+
+  // Получение текущего статуса мойки (админка)
+  getCarwashStatusAdmin: async () => {
+    const response = await api.get('/admin/carwash/status');
+    return response.data;
+  },
+
+  // Закрытие мойки (админка)
+  closeCarwash: async (reason) => {
+    const response = await api.post('/admin/carwash/close', { reason: reason || null });
+    return response.data;
+  },
+
+  // Открытие мойки (админка)
+  openCarwash: async () => {
+    const response = await api.post('/admin/carwash/open', {});
+    return response.data;
+  },
+
+  // Получение истории изменений статуса мойки (админка)
+  getCarwashStatusHistory: async (filters = {}) => {
+    const queryString = toSnakeCaseQuery(filters);
+    const response = await api.get(`/admin/carwash/history?${queryString}`);
+    return response.data;
   },
 
 };

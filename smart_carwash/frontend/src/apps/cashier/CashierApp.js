@@ -7,6 +7,7 @@ import ApiService from '../../shared/services/ApiService';
 import ActiveSessions from './components/ActiveSessions';
 import LastShiftStatistics from './components/LastShiftStatistics';
 import BoxManagement from './components/BoxManagement';
+import QueueStatus from './components/QueueStatus';
 import MobileTable from '../../shared/components/MobileTable';
 import Timer from '../../shared/components/UI/Timer';
 import useTimer from '../../shared/hooks/useTimer';
@@ -465,8 +466,8 @@ const CashierApp = () => {
       return;
     }
     
-    // Не загружаем данные для вкладок активных сессий и боксов - компоненты сами загружают
-    if (activeTab === 'active_sessions' || activeTab === 'boxes') {
+    // Не загружаем данные для вкладок активных сессий, очереди и боксов - компоненты сами загружают
+    if (activeTab === 'active_sessions' || activeTab === 'queue' || activeTab === 'boxes') {
       return;
     }
     
@@ -655,8 +656,8 @@ const CashierApp = () => {
       return;
     }
     
-    // Не загружаем данные для вкладок активных сессий и боксов - компоненты сами загружают
-    if (activeTab === 'active_sessions' || activeTab === 'boxes') {
+    // Не загружаем данные для вкладок активных сессий, очереди и боксов - компоненты сами загружают
+    if (activeTab === 'active_sessions' || activeTab === 'queue' || activeTab === 'boxes') {
       return;
     }
     
@@ -812,6 +813,13 @@ const CashierApp = () => {
                 theme={theme}
               >
                 Платежи
+              </Tab>
+              <Tab 
+                active={activeTab === 'queue'} 
+                onClick={() => handleTabChange('queue')}
+                theme={theme}
+              >
+                Очередь
               </Tab>
               <Tab 
                 active={activeTab === 'boxes'} 
@@ -1088,6 +1096,8 @@ const CashierApp = () => {
                     </>
                   )}
                 </div>
+              ) : activeTab === 'queue' ? (
+                <QueueStatus />
               ) : activeTab === 'boxes' ? (
                 <BoxManagement />
               ) : null}

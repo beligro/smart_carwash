@@ -22,13 +22,22 @@ func NewHandler(service service.Service) *Handler {
 }
 
 // RegisterRoutes регистрирует маршруты для очереди
-func (h *Handler) RegisterRoutes(router *gin.RouterGroup) {
+func (h *Handler) RegisterRoutes(router *gin.RouterGroup, cashierMiddleware gin.HandlerFunc) {
 	router.GET("/queue-status", h.getQueueStatus)
 
 	// Административные маршруты
 	adminRoutes := router.Group("/admin/queue")
 	{
 		adminRoutes.GET("/status", h.adminGetQueueStatus)
+	}
+
+	// Маршруты для кассира
+	if cashierMiddleware != nil {
+		cashierRoutes := router.Group("/cashier/queue")
+		cashierRoutes.Use(cashierMiddleware)
+		{
+			cashierRoutes.GET("/status", h.cashierGetQueueStatus)
+		}
 	}
 }
 
@@ -65,6 +74,33 @@ func (h *Handler) adminGetQueueStatus(c *gin.Context) {
 		"total_queue_size": resp.QueueStatus.TotalQueueSize,
 		"has_any_queue":    resp.QueueStatus.HasAnyQueue,
 	})
+
+	c.JSON(http.StatusOK, resp)
+}
+
+// cashierGetQueueStatus обработчик для получения детального статуса очереди для кассира
+func (h *Handler) cashierGetQueueStatus(c *gin.Context) {
+	req := &models.AdminQueueStatusRequest{
+		IncludeDetails: true,
+	}
+
+	resp, err := h.service.AdminGetQueueStatus(c.Request.Context(), req)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	meta := gin.H{
+		"include_details":  true,
+		"total_queue_size": resp.QueueStatus.TotalQueueSize,
+		"has_any_queue":    resp.QueueStatus.HasAnyQueue,
+	}
+
+	if cashierID, exists := c.Get("cashier_id"); exists {
+		meta["cashier_id"] = cashierID
+	}
+
+	c.Set("meta", meta)
 
 	c.JSON(http.StatusOK, resp)
 }
