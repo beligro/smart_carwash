@@ -29,6 +29,7 @@ type SessionService interface {
 	GetActiveSessionByUserID(ctx context.Context, userID uuid.UUID) (*sessionModels.Session, error)
 	GetActiveSessionByCarNumber(ctx context.Context, carNumber string) (*sessionModels.Session, error)
 	GetLastSessionByCarNumber(ctx context.Context, carNumber string) (*sessionModels.Session, error)
+	GetActiveSessionByBoxID(ctx context.Context, boxID uuid.UUID) (*sessionModels.Session, error)
 	CompleteSessionWithoutRefund(ctx context.Context, sessionID uuid.UUID) error
 }
 
@@ -160,9 +161,35 @@ func (s *ServiceImpl) ProcessANPREvent(ctx context.Context, req *models.ProcessA
 			"session_id":    lastSession.ID,
 			"license_plate": req.LicensePlate,
 			"box_id":        *lastSession.BoxID,
-		}).Info("Сессия уже завершена, сбрасываем кулдаун и ставим бокс в статус свободен")
+		}).Info("Сессия уже завершена, проверяем бокс перед сбросом кулдауна")
 
-		// Сбрасываем кулдаун
+		// ✅ ИСПРАВЛЕНИЕ: Проверяем нет ли в боксе активной сессии
+		if s.sessionService != nil {
+			activeSession, err := s.sessionService.GetActiveSessionByBoxID(ctx, *lastSession.BoxID)
+			if err == nil && activeSession != nil {
+				// В боксе есть активная сессия
+				logger.WithFields(logrus.Fields{
+					"service":               "dahua",
+					"method":                "ProcessANPREvent",
+					"old_session_id":        lastSession.ID,
+					"old_car_number":        lastSession.CarNumber,
+					"active_session_id":     activeSession.ID,
+					"active_car_number":     activeSession.CarNumber,
+					"box_id":                *lastSession.BoxID,
+				}).Warn("В боксе уже есть активная сессия другой машины, пропускаем сброс кулдауна")
+				
+				return &models.ProcessANPREventResponse{
+					Success:       true,
+					Message:       fmt.Sprintf("Выезд старой машины %s, но в боксе уже новая активная сессия", req.LicensePlate),
+					UserFound:     false,
+					SessionFound:  true,
+					SessionID:     lastSession.ID.String(),
+					SessionStatus: lastSession.Status,
+				}, nil
+			}
+		}
+
+		// Бокс свободен или нет активной сессии - безопасно сбрасываем кулдаун
 		if s.washboxService != nil {
 			err = s.washboxService.ClearCooldown(ctx, *lastSession.BoxID)
 			if err != nil {
@@ -195,6 +222,7 @@ func (s *ServiceImpl) ProcessANPREvent(ctx context.Context, req *models.ProcessA
 			SessionStatus: lastSession.Status,
 		}, nil
 	}
+
 
 	// Если сессия в другом статусе - просто возвращаем информацию
 	logger.WithFields(logrus.Fields{

@@ -18,6 +18,8 @@ import (
 	authHandlers "carwash_backend/internal/domain/auth/handlers"
 	authRepo "carwash_backend/internal/domain/auth/repository"
 	authService "carwash_backend/internal/domain/auth/service"
+	carwashStatusHandlers "carwash_backend/internal/domain/carwash_status/handlers"
+	carwashStatusRepo "carwash_backend/internal/domain/carwash_status/repository"
 	carwashStatusService "carwash_backend/internal/domain/carwash_status/service"
 	dahuaHandlers "carwash_backend/internal/domain/dahua/handlers"
 	dahuaService "carwash_backend/internal/domain/dahua/service"

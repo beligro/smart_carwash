@@ -448,14 +448,28 @@ func (r *PostgresRepository) SetCooldownByCarNumber(ctx context.Context, boxID u
 
 // ClearCooldown очищает поля кулдауна у бокса
 func (r *PostgresRepository) ClearCooldown(ctx context.Context, boxID uuid.UUID) error {
+	// Получаем текущий статус бокса
+	var box models.WashBox
+	if err := r.db.WithContext(ctx).First(&box, boxID).Error; err != nil {
+		return err
+	}
+	
+	updates := map[string]interface{}{
+		"last_completed_session_user_id":    nil,
+		"last_completed_session_car_number": nil,
+		"last_completed_at":                 nil,
+		"cooldown_until":                    nil,
+	}
+	
+	// ✅ ИСПРАВЛЕНИЕ: Меняем статус на free ТОЛЬКО если бокс НЕ в maintenance
+	// Проверка активной сессии уже есть в ProcessANPREvent (единственный вызывающий)
+	if box.Status != models.StatusMaintenance {
+		updates["status"] = models.StatusFree
+	}
+	
 	return r.db.WithContext(ctx).Model(&models.WashBox{}).
 		Where("id = ?", boxID).
-		Updates(map[string]interface{}{
-			"last_completed_session_user_id":    nil,
-			"last_completed_session_car_number": nil,
-			"last_completed_at":                 nil,
-			"cooldown_until":                    nil,
-		}).Error
+		Updates(updates).Error
 }
 
 // CheckCooldownExpired очищает истекшие cooldown'ы

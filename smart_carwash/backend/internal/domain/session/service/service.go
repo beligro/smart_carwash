@@ -1329,6 +1329,16 @@ func (s *ServiceImpl) CheckAndCompleteExpiredSessions(ctx context.Context) error
 		// Проверяем, прошло ли выбранное время с момента начала сессии
 		if now.Sub(startTime) >= time.Duration(totalTime)*time.Minute {
 			// Если прошло время, завершаем сессию
+			// ИСПРАВЛЕНИЕ: Сначала завершаем сессию, потом освобождаем бокс
+			// Это предотвращает race condition где бокс становится 'free' при активной сессии
+			// Обновляем статус сессии на complete, время обновления статуса и сбрасываем флаг уведомления
+			session.Status = models.SessionStatusComplete
+			session.StatusUpdatedAt = time.Now()         // Обновляем время изменения статуса
+			session.IsCompletingNotificationSent = false // Сбрасываем флаг, чтобы уведомление могло быть отправлено снова
+			err = s.repo.UpdateSession(ctx, &session)
+			if err != nil {
+				return err
+			}
 			if session.BoxID != nil && s.washboxService != nil {
 				// Исключаем сессии кассира из кулдауна
 				if s.cashierUserID != "" {
@@ -1373,7 +1383,6 @@ func (s *ServiceImpl) CheckAndCompleteExpiredSessions(ctx context.Context) error
 					}
 				}
 			}
-
 			// Выключаем все койлы через Modbus при истечении сессии
 			if session.BoxID != nil && s.modbusService != nil {
 				logger.Printf("Выключение всех койлов для истекшей сессии - session_id: %s, box_id: %s", session.ID, *session.BoxID)
@@ -1401,15 +1410,6 @@ func (s *ServiceImpl) CheckAndCompleteExpiredSessions(ctx context.Context) error
 						logger.Printf("ExpireSession: не найден регистр химии для бокса %s", *session.BoxID)
 					}
 				}
-			}
-
-			// Обновляем статус сессии на complete, время обновления статуса и сбрасываем флаг уведомления
-			session.Status = models.SessionStatusComplete
-			session.StatusUpdatedAt = time.Now()         // Обновляем время изменения статуса
-			session.IsCompletingNotificationSent = false // Сбрасываем флаг, чтобы уведомление могло быть отправлено снова
-			err = s.repo.UpdateSession(ctx, &session)
-			if err != nil {
-				return err
 			}
 
 			// Отправляем уведомление о завершении сессии с информацией о кулдауне
@@ -2992,4 +2992,25 @@ func (s *ServiceImpl) GetLastSessionByCarNumber(ctx context.Context, carNumber s
 		session.ID, session.CarNumber, session.Status)
 
 	return session, nil
+}
+
+// GetActiveSessionByBoxID возвращает активную сессию для бокса (если есть)
+func (s *ServiceImpl) GetActiveSessionByBoxID(ctx context.Context, boxID uuid.UUID) (*models.Session, error) {
+	var session models.Session
+	err := s.db.WithContext(ctx).
+		Where("box_id = ? AND status IN (?)", boxID, []string{
+			models.SessionStatusAssigned,
+			models.SessionStatusActive,
+		}).
+		Order("created_at DESC").
+		First(&session).Error
+	
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, nil // Нет активной сессии - это нормально
+		}
+		return nil, err
+	}
+	
+	return &session, nil
 }
