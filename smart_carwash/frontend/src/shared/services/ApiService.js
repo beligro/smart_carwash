@@ -692,6 +692,29 @@ const ApiService = {
 
 
   // === МЕТОДЫ ДЛЯ РАБОТЫ С УБОРКОЙ ===
+  
+  // Состояние спецбокса уборщика
+  getCleanerBoxState: async () => {
+    try {
+      const response = await api.get('/cleaner/washboxes/box-state');
+      return response.data;
+    } catch (error) {
+      console.error('Ошибка при получении состояния бокса уборщика:', error);
+      throw error;
+    }
+  },
+  
+  // История уборок конкретного уборщика
+  getCleanerCleaningHistory: async (params = {}) => {
+    try {
+      const queryString = toSnakeCaseQuery(params);
+      const response = await api.get(`/cleaner/washboxes/cleaning-history?${queryString}`);
+      return response.data;
+    } catch (error) {
+      console.error('Ошибка при получении истории уборщика:', error);
+      throw error;
+    }
+  },
 
   // Получение списка боксов для уборщика
   getCleanerWashBoxes: async () => {

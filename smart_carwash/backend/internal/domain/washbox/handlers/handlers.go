@@ -57,6 +57,8 @@ func (h *Handler) RegisterRoutes(router *gin.RouterGroup, cleanerMiddleware gin.
 		cleanerRoutes.GET("", h.cleanerListWashBoxes)
 		cleanerRoutes.POST("/start-cleaning", h.cleanerStartCleaning)
 		cleanerRoutes.POST("/complete-cleaning", h.cleanerCompleteCleaning)
+		cleanerRoutes.GET("/box-state", h.cleanerGetBoxState)
+		cleanerRoutes.GET("/cleaning-history", h.cleanerGetCleaningHistory)
 	}
 }
 
@@ -349,6 +351,66 @@ func (h *Handler) cleanerCompleteCleaning(c *gin.Context) {
 	c.Set("meta", gin.H{
 		"washbox_id": req.WashBoxID,
 		"cleaner_id": cleanerID,
+	})
+
+	c.JSON(http.StatusOK, resp)
+}
+
+// cleanerGetBoxState возвращает текущее состояние спецбокса уборщика
+func (h *Handler) cleanerGetBoxState(c *gin.Context) {
+	resp, err := h.service.CleanerGetBoxState(c.Request.Context())
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	if resp != nil {
+		c.Set("meta", gin.H{
+			"washbox_id": resp.WashBox.ID,
+		})
+	}
+
+	c.JSON(http.StatusOK, resp)
+}
+
+// cleanerGetCleaningHistory возвращает историю уборщика
+func (h *Handler) cleanerGetCleaningHistory(c *gin.Context) {
+	var req models.CleanerCleaningHistoryRequest
+
+	if limitStr := c.Query("limit"); limitStr != "" {
+		if limit, err := strconv.Atoi(limitStr); err == nil {
+			req.Limit = &limit
+		}
+	}
+
+	if offsetStr := c.Query("offset"); offsetStr != "" {
+		if offset, err := strconv.Atoi(offsetStr); err == nil {
+			req.Offset = &offset
+		}
+	}
+
+	cleanerIDInterface, exists := c.Get("cleaner_id")
+	if !exists {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Необходима авторизация"})
+		return
+	}
+
+	cleanerID, ok := cleanerIDInterface.(uuid.UUID)
+	if !ok {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Ошибка получения ID уборщика"})
+		return
+	}
+
+	resp, err := h.service.CleanerGetCleaningHistory(c.Request.Context(), &req, cleanerID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.Set("meta", gin.H{
+		"cleaner_id": cleanerID,
+		"limit":      resp.Limit,
+		"offset":     resp.Offset,
 	})
 
 	c.JSON(http.StatusOK, resp)

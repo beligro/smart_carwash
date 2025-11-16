@@ -2799,7 +2799,6 @@ func (s *ServiceImpl) ReassignSession(ctx context.Context, req *models.ReassignS
 	session.WasChemistryOn = false
 	session.ChemistryStartedAt = nil
 	session.ChemistryEndedAt = nil
-	session.ChemistryTimeMinutes = 0
 
 	// Возвращаем сессию в очередь
 	session.Status = models.SessionStatusInQueue

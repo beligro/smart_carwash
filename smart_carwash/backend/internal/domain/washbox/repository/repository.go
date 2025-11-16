@@ -32,6 +32,7 @@ type Repository interface {
 	GetWashBoxesForCleaner(ctx context.Context, limit int, offset int) ([]models.WashBox, int, error)
 	StartCleaning(ctx context.Context, washBoxID uuid.UUID) error
 	CompleteCleaning(ctx context.Context, washBoxID uuid.UUID) error
+	CompleteCleaningWithStatus(ctx context.Context, washBoxID uuid.UUID, nextStatus string) error
 	GetCleaningBoxes(ctx context.Context) ([]models.WashBox, error)
 	UpdateCleaningStartedAt(ctx context.Context, washBoxID uuid.UUID, startedAt time.Time) error
 
@@ -44,6 +45,7 @@ type Repository interface {
 	GetLastCleaningLogByBox(ctx context.Context, washBoxID uuid.UUID) (*models.CleaningLog, error)
 	GetLastCleaningLogsByBoxIDs(ctx context.Context, washBoxIDs []uuid.UUID) (map[uuid.UUID]*models.CleaningLog, error)
 	GetExpiredCleaningLogs(ctx context.Context, timeoutMinutes int) ([]models.CleaningLog, error)
+	GetCleaningLogsByCleaner(ctx context.Context, cleanerID uuid.UUID, limit int, offset int) ([]models.CleaningLog, int64, error)
 
 	// Методы для работы с cooldown
 	SetCooldown(ctx context.Context, boxID uuid.UUID, userID uuid.UUID, cooldownUntil time.Time) error
@@ -270,10 +272,15 @@ func (r *PostgresRepository) StartCleaning(ctx context.Context, washBoxID uuid.U
 
 // CompleteCleaning завершает уборку бокса
 func (r *PostgresRepository) CompleteCleaning(ctx context.Context, washBoxID uuid.UUID) error {
+	return r.CompleteCleaningWithStatus(ctx, washBoxID, models.StatusFree)
+}
+
+// CompleteCleaningWithStatus завершает уборку с заданным итоговым статусом
+func (r *PostgresRepository) CompleteCleaningWithStatus(ctx context.Context, washBoxID uuid.UUID, nextStatus string) error {
 	return r.db.WithContext(ctx).Model(&models.WashBox{}).
 		Where("id = ?", washBoxID).
 		Updates(map[string]interface{}{
-			"status":               models.StatusFree,
+			"status":               nextStatus,
 			"cleaning_started_at":  nil,
 			"cleaning_reserved_by": nil,
 		}).Error
@@ -422,6 +429,36 @@ func (r *PostgresRepository) GetExpiredCleaningLogs(ctx context.Context, timeout
 		models.CleaningLogStatusInProgress, timeout).
 		Find(&logs).Error
 	return logs, err
+}
+
+// GetCleaningLogsByCleaner возвращает историю уборок конкретного уборщика
+func (r *PostgresRepository) GetCleaningLogsByCleaner(ctx context.Context, cleanerID uuid.UUID, limit int, offset int) ([]models.CleaningLog, int64, error) {
+	var logs []models.CleaningLog
+	var total int64
+
+	if err := r.db.WithContext(ctx).
+		Model(&models.CleaningLog{}).
+		Where("cleaner_id = ?", cleanerID).
+		Count(&total).Error; err != nil {
+		return nil, 0, err
+	}
+
+	query := r.db.WithContext(ctx).
+		Where("cleaner_id = ?", cleanerID).
+		Order("started_at DESC")
+
+	if limit > 0 {
+		query = query.Limit(limit)
+	}
+	if offset > 0 {
+		query = query.Offset(offset)
+	}
+
+	if err := query.Find(&logs).Error; err != nil {
+		return nil, 0, err
+	}
+
+	return logs, total, nil
 }
 
 // SetCooldown устанавливает cooldown для бокса после завершения сессии
