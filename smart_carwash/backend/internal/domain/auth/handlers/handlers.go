@@ -290,6 +290,11 @@ func (h *Handler) adminMiddleware() gin.HandlerFunc {
 	}
 }
 
+// GetAdminMiddleware возвращает middleware для проверки прав администратора (публичный метод)
+func (h *Handler) GetAdminMiddleware() gin.HandlerFunc {
+	return h.adminMiddleware()
+}
+
 // cleanerMiddleware middleware для проверки авторизации уборщика
 func (h *Handler) cleanerMiddleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
@@ -413,7 +418,6 @@ func (h *Handler) getShiftStatus(c *gin.Context) {
 	// Возвращаем результат
 	c.JSON(http.StatusOK, resp)
 }
-
 
 // loginCleaner обработчик для авторизации уборщика
 func (h *Handler) loginCleaner(c *gin.Context) {

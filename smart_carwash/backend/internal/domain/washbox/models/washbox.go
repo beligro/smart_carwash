@@ -135,6 +135,33 @@ type CleanerCompleteCleaningResponse struct {
 	Success bool `json:"success"`
 }
 
+// CleanerBoxStateResponse ответ с текущим состоянием спецбокса уборщика
+type CleanerBoxStateResponse struct {
+	WashBox WashBox `json:"wash_box"`
+}
+
+// CleanerCleaningHistoryRequest запрос истории уборок уборщика
+type CleanerCleaningHistoryRequest struct {
+	Limit  *int `json:"limit"`
+	Offset *int `json:"offset"`
+}
+
+// CleanerCleaningHistoryItem элемент истории уборщика
+type CleanerCleaningHistoryItem struct {
+	ID          uuid.UUID  `json:"id"`
+	WashBoxID   uuid.UUID  `json:"wash_box_id"`
+	StartedAt   time.Time  `json:"started_at"`
+	CompletedAt *time.Time `json:"completed_at"`
+}
+
+// CleanerCleaningHistoryResponse ответ на запрос истории уборщика
+type CleanerCleaningHistoryResponse struct {
+	Logs   []CleanerCleaningHistoryItem `json:"logs"`
+	Total  int                          `json:"total"`
+	Limit  int                          `json:"limit"`
+	Offset int                          `json:"offset"`
+}
+
 // AdminUpdateWashBoxResponse ответ на обновление бокса мойки
 type AdminUpdateWashBoxResponse struct {
 	WashBox WashBox `json:"wash_box"`

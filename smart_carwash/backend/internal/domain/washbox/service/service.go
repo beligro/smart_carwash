@@ -7,14 +7,19 @@ import (
 	"carwash_backend/internal/domain/settings/service"
 	"carwash_backend/internal/domain/washbox/models"
 	"carwash_backend/internal/domain/washbox/repository"
+	"carwash_backend/internal/logger"
 	"context"
 	"errors"
+	"fmt"
 	"math/rand"
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/sirupsen/logrus"
 	"gorm.io/gorm"
 )
+
+const cleanerSpecialBoxNumber = 40
 
 // Service интерфейс для бизнес-логики боксов мойки
 type Service interface {
@@ -42,6 +47,8 @@ type Service interface {
 	CleanerListWashBoxes(ctx context.Context, req *models.CleanerListWashBoxesRequest) (*models.CleanerListWashBoxesResponse, error)
 	CleanerStartCleaning(ctx context.Context, req *models.CleanerStartCleaningRequest, cleanerID uuid.UUID) (*models.CleanerStartCleaningResponse, error)
 	CleanerCompleteCleaning(ctx context.Context, req *models.CleanerCompleteCleaningRequest, cleanerID uuid.UUID) (*models.CleanerCompleteCleaningResponse, error)
+	CleanerGetBoxState(ctx context.Context) (*models.CleanerBoxStateResponse, error)
+	CleanerGetCleaningHistory(ctx context.Context, req *models.CleanerCleaningHistoryRequest, cleanerID uuid.UUID) (*models.CleanerCleaningHistoryResponse, error)
 	GetCleaningBoxes(ctx context.Context) ([]models.WashBox, error)
 	AutoCompleteExpiredCleanings(ctx context.Context) error
 	UpdateCleaningStartedAt(ctx context.Context, washBoxID uuid.UUID, startedAt time.Time) error
@@ -64,6 +71,38 @@ type ServiceImpl struct {
 	modbusRepo      *modbusRepository.ModbusRepository
 	modbusAdapter   *modbusAdapter.ModbusAdapter
 	// SafeDB удалён; используем контексты вызова
+}
+
+func (s *ServiceImpl) isSpecialCleanerBox(box *models.WashBox) bool {
+	return box != nil && box.Number == cleanerSpecialBoxNumber
+}
+
+func (s *ServiceImpl) ensureSpecialBoxMaintenanceStatus(ctx context.Context, box *models.WashBox) error {
+	if !s.isSpecialCleanerBox(box) {
+		return nil
+	}
+
+	if box.Status == models.StatusCleaning || box.Status == models.StatusMaintenance {
+		return nil
+	}
+
+	box.Status = models.StatusMaintenance
+	box.CleaningStartedAt = nil
+	_, err := s.repo.UpdateWashBox(ctx, box)
+	return err
+}
+
+func (s *ServiceImpl) getSpecialCleanerBox(ctx context.Context) (*models.WashBox, error) {
+	box, err := s.repo.GetWashBoxByNumber(ctx, cleanerSpecialBoxNumber)
+	if err != nil {
+		return nil, fmt.Errorf("бокс %d не найден: %w", cleanerSpecialBoxNumber, err)
+	}
+
+	if err := s.ensureSpecialBoxMaintenanceStatus(ctx, box); err != nil {
+		return nil, err
+	}
+
+	return box, nil
 }
 
 // shuffleBoxesWithSamePriority перемешивает боксы с одинаковым приоритетом
@@ -570,9 +609,26 @@ func (s *ServiceImpl) CleanerStartCleaning(ctx context.Context, req *models.Clea
 		return nil, err
 	}
 
-	// Проверяем, что бокс свободен
-	if washBox.Status != models.StatusFree {
-		return nil, errors.New("бокс недоступен для уборки (бокс должен быть свободен)")
+	isSpecial := s.isSpecialCleanerBox(washBox)
+
+	if isSpecial {
+		// Спецбокс должен быть или в service, или в cleaning
+		if washBox.Status == models.StatusCleaning {
+			return nil, errors.New("уборка уже запущена в боксе 40")
+		}
+		if washBox.Status != models.StatusMaintenance {
+			if err := s.ensureSpecialBoxMaintenanceStatus(ctx, washBox); err != nil {
+				return nil, err
+			}
+			if washBox.Status != models.StatusMaintenance {
+				return nil, errors.New("бокс 40 недоступен для уборки")
+			}
+		}
+	} else {
+		// Проверяем, что бокс свободен
+		if washBox.Status != models.StatusFree {
+			return nil, errors.New("бокс недоступен для уборки (бокс должен быть свободен)")
+		}
 	}
 
 	// Проверяем, что уборщик не убирает другой бокс
@@ -581,24 +637,26 @@ func (s *ServiceImpl) CleanerStartCleaning(ctx context.Context, req *models.Clea
 		return nil, errors.New("уборщик уже убирает другой бокс")
 	}
 
-	// Проверяем, что бокс не убирался в предыдущей сессии
-	lastLog, err := s.repo.GetLastCleaningLogByBox(ctx, req.WashBoxID)
-	if err == nil && lastLog != nil {
-		// Проверяем, что последняя уборка была завершена
-		if lastLog.Status == models.CleaningLogStatusCompleted && lastLog.CompletedAt != nil {
-			// Проверяем, что после последней уборки была хотя бы одна завершенная сессия
-			completedSessionsCount, err := s.sessionRepo.GetCompletedSessionsBetween(ctx,
-				req.WashBoxID,
-				*lastLog.CompletedAt,
-				time.Now(),
-			)
-			if err != nil {
-				return nil, err
-			}
+	if !isSpecial {
+		// Проверяем, что бокс не убирался в предыдущей сессии
+		lastLog, err := s.repo.GetLastCleaningLogByBox(ctx, req.WashBoxID)
+		if err == nil && lastLog != nil {
+			// Проверяем, что последняя уборка была завершена
+			if lastLog.Status == models.CleaningLogStatusCompleted && lastLog.CompletedAt != nil {
+				// Проверяем, что после последней уборки была хотя бы одна завершенная сессия
+				completedSessionsCount, err := s.sessionRepo.GetCompletedSessionsBetween(ctx,
+					req.WashBoxID,
+					*lastLog.CompletedAt,
+					time.Now(),
+				)
+				if err != nil {
+					return nil, err
+				}
 
-			// Если нет завершенных сессий между уборками, запрещаем повторную уборку
-			if completedSessionsCount == 0 {
-				return nil, errors.New("уборщик не может 2 раза подряд брать уборку на одном и том же боксе, если между его уборками не было завершенной сессии")
+				// Если нет завершенных сессий между уборками, запрещаем повторную уборку
+				if completedSessionsCount == 0 {
+					return nil, errors.New("уборщик не может 2 раза подряд брать уборку на одном и том же боксе, если между его уборками не было завершенной сессии")
+				}
 			}
 		}
 	}
@@ -632,8 +690,10 @@ func (s *ServiceImpl) CleanerStartCleaning(ctx context.Context, req *models.Clea
 	// Включаем свет в боксе при начале уборки, если задан регистр и доступен адаптер Modbus
 	if s.modbusAdapter != nil && washBox.LightCoilRegister != nil && *washBox.LightCoilRegister != "" {
 		if err := s.modbusAdapter.WriteLightCoil(ctx, req.WashBoxID, *washBox.LightCoilRegister, true); err != nil {
-			// Логируем ошибку, но не прерываем процесс уборки
-			// Свет может быть недоступен, но уборка должна продолжаться
+			logger.WithFields(logrus.Fields{
+				"washbox_id": req.WashBoxID,
+				"register":   *washBox.LightCoilRegister,
+			}).WithError(err).Error("не удалось включить свет при старте уборки")
 		}
 	}
 
@@ -654,6 +714,8 @@ func (s *ServiceImpl) CleanerCompleteCleaning(ctx context.Context, req *models.C
 		return nil, errors.New("бокс не на уборке")
 	}
 
+	isSpecial := s.isSpecialCleanerBox(washBox)
+
 	// Находим активный лог уборки для этого уборщика и бокса
 	activeLog, err := s.repo.GetActiveCleaningLogByCleaner(ctx, cleanerID)
 	if err != nil || activeLog == nil || activeLog.WashBoxID != req.WashBoxID {
@@ -662,9 +724,14 @@ func (s *ServiceImpl) CleanerCompleteCleaning(ctx context.Context, req *models.C
 
 	// Завершаем уборку
 	completedAt := time.Now()
-	err = s.repo.CompleteCleaning(ctx, req.WashBoxID)
-	if err != nil {
-		return nil, err
+	if isSpecial {
+		if err := s.repo.CompleteCleaningWithStatus(ctx, req.WashBoxID, models.StatusMaintenance); err != nil {
+			return nil, err
+		}
+	} else {
+		if err := s.repo.CompleteCleaning(ctx, req.WashBoxID); err != nil {
+			return nil, err
+		}
 	}
 
 	// Обновляем лог уборки
@@ -681,13 +748,63 @@ func (s *ServiceImpl) CleanerCompleteCleaning(ctx context.Context, req *models.C
 	// Выключаем свет в боксе при завершении уборки, если задан регистр и доступен адаптер Modbus
 	if s.modbusAdapter != nil && washBox.LightCoilRegister != nil && *washBox.LightCoilRegister != "" {
 		if err := s.modbusAdapter.WriteLightCoil(ctx, req.WashBoxID, *washBox.LightCoilRegister, false); err != nil {
-			// Логируем ошибку, но не прерываем процесс завершения уборки
-			// Свет может быть недоступен, но уборка должна быть завершена
+			logger.WithFields(logrus.Fields{
+				"washbox_id": req.WashBoxID,
+				"register":   *washBox.LightCoilRegister,
+			}).WithError(err).Error("не удалось выключить свет при завершении уборки")
 		}
 	}
 
 	return &models.CleanerCompleteCleaningResponse{
 		Success: true,
+	}, nil
+}
+
+// CleanerGetBoxState возвращает состояние специального бокса уборщика
+func (s *ServiceImpl) CleanerGetBoxState(ctx context.Context) (*models.CleanerBoxStateResponse, error) {
+	box, err := s.getSpecialCleanerBox(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	return &models.CleanerBoxStateResponse{
+		WashBox: *box,
+	}, nil
+}
+
+// CleanerGetCleaningHistory возвращает историю уборок конкретного уборщика
+func (s *ServiceImpl) CleanerGetCleaningHistory(ctx context.Context, req *models.CleanerCleaningHistoryRequest, cleanerID uuid.UUID) (*models.CleanerCleaningHistoryResponse, error) {
+	limit := 20
+	offset := 0
+	if req != nil {
+		if req.Limit != nil && *req.Limit > 0 {
+			limit = *req.Limit
+		}
+		if req.Offset != nil && *req.Offset >= 0 {
+			offset = *req.Offset
+		}
+	}
+
+	logs, total, err := s.repo.GetCleaningLogsByCleaner(ctx, cleanerID, limit, offset)
+	if err != nil {
+		return nil, err
+	}
+
+	history := make([]models.CleanerCleaningHistoryItem, 0, len(logs))
+	for _, log := range logs {
+		history = append(history, models.CleanerCleaningHistoryItem{
+			ID:          log.ID,
+			WashBoxID:   log.WashBoxID,
+			StartedAt:   log.StartedAt,
+			CompletedAt: log.CompletedAt,
+		})
+	}
+
+	return &models.CleanerCleaningHistoryResponse{
+		Logs:   history,
+		Total:  int(total),
+		Limit:  limit,
+		Offset: offset,
 	}, nil
 }
 
@@ -780,9 +897,18 @@ func (s *ServiceImpl) AutoCompleteExpiredCleanings(ctx context.Context) error {
 
 	// Завершаем каждую просроченную уборку
 	for _, log := range expiredLogs {
+		box, getErr := s.repo.GetWashBoxByID(ctx, log.WashBoxID)
+		if getErr != nil {
+			continue
+		}
+
+		nextStatus := models.StatusFree
+		if s.isSpecialCleanerBox(box) {
+			nextStatus = models.StatusMaintenance
+		}
+
 		// Завершаем уборку бокса
-		err := s.repo.CompleteCleaning(ctx, log.WashBoxID)
-		if err != nil {
+		if err := s.repo.CompleteCleaningWithStatus(ctx, log.WashBoxID, nextStatus); err != nil {
 			continue // Продолжаем с другими, если одна не удалась
 		}
 
@@ -799,10 +925,12 @@ func (s *ServiceImpl) AutoCompleteExpiredCleanings(ctx context.Context) error {
 		}
 
 		// Пытаемся выключить свет, если известен регистр
-		if s.modbusAdapter != nil {
-			// Получаем бокс для доступа к регистру света
-			if box, getErr := s.repo.GetWashBoxByID(ctx, log.WashBoxID); getErr == nil && box != nil && box.LightCoilRegister != nil && *box.LightCoilRegister != "" {
-				_ = s.modbusAdapter.WriteLightCoil(ctx, log.WashBoxID, *box.LightCoilRegister, false)
+		if s.modbusAdapter != nil && box != nil && box.LightCoilRegister != nil && *box.LightCoilRegister != "" {
+			if err := s.modbusAdapter.WriteLightCoil(ctx, log.WashBoxID, *box.LightCoilRegister, false); err != nil {
+				logger.WithFields(logrus.Fields{
+					"washbox_id": log.WashBoxID,
+					"register":   *box.LightCoilRegister,
+				}).WithError(err).Error("не удалось выключить свет при авто-завершении уборки")
 			}
 		}
 	}

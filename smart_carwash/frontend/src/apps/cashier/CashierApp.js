@@ -7,6 +7,7 @@ import ApiService from '../../shared/services/ApiService';
 import ActiveSessions from './components/ActiveSessions';
 import LastShiftStatistics from './components/LastShiftStatistics';
 import BoxManagement from './components/BoxManagement';
+import QueueStatus from './components/QueueStatus';
 import MobileTable from '../../shared/components/MobileTable';
 import Timer from '../../shared/components/UI/Timer';
 import useTimer from '../../shared/hooks/useTimer';
@@ -465,8 +466,8 @@ const CashierApp = () => {
       return;
     }
     
-    // Не загружаем данные для вкладок активных сессий и боксов - компоненты сами загружают
-    if (activeTab === 'active_sessions' || activeTab === 'boxes') {
+    // Не загружаем данные для вкладок активных сессий, очереди и боксов - компоненты сами загружают
+    if (activeTab === 'active_sessions' || activeTab === 'queue' || activeTab === 'boxes') {
       return;
     }
     
@@ -589,6 +590,25 @@ const CashierApp = () => {
     }
   };
 
+  // Обработчик отмены сессии из таблицы сессий
+  const handleCancelSessionFromTable = async (sessionId) => {
+    if (!window.confirm('Вы уверены, что хотите отменить эту сессию?')) {
+      return;
+    }
+
+    setActionLoading(prev => ({ ...prev, [sessionId]: true }));
+    
+    try {
+      await ApiService.cancelCashierSession(sessionId);
+      await loadData(); // Перезагружаем данные
+    } catch (error) {
+      console.error('Ошибка отмены сессии:', error);
+      setError('Ошибка отмены сессии: ' + (error.response?.data?.error || error.message));
+    } finally {
+      setActionLoading(prev => ({ ...prev, [sessionId]: false }));
+    }
+  };
+
   // Обработчик переназначения сессии
   const handleReassignSession = async (sessionId) => {
     setActionLoading(prev => ({ ...prev, [sessionId]: true }));
@@ -636,8 +656,8 @@ const CashierApp = () => {
       return;
     }
     
-    // Не загружаем данные для вкладок активных сессий и боксов - компоненты сами загружают
-    if (activeTab === 'active_sessions' || activeTab === 'boxes') {
+    // Не загружаем данные для вкладок активных сессий, очереди и боксов - компоненты сами загружают
+    if (activeTab === 'active_sessions' || activeTab === 'queue' || activeTab === 'boxes') {
       return;
     }
     
@@ -795,6 +815,13 @@ const CashierApp = () => {
                 Платежи
               </Tab>
               <Tab 
+                active={activeTab === 'queue'} 
+                onClick={() => handleTabChange('queue')}
+                theme={theme}
+              >
+                Очередь
+              </Tab>
+              <Tab 
                 active={activeTab === 'boxes'} 
                 onClick={() => handleTabChange('boxes')}
                 theme={theme}
@@ -819,7 +846,6 @@ const CashierApp = () => {
                       <Table>
                         <thead>
                           <tr>
-                            <Th theme={theme}>ID</Th>
                             <Th theme={theme}>Статус</Th>
                             <Th theme={theme}>Тип услуги</Th>
                             <Th theme={theme}>Номер машины</Th>
@@ -836,7 +862,6 @@ const CashierApp = () => {
                             const chemistryStatus = getChemistryStatus(session);
                             return (
                               <tr key={session.id}>
-                                <Td theme={theme}>{session.id}</Td>
                                 <Td theme={theme}>
                                   <StatusBadge status={session.status}>
                                     {getStatusText(session.status)}
@@ -878,6 +903,17 @@ const CashierApp = () => {
                                         {actionLoading[session.id] ? 'Переназначаем...' : '🔄 Переназначить'}
                                       </ActionButton>
                                     )}
+                                    {/* Кнопка отмены сессии (created, in_queue, assigned для кассирских; только created для telegram) */}
+                                    {(session.status === 'created') && (
+                                      <ActionButton
+                                        className="cancel"
+                                        onClick={() => handleCancelSessionFromTable(session.id)}
+                                        disabled={actionLoading[session.id]}
+                                        style={{ padding: '4px 8px', fontSize: '0.9rem', backgroundColor: '#dc3545', color: 'white' }}
+                                      >
+                                        {actionLoading[session.id] ? 'Отменяем...' : 'Отменить'}
+                                      </ActionButton>
+                                    )}
                                   </div>
                                 </Td>
                               </tr>
@@ -893,7 +929,7 @@ const CashierApp = () => {
                           <MobileSessionCard key={session.id} theme={theme} status={session.status}>
                             <MobileCardHeader>
                               <MobileCardTitle theme={theme}>
-                                Сессия #{session.id}
+                                Сессия
                               </MobileCardTitle>
                               <MobileCardStatus>
                                 <StatusBadge status={session.status}>
@@ -977,6 +1013,17 @@ const CashierApp = () => {
                                   {actionLoading[session.id] ? 'Переназначаем...' : '🔄 Переназначить'}
                                 </ActionButton>
                               )}
+                              {/* Кнопка отмены сессии (created, in_queue, assigned для кассирских; только created для telegram) */}
+                              {(session.status === 'created') && (
+                                <ActionButton
+                                  className="cancel"
+                                  onClick={() => handleCancelSessionFromTable(session.id)}
+                                  disabled={actionLoading[session.id]}
+                                  style={{ padding: '8px 16px', fontSize: '0.9rem', minHeight: '44px', backgroundColor: '#dc3545', color: 'white' }}
+                                >
+                                  {actionLoading[session.id] ? 'Отменяем...' : 'Отменить'}
+                                </ActionButton>
+                              )}
                             </MobileCardActions>
                           </MobileSessionCard>
                         );
@@ -1049,6 +1096,8 @@ const CashierApp = () => {
                     </>
                   )}
                 </div>
+              ) : activeTab === 'queue' ? (
+                <QueueStatus />
               ) : activeTab === 'boxes' ? (
                 <BoxManagement />
               ) : null}

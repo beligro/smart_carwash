@@ -1,6 +1,7 @@
 package service
 
 import (
+	carwashStatusRepo "carwash_backend/internal/domain/carwash_status/repository"
 	"carwash_backend/internal/domain/modbus"
 	paymentModels "carwash_backend/internal/domain/payment/models"
 	paymentService "carwash_backend/internal/domain/payment/service"
@@ -56,6 +57,7 @@ type Service interface {
 	// Административные методы
 	AdminListSessions(ctx context.Context, req *models.AdminListSessionsRequest) (*models.AdminListSessionsResponse, error)
 	AdminGetSession(ctx context.Context, req *models.AdminGetSessionRequest) (*models.AdminGetSessionResponse, error)
+	AdminCancelSession(ctx context.Context, req *models.AdminCancelSessionRequest) (*models.AdminCancelSessionResponse, error)
 
 	// Методы для кассира
 	CashierGetActiveSessions(ctx context.Context, req *models.CashierActiveSessionsRequest) (*models.CashierActiveSessionsResponse, error)
@@ -76,17 +78,18 @@ type Service interface {
 
 // ServiceImpl реализация Service
 type ServiceImpl struct {
-	repo            repository.Repository
-	washboxService  washboxService.Service
-	userService     userService.Service
-	telegramBot     telegram.NotificationService
-	paymentService  paymentService.Service
-	modbusService   modbus.ModbusServiceInterface
-	settingsService settingsService.Service
-	cashierUserID   string
-	metrics         *metrics.Metrics
-	db              *gorm.DB
-	processQueueMu  sync.Mutex // Мьютекс для исключения одновременного запуска ProcessQueue
+	repo              repository.Repository
+	washboxService    washboxService.Service
+	userService       userService.Service
+	telegramBot       telegram.NotificationService
+	paymentService    paymentService.Service
+	modbusService     modbus.ModbusServiceInterface
+	settingsService   settingsService.Service
+	carwashStatusRepo carwashStatusRepo.Repository // Опциональный репозиторий статуса мойки
+	cashierUserID     string
+	metrics           *metrics.Metrics
+	db                *gorm.DB
+	processQueueMu    sync.Mutex // Мьютекс для исключения одновременного запуска ProcessQueue
 }
 
 // NewService создает новый экземпляр Service
@@ -104,6 +107,11 @@ func NewService(repo repository.Repository, washboxService washboxService.Servic
 		db:              db,
 		processQueueMu:  sync.Mutex{}, // Мьютекс инициализируется автоматически, но явно указываем для ясности
 	}
+}
+
+// SetCarwashStatusRepo устанавливает репозиторий статуса мойки (для избежания циклических зависимостей)
+func (s *ServiceImpl) SetCarwashStatusRepo(carwashStatusRepo carwashStatusRepo.Repository) {
+	s.carwashStatusRepo = carwashStatusRepo
 }
 
 // CreateSession создает новую сессию
@@ -1321,6 +1329,16 @@ func (s *ServiceImpl) CheckAndCompleteExpiredSessions(ctx context.Context) error
 		// Проверяем, прошло ли выбранное время с момента начала сессии
 		if now.Sub(startTime) >= time.Duration(totalTime)*time.Minute {
 			// Если прошло время, завершаем сессию
+			// ИСПРАВЛЕНИЕ: Сначала завершаем сессию, потом освобождаем бокс
+			// Это предотвращает race condition где бокс становится 'free' при активной сессии
+			// Обновляем статус сессии на complete, время обновления статуса и сбрасываем флаг уведомления
+			session.Status = models.SessionStatusComplete
+			session.StatusUpdatedAt = time.Now()         // Обновляем время изменения статуса
+			session.IsCompletingNotificationSent = false // Сбрасываем флаг, чтобы уведомление могло быть отправлено снова
+			err = s.repo.UpdateSession(ctx, &session)
+			if err != nil {
+				return err
+			}
 			if session.BoxID != nil && s.washboxService != nil {
 				// Исключаем сессии кассира из кулдауна
 				if s.cashierUserID != "" {
@@ -1365,7 +1383,6 @@ func (s *ServiceImpl) CheckAndCompleteExpiredSessions(ctx context.Context) error
 					}
 				}
 			}
-
 			// Выключаем все койлы через Modbus при истечении сессии
 			if session.BoxID != nil && s.modbusService != nil {
 				logger.Printf("Выключение всех койлов для истекшей сессии - session_id: %s, box_id: %s", session.ID, *session.BoxID)
@@ -1393,15 +1410,6 @@ func (s *ServiceImpl) CheckAndCompleteExpiredSessions(ctx context.Context) error
 						logger.Printf("ExpireSession: не найден регистр химии для бокса %s", *session.BoxID)
 					}
 				}
-			}
-
-			// Обновляем статус сессии на complete, время обновления статуса и сбрасываем флаг уведомления
-			session.Status = models.SessionStatusComplete
-			session.StatusUpdatedAt = time.Now()         // Обновляем время изменения статуса
-			session.IsCompletingNotificationSent = false // Сбрасываем флаг, чтобы уведомление могло быть отправлено снова
-			err = s.repo.UpdateSession(ctx, &session)
-			if err != nil {
-				return err
 			}
 
 			// Отправляем уведомление о завершении сессии с информацией о кулдауне
@@ -2508,10 +2516,40 @@ func (s *ServiceImpl) CashierCancelSession(ctx context.Context, req *models.Cash
 		return nil, fmt.Errorf("сессия не найдена: %w", err)
 	}
 
-	// Кассир может отменять любые сессии в статусе in_queue или assigned
+	// Определяем, является ли сессия кассирской
+	isCashierSession := false
+	if s.cashierUserID != "" {
+		cashierUserID, err := uuid.Parse(s.cashierUserID)
+		if err == nil && session.UserID == cashierUserID {
+			isCashierSession = true
+		}
+	}
 
-	// Проверяем статус сессии
-	if session.Status != "in_queue" && session.Status != "assigned" {
+	// Определяем разрешенные статусы в зависимости от типа сессии
+	var allowedStatuses []string
+	if isCashierSession {
+		// Кассир может отменять свои сессии в любом статусе, кроме начатых (active)
+		allowedStatuses = []string{
+			models.SessionStatusCreated,
+			models.SessionStatusInQueue,
+			models.SessionStatusAssigned,
+		}
+	} else {
+		// Кассир может отменять сессии из telegram только в статусе created
+		allowedStatuses = []string{
+			models.SessionStatusCreated,
+		}
+	}
+
+	isAllowedStatus := false
+	for _, status := range allowedStatuses {
+		if session.Status == status {
+			isAllowedStatus = true
+			break
+		}
+	}
+
+	if !isAllowedStatus {
 		return nil, fmt.Errorf("нельзя отменить сессию со статусом: %s", session.Status)
 	}
 
@@ -2526,6 +2564,34 @@ func (s *ServiceImpl) CashierCancelSession(ctx context.Context, req *models.Cash
 	}
 
 	return &response.Session, nil
+}
+
+// AdminCancelSession отменяет сессию администратором
+func (s *ServiceImpl) AdminCancelSession(ctx context.Context, req *models.AdminCancelSessionRequest) (*models.AdminCancelSessionResponse, error) {
+	// Получаем сессию
+	session, err := s.repo.GetSessionByID(ctx, req.SessionID)
+	if err != nil {
+		return nil, fmt.Errorf("сессия не найдена: %w", err)
+	}
+
+	// Администратор может отменять любые сессии только в статусе created
+	if session.Status != models.SessionStatusCreated {
+		return nil, fmt.Errorf("нельзя отменить сессию со статусом: %s (можно отменять только сессии в статусе created)", session.Status)
+	}
+
+	// Отменяем сессию
+	response, err := s.CancelSession(ctx, &models.CancelSessionRequest{
+		SessionID:  req.SessionID,
+		UserID:     session.UserID, // Используем ID владельца сессии
+		SkipRefund: true,           // Для created сессий возврат не нужен
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	return &models.AdminCancelSessionResponse{
+		Session: response.Session,
+	}, nil
 }
 
 // EnableChemistry включает химию в сессии
@@ -2733,7 +2799,6 @@ func (s *ServiceImpl) ReassignSession(ctx context.Context, req *models.ReassignS
 	session.WasChemistryOn = false
 	session.ChemistryStartedAt = nil
 	session.ChemistryEndedAt = nil
-	session.ChemistryTimeMinutes = 0
 
 	// Возвращаем сессию в очередь
 	session.Status = models.SessionStatusInQueue
@@ -2910,4 +2975,41 @@ func (s *ServiceImpl) GetActiveSessionByCarNumber(ctx context.Context, carNumber
 		session.ID, session.CarNumber, session.Status)
 
 	return session, nil
+}
+
+// GetLastSessionByCarNumber получает последнюю сессию по номеру автомобиля (любой статус)
+func (s *ServiceImpl) GetLastSessionByCarNumber(ctx context.Context, carNumber string) (*models.Session, error) {
+	logger.Printf("Service - GetLastSessionByCarNumber: поиск последней сессии по номеру %s", carNumber)
+
+	session, err := s.repo.GetLastSessionByCarNumber(ctx, carNumber)
+	if err != nil {
+		logger.Printf("Service - GetLastSessionByCarNumber: сессия с номером %s не найдена: %v", carNumber, err)
+		return nil, err
+	}
+
+	logger.Printf("Service - GetLastSessionByCarNumber: найдена сессия - SessionID=%s, CarNumber=%s, Status=%s",
+		session.ID, session.CarNumber, session.Status)
+
+	return session, nil
+}
+
+// GetActiveSessionByBoxID возвращает активную сессию для бокса (если есть)
+func (s *ServiceImpl) GetActiveSessionByBoxID(ctx context.Context, boxID uuid.UUID) (*models.Session, error) {
+	var session models.Session
+	err := s.db.WithContext(ctx).
+		Where("box_id = ? AND status IN (?)", boxID, []string{
+			models.SessionStatusAssigned,
+			models.SessionStatusActive,
+		}).
+		Order("created_at DESC").
+		First(&session).Error
+	
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, nil // Нет активной сессии - это нормально
+		}
+		return nil, err
+	}
+	
+	return &session, nil
 }
