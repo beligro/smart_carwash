@@ -8,6 +8,7 @@ import (
 	"carwash_backend/internal/domain/washbox/models"
 	"carwash_backend/internal/domain/washbox/repository"
 	"carwash_backend/internal/logger"
+	washboxlogService "carwash_backend/internal/domain/washboxlog/service"
 	"context"
 	"errors"
 	"fmt"
@@ -70,7 +71,7 @@ type ServiceImpl struct {
 	settingsService service.Service
 	modbusRepo      *modbusRepository.ModbusRepository
 	modbusAdapter   *modbusAdapter.ModbusAdapter
-	// SafeDB удалён; используем контексты вызова
+	logSvc          washboxlogService.Service
 }
 
 func (s *ServiceImpl) isSpecialCleanerBox(box *models.WashBox) bool {
@@ -135,13 +136,14 @@ func shuffleBoxesWithSamePriority(boxes []models.WashBox) []models.WashBox {
 }
 
 // NewService создает новый экземпляр Service
-func NewService(repo repository.Repository, sessionRepo sessionRepository.Repository, settingsService service.Service, db *gorm.DB, modbusAdapterInst *modbusAdapter.ModbusAdapter) *ServiceImpl {
+func NewService(repo repository.Repository, sessionRepo sessionRepository.Repository, settingsService service.Service, db *gorm.DB, modbusAdapterInst *modbusAdapter.ModbusAdapter, logSvc washboxlogService.Service) *ServiceImpl {
 	return &ServiceImpl{
 		repo:            repo,
 		sessionRepo:     sessionRepo,
 		settingsService: settingsService,
 		modbusRepo:      modbusRepository.NewModbusRepository(db),
 		modbusAdapter:   modbusAdapterInst,
+		logSvc:          logSvc,
 	}
 }
 
@@ -152,7 +154,19 @@ func (s *ServiceImpl) GetWashBoxByID(ctx context.Context, id uuid.UUID) (*models
 
 // UpdateWashBoxStatus обновляет статус бокса мойки
 func (s *ServiceImpl) UpdateWashBoxStatus(ctx context.Context, id uuid.UUID, status string) error {
-	return s.repo.UpdateWashBoxStatus(ctx, id, status)
+	// Получаем текущий статус для логирования
+	box, err := s.repo.GetWashBoxByID(ctx, id)
+	if err != nil {
+		return err
+	}
+	oldStatus := box.Status
+	if err := s.repo.UpdateWashBoxStatus(ctx, id, status); err != nil {
+		return err
+	}
+	if s.logSvc != nil && oldStatus != status {
+		_ = s.logSvc.RecordStatusChange(ctx, id, oldStatus, status, nil)
+	}
+	return nil
 }
 
 // GetFreeWashBoxes получает все свободные боксы мойки, отсортированные по приоритету с рандомизацией
@@ -281,7 +295,11 @@ func (s *ServiceImpl) AdminUpdateWashBox(ctx context.Context, req *models.AdminU
 	}
 
 	if req.Status != nil {
+		prev := existingBox.Status
 		existingBox.Status = *req.Status
+		if s.logSvc != nil && prev != *req.Status {
+			_ = s.logSvc.RecordStatusChange(ctx, existingBox.ID, prev, *req.Status, nil)
+		}
 	}
 
 	existingBox.Comment = req.Comment
@@ -312,6 +330,27 @@ func (s *ServiceImpl) AdminUpdateWashBox(ctx context.Context, req *models.AdminU
 		return nil, err
 	}
 
+	// Если вручную перевели бокс в статус free — выключаем свет и химию
+	if req.Status != nil && *req.Status == models.StatusFree && s.modbusAdapter != nil {
+		// Свет
+		if updatedBox.LightCoilRegister != nil && *updatedBox.LightCoilRegister != "" {
+			if err := s.modbusAdapter.WriteLightCoil(ctx, updatedBox.ID, *updatedBox.LightCoilRegister, false); err != nil {
+				logger.WithFields(logrus.Fields{
+					"washbox_id": updatedBox.ID,
+					"register":   *updatedBox.LightCoilRegister,
+				}).WithError(err).Error("не удалось выключить свет при переводе бокса в 'free'")
+			}
+		}
+		// Химия
+		if updatedBox.ChemistryCoilRegister != nil && *updatedBox.ChemistryCoilRegister != "" {
+			if err := s.modbusAdapter.WriteChemistryCoil(ctx, updatedBox.ID, *updatedBox.ChemistryCoilRegister, false); err != nil {
+				logger.WithFields(logrus.Fields{
+					"washbox_id": updatedBox.ID,
+					"register":   *updatedBox.ChemistryCoilRegister,
+				}).WithError(err).Error("не удалось выключить химию при переводе бокса в 'free'")
+			}
+		}
+	}
 	return &models.AdminUpdateWashBoxResponse{
 		WashBox: *updatedBox,
 	}, nil
@@ -475,6 +514,9 @@ func (s *ServiceImpl) CashierSetMaintenance(ctx context.Context, req *models.Cas
 	updatedBox, err := s.repo.UpdateWashBox(ctx, washBox)
 	if err != nil {
 		return nil, err
+	}
+	if s.logSvc != nil {
+		_ = s.logSvc.RecordStatusChange(ctx, updatedBox.ID, models.StatusFree, models.StatusMaintenance, nil)
 	}
 
 	return &models.CashierSetMaintenanceResponse{

@@ -101,10 +101,17 @@ func NewService(repo repository.Repository, config *config.Config) *ServiceImpl 
 	return service
 }
 
-// LoginAdmin авторизует администратора
+// LoginAdmin авторизует администратора (поддержка двух ролей: super_admin и limited_admin)
 func (s *ServiceImpl) LoginAdmin(username, password string) (*models.LoginResponse, error) {
-	// Проверяем, совпадают ли учетные данные с данными администратора из конфигурации
-	if username != s.config.AdminUsername || password != s.config.AdminPassword {
+	// Определяем роль по данным конфигурации
+	role := ""
+	switch {
+	case username == s.config.AdminUsername && password == s.config.AdminPassword:
+		role = "super_admin"
+	case s.config.LimitedAdminUsername != "" && s.config.LimitedAdminPassword != "" &&
+		username == s.config.LimitedAdminUsername && password == s.config.LimitedAdminPassword:
+		role = "limited_admin"
+	default:
 		return nil, ErrInvalidCredentials
 	}
 
@@ -113,6 +120,7 @@ func (s *ServiceImpl) LoginAdmin(username, password string) (*models.LoginRespon
 		ID:       uuid.New(), // Для администратора генерируем случайный ID
 		Username: username,
 		IsAdmin:  true,
+		Role:     role,
 	}
 
 	// Генерируем токен
@@ -125,6 +133,7 @@ func (s *ServiceImpl) LoginAdmin(username, password string) (*models.LoginRespon
 		Token:     token,
 		ExpiresAt: expiresAt,
 		IsAdmin:   true,
+		Role:      role,
 	}, nil
 }
 
@@ -344,10 +353,12 @@ func (s *ServiceImpl) ValidateToken(ctx context.Context, tokenString string) (*m
 
 	username, _ := claims["username"].(string)
 
+	role, _ := claims["role"].(string)
 	return &models.TokenClaims{
 		ID:       id,
 		Username: username,
 		IsAdmin:  isAdmin,
+		Role:     role,
 	}, nil
 }
 
@@ -773,6 +784,7 @@ func (s *ServiceImpl) generateToken(claims models.TokenClaims) (string, time.Tim
 		"id":       claims.ID.String(),
 		"username": claims.Username,
 		"is_admin": claims.IsAdmin,
+		"role":     claims.Role,
 		"exp":      expiresAt.Unix(),
 	})
 

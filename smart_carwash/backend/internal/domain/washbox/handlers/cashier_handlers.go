@@ -7,6 +7,7 @@ import (
 	"carwash_backend/internal/domain/washbox/models"
 
 	"github.com/gin-gonic/gin"
+	"context"
 )
 
 // cashierListWashBoxes обработчик для получения списка боксов мойки для кассира
@@ -70,7 +71,13 @@ func (h *Handler) cashierSetMaintenance(c *gin.Context) {
 	}
 
 	// Переводим бокс в режим обслуживания
-	resp, err := h.service.CashierSetMaintenance(c.Request.Context(), &req)
+	ctx := c.Request.Context()
+	if cashierAny, ok := c.Get("cashier_id"); ok {
+		ctx = context.WithValue(ctx, "cashier_id", cashierAny)
+	}
+	// Явно указываем источник
+	ctx = context.WithValue(ctx, "role", "cashier")
+	resp, err := h.service.CashierSetMaintenance(ctx, &req)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return

@@ -264,6 +264,9 @@ func (h *Handler) authMiddleware() gin.HandlerFunc {
 		c.Set("user_id", claims.ID)
 		c.Set("username", claims.Username)
 		c.Set("is_admin", claims.IsAdmin)
+		if claims.Role != "" {
+			c.Set("role", claims.Role)
+		}
 
 		c.Next()
 	}

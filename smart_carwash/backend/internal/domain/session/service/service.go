@@ -16,6 +16,7 @@ import (
 	"carwash_backend/internal/logger"
 	"carwash_backend/internal/metrics"
 	"carwash_backend/internal/utils"
+	washboxlogService "carwash_backend/internal/domain/washboxlog/service"
 	"context"
 	"errors"
 	"fmt"
@@ -90,10 +91,11 @@ type ServiceImpl struct {
 	metrics           *metrics.Metrics
 	db                *gorm.DB
 	processQueueMu    sync.Mutex // Мьютекс для исключения одновременного запуска ProcessQueue
+	washboxLogSvc    washboxlogService.Service
 }
 
 // NewService создает новый экземпляр Service
-func NewService(repo repository.Repository, washboxService washboxService.Service, userService userService.Service, telegramBot telegram.NotificationService, paymentService paymentService.Service, modbusService modbus.ModbusServiceInterface, settingsService settingsService.Service, cashierUserID string, metrics *metrics.Metrics, db *gorm.DB) *ServiceImpl {
+func NewService(repo repository.Repository, washboxService washboxService.Service, userService userService.Service, telegramBot telegram.NotificationService, paymentService paymentService.Service, modbusService modbus.ModbusServiceInterface, settingsService settingsService.Service, cashierUserID string, metrics *metrics.Metrics, db *gorm.DB, washboxLogSvc washboxlogService.Service) *ServiceImpl {
 	return &ServiceImpl{
 		repo:            repo,
 		washboxService:  washboxService,
@@ -106,6 +108,7 @@ func NewService(repo repository.Repository, washboxService washboxService.Servic
 		metrics:         metrics,
 		db:              db,
 		processQueueMu:  sync.Mutex{}, // Мьютекс инициализируется автоматически, но явно указываем для ясности
+		washboxLogSvc:   washboxLogSvc,
 	}
 }
 
@@ -554,11 +557,22 @@ func (s *ServiceImpl) StartSession(ctx context.Context, req *models.StartSession
 			return fmt.Errorf("ошибка получения бокса: %w", err)
 		}
 
+		// Получаем предыдущий статус для логирования
+		var prevBoxStatusForStart string
+		if s.washboxLogSvc != nil && session.BoxID != nil {
+			if boxPrev, getErr := s.washboxService.GetWashBoxByID(ctx, *session.BoxID); getErr == nil && boxPrev != nil {
+				prevBoxStatusForStart = boxPrev.Status
+			}
+		}
 		// Обновляем статус бокса на busy
 		if err := tx.Model(&washboxModels.WashBox{}).
 			Where("id = ?", *session.BoxID).
 			Update("status", washboxModels.StatusBusy).Error; err != nil {
 			return fmt.Errorf("ошибка обновления статуса бокса: %w", err)
+		}
+		// Логируем смену статуса -> busy
+		if s.washboxLogSvc != nil && session.BoxID != nil && prevBoxStatusForStart != "" && prevBoxStatusForStart != washboxModels.StatusBusy {
+			_ = s.washboxLogSvc.RecordStatusChange(ctx, *session.BoxID, prevBoxStatusForStart, washboxModels.StatusBusy, nil)
 		}
 
 		// Очищаем любые поля кулдауна у бокса
@@ -693,10 +707,20 @@ func (s *ServiceImpl) CompleteSession(ctx context.Context, req *models.CompleteS
 		}
 
 		// Переводим бокс в статус free после завершения сессии
+		var prevBoxStatusOnComplete string
+		if s.washboxLogSvc != nil && session.BoxID != nil {
+			if boxPrev, getErr := s.washboxService.GetWashBoxByID(ctx, *session.BoxID); getErr == nil && boxPrev != nil {
+				prevBoxStatusOnComplete = boxPrev.Status
+			}
+		}
+		// Переводим бокс в статус free после завершения сессии
 		if err := tx.Model(&washboxModels.WashBox{}).
 			Where("id = ?", *session.BoxID).
 			Update("status", washboxModels.StatusFree).Error; err != nil {
 			return fmt.Errorf("ошибка обновления статуса бокса: %w", err)
+		}
+		if s.washboxLogSvc != nil && session.BoxID != nil && prevBoxStatusOnComplete != "" && prevBoxStatusOnComplete != washboxModels.StatusFree {
+			_ = s.washboxLogSvc.RecordStatusChange(ctx, *session.BoxID, prevBoxStatusOnComplete, washboxModels.StatusFree, nil)
 		}
 
 		// Получаем сессию для обновления
@@ -875,10 +899,20 @@ func (s *ServiceImpl) CompleteSessionWithoutRefund(ctx context.Context, sessionI
 		}
 
 		// Переводим бокс в статус free после завершения сессии
+		var prevBoxStatusOnComplete2 string
+		if s.washboxLogSvc != nil && session.BoxID != nil {
+			if boxPrev, getErr := s.washboxService.GetWashBoxByID(ctx, *session.BoxID); getErr == nil && boxPrev != nil {
+				prevBoxStatusOnComplete2 = boxPrev.Status
+			}
+		}
+		// Переводим бокс в статус free после завершения сессии
 		if err := tx.Model(&washboxModels.WashBox{}).
 			Where("id = ?", *session.BoxID).
 			Update("status", washboxModels.StatusFree).Error; err != nil {
 			return fmt.Errorf("ошибка обновления статуса бокса: %w", err)
+		}
+		if s.washboxLogSvc != nil && session.BoxID != nil && prevBoxStatusOnComplete2 != "" && prevBoxStatusOnComplete2 != washboxModels.StatusFree {
+			_ = s.washboxLogSvc.RecordStatusChange(ctx, *session.BoxID, prevBoxStatusOnComplete2, washboxModels.StatusFree, nil)
 		}
 
 		// Получаем сессию для обновления
@@ -1665,10 +1699,19 @@ func (s *ServiceImpl) ProcessQueue(ctx context.Context) error {
 			}
 
 			// Обновляем статус бокса на "reserved" в транзакции
+			var prevBoxStatusOnReserve string
+			if s.washboxLogSvc != nil {
+				if boxPrev, getErr := s.washboxService.GetWashBoxByID(ctx, box.ID); getErr == nil && boxPrev != nil {
+					prevBoxStatusOnReserve = boxPrev.Status
+				}
+			}
 			if err := tx.Model(&washboxModels.WashBox{}).
 				Where("id = ?", box.ID).
 				Update("status", washboxModels.StatusReserved).Error; err != nil {
 				return fmt.Errorf("ошибка обновления статуса бокса: %w", err)
+			}
+			if s.washboxLogSvc != nil && prevBoxStatusOnReserve != "" && prevBoxStatusOnReserve != washboxModels.StatusReserved {
+				_ = s.washboxLogSvc.RecordStatusChange(ctx, box.ID, prevBoxStatusOnReserve, washboxModels.StatusReserved, nil)
 			}
 
 			// Получаем сессию для обновления

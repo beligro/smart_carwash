@@ -64,6 +64,7 @@ type LoginResponse struct {
 	Token     string    `json:"token"`
 	ExpiresAt time.Time `json:"expires_at"`
 	IsAdmin   bool      `json:"is_admin"`
+	Role      string    `json:"role,omitempty"`
 }
 
 // CreateCashierRequest представляет запрос на создание кассира
@@ -149,6 +150,7 @@ type TokenClaims struct {
 	ID       uuid.UUID `json:"id"`
 	Username string    `json:"username"`
 	IsAdmin  bool      `json:"is_admin"`
+	Role     string    `json:"role,omitempty"`
 }
 
 // TwoFactorAuthSettings представляет настройки двухфакторной аутентификации

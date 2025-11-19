@@ -691,6 +691,13 @@ const ApiService = {
   },
 
 
+  // === МЕТОДЫ ДЛЯ ИСТОРИИ ИЗМЕНЕНИЙ БОКСОВ (АДМИНКА) ===
+  getWashboxChangeLogs: async (filters = {}) => {
+    const queryString = toSnakeCaseQuery(filters);
+    const response = await api.get(`/admin/washbox-change-logs?${queryString}`);
+    return response.data;
+  },
+
   // === МЕТОДЫ ДЛЯ РАБОТЫ С УБОРКОЙ ===
   
   // Состояние спецбокса уборщика

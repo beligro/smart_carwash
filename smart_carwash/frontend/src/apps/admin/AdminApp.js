@@ -14,6 +14,7 @@ import PaymentManagement from './components/PaymentManagement';
 import SettingsManagement from './components/SettingsManagement';
 import ModbusDashboard from './components/ModbusDashboard';
 import CleaningLogsManagement from './components/CleaningLogsManagement';
+import WashboxChangeLogs from './components/WashboxChangeLogs';
 
 
 const AdminContainer = styled.div`
@@ -212,6 +213,8 @@ const AdminApp = () => {
   const [user, setUser] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const role = AuthService.getRole();
+  const isLimitedAdmin = role === 'limited_admin';
   
   useEffect(() => {
     // Проверяем авторизацию при загрузке компонента
@@ -313,6 +316,13 @@ const AdminApp = () => {
               Логи уборки
             </NavLink>
           </NavItem>
+          {!isLimitedAdmin && (
+            <NavItem>
+              <NavLink to="/admin/washbox-change-logs" theme={theme} isActive={location.pathname === '/admin/washbox-change-logs'}>
+                История боксов
+              </NavLink>
+            </NavItem>
+          )}
           <NavItem>
             <NavLink to="/admin/payments" theme={theme} isActive={location.pathname === '/admin/payments'}>
               Платежи
@@ -341,6 +351,7 @@ const AdminApp = () => {
           <Route path="/cashiers" element={<CashierManagement />} />
           <Route path="/cleaners" element={<CleanerManagement />} />
           <Route path="/cleaning-logs" element={<CleaningLogsManagement />} />
+          {!isLimitedAdmin && <Route path="/washbox-change-logs" element={<WashboxChangeLogs theme={theme} />} />}
           <Route path="/payments" element={<PaymentManagement />} />
           <Route path="/settings" element={<SettingsManagement />} />
           <Route path="/modbus-dashboard" element={<ModbusDashboard />} />
