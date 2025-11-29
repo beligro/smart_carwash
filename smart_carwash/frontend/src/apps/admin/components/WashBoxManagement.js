@@ -3,6 +3,7 @@ import styled from 'styled-components';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { getTheme } from '../../../shared/styles/theme';
 import ApiService from '../../../shared/services/ApiService';
+import AuthService from '../../../shared/services/AuthService';
 import MobileTable from '../../../shared/components/MobileTable';
 import usePolling from '../../../shared/hooks/usePolling';
 import axios from 'axios';
@@ -547,6 +548,7 @@ const WashBoxManagement = () => {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const highlightedBoxNumber = searchParams.get('highlight');
+  const isLimitedAdmin = AuthService.isLimitedAdmin();
   
   // Состояния для тестирования Modbus
   const [testingBox, setTestingBox] = useState(null);
@@ -847,9 +849,11 @@ const WashBoxManagement = () => {
       <Header>
         <Title theme={theme}>Управление боксами мойки</Title>
         <div style={{ display: 'flex', gap: '10px' }}>
+          {!isLimitedAdmin && (
           <Button theme={theme} onClick={() => setShowCreateModal(true)}>
             Добавить бокс
           </Button>
+          )}
         </div>
       </Header>
 
@@ -943,6 +947,7 @@ const WashBoxManagement = () => {
                           {washBox.light_status === null || washBox.light_status === undefined ? '?' : washBox.light_status ? '💡 ВКЛ' : '💡 ВЫКЛ'}
                         </CoilStatusIndicator>
                       </div>
+                      {(!isLimitedAdmin || (isLimitedAdmin && washBox.status === 'maintenance')) && (
                       <ControlButtonsGroup>
                         <ControlButton
                           $isOn={true}
@@ -959,6 +964,7 @@ const WashBoxManagement = () => {
                           ВЫКЛ
                         </ControlButton>
                       </ControlButtonsGroup>
+                      )}
                       {controlResults[`${washBox.id}_light`] && (
                         <ControlStatus className={controlResults[`${washBox.id}_light`].status}>
                           {controlResults[`${washBox.id}_light`].message}
@@ -979,6 +985,7 @@ const WashBoxManagement = () => {
                             {washBox.chemistry_status === null || washBox.chemistry_status === undefined ? '?' : washBox.chemistry_status ? '🧪 ВКЛ' : '🧪 ВЫКЛ'}
                           </CoilStatusIndicator>
                         </div>
+                        {(!isLimitedAdmin || (isLimitedAdmin && washBox.status === 'maintenance')) && (
                         <ControlButtonsGroup>
                           <ControlButton
                             $isOn={true}
@@ -995,6 +1002,7 @@ const WashBoxManagement = () => {
                             ВЫКЛ
                           </ControlButton>
                         </ControlButtonsGroup>
+                        )}
                         {controlResults[`${washBox.id}_chemistry`] && (
                           <ControlStatus className={controlResults[`${washBox.id}_chemistry`].status}>
                             {controlResults[`${washBox.id}_chemistry`].message}
@@ -1020,13 +1028,15 @@ const WashBoxManagement = () => {
                   <ActionButton theme={theme} onClick={() => openEditModal(washBox)}>
                     Редактировать
                   </ActionButton>
-                  <ActionButton 
-                    theme={theme} 
-                    className="delete"
-                    onClick={() => handleDelete(washBox.id)}
-                  >
-                    Удалить
-                  </ActionButton>
+                  {!isLimitedAdmin && (
+                    <ActionButton 
+                      theme={theme} 
+                      className="delete"
+                      onClick={() => handleDelete(washBox.id)}
+                    >
+                      Удалить
+                    </ActionButton>
+                  )}
                   <ActionButton 
                     theme={theme}
                     onClick={() => {
@@ -1174,9 +1184,11 @@ const WashBoxManagement = () => {
           <ActionButton key="edit" theme={theme} onClick={() => openEditModal(washBox)}>
             Редактировать
           </ActionButton>,
-          <ActionButton key="delete" theme={theme} className="delete" onClick={() => handleDelete(washBox.id)}>
-            Удалить
-          </ActionButton>,
+          !isLimitedAdmin ? (
+            <ActionButton key="delete" theme={theme} className="delete" onClick={() => handleDelete(washBox.id)}>
+              Удалить
+            </ActionButton>
+          ) : null,
           <ActionButton key="sessions" theme={theme} onClick={() => {
             navigate('/admin/sessions', { 
               state: { 
@@ -1352,18 +1364,19 @@ const WashBoxManagement = () => {
               <TwoColumnGrid>
                 <FormGroup>
                   <Label theme={theme}>Статус</Label>
-                  <Select
+                <Select
                     value={formData.status}
-                    onChange={(e) => setFormData({ ...formData, status: e.target.value })}
+                  onChange={(e) => setFormData({ ...formData, status: e.target.value })}
                   >
-                    <option value="free">Свободен</option>
-                    <option value="busy">Занят</option>
-                    <option value="reserved">Зарезервирован</option>
-                    <option value="maintenance">Сервис</option>
-                    <option value="cleaning">На уборке</option>
+                  <option value="free" disabled={isLimitedAdmin && editingWashBox && editingWashBox.status !== 'maintenance'}>Свободен</option>
+                  {!isLimitedAdmin && <option value="busy">Занят</option>}
+                  {!isLimitedAdmin && <option value="reserved">Зарезервирован</option>}
+                  <option value="maintenance">Сервис</option>
+                  {!isLimitedAdmin && <option value="cleaning">На уборке</option>}
                   </Select>
                 </FormGroup>
                 
+                {!isLimitedAdmin && (
                 <FormGroup>
                   <Label theme={theme}>Тип услуги</Label>
                   <Select
@@ -1375,7 +1388,9 @@ const WashBoxManagement = () => {
                     <option value="vacuum">Пылесос</option>
                   </Select>
                 </FormGroup>
+                )}
                 
+                {!isLimitedAdmin && (
                 <FormGroup>
                   <Label theme={theme}>Приоритет</Label>
                   <Input
@@ -1391,8 +1406,9 @@ const WashBoxManagement = () => {
                     A - высокий, B, C... - низкий
                   </small>
                 </FormGroup>
+                )}
                 
-                {formData.serviceType === 'wash' && (
+                {!isLimitedAdmin && formData.serviceType === 'wash' && (
                   <FormGroup>
                     <Label theme={theme}>
                       <input
@@ -1404,9 +1420,10 @@ const WashBoxManagement = () => {
                       Химия включена
                     </Label>
                   </FormGroup>
-                )}
+              )}
               </TwoColumnGrid>
               
+              {!isLimitedAdmin && (
               <FullWidthFormGroup>
                 <Label theme={theme}>Комментарий</Label>
                 <Textarea
@@ -1420,8 +1437,10 @@ const WashBoxManagement = () => {
                   {formData.comment?.length || 0}/1000
                 </CharCounter>
               </FullWidthFormGroup>
+              )}
               
               <TwoColumnGrid>
+                {!isLimitedAdmin && (
                 <FormGroup>
                   <Label theme={theme}>Регистр света (0x0001)</Label>
                   <Input
@@ -1458,8 +1477,9 @@ const WashBoxManagement = () => {
                     </TestResult>
                   )}
                 </FormGroup>
+                )}
                 
-                {formData.serviceType === 'wash' && (
+                {!isLimitedAdmin && formData.serviceType === 'wash' && (
                   <FormGroup>
                     <Label theme={theme}>Регистр химии (0x0002)</Label>
                     <Input

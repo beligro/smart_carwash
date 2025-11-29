@@ -12,6 +12,7 @@ import (
 	"carwash_backend/internal/domain/dahua/models"
 	"carwash_backend/internal/domain/dahua/service"
 	"carwash_backend/internal/logger"
+	"context"
 )
 
 // Handler представляет HTTP обработчики для Dahua интеграции
@@ -139,8 +140,16 @@ func (h *Handler) ANPRWebhook(c *gin.Context) {
 		return
 	}
 
+	// Обогащаем контекст признаками Dahua/ANPR
+	ctx := c.Request.Context()
+	if v, ok := c.Get("dahua_authenticated"); ok {
+		ctx = context.WithValue(ctx, "dahua_authenticated", v)
+	}
+	if v, ok := c.Get("dahua_username"); ok {
+		ctx = context.WithValue(ctx, "dahua_username", v)
+	}
 	// Обрабатываем событие
-	response, err := h.dahuaService.ProcessANPREvent(c.Request.Context(), processReq)
+	response, err := h.dahuaService.ProcessANPREvent(ctx, processReq)
 	if err != nil {
 		logger.WithFields(logrus.Fields{
 			"handler":      "dahua",

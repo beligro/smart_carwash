@@ -13,6 +13,7 @@ import (
 	userService "carwash_backend/internal/domain/user/service"
 	washboxModels "carwash_backend/internal/domain/washbox/models"
 	washboxService "carwash_backend/internal/domain/washbox/service"
+	washboxlogService "carwash_backend/internal/domain/washboxlog/service"
 	"carwash_backend/internal/logger"
 	"carwash_backend/internal/metrics"
 	"carwash_backend/internal/utils"
@@ -52,6 +53,7 @@ type Service interface {
 	GetSessionsByStatus(ctx context.Context, status string) ([]models.Session, error)
 	GetUserSessionHistory(ctx context.Context, req *models.GetUserSessionHistoryRequest) ([]models.Session, error)
 	CreateFromCashier(ctx context.Context, req *models.CashierPaymentRequest) (*models.Session, error)
+	ExtendFromCashier(ctx context.Context, req *models.ExtendSession1CRequest) (*models.Session, error)
 	GetActiveSessionByCarNumber(ctx context.Context, carNumber string) (*models.Session, error)
 
 	// Административные методы
@@ -90,10 +92,11 @@ type ServiceImpl struct {
 	metrics           *metrics.Metrics
 	db                *gorm.DB
 	processQueueMu    sync.Mutex // Мьютекс для исключения одновременного запуска ProcessQueue
+	washboxLogSvc     washboxlogService.Service
 }
 
 // NewService создает новый экземпляр Service
-func NewService(repo repository.Repository, washboxService washboxService.Service, userService userService.Service, telegramBot telegram.NotificationService, paymentService paymentService.Service, modbusService modbus.ModbusServiceInterface, settingsService settingsService.Service, cashierUserID string, metrics *metrics.Metrics, db *gorm.DB) *ServiceImpl {
+func NewService(repo repository.Repository, washboxService washboxService.Service, userService userService.Service, telegramBot telegram.NotificationService, paymentService paymentService.Service, modbusService modbus.ModbusServiceInterface, settingsService settingsService.Service, cashierUserID string, metrics *metrics.Metrics, db *gorm.DB, washboxLogSvc washboxlogService.Service) *ServiceImpl {
 	return &ServiceImpl{
 		repo:            repo,
 		washboxService:  washboxService,
@@ -106,6 +109,7 @@ func NewService(repo repository.Repository, washboxService washboxService.Servic
 		metrics:         metrics,
 		db:              db,
 		processQueueMu:  sync.Mutex{}, // Мьютекс инициализируется автоматически, но явно указываем для ясности
+		washboxLogSvc:   washboxLogSvc,
 	}
 }
 
@@ -554,11 +558,22 @@ func (s *ServiceImpl) StartSession(ctx context.Context, req *models.StartSession
 			return fmt.Errorf("ошибка получения бокса: %w", err)
 		}
 
+		// Получаем предыдущий статус для логирования
+		var prevBoxStatusForStart string
+		if s.washboxLogSvc != nil && session.BoxID != nil {
+			if boxPrev, getErr := s.washboxService.GetWashBoxByID(ctx, *session.BoxID); getErr == nil && boxPrev != nil {
+				prevBoxStatusForStart = boxPrev.Status
+			}
+		}
 		// Обновляем статус бокса на busy
 		if err := tx.Model(&washboxModels.WashBox{}).
 			Where("id = ?", *session.BoxID).
 			Update("status", washboxModels.StatusBusy).Error; err != nil {
 			return fmt.Errorf("ошибка обновления статуса бокса: %w", err)
+		}
+		// Логируем смену статуса -> busy
+		if s.washboxLogSvc != nil && session.BoxID != nil && prevBoxStatusForStart != "" && prevBoxStatusForStart != washboxModels.StatusBusy {
+			_ = s.washboxLogSvc.RecordStatusChange(ctx, *session.BoxID, prevBoxStatusForStart, washboxModels.StatusBusy, nil)
 		}
 
 		// Очищаем любые поля кулдауна у бокса
@@ -693,10 +708,20 @@ func (s *ServiceImpl) CompleteSession(ctx context.Context, req *models.CompleteS
 		}
 
 		// Переводим бокс в статус free после завершения сессии
+		var prevBoxStatusOnComplete string
+		if s.washboxLogSvc != nil && session.BoxID != nil {
+			if boxPrev, getErr := s.washboxService.GetWashBoxByID(ctx, *session.BoxID); getErr == nil && boxPrev != nil {
+				prevBoxStatusOnComplete = boxPrev.Status
+			}
+		}
+		// Переводим бокс в статус free после завершения сессии
 		if err := tx.Model(&washboxModels.WashBox{}).
 			Where("id = ?", *session.BoxID).
 			Update("status", washboxModels.StatusFree).Error; err != nil {
 			return fmt.Errorf("ошибка обновления статуса бокса: %w", err)
+		}
+		if s.washboxLogSvc != nil && session.BoxID != nil && prevBoxStatusOnComplete != "" && prevBoxStatusOnComplete != washboxModels.StatusFree {
+			_ = s.washboxLogSvc.RecordStatusChange(ctx, *session.BoxID, prevBoxStatusOnComplete, washboxModels.StatusFree, nil)
 		}
 
 		// Получаем сессию для обновления
@@ -875,10 +900,20 @@ func (s *ServiceImpl) CompleteSessionWithoutRefund(ctx context.Context, sessionI
 		}
 
 		// Переводим бокс в статус free после завершения сессии
+		var prevBoxStatusOnComplete2 string
+		if s.washboxLogSvc != nil && session.BoxID != nil {
+			if boxPrev, getErr := s.washboxService.GetWashBoxByID(ctx, *session.BoxID); getErr == nil && boxPrev != nil {
+				prevBoxStatusOnComplete2 = boxPrev.Status
+			}
+		}
+		// Переводим бокс в статус free после завершения сессии
 		if err := tx.Model(&washboxModels.WashBox{}).
 			Where("id = ?", *session.BoxID).
 			Update("status", washboxModels.StatusFree).Error; err != nil {
 			return fmt.Errorf("ошибка обновления статуса бокса: %w", err)
+		}
+		if s.washboxLogSvc != nil && session.BoxID != nil && prevBoxStatusOnComplete2 != "" && prevBoxStatusOnComplete2 != washboxModels.StatusFree {
+			_ = s.washboxLogSvc.RecordStatusChange(ctx, *session.BoxID, prevBoxStatusOnComplete2, washboxModels.StatusFree, nil)
 		}
 
 		// Получаем сессию для обновления
@@ -1665,10 +1700,19 @@ func (s *ServiceImpl) ProcessQueue(ctx context.Context) error {
 			}
 
 			// Обновляем статус бокса на "reserved" в транзакции
+			var prevBoxStatusOnReserve string
+			if s.washboxLogSvc != nil {
+				if boxPrev, getErr := s.washboxService.GetWashBoxByID(ctx, box.ID); getErr == nil && boxPrev != nil {
+					prevBoxStatusOnReserve = boxPrev.Status
+				}
+			}
 			if err := tx.Model(&washboxModels.WashBox{}).
 				Where("id = ?", box.ID).
 				Update("status", washboxModels.StatusReserved).Error; err != nil {
 				return fmt.Errorf("ошибка обновления статуса бокса: %w", err)
+			}
+			if s.washboxLogSvc != nil && prevBoxStatusOnReserve != "" && prevBoxStatusOnReserve != washboxModels.StatusReserved {
+				_ = s.washboxLogSvc.RecordStatusChange(ctx, box.ID, prevBoxStatusOnReserve, washboxModels.StatusReserved, nil)
 			}
 
 			// Получаем сессию для обновления
@@ -2993,6 +3037,114 @@ func (s *ServiceImpl) GetLastSessionByCarNumber(ctx context.Context, carNumber s
 	return session, nil
 }
 
+// ExtendFromCashier продлевает сессию из запроса кассира (1C) без фактического платежа
+func (s *ServiceImpl) ExtendFromCashier(ctx context.Context, req *models.ExtendSession1CRequest) (*models.Session, error) {
+	// Логируем входящий запрос с мета-параметрами
+	var extensionTimeLog, extensionChemistryTimeLog string
+	if req.ExtensionTimeMinutes != nil {
+		extensionTimeLog = fmt.Sprintf("%d", *req.ExtensionTimeMinutes)
+	} else {
+		extensionTimeLog = "nil"
+	}
+	if req.ExtensionChemistryTimeMinutes != nil {
+		extensionChemistryTimeLog = fmt.Sprintf("%d", *req.ExtensionChemistryTimeMinutes)
+	} else {
+		extensionChemistryTimeLog = "nil"
+	}
+
+	logger.Printf("Service - ExtendFromCashier: запрос продления сессии, car_number: %s, extension_time_minutes: %s, extension_chemistry_time_minutes: %s, amount: %d",
+		req.CarNumber, extensionTimeLog, extensionChemistryTimeLog, req.Amount)
+
+	// Нормализация госномера
+	normalizedCarNumber := utils.NormalizeLicensePlate(req.CarNumber)
+	logger.Printf("Service - ExtendFromCashier: госномер нормализован '%s' -> '%s'", req.CarNumber, normalizedCarNumber)
+
+	// Ищем активную сессию по номеру машины
+	session, err := s.repo.GetActiveSessionByCarNumber(ctx, normalizedCarNumber)
+	if err != nil {
+		logger.Printf("Service - ExtendFromCashier: активная сессия с номером '%s' не найдена: %v", normalizedCarNumber, err)
+		return nil, fmt.Errorf("Нет активных сессий по номеру машины")
+	}
+
+	logger.Printf("Service - ExtendFromCashier: найдена активная сессия, session_id: %s, status: %s, car_number: %s",
+		session.ID.String(), session.Status, session.CarNumber)
+
+	// Валидация: если активная сессия не мойка и передано не нулевое время продления химии, возвращаем ошибку
+	if session.ServiceType != "wash" && req.ExtensionChemistryTimeMinutes != nil && *req.ExtensionChemistryTimeMinutes > 0 {
+		logger.Printf("Service - ExtendFromCashier: попытка продления химии для сессии не типа мойка, session_id: %s, service_type: %s",
+			session.ID.String(), session.ServiceType)
+		return nil, fmt.Errorf("Продление химии доступно только для сессий типа мойка")
+	}
+
+	// Проверяем, что оба поля времени nil - если да, возвращаем сессию без изменений (для 200 OK)
+	if req.ExtensionTimeMinutes == nil && req.ExtensionChemistryTimeMinutes == nil {
+		logger.Printf("Service - ExtendFromCashier: оба поля времени nil, возвращаем сессию без изменений, session_id: %s",
+			session.ID.String())
+		return session, nil
+	}
+
+	// Продлеваем время мойки, если указано
+	if req.ExtensionTimeMinutes != nil && *req.ExtensionTimeMinutes > 0 {
+		oldExtensionTime := session.ExtensionTimeMinutes
+		session.ExtensionTimeMinutes += *req.ExtensionTimeMinutes
+		logger.Printf("Service - ExtendFromCashier: продление времени мойки, session_id: %s, было: %d минут, добавлено: %d минут, стало: %d минут",
+			session.ID.String(), oldExtensionTime, *req.ExtensionTimeMinutes, session.ExtensionTimeMinutes)
+	}
+
+	// Продлеваем время химии, если указано
+	if req.ExtensionChemistryTimeMinutes != nil && *req.ExtensionChemistryTimeMinutes > 0 {
+		extensionChemistryTime := *req.ExtensionChemistryTimeMinutes
+
+		// Если это докупка химии (ExtensionTimeMinutes = 0 или nil) и изначально химия не была куплена
+		if (req.ExtensionTimeMinutes == nil || *req.ExtensionTimeMinutes == 0) && !session.WithChemistry {
+			// Докупка химии для мойки без химии - добавляем химию
+			session.WithChemistry = true
+			session.ChemistryTimeMinutes = extensionChemistryTime
+			logger.Printf("Service - ExtendFromCashier: докупка химии для мойки без химии, время %d минут, session_id: %s",
+				extensionChemistryTime, session.ID.String())
+		} else if session.WithChemistry {
+			// Применяем логику химии при продлении для существующей химии
+			if session.WasChemistryOn && session.ChemistryEndedAt == nil {
+				// Химия активна - продлеваем на докупленное время
+				oldChemistryTime := session.ChemistryTimeMinutes
+				session.ChemistryTimeMinutes += extensionChemistryTime
+				logger.Printf("Service - ExtendFromCashier: химия активна, продлеваем на %d минут, было: %d минут, стало: %d минут, session_id: %s",
+					extensionChemistryTime, oldChemistryTime, session.ChemistryTimeMinutes, session.ID.String())
+			} else if session.ChemistryStartedAt == nil {
+				// Химия не использована - даем на первоначальное + докупленное время
+				oldChemistryTime := session.ChemistryTimeMinutes
+				totalChemistryTime := session.ChemistryTimeMinutes + extensionChemistryTime
+				session.ChemistryTimeMinutes = totalChemistryTime
+				logger.Printf("Service - ExtendFromCashier: химия не использована, было: %d минут, добавлено: %d минут, стало: %d минут, session_id: %s",
+					oldChemistryTime, extensionChemistryTime, totalChemistryTime, session.ID.String())
+			} else {
+				// Химия уже использована - даем только на докупленное время и сбрасываем флаги
+				session.ChemistryTimeMinutes = extensionChemistryTime
+				session.ChemistryStartedAt = nil
+				session.ChemistryEndedAt = nil
+				session.WasChemistryOn = false
+				logger.Printf("Service - ExtendFromCashier: химия использована, новое время %d минут, сброшены флаги, session_id: %s",
+					extensionChemistryTime, session.ID.String())
+			}
+		}
+
+		// Обновляем ExtensionChemistryTimeMinutes
+		session.ExtensionChemistryTimeMinutes += extensionChemistryTime
+	}
+
+	// Сохраняем изменения
+	err = s.repo.UpdateSession(ctx, session)
+	if err != nil {
+		logger.Printf("Service - ExtendFromCashier: ошибка обновления сессии, session_id: %s, error: %v", session.ID.String(), err)
+		return nil, fmt.Errorf("ошибка обновления сессии: %w", err)
+	}
+
+	logger.Printf("Service - ExtendFromCashier: сессия успешно продлена, session_id: %s, extension_time_minutes: %d, extension_chemistry_time_minutes: %d",
+		session.ID.String(), session.ExtensionTimeMinutes, session.ExtensionChemistryTimeMinutes)
+
+	return session, nil
+}
+
 // GetActiveSessionByBoxID возвращает активную сессию для бокса (если есть)
 func (s *ServiceImpl) GetActiveSessionByBoxID(ctx context.Context, boxID uuid.UUID) (*models.Session, error) {
 	var session models.Session
@@ -3003,13 +3155,13 @@ func (s *ServiceImpl) GetActiveSessionByBoxID(ctx context.Context, boxID uuid.UU
 		}).
 		Order("created_at DESC").
 		First(&session).Error
-	
+
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, nil // Нет активной сессии - это нормально
 		}
 		return nil, err
 	}
-	
+
 	return &session, nil
 }

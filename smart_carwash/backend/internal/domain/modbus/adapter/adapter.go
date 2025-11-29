@@ -12,6 +12,8 @@ import (
 	"carwash_backend/internal/domain/modbus/client"
 	"carwash_backend/internal/domain/modbus/models"
 	"carwash_backend/internal/domain/modbus/repository"
+	washboxlogModels "carwash_backend/internal/domain/washboxlog/models"
+	washboxlogService "carwash_backend/internal/domain/washboxlog/service"
 
 	"gorm.io/gorm"
 )
@@ -22,15 +24,17 @@ type ModbusAdapter struct {
 	repository *repository.ModbusRepository
 	config     *config.Config
 	db         *gorm.DB
+	loggerSvc  washboxlogService.Service
 }
 
 // NewModbusAdapter создает новый адаптер для modbus
-func NewModbusAdapter(config *config.Config, db *gorm.DB) *ModbusAdapter {
+func NewModbusAdapter(config *config.Config, db *gorm.DB, loggerSvc washboxlogService.Service) *ModbusAdapter {
 	return &ModbusAdapter{
 		httpClient: client.NewModbusHTTPClient(config),
 		repository: repository.NewModbusRepository(db),
 		config:     config,
 		db:         db,
+		loggerSvc:  loggerSvc,
 	}
 }
 
@@ -75,8 +79,22 @@ func (a *ModbusAdapter) WriteLightCoil(ctx context.Context, boxID uuid.UUID, reg
 
 	// Если операция успешна, обновляем статус койла
 	if err == nil {
+		// Получим предыдущее значение
+		var prevValPtr *bool
+		if status, getErr := a.repository.GetModbusConnectionStatus(ctx, boxID); getErr == nil && status != nil {
+			if status.LightStatus != nil {
+				prev := *status.LightStatus
+				prevValPtr = &prev
+			}
+		}
 		if updateErr := a.repository.UpdateModbusCoilStatus(ctx, boxID, "light", value); updateErr != nil {
 			logger.Printf("Ошибка обновления статуса света - box_id: %s, error: %v", boxID, updateErr)
+		} else if a.loggerSvc != nil {
+			action := washboxlogModels.ActionLightOff
+			if value {
+				action = washboxlogModels.ActionLightOn
+			}
+			_ = a.loggerSvc.RecordCoilChange(ctx, boxID, action, prevValPtr, value, nil)
 		}
 	}
 
@@ -118,8 +136,22 @@ func (a *ModbusAdapter) WriteChemistryCoil(ctx context.Context, boxID uuid.UUID,
 
 	// Если операция успешна, обновляем статус койла
 	if err == nil {
+		// Получим предыдущее значение
+		var prevValPtr *bool
+		if status, getErr := a.repository.GetModbusConnectionStatus(ctx, boxID); getErr == nil && status != nil {
+			if status.ChemistryStatus != nil {
+				prev := *status.ChemistryStatus
+				prevValPtr = &prev
+			}
+		}
 		if updateErr := a.repository.UpdateModbusCoilStatus(ctx, boxID, "chemistry", value); updateErr != nil {
 			logger.Printf("Ошибка обновления статуса химии - box_id: %s, error: %v", boxID, updateErr)
+		} else if a.loggerSvc != nil {
+			action := washboxlogModels.ActionChemistryOff
+			if value {
+				action = washboxlogModels.ActionChemistryOn
+			}
+			_ = a.loggerSvc.RecordCoilChange(ctx, boxID, action, prevValPtr, value, nil)
 		}
 	}
 

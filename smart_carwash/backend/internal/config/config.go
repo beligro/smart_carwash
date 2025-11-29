@@ -23,6 +23,8 @@ type Config struct {
 	// Настройки авторизации
 	AdminUsername string
 	AdminPassword string
+	LimitedAdminUsername string
+	LimitedAdminPassword string
 	JWTSecret     string
 
 	// Настройки Tinkoff Kassa
@@ -92,6 +94,8 @@ func LoadConfig() (*Config, error) {
 		// Настройки авторизации
 		AdminUsername: getEnv("ADMIN_USERNAME", "admin"),
 		AdminPassword: getEnv("ADMIN_PASSWORD", "admin"),
+		LimitedAdminUsername: getEnv("LIMITED_ADMIN_USERNAME", ""),
+		LimitedAdminPassword: getEnv("LIMITED_ADMIN_PASSWORD", ""),
 		JWTSecret:     getEnv("JWT_SECRET", "your-secret-key"),
 
 		// Настройки Tinkoff Kassa

@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"context"
 	"net/http"
 	"strconv"
 
@@ -31,7 +32,15 @@ func (h *Handler) TestCoil(c *gin.Context) {
 		return
 	}
 
-	response, err := h.modbusService.TestCoil(c.Request.Context(), req.BoxID, req.Register, req.Value)
+	// Прокидываем роль в контекст сервиса (если есть)
+	ctx := c.Request.Context()
+	if roleAny, ok := c.Get("role"); ok {
+		if role, _ := roleAny.(string); role != "" {
+			ctx = context.WithValue(ctx, "role", role)
+		}
+	}
+
+	response, err := h.modbusService.TestCoil(ctx, req.BoxID, req.Register, req.Value)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return

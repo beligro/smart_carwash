@@ -45,6 +45,9 @@ import (
 	washboxHandlers "carwash_backend/internal/domain/washbox/handlers"
 	washboxRepo "carwash_backend/internal/domain/washbox/repository"
 	washboxService "carwash_backend/internal/domain/washbox/service"
+	washboxlogHandlers "carwash_backend/internal/domain/washboxlog/handlers"
+	washboxlogRepo "carwash_backend/internal/domain/washboxlog/repository"
+	washboxlogService "carwash_backend/internal/domain/washboxlog/service"
 	"carwash_backend/internal/logger"
 	"carwash_backend/internal/metrics"
 	"carwash_backend/internal/middleware"
@@ -119,17 +122,22 @@ func main() {
 	authRepository := authRepo.NewPostgresRepository(db)
 	paymentRepository := paymentRepo.NewRepository(db)
 	carwashStatusRepository := carwashStatusRepo.NewPostgresRepository(db)
+	// Репозиторий логов изменений боксов
+	washboxLogRepository := washboxlogRepo.NewPostgresRepository(db)
 
 	// Создаем Tinkoff клиент
 	tinkoffClient := paymentTinkoff.NewClient(cfg.TinkoffTerminalKey, cfg.TinkoffSecretKey, cfg.TinkoffSuccessURL, cfg.TinkoffFailURL)
 
+	// Сервис логирования изменений боксов
+	washboxLogSvc := washboxlogService.NewService(washboxLogRepository, washboxRepository)
+
 	// Создаем Modbus HTTP адаптер
-	modbusAdapter := modbusAdapter.NewModbusAdapter(cfg, db)
+	modbusAdapter := modbusAdapter.NewModbusAdapter(cfg, db, washboxLogSvc)
 
 	// Создаем сервисы
 	userSvc := userService.NewService(userRepository)
 	settingsSvc := settingsService.NewService(settingsRepository)
-	washboxSvc := washboxService.NewService(washboxRepository, sessionRepository, settingsSvc, db, modbusAdapter)
+	washboxSvc := washboxService.NewService(washboxRepository, sessionRepository, settingsSvc, db, modbusAdapter, washboxLogSvc)
 	authSvc := authService.NewService(authRepository, cfg)
 
 	// Создаем Modbus service для админских операций
@@ -145,13 +153,13 @@ func main() {
 	}
 
 	// Создаем сервис сессий с зависимостями
-	sessionSvc := sessionService.NewService(sessionRepository, washboxSvc, userSvc, bot, nil, modbusAdapter, settingsSvc, cfg.CashierUserID, appMetrics, db) // paymentSvc будет nil пока
+	sessionSvc := sessionService.NewService(sessionRepository, washboxSvc, userSvc, bot, nil, modbusAdapter, settingsSvc, cfg.CashierUserID, appMetrics, db, washboxLogSvc) // paymentSvc будет nil пока
 
 	// Создаем сервис платежей с зависимостью от sessionSvc как SessionStatusUpdater и SessionExtensionUpdater
 	paymentSvc := paymentService.NewService(paymentRepository, settingsRepository, sessionSvc, sessionSvc, tinkoffClient, cfg.TinkoffTerminalKey, cfg.TinkoffSecretKey, appMetrics)
 
 	// Обновляем sessionSvc с правильным paymentSvc
-	sessionSvc = sessionService.NewService(sessionRepository, washboxSvc, userSvc, bot, paymentSvc, modbusAdapter, settingsSvc, cfg.CashierUserID, appMetrics, db)
+	sessionSvc = sessionService.NewService(sessionRepository, washboxSvc, userSvc, bot, paymentSvc, modbusAdapter, settingsSvc, cfg.CashierUserID, appMetrics, db, washboxLogSvc)
 
 	// Создаем сервис очереди, который зависит от сервисов сессий, боксов и пользователей
 	queueSvc := queueService.NewService(sessionSvc, washboxSvc, userSvc, appMetrics)
@@ -181,6 +189,8 @@ func main() {
 	modbusHandler := modbusHandlers.NewHandler(modbusSvc)
 	dahuaHandler := dahuaHandlers.NewHandler(dahuaSvc)
 	carwashStatusHandler := carwashStatusHandlers.NewHandler(carwashStatusSvc, authHandler.GetAdminMiddleware())
+	// Хендлер истории изменений боксов
+	washboxLogHandler := washboxlogHandlers.NewHandler(washboxLogSvc)
 
 	// Создаем роутер
 	router := gin.Default()
@@ -217,7 +227,7 @@ func main() {
 	{
 		// Регистрируем маршруты для каждого домена
 		userHandler.RegisterRoutes(api)
-		washboxHandler.RegisterRoutes(api, authHandler.GetCleanerMiddleware())
+		washboxHandler.RegisterRoutes(api, authHandler.GetCleanerMiddleware(), authHandler.GetAdminMiddleware())
 		sessionHandler.RegisterRoutes(api)
 		queueCashierMiddleware := middleware.CashierMiddleware(authSvc)
 		queueHandler.RegisterRoutes(api, queueCashierMiddleware)
@@ -227,6 +237,7 @@ func main() {
 		modbusHandler.RegisterRoutes(api)
 		dahuaHandlers.SetupRoutes(api, dahuaHandler)
 		carwashStatusHandler.RegisterRoutes(api)
+		washboxLogHandler.RegisterRoutes(api, authHandler.GetAdminMiddleware())
 
 		// Вебхук для Telegram бота
 		api.POST("/webhook", func(c *gin.Context) {

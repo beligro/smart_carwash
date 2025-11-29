@@ -88,6 +88,12 @@ const Dashboard = () => {
       icon: '🚗',
       path: '/admin/washboxes'
     },
+    !JSON.parse(localStorage.getItem('user') || '{}')?.role || JSON.parse(localStorage.getItem('user') || '{}')?.role !== 'limited_admin' ? {
+      title: 'История боксов',
+      description: 'Полная история изменений статусов, света и химии по всем боксам.',
+      icon: '🗂️',
+      path: '/admin/washbox-change-logs'
+    } : null,
     {
       title: 'Сессии мойки',
       description: 'Просмотр и управление сессиями мойки с фильтрацией по статусу, пользователю и дате.',
@@ -151,7 +157,7 @@ const Dashboard = () => {
       <Title theme={theme}>Разделы управления</Title>
 
       <Grid>
-        {sections.map((section, index) => (
+        {sections.filter(Boolean).map((section, index) => (
           <Card key={index} to={section.path} theme={theme}>
             <Icon theme={theme}>{section.icon}</Icon>
             <CardTitle theme={theme}>{section.title}</CardTitle>

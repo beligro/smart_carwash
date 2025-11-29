@@ -9,6 +9,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
+	"context"
 )
 
 // Handler структура для обработчиков HTTP запросов боксов мойки
@@ -24,12 +25,15 @@ func NewHandler(service service.Service) *Handler {
 }
 
 // RegisterRoutes регистрирует маршруты для боксов мойки
-func (h *Handler) RegisterRoutes(router *gin.RouterGroup, cleanerMiddleware gin.HandlerFunc) {
+func (h *Handler) RegisterRoutes(router *gin.RouterGroup, cleanerMiddleware gin.HandlerFunc, adminMiddleware gin.HandlerFunc) {
 	// Маршруты для боксов мойки
 	// Пока нет маршрутов, так как queue-status перенесен в домен queue
 
 	// Административные маршруты
 	adminRoutes := router.Group("/admin/washboxes")
+	if adminMiddleware != nil {
+		adminRoutes.Use(adminMiddleware)
+	}
 	{
 		adminRoutes.GET("", h.adminListWashBoxes)
 		adminRoutes.POST("", h.adminCreateWashBox)
@@ -149,8 +153,23 @@ func (h *Handler) adminCreateWashBox(c *gin.Context) {
 		return
 	}
 
+
+	// Ограниченный админ не может создавать боксы
+	if roleAny, ok := c.Get("role"); ok {
+		if role, _ := roleAny.(string); role == "limited_admin" {
+			c.JSON(http.StatusForbidden, gin.H{"error": "создание боксов запрещено для ограниченного администратора"})
+			return
+		}
+	}
+
 	// Создаем бокс
-	resp, err := h.service.AdminCreateWashBox(c.Request.Context(), &req)
+	ctx := c.Request.Context()
+	if roleAny, ok := c.Get("role"); ok {
+		if role, _ := roleAny.(string); role != "" {
+			ctx = context.WithValue(ctx, "role", role)
+		}
+	}
+	resp, err := h.service.AdminCreateWashBox(ctx, &req)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
@@ -175,8 +194,56 @@ func (h *Handler) adminUpdateWashBox(c *gin.Context) {
 		return
 	}
 
+	// Роль администратора (если установлена мидлварью)
+	roleAny, _ := c.Get("role")
+	role, _ := roleAny.(string)
+
+	// Если ограниченный админ — разрешаем менять только статус и проверяем правила
+	if role == "limited_admin" {
+		current, err := h.service.GetWashBoxByID(c.Request.Context(), req.ID)
+		if err != nil || current == nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "бокс не найден"})
+			return
+		}
+		// Оставляем только статус
+		req.Number = nil
+		req.ServiceType = nil
+		req.ChemistryEnabled = nil
+		req.Priority = nil
+		req.LightCoilRegister = nil
+		req.ChemistryCoilRegister = nil
+		// Комментарий не редактируем
+		req.Comment = nil
+
+		// Статус обязателен для изменения
+		if req.Status == nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "для ограниченного администратора доступно изменение только статуса"})
+			return
+		}
+		// Запрещаем ставить busy
+		if *req.Status == models.StatusBusy {
+			c.JSON(http.StatusForbidden, gin.H{"error": "запрещено устанавливать статус 'busy'"})
+			return
+		}
+		// Запрещаем ставить reserved и cleaning
+		if *req.Status == models.StatusReserved || *req.Status == models.StatusCleaning {
+			c.JSON(http.StatusForbidden, gin.H{"error": "запрещено устанавливать статусы 'reserved' и 'cleaning'"})
+			return
+		}
+		// Разрешаем свет/химию только в сервисе — делается в модбасе отдельно, здесь не меняем
+		// Разрешаем перевод в free только из maintenance
+		if *req.Status == models.StatusFree && current.Status != models.StatusMaintenance {
+			c.JSON(http.StatusForbidden, gin.H{"error": "в 'free' можно переводить только из статуса 'maintenance'"})
+			return
+		}
+	}
+
 	// Обновляем бокс
-	resp, err := h.service.AdminUpdateWashBox(c.Request.Context(), &req)
+	ctx := c.Request.Context()
+	if role != "" {
+		ctx = context.WithValue(ctx, "role", role)
+	}
+	resp, err := h.service.AdminUpdateWashBox(ctx, &req)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
@@ -201,8 +268,22 @@ func (h *Handler) adminDeleteWashBox(c *gin.Context) {
 		return
 	}
 
+	// Ограниченный админ не может удалять боксы
+	if roleAny, ok := c.Get("role"); ok {
+		if role, _ := roleAny.(string); role == "limited_admin" {
+			c.JSON(http.StatusForbidden, gin.H{"error": "удаление боксов запрещено для ограниченного администратора"})
+			return
+		}
+	}
+
 	// Удаляем бокс
-	resp, err := h.service.AdminDeleteWashBox(c.Request.Context(), &req)
+	ctx := c.Request.Context()
+	if roleAny, ok := c.Get("role"); ok {
+		if role, _ := roleAny.(string); role != "" {
+			ctx = context.WithValue(ctx, "role", role)
+		}
+	}
+	resp, err := h.service.AdminDeleteWashBox(ctx, &req)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
@@ -236,7 +317,13 @@ func (h *Handler) adminGetWashBox(c *gin.Context) {
 	req.ID = id
 
 	// Получаем бокс
-	resp, err := h.service.AdminGetWashBox(c.Request.Context(), &req)
+	ctx := c.Request.Context()
+	if roleAny, ok := c.Get("role"); ok {
+		if role, _ := roleAny.(string); role != "" {
+			ctx = context.WithValue(ctx, "role", role)
+		}
+	}
+	resp, err := h.service.AdminGetWashBox(ctx, &req)
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
 		return

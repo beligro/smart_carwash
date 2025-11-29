@@ -42,6 +42,20 @@ func (s *ModbusService) TestCoil(ctx context.Context, boxID uuid.UUID, register 
 		return nil, fmt.Errorf("не удалось найти бокс: %v", err)
 	}
 
+	// Проверяем роль: ограниченный админ может управлять только, когда бокс в статусе maintenance
+	if ctx != nil {
+		if roleAny := ctx.Value("role"); roleAny != nil {
+			if role, ok := roleAny.(string); ok && role == "limited_admin" {
+				if box.Status != "maintenance" {
+					return &models.TestModbusCoilResponse{
+						Success: false,
+						Message: "доступ к управлению разрешен только для боксов в статусе 'maintenance'",
+					}, nil
+				}
+			}
+		}
+	}
+
 	// Используем HTTP клиент для тестирования
 	resp, err := s.httpClient.TestCoil(ctx, boxID, register, value)
 
