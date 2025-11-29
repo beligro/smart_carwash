@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"carwash_backend/internal/logger"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"strconv"
@@ -15,6 +16,7 @@ import (
 	"carwash_backend/internal/domain/session/models"
 	"carwash_backend/internal/domain/session/service"
 	authMiddleware "carwash_backend/internal/middleware"
+	"carwash_backend/internal/utils"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -80,6 +82,8 @@ func (h *Handler) RegisterRoutes(router *gin.RouterGroup) {
 	oneCRoutes := router.Group("/1c")
 	{
 		oneCRoutes.POST("/payment-callback", middleware.Auth1CMiddleware(h.apiKey1C), h.handle1CPaymentCallback)
+		oneCRoutes.POST("/extend-session", middleware.Auth1CMiddleware(h.apiKey1C), h.handle1CExtendSession)
+		oneCRoutes.GET("/get-session-type", middleware.Auth1CMiddleware(h.apiKey1C), h.handle1CGetSessionType)
 	}
 }
 
@@ -607,6 +611,154 @@ func (h *Handler) handle1CPaymentCallback(c *gin.Context) {
 		SessionID: session.ID.String(),
 		PaymentID: payment.ID.String(),
 		Message:   "Payment processed successfully",
+	}
+
+	c.JSON(http.StatusOK, response)
+}
+
+// handle1CExtendSession обработчик для webhook от 1C для продления сессии без платежа
+func (h *Handler) handle1CExtendSession(c *gin.Context) {
+	bodyBytes, err := io.ReadAll(c.Request.Body)
+	if err != nil {
+		logger.WithContext(c).Infof("Error reading request body: %v", err)
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request body"})
+		return
+	}
+
+	// Логируем тело запроса
+	logger.WithContext(c).Infof("Raw request body: %s", string(bodyBytes))
+
+	bodyBytes = bytes.TrimPrefix(bodyBytes, []byte("\xef\xbb\xbf"))
+
+	// ВАЖНО: Восстанавливаем body для дальнейшего использования
+	c.Request.Body = io.NopCloser(bytes.NewBuffer(bodyBytes))
+
+	var req models.ExtendSession1CRequest
+
+	// Парсим JSON из тела запроса
+	if err := json.Unmarshal(bodyBytes, &req); err != nil {
+		logger.WithContext(c).Infof("Error parsing 1C extend session request: %v", err)
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	// Логируем входящий запрос с мета-параметрами
+	var extensionTimeLog, extensionChemistryTimeLog string
+	if req.ExtensionTimeMinutes != nil {
+		extensionTimeLog = fmt.Sprintf("%d", *req.ExtensionTimeMinutes)
+	} else {
+		extensionTimeLog = "nil"
+	}
+	if req.ExtensionChemistryTimeMinutes != nil {
+		extensionChemistryTimeLog = fmt.Sprintf("%d", *req.ExtensionChemistryTimeMinutes)
+	} else {
+		extensionChemistryTimeLog = "nil"
+	}
+
+	logger.WithContext(c).Infof("Received 1C extend session request: CarNumber=%s, ExtensionTimeMinutes=%s, ExtensionChemistryTimeMinutes=%s, Amount=%d",
+		req.CarNumber, extensionTimeLog, extensionChemistryTimeLog, req.Amount)
+
+	// Устанавливаем мета-параметры для поиска в логах
+	c.Set("meta", gin.H{
+		"car_number":                       req.CarNumber,
+		"extension_time_minutes":           extensionTimeLog,
+		"extension_chemistry_time_minutes": extensionChemistryTimeLog,
+	})
+
+	// Продлеваем сессию через кассира
+	session, err := h.service.ExtendFromCashier(c.Request.Context(), &req)
+	if err != nil {
+		logger.WithContext(c).Errorf("Error extending session from cashier: %v, car_number: %s", err, req.CarNumber)
+		// Добавляем session_id в мета-параметры, если есть
+		if session != nil {
+			c.Set("meta", gin.H{
+				"car_number": req.CarNumber,
+				"session_id": session.ID.String(),
+			})
+		}
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	// Логируем результат продления сессии
+	logger.WithContext(c).Infof("Session extended for car '%s': SessionID=%s, Status=%s, ExtensionTimeMinutes=%d, ExtensionChemistryTimeMinutes=%d",
+		req.CarNumber, session.ID.String(), session.Status, session.ExtensionTimeMinutes, session.ExtensionChemistryTimeMinutes)
+
+	// Устанавливаем session_id в мета-параметры для успешного ответа
+	c.Set("meta", gin.H{
+		"session_id": session.ID.String(),
+		"car_number": req.CarNumber,
+	})
+
+	// Возвращаем успешный ответ
+	response := models.ExtendSession1CResponse{
+		Success:   true,
+		SessionID: session.ID.String(),
+		Message:   "Session extended successfully",
+	}
+
+	c.JSON(http.StatusOK, response)
+}
+
+// handle1CGetSessionType обработчик для получения типа активной сессии по номеру машины от 1C
+func (h *Handler) handle1CGetSessionType(c *gin.Context) {
+	// Получаем номер машины из query параметра
+	carNumber := c.Query("car_number")
+	if carNumber == "" {
+		logger.WithContext(c).Errorf("API Error - handle1CGetSessionType: не указан номер машины")
+		c.JSON(http.StatusBadRequest, models.GetSessionType1CResponse{
+			Success: false,
+			Message: "Не указан номер машины",
+		})
+		return
+	}
+
+	// Нормализуем номер машины
+	normalizedCarNumber := utils.NormalizeLicensePlate(carNumber)
+	logger.WithContext(c).Infof("Received 1C get session type request: CarNumber=%s (normalized: %s)", carNumber, normalizedCarNumber)
+
+	// Устанавливаем мета-параметры для поиска в логах
+	c.Set("meta", gin.H{
+		"car_number": normalizedCarNumber,
+	})
+
+	// Получаем активную сессию по номеру машины
+	session, err := h.service.GetActiveSessionByCarNumber(c.Request.Context(), normalizedCarNumber)
+	if err != nil {
+		logger.WithContext(c).Errorf("Error getting active session by car number: %v, car_number: %s", err, normalizedCarNumber)
+		c.JSON(http.StatusNotFound, models.GetSessionType1CResponse{
+			Success: false,
+			Message: "Нет активных сессий по номеру машины",
+		})
+		return
+	}
+
+	// Проверяем, что тип услуги указан
+	if session.ServiceType == "" {
+		logger.WithContext(c).Errorf("Service type is empty for session: %s", session.ID.String())
+		c.JSON(http.StatusInternalServerError, models.GetSessionType1CResponse{
+			Success: false,
+			Message: "Тип услуги не указан в сессии",
+		})
+		return
+	}
+
+	// Логируем успешный результат
+	logger.WithContext(c).Infof("Session type found for car '%s': SessionID=%s, ServiceType=%s",
+		normalizedCarNumber, session.ID.String(), session.ServiceType)
+
+	// Устанавливаем session_id в мета-параметры для успешного ответа
+	c.Set("meta", gin.H{
+		"session_id":  session.ID.String(),
+		"car_number":  normalizedCarNumber,
+		"service_type": session.ServiceType,
+	})
+
+	// Возвращаем успешный ответ
+	response := models.GetSessionType1CResponse{
+		Success:     true,
+		ServiceType: session.ServiceType,
+		Message:     "Тип сессии успешно получен",
 	}
 
 	c.JSON(http.StatusOK, response)
