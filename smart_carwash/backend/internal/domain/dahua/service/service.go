@@ -30,7 +30,7 @@ type SessionService interface {
 	GetActiveSessionByCarNumber(ctx context.Context, carNumber string) (*sessionModels.Session, error)
 	GetLastSessionByCarNumber(ctx context.Context, carNumber string) (*sessionModels.Session, error)
 	GetActiveSessionByBoxID(ctx context.Context, boxID uuid.UUID) (*sessionModels.Session, error)
-	CompleteSessionWithoutRefund(ctx context.Context, sessionID uuid.UUID) error
+	CompleteSessionWithoutRefund(ctx context.Context, sessionID uuid.UUID, completionSource string) error
 }
 
 // WashboxService интерфейс для работы с боксами
@@ -117,7 +117,7 @@ func (s *ServiceImpl) ProcessANPREvent(ctx context.Context, req *models.ProcessA
 		}).Info("Сессия активна, завершаем")
 
 		// Завершаем сессию БЕЗ частичного возврата
-		err = s.sessionService.CompleteSessionWithoutRefund(ctx, lastSession.ID)
+		err = s.sessionService.CompleteSessionWithoutRefund(ctx, lastSession.ID, "anpr")
 		if err != nil {
 			logger.WithFields(logrus.Fields{
 				"service":       "dahua",

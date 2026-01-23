@@ -75,7 +75,7 @@ type Service interface {
 
 	// Методы для Dahua интеграции
 	GetActiveSessionByUserID(ctx context.Context, userID uuid.UUID) (*models.Session, error)
-	CompleteSessionWithoutRefund(ctx context.Context, sessionID uuid.UUID) error
+	CompleteSessionWithoutRefund(ctx context.Context, sessionID uuid.UUID, completionSource string) error
 }
 
 // ServiceImpl реализация Service
@@ -691,6 +691,10 @@ func (s *ServiceImpl) CompleteSession(ctx context.Context, req *models.CompleteS
 	// Если сервис боксов не инициализирован, просто обновляем статус сессии
 	if s.washboxService == nil {
 		// Обновляем статус сессии на complete
+		session.CompletionSource = "client"
+		if req.CompletionSource != "" {
+			session.CompletionSource = req.CompletionSource
+		}
 		session.Status = models.SessionStatusComplete
 		err = s.repo.UpdateSession(ctx, session)
 		if err != nil {
@@ -736,7 +740,11 @@ func (s *ServiceImpl) CompleteSession(ctx context.Context, req *models.CompleteS
 		}
 
 		// Обновляем статус сессии на complete, время обновления статуса и сбрасываем флаг уведомления
+		lockedSession.CompletionSource = "client"
 		lockedSession.Status = models.SessionStatusComplete
+			if req.CompletionSource != "" {
+				lockedSession.CompletionSource = req.CompletionSource
+			}
 		lockedSession.StatusUpdatedAt = time.Now()
 		lockedSession.IsCompletingNotificationSent = false
 
@@ -863,7 +871,7 @@ func (s *ServiceImpl) CompleteSession(ctx context.Context, req *models.CompleteS
 }
 
 // CompleteSessionWithoutRefund завершает сессию БЕЗ частичного возврата (для Dahua webhook)
-func (s *ServiceImpl) CompleteSessionWithoutRefund(ctx context.Context, sessionID uuid.UUID) error {
+func (s *ServiceImpl) CompleteSessionWithoutRefund(ctx context.Context, sessionID uuid.UUID, completionSource string) error {
 	// Получаем сессию по ID
 	session, err := s.repo.GetSessionByID(ctx, sessionID)
 	if err != nil {
@@ -883,6 +891,7 @@ func (s *ServiceImpl) CompleteSessionWithoutRefund(ctx context.Context, sessionI
 	// Если сервис боксов не инициализирован, просто обновляем статус сессии
 	if s.washboxService == nil {
 		// Обновляем статус сессии на complete
+		session.CompletionSource = completionSource
 		session.Status = models.SessionStatusComplete
 		err = s.repo.UpdateSession(ctx, session)
 		if err != nil {
@@ -1367,6 +1376,7 @@ func (s *ServiceImpl) CheckAndCompleteExpiredSessions(ctx context.Context) error
 			// ИСПРАВЛЕНИЕ: Сначала завершаем сессию, потом освобождаем бокс
 			// Это предотвращает race condition где бокс становится 'free' при активной сессии
 			// Обновляем статус сессии на complete, время обновления статуса и сбрасываем флаг уведомления
+			session.CompletionSource = "timer"
 			session.Status = models.SessionStatusComplete
 			session.StatusUpdatedAt = time.Now()         // Обновляем время изменения статуса
 			session.IsCompletingNotificationSent = false // Сбрасываем флаг, чтобы уведомление могло быть отправлено снова
@@ -2543,7 +2553,8 @@ func (s *ServiceImpl) CashierCompleteSession(ctx context.Context, req *models.Ca
 
 	// Завершаем сессию
 	response, err := s.CompleteSession(ctx, &models.CompleteSessionRequest{
-		SessionID: req.SessionID,
+		SessionID:         req.SessionID,
+		CompletionSource: "cashier",
 	})
 	if err != nil {
 		return nil, err

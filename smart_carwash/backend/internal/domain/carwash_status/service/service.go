@@ -65,7 +65,7 @@ func (s *ServiceImpl) CloseCarwash(ctx context.Context, req *models.CloseCarwash
 
 		for _, session := range activeSessions {
 			// Завершаем сессию без возврата (время уже использовано)
-			err := s.sessionService.CompleteSessionWithoutRefund(ctx, session.ID)
+			err := s.sessionService.CompleteSessionWithoutRefund(ctx, session.ID, "admin_close")
 			if err != nil {
 				logger.Printf("CloseCarwash: ошибка завершения активной сессии %s: %v", session.ID, err)
 				// Продолжаем выполнение для других сессий

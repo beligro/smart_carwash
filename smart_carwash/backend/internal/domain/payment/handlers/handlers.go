@@ -166,7 +166,7 @@ func (h *Handler) handleWebhook(c *gin.Context) {
 	}
 
 	// Отвечаем успехом Tinkoff
-	c.JSON(http.StatusOK, gin.H{"success": true})
+	c.String(http.StatusOK, "OK")
 }
 
 // adminListPayments обработчик для получения списка платежей (админка)

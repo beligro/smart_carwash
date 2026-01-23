@@ -262,6 +262,9 @@ func (h *Handler) completeSession(c *gin.Context) {
 		return
 	}
 
+
+	// Устанавливаем источник завершения
+	req.CompletionSource = "client"
 	// Завершаем сессию
 	response, err := h.service.CompleteSession(c.Request.Context(), &req)
 	if err != nil {
