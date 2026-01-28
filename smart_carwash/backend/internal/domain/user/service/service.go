@@ -25,6 +25,10 @@ type Service interface {
 	// Административные методы
 	AdminListUsers(ctx context.Context, req *models.AdminListUsersRequest) (*models.AdminListUsersResponse, error)
 	AdminGetUser(ctx context.Context, req *models.AdminGetUserRequest) (*models.AdminGetUserResponse, error)
+	
+	// Программа лояльности
+	IncrementWashCount(ctx context.Context, userID uuid.UUID) error
+	GetLoyaltyProgress(ctx context.Context, userID uuid.UUID) (int, int, error) // count, nextFreeAt, error
 }
 
 // ServiceImpl реализация Service
@@ -179,4 +183,36 @@ func (s *ServiceImpl) UpdateEmail(ctx context.Context, req *models.UpdateEmailRe
 		Success: true,
 		User:    *user,
 	}, nil
+}
+
+// IncrementWashCount увеличивает счетчик завершенных моек для программы лояльности
+func (s *ServiceImpl) IncrementWashCount(ctx context.Context, userID uuid.UUID) error {
+	user, err := s.repo.GetUserByID(ctx, userID)
+	if err != nil {
+		return fmt.Errorf("пользователь не найден: %w", err)
+	}
+
+	// Увеличиваем счетчик
+	user.CompletedWashesCount++
+
+	// Сохраняем изменения
+	if err := s.repo.UpdateUser(ctx, user); err != nil {
+		return fmt.Errorf("ошибка обновления счетчика моек: %w", err)
+	}
+
+	return nil
+}
+
+// GetLoyaltyProgress возвращает прогресс программы лояльности
+// Возвращает: текущий count, номер следующей бесплатной мойки
+func (s *ServiceImpl) GetLoyaltyProgress(ctx context.Context, userID uuid.UUID) (int, int, error) {
+	user, err := s.repo.GetUserByID(ctx, userID)
+	if err != nil {
+		return 0, 0, fmt.Errorf("пользователь не найден: %w", err)
+	}
+
+	count := user.CompletedWashesCount
+	nextFreeAt := ((count / 10) + 1) * 10 // Следующая бесплатная: 10, 20, 30...
+
+	return count, nextFreeAt, nil
 }

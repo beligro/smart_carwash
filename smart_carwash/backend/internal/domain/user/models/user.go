@@ -16,11 +16,13 @@ type User struct {
 	LastName        string         `json:"last_name"`
 	CarNumber       string         `json:"car_number"`
 	CarNumberCountry string        `json:"car_number_country" gorm:"default:'RUS'"`
-	Email           string         `json:"email"`
-	IsAdmin         bool           `json:"is_admin" gorm:"default:false"`
-	CreatedAt       time.Time      `json:"created_at"`
-	UpdatedAt       time.Time      `json:"updated_at"`
-	DeletedAt       gorm.DeletedAt `json:"-" gorm:"index"`
+	Email                  string         `json:"email"`
+	IsAdmin                bool           `json:"is_admin" gorm:"default:false"`
+	CompletedWashesCount   int            `json:"completed_washes_count" gorm:"default:0"`
+	IsSubscribedToChannel  bool           `json:"is_subscribed_to_channel" gorm:"default:false"`
+	CreatedAt              time.Time      `json:"created_at"`
+	UpdatedAt              time.Time      `json:"updated_at"`
+	DeletedAt              gorm.DeletedAt `json:"-" gorm:"index"`
 }
 
 // CreateUserRequest представляет запрос на создание пользователя

@@ -269,6 +269,20 @@ func (s *ServiceImpl) CreateSession(ctx context.Context, req *models.CreateSessi
 func (s *ServiceImpl) CreateSessionWithPayment(ctx context.Context, req *models.CreateSessionWithPaymentRequest) (*models.CreateSessionWithPaymentResponse, error) {
 	logger.Printf("Service - CreateSessionWithPayment: начало создания сессии с платежом, user_id: %s, service_type: %s", req.UserID.String(), req.ServiceType)
 
+	// TODO LOYALTY: Проверка программы лояльности
+	// if s.userService != nil {
+	//     user, err := s.userService.GetUserByID(ctx, req.UserID)
+	//     if err == nil {
+	//         // Проверяем: мойка + химия + счетчик кратен 10 + подписан на канал
+	//         if req.ServiceType == "wash" && req.WithChemistry && 
+	//            user.CompletedWashesCount > 0 && user.CompletedWashesCount % 10 == 0 &&
+	//            user.IsSubscribedToChannel {
+	//             // Создаем бесплатную сессию вместо платной
+	//             return s.createFreeSession(ctx, req)
+	//         }
+	//     }
+	// }
+
 	// 1. Создаем сессию
 	session, err := s.CreateSession(ctx, &models.CreateSessionRequest{
 		UserID:               req.UserID,
