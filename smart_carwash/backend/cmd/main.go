@@ -294,6 +294,12 @@ func main() {
 	// Запускаем мониторинг БД
 	go dbMonitor(db, done)
 
+	// Запускаем polling pending платежей (если включено)
+	if os.Getenv("ENABLE_PAYMENT_POLLING") == "true" {
+		go paymentPolling(paymentSvc, done)
+		logger.Info("Payment polling enabled (interval: 10s)", nil)
+	}
+
 	// Запускаем сервер в отдельной горутине
 	go func() {
 		logger.Info("Starting HTTP server", map[string]interface{}{
@@ -720,6 +726,32 @@ func dbMonitor(db *gorm.DB, done chan struct{}) {
 
 		case <-done:
 			log.Info("DB monitor stopped")
+			return
+		}
+	}
+}
+
+// paymentPolling проверяет статус pending платежей через Tinkoff API
+func paymentPolling(paymentService paymentService.Service, done chan struct{}) {
+	ticker := time.NewTicker(10 * time.Second) // Опрос каждые 10 секунд
+	defer ticker.Stop()
+
+	log := logger.GetLogger()
+	ctx := context.Background()
+
+	log.Info("Payment polling started (interval: 10s)")
+
+	for {
+		select {
+		case <-ticker.C:
+			if err := paymentService.PollPendingPayments(ctx); err != nil {
+				log.WithFields(map[string]interface{}{
+					"error": err.Error(),
+				}).Error("Payment polling error")
+			}
+
+		case <-done:
+			log.Info("Payment polling stopped")
 			return
 		}
 	}

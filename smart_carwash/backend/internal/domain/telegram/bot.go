@@ -155,7 +155,7 @@ func (b *Bot) handleStartCommand(message *tgbotapi.Message) {
 	}
 
 	// Формируем приветственное сообщение
-	messageText := "Помыть машину/записаться в очередь.\n\nПерейдите в мини приложение по кнопке в левом нижнем углу ↙️↙️↙️"
+	messageText := "👋 Добро пожаловать в H2O - автомойку самообслуживания!\n\nЗдесь вы можете:\n• Помыть машину (мойка, воздух, пылесос)\n• Оплатить онлайн и получить бокс\n• Отслеживать время и продлевать сессию\n\nПерейдите в мини приложение по кнопке в левом нижнем углу ↙️↙️↙️\n\n📢 Подпишитесь на наш канал @h2o_nsk_carwash - новости, акции, скидки!"
 
 	// Отправляем сообщение без клавиатуры
 	msg := tgbotapi.NewMessage(message.Chat.ID, messageText)
@@ -200,7 +200,7 @@ func (b *Bot) SendSessionNotification(telegramID int64, notificationType Notific
 
 	switch notificationType {
 	case NotificationTypeSessionExpiringSoon:
-		messageText = "Внимание! Через 1 минуту истечет время ожидания начала мойки. Пожалуйста, начните мойку, иначе ваша сессия будет отменена. Деньги возвращены, очередь аннулирована.\n\nПерейдите в мини приложение по кнопке в левом нижнем углу ↙️↙️↙️"
+		messageText = "Внимание! Через 1 минуту истечет время ожидания начала мойки и бокс включится автоматически.\nЕсли хотите отменить и получить возврат - самое время!\n\nПерейдите в мини приложение по кнопке в левом нижнем углу ↙️↙️↙️"
 	case NotificationTypeSessionCompletingSoon:
 		messageText = "⚠️ Внимание! Через 5 минут завершится время мойки. Самое время продлить оплаченное время или поторопиться.\n\nПерейдите в мини приложение по кнопке в левом нижнем углу ↙️↙️↙️"
 	case NotificationTypeSessionCompleted:
@@ -209,6 +209,8 @@ func (b *Bot) SendSessionNotification(telegramID int64, notificationType Notific
 		if cooldownMinutes != nil && *cooldownMinutes > 0 {
 			messageText += fmt.Sprintf("\n\nУ вас есть %d минут, чтобы продлить ваш бокс в приоритетном порядке. Просто оплатите заново и продолжайте. Если вы закончили мойку, освободите, пожалуйста, бокс для других клиентов", *cooldownMinutes)
 		}
+		// Добавляем ссылку на канал
+		messageText += "\n\n📢 Подпишитесь на наш канал @h2o_nsk_carwash, чтобы не пропустить наши новости, анонсы и акции!"
 	case NotificationTypeSessionExpiredOrCanceled:
 		messageText = "Мы вернули вашу оплату на ваш банковский счет. Обычно деньги поступают быстро, но это зависит от вашего банка"
 	case NotificationTypeSessionAutoStarted:
