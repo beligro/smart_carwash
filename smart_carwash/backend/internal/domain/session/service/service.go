@@ -3248,8 +3248,17 @@ func (s *ServiceImpl) createFreeSession(ctx context.Context, req *models.CreateS
 		UserID: req.UserID, ServiceType: "wash", WithChemistry: true,
 		ChemistryTimeMinutes: 5, CarNumber: req.CarNumber, RentalTimeMinutes: 30, IdempotencyKey: req.IdempotencyKey,
 	})
+
+	// TODO: Создать платеж с payment_method="loyalty" вместо "cashier"
+	// Пока используем cashier с amount=0 (работает, но не семантично)
 	s.paymentService.CreateForCashier(ctx, session.ID, 0)
-	s.userService.ResetWashCount(ctx, req.UserID)
+
+	// CRITICAL: Обнуление счетчика (если упадет - бесконечные бесплатные!)
+	if err := s.userService.ResetWashCount(ctx, req.UserID); err != nil {
+		logger.Printf("LOYALTY CRITICAL: Ошибка обнуления счетчика user_id=%s: %v", req.UserID, err)
+		// Всё равно продолжаем, но логируем критическую ошибку
+	}
+
 	session.Status = models.SessionStatusInQueue
 	session.StatusUpdatedAt = time.Now()
 	s.repo.UpdateSession(ctx, session)
