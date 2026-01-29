@@ -52,9 +52,8 @@ type Session struct {
 	ActiveEndedAt                          *time.Time     `json:"active_ended_at,omitempty" gorm:"column:active_ended_at"`      // Время фактического окончания мойки
 	CompletionSource                       string         `json:"completion_source,omitempty" gorm:"column:completion_source"`  // Источник завершения (timer/admin/cashier/client/anpr)
 	CompletionUserID                       *uuid.UUID     `json:"completion_user_id,omitempty" gorm:"column:completion_user_id"` // ID пользователя, завершившего сессию (если вручную)
-	SessionTimeoutMinutes                  int            `json:"session_timeout_minutes" gorm:"-"`                                // Время ожидания старта мойки в минутах (виртуальное поле)
-	CooldownMinutes                        *int           `json:"cooldown_minutes,omitempty" gorm:"-"`                             // Время кулдауна в минутах (виртуальное поле)
-	LoyaltyCounted                         bool           `json:"loyalty_counted" gorm:"default:false;column:loyalty_counted"`     // Засчитана ли в программе лояльности
+	SessionTimeoutMinutes                  int            `json:"session_timeout_minutes" gorm:"-"`    // Время ожидания старта мойки в минутах (виртуальное поле)
+	CooldownMinutes                        *int           `json:"cooldown_minutes,omitempty" gorm:"-"` // Время кулдауна в минутах (виртуальное поле)
 	DeletedAt                              gorm.DeletedAt `json:"-" gorm:"index"`
 }
 

@@ -28,6 +28,7 @@ type Service interface {
 	
 	// Программа лояльности
 	IncrementWashCount(ctx context.Context, userID uuid.UUID) error
+	ResetWashCount(ctx context.Context, userID uuid.UUID) error
 	GetLoyaltyProgress(ctx context.Context, userID uuid.UUID) (int, int, error) // count, nextFreeAt, error
 }
 
@@ -198,6 +199,24 @@ func (s *ServiceImpl) IncrementWashCount(ctx context.Context, userID uuid.UUID) 
 	// Сохраняем изменения
 	if err := s.repo.UpdateUser(ctx, user); err != nil {
 		return fmt.Errorf("ошибка обновления счетчика моек: %w", err)
+	}
+
+	return nil
+}
+
+// ResetWashCount обнуляет счетчик моек после использования бесплатной
+func (s *ServiceImpl) ResetWashCount(ctx context.Context, userID uuid.UUID) error {
+	user, err := s.repo.GetUserByID(ctx, userID)
+	if err != nil {
+		return fmt.Errorf("пользователь не найден: %w", err)
+	}
+
+	// Обнуляем счетчик
+	user.CompletedWashesCount = 0
+
+	// Сохраняем
+	if err := s.repo.UpdateUser(ctx, user); err != nil {
+		return fmt.Errorf("ошибка обнуления счетчика: %w", err)
 	}
 
 	return nil
