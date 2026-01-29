@@ -1430,12 +1430,26 @@ func (s *ServiceImpl) CheckAndCompleteExpiredSessions(ctx context.Context) error
 			// Обновляем статус сессии на complete, время обновления статуса и сбрасываем флаг уведомления
 			session.CompletionSource = "timer"
 			session.Status = models.SessionStatusComplete
-			session.StatusUpdatedAt = time.Now()         // Обновляем время изменения статуса
-			session.IsCompletingNotificationSent = false // Сбрасываем флаг, чтобы уведомление могло быть отправлено снова
+			session.StatusUpdatedAt = time.Now()
+			session.IsCompletingNotificationSent = false
 			err = s.repo.UpdateSession(ctx, &session)
 			if err != nil {
 				return err
 			}
+
+			// LOYALTY: Инкремент
+			if session.ServiceType == "wash" && session.WasChemistryOn && !session.LoyaltyCounted && s.userService != nil && s.paymentService != nil {
+				payment, _ := s.paymentService.GetMainPaymentBySessionID(ctx, session.ID)
+				if payment != nil && payment.Amount > 0 {
+					user, _ := s.userService.GetUserByID(ctx, session.UserID)
+					if user != nil && user.IsSubscribedToChannel {
+						s.userService.IncrementWashCount(ctx, session.UserID)
+						session.LoyaltyCounted = true
+						s.repo.UpdateSession(ctx, &session)
+					}
+				}
+			}
+
 			if session.BoxID != nil && s.washboxService != nil {
 				// Исключаем сессии кассира из кулдауна
 				if s.cashierUserID != "" {
@@ -3231,7 +3245,7 @@ func (s *ServiceImpl) GetActiveSessionByBoxID(ctx context.Context, boxID uuid.UU
 
 func (s *ServiceImpl) createFreeSession(ctx context.Context, req *models.CreateSessionWithPaymentRequest) (*models.CreateSessionWithPaymentResponse, error) {
 	session, _ := s.CreateSession(ctx, &models.CreateSessionRequest{
-		UserID: req.UserID, ServiceType: "wash", WithChemistry: true, 
+		UserID: req.UserID, ServiceType: "wash", WithChemistry: true,
 		ChemistryTimeMinutes: 5, CarNumber: req.CarNumber, RentalTimeMinutes: 30, IdempotencyKey: req.IdempotencyKey,
 	})
 	s.paymentService.CreateForCashier(ctx, session.ID, 0)
