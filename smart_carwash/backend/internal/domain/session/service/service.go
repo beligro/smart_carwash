@@ -3253,10 +3253,10 @@ func (s *ServiceImpl) createFreeSession(ctx context.Context, req *models.CreateS
 	// Пока используем cashier с amount=0 (работает, но не семантично)
 	s.paymentService.CreateForCashier(ctx, session.ID, 0)
 
-	// CRITICAL: Обнуление счетчика (если упадет - бесконечные бесплатные!)
+	// CRITICAL: Обнуление счетчика (если упадет - НЕ создаем сессию!)
 	if err := s.userService.ResetWashCount(ctx, req.UserID); err != nil {
 		logger.Printf("LOYALTY CRITICAL: Ошибка обнуления счетчика user_id=%s: %v", req.UserID, err)
-		// Всё равно продолжаем, но логируем критическую ошибку
+		return nil, fmt.Errorf("не удалось обнулить счетчик лояльности: %w", err)
 	}
 
 	session.Status = models.SessionStatusInQueue
