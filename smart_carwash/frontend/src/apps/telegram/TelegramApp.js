@@ -7,6 +7,7 @@ import WashInfo from './components/WashInfo/WashInfo';
 import PaymentPage from './components/PaymentPage';
 import ApiService from '../../shared/services/ApiService';
 import { getTheme } from '../../shared/styles/theme';
+import LoyaltyProgress from '../../shared/components/LoyaltyProgress/LoyaltyProgress';
 // import { SettingsProvider } from '../../shared/contexts/SettingsContext';
 
 // Ленивая загрузка компонентов
@@ -753,6 +754,9 @@ const TelegramApp = () => {
   return (
     <AppContainer theme={themeObject}>
       <Header theme={theme} onBack={showBackButton ? handleBackToHome : undefined} />
+      
+      {user && <LoyaltyProgress userId={user.id} />}
+      
         <ContentContainer>
           <Routes>
             <Route 

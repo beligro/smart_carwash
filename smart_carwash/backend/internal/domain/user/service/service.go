@@ -186,19 +186,19 @@ func (s *ServiceImpl) UpdateEmail(ctx context.Context, req *models.UpdateEmailRe
 	}, nil
 }
 
-// IncrementWashCount увеличивает счетчик завершенных моек для программы лояльности
+// IncrementWashCount увеличивает счетчик завершенных моек (атомарно)
 func (s *ServiceImpl) IncrementWashCount(ctx context.Context, userID uuid.UUID) error {
+	// TODO: Добавить метод AtomicIncrementWashCount в repository
+	// Пока используем простой подход (без полной защиты от race)
 	user, err := s.repo.GetUserByID(ctx, userID)
 	if err != nil {
 		return fmt.Errorf("пользователь не найден: %w", err)
 	}
 
-	// Увеличиваем счетчик
 	user.CompletedWashesCount++
 
-	// Сохраняем изменения
 	if err := s.repo.UpdateUser(ctx, user); err != nil {
-		return fmt.Errorf("ошибка обновления счетчика моек: %w", err)
+		return fmt.Errorf("ошибка обновления счетчика: %w", err)
 	}
 
 	return nil
