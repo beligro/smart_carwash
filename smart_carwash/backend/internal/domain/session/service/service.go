@@ -1370,6 +1370,40 @@ func (s *ServiceImpl) CheckAndCompleteExpiredSessions(ctx context.Context) error
 		// Учитываем время продления, если оно есть
 		totalTime := rentalTime + session.ExtensionTimeMinutes
 
+		// ПРОВЕРКА ХИМИИ ОТДЕЛЬНО (если она активна и не выключена)
+		if session.WasChemistryOn && session.ChemistryStartedAt != nil && session.ChemistryEndedAt == nil {
+			// Считаем общее время химии (начальное + продление)
+			chemistryTotalTime := session.ChemistryTimeMinutes + session.ExtensionChemistryTimeMinutes
+			chemistryElapsed := now.Sub(*session.ChemistryStartedAt)
+			
+			// Если время химии истекло
+			if chemistryElapsed >= time.Duration(chemistryTotalTime)*time.Minute {
+				logger.Printf("CheckAndCompleteExpiredSessions: время химии истекло, выключаем - SessionID=%s, elapsed=%v, total=%d мин", 
+					session.ID, chemistryElapsed, chemistryTotalTime)
+				
+				// Выключаем химию через Modbus
+				if session.BoxID != nil && s.modbusService != nil {
+					box, err := s.washboxService.GetWashBoxByID(ctx, *session.BoxID)
+					if err == nil && box.ChemistryCoilRegister != nil {
+						if err := s.modbusService.WriteChemistryCoil(ctx, *session.BoxID, *box.ChemistryCoilRegister, false); err != nil {
+							logger.Printf("CheckAndCompleteExpiredSessions: ошибка выключения химии - SessionID=%s, error=%v", session.ID, err)
+						} else {
+							logger.Printf("CheckAndCompleteExpiredSessions: химия выключена - SessionID=%s", session.ID)
+						}
+					}
+				}
+				
+				// Обновляем chemistry_ended_at в БД
+				err = s.repo.UpdateSessionFields(ctx, session.ID, map[string]interface{}{
+					"chemistry_ended_at": now,
+					"updated_at":         now,
+				})
+				if err != nil {
+					logger.Printf("CheckAndCompleteExpiredSessions: ошибка обновления chemistry_ended_at - SessionID=%s, error=%v", session.ID, err)
+				}
+			}
+		}
+
 		// Проверяем, прошло ли выбранное время с момента начала сессии
 		if now.Sub(startTime) >= time.Duration(totalTime)*time.Minute {
 			// Если прошло время, завершаем сессию
@@ -2402,25 +2436,28 @@ func (s *ServiceImpl) UpdateSessionExtension(ctx context.Context, sessionID uuid
 				session.RequestedExtensionChemistryTimeMinutes, session.ID)
 		} else if session.WithChemistry {
 			// Применяем логику химии при продлении для существующей химии
-			if session.WasChemistryOn && session.ChemistryEndedAt == nil {
-				// Химия активна - продлеваем на докупленное время
-				session.ChemistryTimeMinutes += session.RequestedExtensionChemistryTimeMinutes
-				logger.Printf("UpdateSessionExtension: химия активна, продлеваем на %d минут, общее время %d минут, SessionID=%s",
-					session.RequestedExtensionChemistryTimeMinutes, session.ChemistryTimeMinutes, session.ID)
-			} else if session.ChemistryStartedAt == nil {
-				// Химия не использована - даем на первоначальное + докупленное время
-				totalChemistryTime := session.ChemistryTimeMinutes + session.RequestedExtensionChemistryTimeMinutes
-				session.ChemistryTimeMinutes = totalChemistryTime
-				logger.Printf("UpdateSessionExtension: химия не использована, общее время %d минут, SessionID=%s",
-					totalChemistryTime, session.ID)
-			} else {
-				// Химия уже использована - даем только на докупленное время и сбрасываем флаги
-				session.ChemistryTimeMinutes = session.RequestedExtensionChemistryTimeMinutes
-				session.ChemistryStartedAt = nil
-				session.ChemistryEndedAt = nil
-				session.WasChemistryOn = false
-				logger.Printf("UpdateSessionExtension: химия использована, новое время %d минут, сброшены флаги, SessionID=%s",
-					session.RequestedExtensionChemistryTimeMinutes, session.ID)
+		if session.WasChemistryOn && session.ChemistryEndedAt == nil {
+			// Химия активна - продлеваем на докупленное время
+			session.ChemistryTimeMinutes += session.RequestedExtensionChemistryTimeMinutes
+			session.ExtensionChemistryTimeMinutes += session.RequestedExtensionChemistryTimeMinutes
+			logger.Printf("UpdateSessionExtension: химия активна, продлеваем на %d минут, общее время %d минут, extension %d, SessionID=%s",
+				session.RequestedExtensionChemistryTimeMinutes, session.ChemistryTimeMinutes, session.ExtensionChemistryTimeMinutes, session.ID)
+		} else if session.ChemistryStartedAt == nil {
+			// Химия не использована - даем на первоначальное + докупленное время
+			totalChemistryTime := session.ChemistryTimeMinutes + session.RequestedExtensionChemistryTimeMinutes
+			session.ChemistryTimeMinutes = totalChemistryTime
+			session.ExtensionChemistryTimeMinutes += session.RequestedExtensionChemistryTimeMinutes
+			logger.Printf("UpdateSessionExtension: химия не использована, общее время %d минут, extension %d, SessionID=%s",
+				totalChemistryTime, session.ExtensionChemistryTimeMinutes, session.ID)
+		} else {
+			// Химия уже использована - даем только на докупленное время и сбрасываем флаги
+			session.ChemistryTimeMinutes = session.RequestedExtensionChemistryTimeMinutes
+			session.ExtensionChemistryTimeMinutes = session.RequestedExtensionChemistryTimeMinutes
+			session.ChemistryStartedAt = nil
+			session.ChemistryEndedAt = nil
+			session.WasChemistryOn = false
+			logger.Printf("UpdateSessionExtension: химия использована, новое время %d минут, extension %d, сброшены флаги, SessionID=%s",
+				session.RequestedExtensionChemistryTimeMinutes, session.ExtensionChemistryTimeMinutes, session.ID)
 			}
 		}
 
@@ -2712,10 +2749,11 @@ func (s *ServiceImpl) EnableChemistry(ctx context.Context, req *models.EnableChe
 
 	logger.Printf("Химия включена: SessionID=%s, ChemistryTimeMinutes=%d", session.ID, session.ChemistryTimeMinutes)
 
-	// Запускаем автоматическое выключение химии через указанное время
-	if session.ChemistryTimeMinutes > 0 {
-		s.AutoDisableChemistry(session.ID, session.ChemistryTimeMinutes)
-	}
+	// ИСПРАВЛЕНИЕ: Убрали AutoDisableChemistry (таймер) - химия теперь выключается через CheckAndCompleteExpiredSessions
+	// Это позволяет правильно работать при продлении химии
+	// if session.ChemistryTimeMinutes > 0 {
+	// 	s.AutoDisableChemistry(session.ID, session.ChemistryTimeMinutes)
+	// }
 
 	return &models.EnableChemistryResponse{
 		Session: *session,
