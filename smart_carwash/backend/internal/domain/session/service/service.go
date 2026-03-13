@@ -49,6 +49,7 @@ type Service interface {
 	CheckAndExpireReservedSessions(ctx context.Context) error
 	CheckAndNotifyExpiringReservedSessions(ctx context.Context) error
 	CheckAndNotifyCompletingSessions(ctx context.Context) error
+	CheckAndCancelAbandonedCreatedSessions(ctx context.Context) error
 	CountSessionsByStatus(ctx context.Context, status string) (int, error)
 	GetSessionsByStatus(ctx context.Context, status string) ([]models.Session, error)
 	GetUserSessionHistory(ctx context.Context, req *models.GetUserSessionHistoryRequest) ([]models.Session, error)
@@ -2064,6 +2065,42 @@ func (s *ServiceImpl) CheckAndNotifyCompletingSessions(ctx context.Context) erro
 					}
 				}(session.ID, user.TelegramID)
 			}
+		}
+	}
+
+	return nil
+}
+
+
+// CheckAndCancelAbandonedCreatedSessions cancels sessions in created status older than 10 minutes.
+// Prevents cashier from encountering a stale unconfirmed Telegram session instead of creating a new one.
+func (s *ServiceImpl) CheckAndCancelAbandonedCreatedSessions(ctx context.Context) error {
+	startTime := time.Now()
+	defer func() {
+		logger.Printf("CheckAndCancelAbandonedCreatedSessions: done in %v", time.Since(startTime))
+	}()
+
+	createdSessions, err := s.repo.GetSessionsByStatus(ctx, models.SessionStatusCreated)
+	if err != nil {
+		return err
+	}
+
+	if len(createdSessions) == 0 {
+		return nil
+	}
+
+	now := time.Now()
+	for _, session := range createdSessions {
+		if now.Sub(session.CreatedAt) > 10*time.Minute {
+			session.Status = models.SessionStatusCanceled
+			session.CompletionSource = "timeout"
+			session.StatusUpdatedAt = now
+			if err := s.repo.UpdateSession(ctx, &session); err != nil {
+				logger.Printf("CheckAndCancelAbandonedCreatedSessions: error canceling %s: %v", session.ID, err)
+				continue
+			}
+			logger.Printf("CheckAndCancelAbandonedCreatedSessions: canceled %s car=%s created=%s",
+				session.ID, session.CarNumber, session.CreatedAt.Format("2006-01-02T15:04:05Z07:00"))
 		}
 	}
 
