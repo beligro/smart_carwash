@@ -7,9 +7,9 @@
 set -e
 
 # Конфигурация
-DOMAIN="79.141.66.210.nip.io"
-NGINX_SSL_DIR="/root/smart_carwash/smart_carwash/nginx/ssl"
-PROJECT_DIR="/root/smart_carwash/smart_carwash"
+DOMAIN="h2o-nsk.ru"
+NGINX_SSL_DIR="/home/artem/smart_carwash/smart_carwash/nginx/ssl"
+PROJECT_DIR="/home/artem/smart_carwash/smart_carwash"
 # Логи в stdout (в файл не пишем)
 
 # Функция логирования (только в терминал)

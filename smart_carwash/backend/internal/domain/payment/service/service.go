@@ -257,7 +257,7 @@ func (s *service) CalculateExtensionPrice(ctx context.Context, req *models.Calcu
 	}, nil
 }
 
-// CreatePayment создает платеж в Tinkoff и сохраняет в БД (в тестовом режиме — только запись в БД со статусом succeeded, без Tinkoff)
+// CreatePayment создает платеж в Tinkoff и сохраняет в БД
 func (s *service) CreatePayment(ctx context.Context, req *models.CreatePaymentRequest) (*models.CreatePaymentResponse, error) {
 	// Проверяем, есть ли уже pending платеж для этой сессии
 	existingPayments, err := s.repository.GetPaymentsBySessionID(ctx, req.SessionID)
