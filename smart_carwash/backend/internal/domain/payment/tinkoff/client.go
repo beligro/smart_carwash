@@ -104,6 +104,32 @@ func (c *Client) RefundPayment(paymentID string, amount int) (*service.TinkoffRe
 	return &tinkoffResp, nil
 }
 
+// GetPaymentStatus получает статус платежа через Tinkoff API
+func (c *Client) GetPaymentStatus(paymentID string) (*service.TinkoffPaymentStatusResponse, error) {
+	// Формируем параметры запроса
+	params := map[string]interface{}{
+		"TerminalKey": c.terminalKey,
+		"PaymentId":   paymentID,
+	}
+
+	// Добавляем подпись
+	params["Token"] = c.generateToken(params)
+
+	// Отправляем запрос
+	resp, err := c.sendRequest("POST", "/GetState", params)
+	if err != nil {
+		return nil, fmt.Errorf("ошибка отправки запроса GetState: %w", err)
+	}
+
+	// Парсим ответ
+	var tinkoffResp service.TinkoffPaymentStatusResponse
+	if err := json.Unmarshal(resp, &tinkoffResp); err != nil {
+		return nil, fmt.Errorf("ошибка парсинга ответа GetState: %w", err)
+	}
+
+	return &tinkoffResp, nil
+}
+
 // VerifyWebhookSignature проверяет подпись webhook
 func (c *Client) VerifyWebhookSignature(data []byte, signature string) bool {
 	// Создаем HMAC подпись

@@ -30,6 +30,7 @@ type SessionExtensionUpdater interface {
 // TinkoffClient интерфейс для работы с Tinkoff API
 type TinkoffClient interface {
 	CreatePayment(orderID string, amount int, description string, receipt map[string]interface{}) (*TinkoffPaymentResponse, error)
+	GetPaymentStatus(paymentID string) (*TinkoffPaymentStatusResponse, error)
 	RefundPayment(paymentID string, amount int) (*TinkoffRefundResponse, error)
 	VerifyWebhookSignature(data []byte, signature string) bool
 }
@@ -47,6 +48,15 @@ type TinkoffPaymentResponse struct {
 
 // TinkoffRefundResponse ответ от Tinkoff API при возврате платежа
 type TinkoffRefundResponse struct {
+	Success   bool   `json:"Success"`
+	ErrorCode string `json:"ErrorCode"`
+	Status    string `json:"Status"`
+	PaymentId string `json:"PaymentId"`
+	Amount    int    `json:"Amount"`
+}
+
+// TinkoffPaymentStatusResponse ответ от Tinkoff API при проверке статуса (GetState)
+type TinkoffPaymentStatusResponse struct {
 	Success   bool   `json:"Success"`
 	ErrorCode string `json:"ErrorCode"`
 	Status    string `json:"Status"`
@@ -74,6 +84,7 @@ type Service interface {
 	CreateForCashier(ctx context.Context, sessionID uuid.UUID, amount int) (*models.Payment, error)
 	CashierListPayments(ctx context.Context, req *models.CashierPaymentsRequest) (*models.AdminListPaymentsResponse, error)
 	GetCashierLastShiftStatistics(ctx context.Context, req *models.CashierLastShiftStatisticsRequest) (*models.CashierLastShiftStatisticsResponse, error)
+	PollPendingPayments(ctx context.Context) error
 	Shutdown() // Завершение работы сервиса (остановка очереди webhook'ов)
 }
 
@@ -901,4 +912,76 @@ func (s *service) buildReceipt(amount int, email string) map[string]interface{} 
 	}
 
 	return receipt
+}
+
+// PollPendingPayments проверяет статус pending платежей через Tinkoff API
+func (s *service) PollPendingPayments(ctx context.Context) error {
+	start := time.Now()
+	
+	// Получаем все pending платежи созданные менее 15 минут назад
+	fifteenMinutesAgo := time.Now().Add(-15 * time.Minute)
+	pendingPayments, err := s.repository.GetPendingPaymentsSince(ctx, fifteenMinutesAgo)
+	if err != nil {
+		return fmt.Errorf("ошибка получения pending платежей: %w", err)
+	}
+
+	if len(pendingPayments) == 0 {
+		return nil
+	}
+
+	logger.Printf("PollPendingPayments: найдено %d pending платежей для проверки", len(pendingPayments))
+
+	// Проверяем статус каждого платежа через Tinkoff API
+	successCount := 0
+	for _, payment := range pendingPayments {
+		// Пропускаем платежи без TinkoffID
+		if payment.TinkoffID == "" {
+			continue
+		}
+
+		// Получаем статус платежа от Tinkoff
+		statusResp, err := s.tinkoffClient.GetPaymentStatus(payment.TinkoffID)
+		if err != nil {
+			logger.Printf("PollPendingPayments: ошибка получения статуса PaymentId=%s: %v", payment.TinkoffID, err)
+			continue
+		}
+
+		// Если статус не изменился (все еще pending), пропускаем
+		if statusResp.Status == "NEW" || statusResp.Status == "FORM_SHOWED" {
+			continue
+		}
+
+		logger.Printf("PollPendingPayments: обнаружено изменение статуса PaymentId=%s: pending → %s", 
+			payment.TinkoffID, statusResp.Status)
+
+		// Конвертируем PaymentId из string в int64 для WebhookRequest
+		// HandleWebhook конвертирует обратно в string для поиска в БД
+		var paymentIdInt int64
+		fmt.Sscanf(statusResp.PaymentId, "%d", &paymentIdInt)
+
+		// Создаем webhook request на основе ответа GetState
+		webhookReq := &models.WebhookRequest{
+			TerminalKey: s.terminalKey,
+			PaymentId:   paymentIdInt,
+			Status:      statusResp.Status,
+			Success:     statusResp.Success,
+			Amount:      statusResp.Amount,
+		}
+
+		// Обрабатываем как обычный вебхук
+		if err := s.HandleWebhook(ctx, webhookReq); err != nil {
+			logger.Printf("PollPendingPayments: ошибка обработки статуса PaymentId=%s: %v", payment.TinkoffID, err)
+			continue
+		}
+
+		successCount++
+		logger.Printf("PollPendingPayments: SUCCESS PaymentId=%s, Status=%s", payment.TinkoffID, statusResp.Status)
+	}
+
+	duration := time.Since(start)
+	if successCount > 0 {
+		logger.Printf("PollPendingPayments: обработано %d/%d платежей, выполнение заняло %v", successCount, len(pendingPayments), duration)
+	}
+	
+	return nil
 }

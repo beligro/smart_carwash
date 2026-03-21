@@ -294,6 +294,12 @@ func main() {
 	// Запускаем мониторинг БД
 	go dbMonitor(db, done)
 
+	// Запускаем polling pending платежей (если включено)
+	if os.Getenv("ENABLE_PAYMENT_POLLING") == "true" {
+		go paymentPolling(paymentSvc, done)
+		logger.Info("Payment polling enabled (interval: 10s)", nil)
+	}
+
 	// Запускаем сервер в отдельной горутине
 	go func() {
 		logger.Info("Starting HTTP server", map[string]interface{}{
@@ -478,6 +484,29 @@ func main() {
 					defer cancel()
 					if err := sessionSvc.CheckAndNotifyCompletingSessions(ctx2); err != nil {
 						log.WithField("error", err).Error("Ошибка отправки уведомлений о скором завершении сессий")
+					}
+				}()
+			case <-done:
+				return
+			}
+		}
+	}()
+
+
+	// Запускаем периодическую задачу для отмены брошенных created сессий (старт через 9 сек)
+	go func() {
+		time.Sleep(9 * time.Second) // Разносим запуск задач
+		ticker := time.NewTicker(5 * time.Second)
+		defer ticker.Stop()
+
+		for {
+			select {
+			case <-ticker.C:
+				func() {
+					ctx2, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+					defer cancel()
+					if err := sessionSvc.CheckAndCancelAbandonedCreatedSessions(ctx2); err != nil {
+						log.WithField("error", err).Error("Ошибка отмены брошенных created сессий")
 					}
 				}()
 			case <-done:
@@ -720,6 +749,32 @@ func dbMonitor(db *gorm.DB, done chan struct{}) {
 
 		case <-done:
 			log.Info("DB monitor stopped")
+			return
+		}
+	}
+}
+
+// paymentPolling проверяет статус pending платежей через Tinkoff API
+func paymentPolling(paymentService paymentService.Service, done chan struct{}) {
+	ticker := time.NewTicker(10 * time.Second) // Опрос каждые 10 секунд
+	defer ticker.Stop()
+
+	log := logger.GetLogger()
+	ctx := context.Background()
+
+	log.Info("Payment polling started (interval: 10s)")
+
+	for {
+		select {
+		case <-ticker.C:
+			if err := paymentService.PollPendingPayments(ctx); err != nil {
+				log.WithFields(map[string]interface{}{
+					"error": err.Error(),
+				}).Error("Payment polling error")
+			}
+
+		case <-done:
+			log.Info("Payment polling stopped")
 			return
 		}
 	}

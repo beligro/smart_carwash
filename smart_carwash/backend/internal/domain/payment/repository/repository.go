@@ -26,6 +26,7 @@ type Repository interface {
 	GetPaymentStatistics(ctx context.Context, req *models.PaymentStatisticsRequest) (*models.PaymentStatisticsResponse, error)
 	CashierListPayments(ctx context.Context, req *models.CashierPaymentsRequest) ([]models.Payment, int, error)
 	GetCashierLastShiftStatistics(ctx context.Context, req *models.CashierLastShiftStatisticsRequest) (*models.CashierLastShiftStatisticsResponse, error)
+	GetPendingPaymentsSince(ctx context.Context, since time.Time) ([]models.Payment, error)
 }
 
 // repository реализация Repository
@@ -455,4 +456,19 @@ func (r *repository) GetCashierLastShiftStatistics(ctx context.Context, req *mod
 		Message:    "Статистика последней смены",
 		HasShift:   true,
 	}, nil
+}
+
+// GetPendingPaymentsSince получает pending платежи созданные после указанного времени
+func (r *repository) GetPendingPaymentsSince(ctx context.Context, since time.Time) ([]models.Payment, error) {
+	var payments []models.Payment
+	err := r.db.WithContext(ctx).
+		Where("status = ? AND created_at > ? AND tinkoff_id IS NOT NULL AND tinkoff_id != ''", "pending", since).
+		Order("created_at ASC").
+		Find(&payments).Error
+	
+	if err != nil {
+		return nil, err
+	}
+	
+	return payments, nil
 }
