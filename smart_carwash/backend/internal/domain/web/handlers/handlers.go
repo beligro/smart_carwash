@@ -67,6 +67,7 @@ func (h *Handler) RegisterRoutes(router *gin.RouterGroup) {
 	router.POST("/sessions/with-payment", h.createSessionWithPayment)
 	router.POST("/link-telegram/request", h.linkTelegramRequest)
 	router.GET("/payments/status", h.getPaymentStatus)
+	router.POST("/payments/create", h.createPayment)
 }
 
 func (h *Handler) me(c *gin.Context) {
@@ -447,4 +448,40 @@ func (h *Handler) getPaymentStatus(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, paymentResp)
+}
+
+func (h *Handler) createPayment(c *gin.Context) {
+	userID, ok := userIDFromContext(c)
+	if !ok {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Не авторизован"})
+		return
+	}
+
+	var req paymentModels.CreatePaymentRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	// Проверяем, что сессия принадлежит авторизованному пользователю
+	sessResp, err := h.sessionSvc.GetSession(c.Request.Context(), &sessionModels.GetSessionRequest{SessionID: req.SessionID})
+	if err != nil || sessResp == nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Сессия не найдена"})
+		return
+	}
+	if sessResp.Session.UserID != userID {
+		c.JSON(http.StatusForbidden, gin.H{"error": "Нет доступа к этой сессии"})
+		return
+	}
+
+	// Для веба фиксируем source, чтобы использовать web success/fail URL
+	req.Source = "web"
+
+	resp, err := h.paymentSvc.CreatePayment(c.Request.Context(), &req)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, resp)
 }

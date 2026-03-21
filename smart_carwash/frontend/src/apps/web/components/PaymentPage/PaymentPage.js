@@ -33,17 +33,24 @@ const PaymentPage = ({ session, payment: initialPayment, onPaymentComplete, onPa
     const returnType = searchParams.get('return');
     if (returnType !== 'success' && returnType !== 'fail') return;
     if (returnHandled) return;
-    if (session && initialPayment) {
-      setReturnHandled(true);
-      setSearchParams({}, { replace: true });
-      return;
-    }
+
     setReturnHandled(true);
     setSearchParams({}, { replace: true });
+
+    if (session && initialPayment) {
+      // Данные сессии уже в памяти — сразу тот же флоу, что и после загрузки сессии с API
+      if (returnType === 'success') {
+        onPaymentComplete?.(session);
+      } else {
+        onPaymentFailed?.(session);
+      }
+      return;
+    }
+
     const fetchAndHandle = async () => {
       setLoading(true);
       try {
-        const response = await WebApiService.getUserSessionForPayment(session?.user_id || session?.id);
+        const response = await WebApiService.getUserSessionForPayment();
         const sess = response?.session;
         if (!sess) {
           setError('Сессия не найдена');
@@ -139,9 +146,15 @@ const PaymentPage = ({ session, payment: initialPayment, onPaymentComplete, onPa
         // Обновляем payment в состоянии
         setPayment(newPayment);
         
+        // Веб: та же вкладка → редирект Tinkoff; иначе новое окно + опрос статуса
+        if (pathBase === '/web') {
+          window.location.href = newPayment.payment_url;
+          return;
+        }
+
         // Открываем новую ссылку на оплату
         window.open(newPayment.payment_url, '_blank');
-        
+
         // Начинаем проверку статуса нового платежа с его ID
         startPaymentStatusCheck(newPayment.id);
       } else {
@@ -198,8 +211,13 @@ const PaymentPage = ({ session, payment: initialPayment, onPaymentComplete, onPa
             clearInterval(checkInterval);
             setLoading(false);
             // Получаем обновленную сессию для передачи в onPaymentComplete
-            const updatedSession = await WebApiService.getUserSessionForPayment(session.user_id);
-            onPaymentComplete(updatedSession.session);
+            const updatedSession = await WebApiService.getUserSessionForPayment();
+            const sess = updatedSession?.session;
+            if (!sess) {
+              setError('Не удалось получить данные сессии');
+              return;
+            }
+            onPaymentComplete(sess);
             return;
           } else if (updatedPayment.status === 'failed') {
             // Платеж неудачен
@@ -211,16 +229,25 @@ const PaymentPage = ({ session, payment: initialPayment, onPaymentComplete, onPa
         }
         
         // Дополнительная проверка через статус сессии
-        const updatedSession = await WebApiService.getUserSessionForPayment(session.user_id);
-        
+        const updatedSession = await WebApiService.getUserSessionForPayment();
+        const sess = updatedSession?.session;
+        if (!sess) {
+          if (checkCount >= maxChecks) {
+            clearInterval(checkInterval);
+            setLoading(false);
+            setPaymentFailed(true);
+          }
+          return;
+        }
+
         if (paymentType === 'extension') {
           // Для продления проверяем, что requested_extension_time_minutes стал 0
           // И что платеж действительно успешен
-          if (updatedSession.session.requested_extension_time_minutes === 0 && updatedSession.session.requested_extension_chemistry_time_minutes === 0) {
+          if (sess.requested_extension_time_minutes === 0 && sess.requested_extension_chemistry_time_minutes === 0) {
             // Продление успешно применено
             clearInterval(checkInterval);
             setLoading(false);
-            onPaymentComplete(updatedSession.session);
+            onPaymentComplete(sess);
           } else if (checkCount >= maxChecks) {
             // Если прошло много времени без успеха, считаем оплату неудачной
             clearInterval(checkInterval);
@@ -229,11 +256,11 @@ const PaymentPage = ({ session, payment: initialPayment, onPaymentComplete, onPa
           }
         } else {
           // Для основного платежа проверяем статус сессии
-          if (updatedSession.session.status === 'in_queue' || updatedSession.session.status === 'assigned') {
+          if (sess.status === 'in_queue' || sess.status === 'assigned') {
             // Платеж успешен
             clearInterval(checkInterval);
             setLoading(false);
-            onPaymentComplete(updatedSession.session);
+            onPaymentComplete(sess);
           } else if (checkCount >= maxChecks) {
             // Если прошло много времени без успеха, считаем оплату неудачной
             clearInterval(checkInterval);

@@ -4,22 +4,27 @@ import (
 	"carwash_backend/internal/domain/payment/models"
 	"carwash_backend/internal/domain/payment/repository"
 	settingsRepo "carwash_backend/internal/domain/settings/repository"
+	sessionmodels "carwash_backend/internal/domain/session/models"
 	"carwash_backend/internal/logger"
 	"carwash_backend/internal/metrics"
 	"context"
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"time"
 
 	"github.com/google/uuid"
 	"github.com/sirupsen/logrus"
+	"gorm.io/gorm"
 )
 
 // SessionStatusUpdater интерфейс для обновления статуса сессии
 type SessionStatusUpdater interface {
 	UpdateSessionStatus(ctx context.Context, sessionID uuid.UUID, status string) error
+	// GetSessionMainPricingSnapshot данные сессии для серверной проверки суммы основного платежа
+	GetSessionMainPricingSnapshot(ctx context.Context, sessionID uuid.UUID) (*sessionmodels.SessionMainPricingSnapshot, error)
 }
 
 // SessionExtensionUpdater интерфейс для обновления времени продления сессии
@@ -281,19 +286,66 @@ func (s *service) CreatePayment(ctx context.Context, req *models.CreatePaymentRe
 		}
 	}
 
+	// Веб: сумма и чек только с сервера по сессии (клиент не может подменить amount).
+	// Telegram / общий API (source != web): прежнее поведение — amount/currency/email из запроса.
+	var chargeAmount int
+	var chargeCurrency string
+	var emailForReceipt string
+
+	if req.Source == "web" {
+		snapshot, err := s.sessionUpdater.GetSessionMainPricingSnapshot(ctx, req.SessionID)
+		if err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				return nil, fmt.Errorf("сессия не найдена")
+			}
+			return nil, fmt.Errorf("не удалось получить сессию: %w", err)
+		}
+		if snapshot == nil {
+			return nil, fmt.Errorf("сессия не найдена")
+		}
+		if snapshot.Status != sessionmodels.SessionStatusCreated && snapshot.Status != sessionmodels.SessionStatusPaymentFailed {
+			return nil, fmt.Errorf("создание основного платежа недоступно для статуса сессии: %s", snapshot.Status)
+		}
+		priceResp, err := s.CalculatePrice(ctx, &models.CalculatePriceRequest{
+			ServiceType:          snapshot.ServiceType,
+			WithChemistry:        snapshot.WithChemistry,
+			ChemistryTimeMinutes: snapshot.ChemistryTimeMinutes,
+			RentalTimeMinutes:    snapshot.RentalTimeMinutes,
+		})
+		if err != nil {
+			return nil, fmt.Errorf("ошибка расчёта цены для проверки платежа: %w", err)
+		}
+		if req.Amount != priceResp.Price {
+			return nil, fmt.Errorf("сумма платежа не совпадает с расчётной")
+		}
+		if req.Currency != "" && req.Currency != priceResp.Currency {
+			return nil, fmt.Errorf("некорректная валюта платежа")
+		}
+		emailForReceipt = req.Email
+		if emailForReceipt == "" {
+			emailForReceipt = snapshot.Email
+		}
+		chargeAmount = priceResp.Price
+		chargeCurrency = priceResp.Currency
+	} else {
+		chargeAmount = req.Amount
+		chargeCurrency = req.Currency
+		emailForReceipt = req.Email
+	}
+
 	// Создаем уникальный orderID для основного платежа
 	orderID := fmt.Sprintf("main_%s", generateRandomString(12))
 	description := fmt.Sprintf("Оплата услуги автомойки (сессия: %s)", req.SessionID.String())
 
 	// Создаем чек для фискализации
-	receipt := s.buildReceipt(req.Amount, req.Email)
+	receipt := s.buildReceipt(chargeAmount, emailForReceipt)
 
 	successURL, failURL := "", ""
 	if req.Source == "web" {
 		successURL = s.tinkoffWebSuccessURL
 		failURL = s.tinkoffWebFailURL
 	}
-	tinkoffResp, err := s.tinkoffClient.CreatePayment(orderID, req.Amount, description, receipt, successURL, failURL)
+	tinkoffResp, err := s.tinkoffClient.CreatePayment(orderID, chargeAmount, description, receipt, successURL, failURL)
 	if err != nil {
 		return nil, fmt.Errorf("ошибка создания платежа в Tinkoff: %w", err)
 	}
@@ -307,8 +359,8 @@ func (s *service) CreatePayment(ctx context.Context, req *models.CreatePaymentRe
 
 	payment := &models.Payment{
 		SessionID:   req.SessionID,
-		Amount:      req.Amount,
-		Currency:    req.Currency,
+		Amount:      chargeAmount,
+		Currency:    chargeCurrency,
 		Status:      models.PaymentStatusPending,
 		PaymentType: models.PaymentTypeMain,
 		PaymentURL:  tinkoffResp.PaymentURL,

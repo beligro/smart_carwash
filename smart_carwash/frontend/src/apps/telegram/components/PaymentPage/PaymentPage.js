@@ -32,13 +32,20 @@ const PaymentPage = ({ session, payment: initialPayment, onPaymentComplete, onPa
     const returnType = searchParams.get('return');
     if (returnType !== 'success' && returnType !== 'fail') return;
     if (returnHandled) return;
-    if (session && initialPayment) {
-      setReturnHandled(true);
-      setSearchParams({}, { replace: true });
-      return;
-    }
+
     setReturnHandled(true);
     setSearchParams({}, { replace: true });
+
+    if (session && initialPayment) {
+      // Данные сессии уже в памяти (типично для Telegram Mini App) — не дёргаем API, сразу флоу как после fetch
+      if (returnType === 'success') {
+        onPaymentComplete?.(session);
+      } else {
+        onPaymentFailed?.(session);
+      }
+      return;
+    }
+
     const fetchAndHandle = async () => {
       setLoading(true);
       try {

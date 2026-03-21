@@ -2528,6 +2528,25 @@ func (s *ServiceImpl) AdminGetSession(ctx context.Context, req *models.AdminGetS
 	}, nil
 }
 
+// GetSessionMainPricingSnapshot возвращает данные сессии для проверки суммы основного платежа в payment service.
+func (s *ServiceImpl) GetSessionMainPricingSnapshot(ctx context.Context, sessionID uuid.UUID) (*models.SessionMainPricingSnapshot, error) {
+	session, err := s.repo.GetSessionByID(ctx, sessionID)
+	if err != nil {
+		return nil, err
+	}
+	if session == nil {
+		return nil, fmt.Errorf("сессия не найдена")
+	}
+	return &models.SessionMainPricingSnapshot{
+		ServiceType:          session.ServiceType,
+		WithChemistry:        session.WithChemistry,
+		ChemistryTimeMinutes: session.ChemistryTimeMinutes,
+		RentalTimeMinutes:    session.RentalTimeMinutes,
+		Status:               session.Status,
+		Email:                session.Email,
+	}, nil
+}
+
 // UpdateSessionStatus обновляет статус сессии
 func (s *ServiceImpl) UpdateSessionStatus(ctx context.Context, sessionID uuid.UUID, status string) error {
 	// Получаем сессию по ID

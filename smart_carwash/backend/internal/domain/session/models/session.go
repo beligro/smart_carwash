@@ -18,6 +18,16 @@ const (
 	SessionStatusCanceled      = "canceled"       // Отменена
 )
 
+// SessionMainPricingSnapshot поля сессии для расчёта и проверки суммы основного платежа (без доверия к клиенту).
+type SessionMainPricingSnapshot struct {
+	ServiceType          string `json:"service_type"`
+	WithChemistry        bool   `json:"with_chemistry"`
+	ChemistryTimeMinutes int    `json:"chemistry_time_minutes"`
+	RentalTimeMinutes    int    `json:"rental_time_minutes"`
+	Status               string `json:"status"`
+	Email                string `json:"email"`
+}
+
 // Session представляет сессию мойки
 type Session struct {
 	ID                                     uuid.UUID      `json:"id" gorm:"primaryKey;type:uuid;default:gen_random_uuid()"`
