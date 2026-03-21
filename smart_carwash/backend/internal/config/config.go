@@ -28,10 +28,12 @@ type Config struct {
 	JWTSecret     string
 
 	// Настройки Tinkoff Kassa
-	TinkoffTerminalKey string
-	TinkoffSecretKey   string
-	TinkoffSuccessURL  string
-	TinkoffFailURL     string
+	TinkoffTerminalKey   string
+	TinkoffSecretKey     string
+	TinkoffSuccessURL    string
+	TinkoffFailURL       string
+	TinkoffWebSuccessURL string
+	TinkoffWebFailURL    string
 
 	// Настройки 1C интеграции
 	APIKey1C      string
@@ -50,6 +52,10 @@ type Config struct {
 	DahuaWebhookUsername string
 	DahuaWebhookPassword string
 	DahuaAllowedIPs      string
+
+	// RuSender для веб-авторизации (коды на email)
+	RusenderApiKey    string
+	RusenderFromEmail string
 }
 
 // LoadConfig загружает конфигурацию из переменных окружения
@@ -99,10 +105,12 @@ func LoadConfig() (*Config, error) {
 		JWTSecret:     getEnv("JWT_SECRET", "your-secret-key"),
 
 		// Настройки Tinkoff Kassa
-		TinkoffTerminalKey: getEnv("TINKOFF_TERMINAL_KEY", ""),
-		TinkoffSecretKey:   getEnv("TINKOFF_SECRET_KEY", ""),
-		TinkoffSuccessURL:  getEnv("TINKOFF_SUCCESS_URL", "https://t.me/your_bot?startapp=payment_success"),
-		TinkoffFailURL:     getEnv("TINKOFF_FAIL_URL", "https://t.me/your_bot?startapp=payment_fail"),
+		TinkoffTerminalKey:   getEnv("TINKOFF_TERMINAL_KEY", ""),
+		TinkoffSecretKey:     getEnv("TINKOFF_SECRET_KEY", ""),
+		TinkoffSuccessURL:    getEnv("TINKOFF_SUCCESS_URL", "https://t.me/your_bot?startapp=payment_success"),
+		TinkoffFailURL:       getEnv("TINKOFF_FAIL_URL", "https://t.me/your_bot?startapp=payment_fail"),
+		TinkoffWebSuccessURL: getEnv("TINKOFF_WEB_SUCCESS_URL", "https://h2o-nsk.ru/web/payment/success"),
+		TinkoffWebFailURL:    getEnv("TINKOFF_WEB_FAIL_URL", "https://h2o-nsk.ru/web/payment/fail"),
 
 		// Настройки 1C интеграции
 		APIKey1C:      getEnv("API_KEY_1C", ""),
@@ -121,6 +129,9 @@ func LoadConfig() (*Config, error) {
 		DahuaWebhookUsername: getEnv("DAHUA_WEBHOOK_USERNAME", ""),
 		DahuaWebhookPassword: getEnv("DAHUA_WEBHOOK_PASSWORD", ""),
 		DahuaAllowedIPs:      getEnv("DAHUA_ALLOWED_IPS", ""),
+
+		RusenderApiKey:    getEnv("RUSENDER_API_KEY", ""),
+		RusenderFromEmail: getEnv("RUSENDER_FROM_EMAIL", ""),
 	}, nil
 }
 

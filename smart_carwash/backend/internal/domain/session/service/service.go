@@ -30,6 +30,11 @@ import (
 	"gorm.io/gorm"
 )
 
+// SessionEmailSender отправка уведомлений на email (для пользователей без Telegram)
+type SessionEmailSender interface {
+	Send(ctx context.Context, toEmail, subject, htmlBody, textBody string) error
+}
+
 // Service интерфейс для бизнес-логики сессий
 type Service interface {
 	CreateSession(ctx context.Context, req *models.CreateSessionRequest) (*models.Session, error)
@@ -85,31 +90,33 @@ type ServiceImpl struct {
 	washboxService    washboxService.Service
 	userService       userService.Service
 	telegramBot       telegram.NotificationService
+	emailSender       SessionEmailSender // опционально: уведомления на email для пользователей без Telegram
 	paymentService    paymentService.Service
 	modbusService     modbus.ModbusServiceInterface
 	settingsService   settingsService.Service
-	carwashStatusRepo carwashStatusRepo.Repository // Опциональный репозиторий статуса мойки
+	carwashStatusRepo carwashStatusRepo.Repository
 	cashierUserID     string
 	metrics           *metrics.Metrics
 	db                *gorm.DB
-	processQueueMu    sync.Mutex // Мьютекс для исключения одновременного запуска ProcessQueue
+	processQueueMu    sync.Mutex
 	washboxLogSvc     washboxlogService.Service
 }
 
 // NewService создает новый экземпляр Service
-func NewService(repo repository.Repository, washboxService washboxService.Service, userService userService.Service, telegramBot telegram.NotificationService, paymentService paymentService.Service, modbusService modbus.ModbusServiceInterface, settingsService settingsService.Service, cashierUserID string, metrics *metrics.Metrics, db *gorm.DB, washboxLogSvc washboxlogService.Service) *ServiceImpl {
+func NewService(repo repository.Repository, washboxService washboxService.Service, userService userService.Service, telegramBot telegram.NotificationService, emailSender SessionEmailSender, paymentService paymentService.Service, modbusService modbus.ModbusServiceInterface, settingsService settingsService.Service, cashierUserID string, metrics *metrics.Metrics, db *gorm.DB, washboxLogSvc washboxlogService.Service) *ServiceImpl {
 	return &ServiceImpl{
 		repo:            repo,
 		washboxService:  washboxService,
 		userService:     userService,
 		telegramBot:     telegramBot,
+		emailSender:     emailSender,
 		paymentService:  paymentService,
 		modbusService:   modbusService,
 		settingsService: settingsService,
 		cashierUserID:   cashierUserID,
 		metrics:         metrics,
 		db:              db,
-		processQueueMu:  sync.Mutex{}, // Мьютекс инициализируется автоматически, но явно указываем для ясности
+		processQueueMu:  sync.Mutex{},
 		washboxLogSvc:   washboxLogSvc,
 	}
 }
@@ -117,6 +124,59 @@ func NewService(repo repository.Repository, washboxService washboxService.Servic
 // SetCarwashStatusRepo устанавливает репозиторий статуса мойки (для избежания циклических зависимостей)
 func (s *ServiceImpl) SetCarwashStatusRepo(carwashStatusRepo carwashStatusRepo.Repository) {
 	s.carwashStatusRepo = carwashStatusRepo
+}
+
+// sendSessionNotificationByEmail отправляет уведомление о сессии на email (для пользователей без Telegram)
+func (s *ServiceImpl) sendSessionNotificationByEmail(ctx context.Context, toEmail string, notificationType telegram.NotificationType, cooldownMinutes *int) error {
+	if s.emailSender == nil || toEmail == "" {
+		return nil
+	}
+	var subject, text string
+	switch notificationType {
+	case telegram.NotificationTypeSessionExpiringSoon:
+		subject = "Внимание: время ожидания истекает — H2O"
+		text = "Через 1 минуту истечет время ожидания начала мойки. Пожалуйста, начните мойку, иначе сессия будет отменена."
+	case telegram.NotificationTypeSessionCompletingSoon:
+		subject = "Через 5 минут завершится время мойки — H2O"
+		text = "Внимание! Через 5 минут завершится время мойки. Продлите оплаченное время или поторопитесь."
+	case telegram.NotificationTypeSessionCompleted:
+		subject = "Мойка завершена — H2O"
+		text = "Ваше время закончилось, спасибо! Надеюсь, что вам все понравилось!"
+		if cooldownMinutes != nil && *cooldownMinutes > 0 {
+			text += fmt.Sprintf("\n\nУ вас есть %d минут для приоритетного продления бокса.", *cooldownMinutes)
+		}
+	case telegram.NotificationTypeSessionExpiredOrCanceled:
+		subject = "Возврат оплаты — H2O"
+		text = "Мы вернули вашу оплату на банковский счет. Обычно деньги поступают быстро."
+	case telegram.NotificationTypeSessionAutoStarted:
+		subject = "Сессия началась — H2O"
+		text = "Ваша сессия автоматически началась!"
+	case telegram.NotificationTypeChemistryAutoEnabled:
+		subject = "Химия включена автоматически — H2O"
+		text = "Химия была включена автоматически, так как время подходит к концу."
+	default:
+		return fmt.Errorf("неизвестный тип уведомления: %s", notificationType)
+	}
+	html := "<p>" + strings.ReplaceAll(text, "\n\n", "</p><p>") + "</p>"
+	return s.emailSender.Send(ctx, toEmail, subject, html, text)
+}
+
+func (s *ServiceImpl) sendBoxAssignmentByEmail(ctx context.Context, toEmail string, boxNumber int) error {
+	if s.emailSender == nil || toEmail == "" {
+		return nil
+	}
+	subject := fmt.Sprintf("Вам назначен бокс №%d — H2O", boxNumber)
+	text := fmt.Sprintf("Вам назначен бокс №%d! Добро пожаловать. Начните мойку в приложении.", boxNumber)
+	return s.emailSender.Send(ctx, toEmail, subject, "<p>"+text+"</p>", text)
+}
+
+func (s *ServiceImpl) sendSessionReassignmentByEmail(ctx context.Context, toEmail, serviceType string) error {
+	if s.emailSender == nil || toEmail == "" {
+		return nil
+	}
+	subject := "Сессия переназначена — H2O"
+	text := "Ваша сессия была переназначена на другой бокс. Ожидайте уведомления о новом боксе."
+	return s.emailSender.Send(ctx, toEmail, subject, "<p>"+text+"</p>", text)
 }
 
 // CreateSession создает новую сессию
@@ -222,6 +282,10 @@ func (s *ServiceImpl) CreateSession(ctx context.Context, req *models.CreateSessi
 
 	// Создаем новую сессию
 	now := time.Now()
+	source := req.Source
+	if source == "" {
+		source = "telegram"
+	}
 	session := &models.Session{
 		UserID:               req.UserID,
 		Status:               models.SessionStatusCreated,
@@ -233,6 +297,7 @@ func (s *ServiceImpl) CreateSession(ctx context.Context, req *models.CreateSessi
 		Email:                req.Email,                // Сохраняем email для чека
 		RentalTimeMinutes:    req.RentalTimeMinutes,
 		IdempotencyKey:       req.IdempotencyKey,
+		Source:               source,
 		StatusUpdatedAt:      now, // Инициализируем время изменения статуса
 	}
 
@@ -271,14 +336,21 @@ func (s *ServiceImpl) CreateSessionWithPayment(ctx context.Context, req *models.
 	logger.Printf("Service - CreateSessionWithPayment: начало создания сессии с платежом, user_id: %s, service_type: %s", req.UserID.String(), req.ServiceType)
 
 	// 1. Создаем сессию
+	source := req.Source
+	if source == "" {
+		source = "telegram"
+	}
 	session, err := s.CreateSession(ctx, &models.CreateSessionRequest{
 		UserID:               req.UserID,
 		ServiceType:          req.ServiceType,
 		WithChemistry:        req.WithChemistry,
 		ChemistryTimeMinutes: req.ChemistryTimeMinutes,
 		CarNumber:            req.CarNumber,
+		CarNumberCountry:     req.CarNumberCountry,
+		Email:                req.Email,
 		RentalTimeMinutes:    req.RentalTimeMinutes,
 		IdempotencyKey:       req.IdempotencyKey,
+		Source:               source,
 	})
 	if err != nil {
 		logger.Printf("Service - CreateSessionWithPayment: ошибка создания сессии, user_id: %s, error: %v", req.UserID.String(), err)
@@ -305,6 +377,7 @@ func (s *ServiceImpl) CreateSessionWithPayment(ctx context.Context, req *models.
 		Amount:    priceResp.Price,
 		Currency:  priceResp.Currency,
 		Email:     session.Email, // Передаем email из сессии
+		Source:    source,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("ошибка создания платежа: %w", err)
@@ -853,11 +926,18 @@ func (s *ServiceImpl) CompleteSession(ctx context.Context, req *models.CompleteS
 			ctxAsync := context.Background()
 			user, err := s.userService.GetUserByID(ctxAsync, userID)
 			if err == nil && user != nil {
-				err = s.telegramBot.SendSessionNotification(user.TelegramID, telegram.NotificationTypeSessionCompleted, nil)
-				if err != nil {
-					logger.Printf("CompleteSession: ошибка отправки уведомления о завершении сессии: %v", err)
-				} else {
-					logger.Printf("CompleteSession: уведомление о завершении сессии отправлено пользователю %d, SessionID=%s", user.TelegramID, sessionID)
+				if user.TelegramID != nil {
+					tgID := *user.TelegramID
+					err = s.telegramBot.SendSessionNotification(tgID, telegram.NotificationTypeSessionCompleted, nil)
+					if err != nil {
+						logger.Printf("CompleteSession: ошибка отправки уведомления о завершении сессии: %v", err)
+					} else {
+						logger.Printf("CompleteSession: уведомление о завершении сессии отправлено пользователю %d, SessionID=%s", tgID, sessionID)
+					}
+				} else if user.Email != "" && s.emailSender != nil {
+					if errE := s.sendSessionNotificationByEmail(ctxAsync, user.Email, telegram.NotificationTypeSessionCompleted, nil); errE != nil {
+						logger.Printf("CompleteSession: ошибка отправки уведомления на email: %v", errE)
+					}
 				}
 			} else {
 				logger.Printf("CompleteSession: не удалось получить данные пользователя для отправки уведомления: %v", err)
@@ -1014,11 +1094,18 @@ func (s *ServiceImpl) CompleteSessionWithoutRefund(ctx context.Context, sessionI
 			ctxAsync := context.Background()
 			user, err := s.userService.GetUserByID(ctxAsync, userID)
 			if err == nil && user != nil {
-				err = s.telegramBot.SendSessionNotification(user.TelegramID, telegram.NotificationTypeSessionCompleted, nil)
-				if err != nil {
-					logger.Printf("CompleteSessionWithoutRefund: ошибка отправки уведомления о завершении сессии: %v", err)
-				} else {
-					logger.Printf("CompleteSessionWithoutRefund: уведомление о завершении сессии отправлено пользователю %d, SessionID=%s", user.TelegramID, sessionID)
+				if user.TelegramID != nil {
+					tgID := *user.TelegramID
+					err = s.telegramBot.SendSessionNotification(tgID, telegram.NotificationTypeSessionCompleted, nil)
+					if err != nil {
+						logger.Printf("CompleteSessionWithoutRefund: ошибка отправки уведомления о завершении сессии: %v", err)
+					} else {
+						logger.Printf("CompleteSessionWithoutRefund: уведомление о завершении сессии отправлено пользователю %d, SessionID=%s", tgID, sessionID)
+					}
+				} else if user.Email != "" && s.emailSender != nil {
+					if errE := s.sendSessionNotificationByEmail(ctxAsync, user.Email, telegram.NotificationTypeSessionCompleted, nil); errE != nil {
+						logger.Printf("CompleteSessionWithoutRefund: ошибка отправки уведомления на email: %v", errE)
+					}
 				}
 			} else {
 				logger.Printf("CompleteSessionWithoutRefund: не удалось получить данные пользователя для отправки уведомления: %v", err)
@@ -1088,7 +1175,8 @@ func (s *ServiceImpl) ExtendSessionWithPayment(ctx context.Context, req *models.
 		SessionID: session.ID,
 		Amount:    priceResp.Price,
 		Currency:  priceResp.Currency,
-		Email:     session.Email, // Передаем email из сессии
+		Email:     session.Email,
+		Source:    session.Source,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("ошибка создания платежа продления: %w", err)
@@ -1311,11 +1399,18 @@ func (s *ServiceImpl) CancelSession(ctx context.Context, req *models.CancelSessi
 			ctxAsync := context.Background()
 			user, err := s.userService.GetUserByID(ctxAsync, userID)
 			if err == nil && user != nil {
-				err = s.telegramBot.SendSessionNotification(user.TelegramID, telegram.NotificationTypeSessionExpiredOrCanceled, nil)
-				if err != nil {
-					logger.Printf("CancelSession: ошибка отправки уведомления о возврате денег: %v", err)
-				} else {
-					logger.Printf("CancelSession: уведомление о возврате денег отправлено пользователю %d, SessionID=%s", user.TelegramID, sessionID)
+				if user.TelegramID != nil {
+					tgID := *user.TelegramID
+					err = s.telegramBot.SendSessionNotification(tgID, telegram.NotificationTypeSessionExpiredOrCanceled, nil)
+					if err != nil {
+						logger.Printf("CancelSession: ошибка отправки уведомления о возврате денег: %v", err)
+					} else {
+						logger.Printf("CancelSession: уведомление о возврате денег отправлено пользователю %d, SessionID=%s", tgID, sessionID)
+					}
+				} else if user.Email != "" && s.emailSender != nil {
+					if errE := s.sendSessionNotificationByEmail(ctxAsync, user.Email, telegram.NotificationTypeSessionExpiredOrCanceled, nil); errE != nil {
+						logger.Printf("CancelSession: ошибка отправки уведомления на email: %v", errE)
+					}
 				}
 			} else {
 				logger.Printf("CancelSession: не удалось получить данные пользователя для отправки уведомления: %v", err)
@@ -1493,37 +1588,42 @@ func (s *ServiceImpl) CheckAndCompleteExpiredSessions(ctx context.Context) error
 			}
 
 			// Отправляем уведомление о завершении сессии с информацией о кулдауне
-			if s.telegramBot != nil {
+			if s.telegramBot != nil || s.emailSender != nil {
 				user, err := s.userService.GetUserByID(ctx, session.UserID)
 				if err == nil && user != nil {
-					// Определяем, нужно ли показывать информацию о кулдауне в уведомлении
 					var cooldownMinutes *int
 					if s.cashierUserID != "" {
 						cashierUserID, err := uuid.Parse(s.cashierUserID)
 						if err == nil && session.UserID != cashierUserID {
-							// Это обычный пользователь, получаем время кулдауна для уведомления
 							cooldownTimeout, err := s.settingsService.GetCooldownTimeout(ctx)
 							if err == nil {
 								cooldownMinutes = &cooldownTimeout
 							}
 						}
 					} else {
-						// Если CASHIER_USER_ID не настроен, считаем что все сессии имеют кулдаун
 						cooldownTimeout, err := s.settingsService.GetCooldownTimeout(ctx)
 						if err == nil {
 							cooldownMinutes = &cooldownTimeout
 						}
 					}
 
-					// Отправляем уведомление асинхронно
-					go func(sessionID uuid.UUID, telegramID int64, cooldown *int) {
-						err := s.telegramBot.SendSessionNotification(telegramID, telegram.NotificationTypeSessionCompleted, cooldown)
-						if err != nil {
-							logger.Printf("CheckAndCompleteExpiredSessions: ошибка отправки уведомления о завершении сессии: %v", err)
-						} else {
-							logger.Printf("CheckAndCompleteExpiredSessions: уведомление о завершении сессии отправлено пользователю %d, SessionID=%s", telegramID, sessionID)
-						}
-					}(session.ID, user.TelegramID, cooldownMinutes)
+					if user.TelegramID != nil && s.telegramBot != nil {
+						go func(sessionID uuid.UUID, telegramID int64, cooldown *int) {
+							err := s.telegramBot.SendSessionNotification(telegramID, telegram.NotificationTypeSessionCompleted, cooldown)
+							if err != nil {
+								logger.Printf("CheckAndCompleteExpiredSessions: ошибка отправки уведомления о завершении сессии: %v", err)
+							} else {
+								logger.Printf("CheckAndCompleteExpiredSessions: уведомление о завершении сессии отправлено пользователю %d, SessionID=%s", telegramID, sessionID)
+							}
+						}(session.ID, *user.TelegramID, cooldownMinutes)
+					} else if user.Email != "" && s.emailSender != nil {
+						go func(sessionID uuid.UUID, toEmail string, cooldown *int) {
+							ctxAsync := context.Background()
+							if errE := s.sendSessionNotificationByEmail(ctxAsync, toEmail, telegram.NotificationTypeSessionCompleted, cooldown); errE != nil {
+								logger.Printf("CheckAndCompleteExpiredSessions: ошибка отправки уведомления на email: %v", errE)
+							}
+						}(session.ID, user.Email, cooldownMinutes)
+					}
 				} else {
 					logger.Printf("CheckAndCompleteExpiredSessions: не удалось получить данные пользователя для отправки уведомления: %v", err)
 				}
@@ -1826,17 +1926,20 @@ func (s *ServiceImpl) ProcessQueue(ctx context.Context) error {
 		}
 
 		// Отправляем уведомление о назначении бокса (только если сессия не была автоматически запущена) асинхронно
-		if session.Status == models.SessionStatusAssigned && s.userService != nil && s.telegramBot != nil {
-			// Отправляем асинхронно, не ждем завершения
+		if session.Status == models.SessionStatusAssigned && s.userService != nil && (s.telegramBot != nil || s.emailSender != nil) {
 			go func(sessionID uuid.UUID, userID uuid.UUID, boxNumber int) {
 				ctxAsync := context.Background()
-				// Получаем пользователя
 				user, err := s.userService.GetUserByID(ctxAsync, userID)
 				if err == nil && user != nil {
-					// Отправляем уведомление с номером бокса
-					err = s.telegramBot.SendBoxAssignmentNotification(user.TelegramID, boxNumber)
-					if err != nil {
-						logger.Printf("ProcessQueue: ошибка отправки уведомления о назначении бокса для сессии %s: %v", sessionID, err)
+					if user.TelegramID != nil && s.telegramBot != nil {
+						err = s.telegramBot.SendBoxAssignmentNotification(*user.TelegramID, boxNumber)
+						if err != nil {
+							logger.Printf("ProcessQueue: ошибка отправки уведомления о назначении бокса для сессии %s: %v", sessionID, err)
+						}
+					} else if user.Email != "" && s.emailSender != nil {
+						if errE := s.sendBoxAssignmentByEmail(ctxAsync, user.Email, boxNumber); errE != nil {
+							logger.Printf("ProcessQueue: ошибка отправки уведомления на email для сессии %s: %v", sessionID, errE)
+						}
 					}
 				} else {
 					logger.Printf("ProcessQueue: ошибка получения пользователя для сессии %s: %v", sessionID, err)
@@ -1901,11 +2004,18 @@ func (s *ServiceImpl) CheckAndExpireReservedSessions(ctx context.Context) error 
 						ctxAsync := context.Background()
 						user, err := s.userService.GetUserByID(ctxAsync, userID)
 						if err == nil && user != nil {
-							err = s.telegramBot.SendSessionNotification(user.TelegramID, telegram.NotificationTypeSessionAutoStarted, nil)
-							if err != nil {
-								logger.Printf("CheckAndExpireReservedSessions: ошибка отправки уведомления об автоматическом запуске: %v", err)
-							} else {
-								logger.Printf("CheckAndExpireReservedSessions: уведомление об автоматическом запуске отправлено пользователю %d, SessionID=%s", user.TelegramID, sessionID)
+							if user.TelegramID != nil && s.telegramBot != nil {
+								tgID := *user.TelegramID
+								err = s.telegramBot.SendSessionNotification(tgID, telegram.NotificationTypeSessionAutoStarted, nil)
+								if err != nil {
+									logger.Printf("CheckAndExpireReservedSessions: ошибка отправки уведомления об автоматическом запуске: %v", err)
+								} else {
+									logger.Printf("CheckAndExpireReservedSessions: уведомление об автоматическом запуске отправлено пользователю %d, SessionID=%s", tgID, sessionID)
+								}
+							} else if user.Email != "" && s.emailSender != nil {
+								if errE := s.sendSessionNotificationByEmail(ctxAsync, user.Email, telegram.NotificationTypeSessionAutoStarted, nil); errE != nil {
+									logger.Printf("CheckAndExpireReservedSessions: ошибка отправки уведомления на email: %v", errE)
+								}
 							}
 						} else {
 							logger.Printf("CheckAndExpireReservedSessions: не удалось получить данные пользователя для отправки уведомления: %v", err)
@@ -1929,8 +2039,7 @@ func (s *ServiceImpl) CheckAndNotifyExpiringReservedSessions(ctx context.Context
 		logger.Printf("CheckAndNotifyExpiringReservedSessions: выполнение заняло %v", duration)
 	}()
 
-	// Если сервис пользователей или телеграм бот не инициализированы, выходим
-	if s.userService == nil || s.telegramBot == nil {
+	if s.userService == nil || (s.telegramBot == nil && s.emailSender == nil) {
 		return nil
 	}
 
@@ -1971,24 +2080,35 @@ func (s *ServiceImpl) CheckAndNotifyExpiringReservedSessions(ctx context.Context
 					continue
 				}
 
-				// Отправляем уведомление асинхронно
-				go func(sessionID uuid.UUID, telegramID int64) {
+				// Отправляем уведомление асинхронно (Telegram или email)
+				sendExpiringNotification := func(sessionID uuid.UUID) {
 					ctxAsync := context.Background()
-					err := s.telegramBot.SendSessionNotification(telegramID, telegram.NotificationTypeSessionExpiringSoon, nil)
-					if err != nil {
-						logger.Printf("CheckAndNotifyExpiringSessions: ошибка отправки уведомления для сессии %s: %v", sessionID, err)
-						return
-					}
-
-					// Помечаем, что уведомление отправлено (только после успешной отправки)
-					err = s.repo.UpdateSessionFields(ctxAsync, sessionID, map[string]interface{}{
+					if err := s.repo.UpdateSessionFields(ctxAsync, sessionID, map[string]interface{}{
 						"is_expiring_notification_sent": true,
 						"updated_at":                    time.Now(),
-					})
-					if err != nil {
+					}); err != nil {
 						logger.Printf("CheckAndNotifyExpiringSessions: ошибка обновления флага уведомления для сессии %s: %v", sessionID, err)
 					}
-				}(session.ID, user.TelegramID)
+				}
+				if user.TelegramID != nil && s.telegramBot != nil {
+					go func(sessionID uuid.UUID, telegramID int64) {
+						err := s.telegramBot.SendSessionNotification(telegramID, telegram.NotificationTypeSessionExpiringSoon, nil)
+						if err != nil {
+							logger.Printf("CheckAndNotifyExpiringSessions: ошибка отправки уведомления для сессии %s: %v", sessionID, err)
+							return
+						}
+						sendExpiringNotification(sessionID)
+					}(session.ID, *user.TelegramID)
+				} else if user.Email != "" && s.emailSender != nil {
+					go func(sessionID uuid.UUID, toEmail string) {
+						ctxAsync := context.Background()
+						if errE := s.sendSessionNotificationByEmail(ctxAsync, toEmail, telegram.NotificationTypeSessionExpiringSoon, nil); errE != nil {
+							logger.Printf("CheckAndNotifyExpiringSessions: ошибка отправки уведомления на email для сессии %s: %v", sessionID, errE)
+							return
+						}
+						sendExpiringNotification(sessionID)
+					}(session.ID, user.Email)
+				}
 			}
 		}
 	}
@@ -2004,70 +2124,59 @@ func (s *ServiceImpl) CheckAndNotifyCompletingSessions(ctx context.Context) erro
 		logger.Printf("CheckAndNotifyCompletingSessions: выполнение заняло %v", duration)
 	}()
 
-	// Если сервис пользователей или телеграм бот не инициализированы, выходим
-	if s.userService == nil || s.telegramBot == nil {
+	if s.userService == nil || (s.telegramBot == nil && s.emailSender == nil) {
 		return nil
 	}
-
-	// Получаем все сессии со статусом "active"
 	activeSessions, err := s.repo.GetSessionsByStatus(ctx, models.SessionStatusActive)
 	if err != nil {
 		return err
 	}
-
-	// Если нет активных сессий, выходим
 	if len(activeSessions) == 0 {
 		return nil
 	}
-
-	// Текущее время
 	now := time.Now()
-
-	// Проверяем каждую активную сессию
 	for _, session := range activeSessions {
-		// Время начала сессии - это время последнего обновления статуса на active
 		startTime := session.StatusUpdatedAt
-
-		// Получаем время мойки в минутах (по умолчанию 5 минут)
 		rentalTime := session.RentalTimeMinutes
 		if rentalTime <= 0 {
 			rentalTime = 5
 		}
-
-		// Учитываем время продления, если оно есть
 		totalTime := rentalTime + session.ExtensionTimeMinutes
-
-		// Проверяем, прошло ли время с момента начала сессии (за 5 минут до завершения)
 		if now.Sub(startTime) >= time.Duration(totalTime-5)*time.Minute && now.Sub(startTime) < time.Duration(totalTime)*time.Minute {
 			if !session.IsCompletingNotificationSent {
-				// Получаем пользователя
 				user, err := s.userService.GetUserByID(ctx, session.UserID)
 				if err != nil {
 					continue
 				}
-
-				// Отправляем уведомление асинхронно
-				go func(sessionID uuid.UUID, telegramID int64) {
-					ctxAsync := context.Background()
-					err := s.telegramBot.SendSessionNotification(telegramID, telegram.NotificationTypeSessionCompletingSoon, nil)
-					if err != nil {
-						logger.Printf("CheckAndNotifyCompletingSessions: ошибка отправки уведомления для сессии %s: %v", sessionID, err)
-						return
-					}
-
-					// Помечаем, что уведомление отправлено (только после успешной отправки)
-					err = s.repo.UpdateSessionFields(ctxAsync, sessionID, map[string]interface{}{
+				markSent := func(sid uuid.UUID) {
+					ctxA := context.Background()
+					_ = s.repo.UpdateSessionFields(ctxA, sid, map[string]interface{}{
 						"is_completing_notification_sent": true,
 						"updated_at":                      time.Now(),
 					})
-					if err != nil {
-						logger.Printf("CheckAndNotifyCompletingSessions: ошибка обновления флага уведомления для сессии %s: %v", sessionID, err)
-					}
-				}(session.ID, user.TelegramID)
+				}
+				if user.TelegramID != nil && s.telegramBot != nil {
+					go func(sessionID uuid.UUID, telegramID int64) {
+						err := s.telegramBot.SendSessionNotification(telegramID, telegram.NotificationTypeSessionCompletingSoon, nil)
+						if err != nil {
+							logger.Printf("CheckAndNotifyCompletingSessions: ошибка отправки уведомления для сессии %s: %v", sessionID, err)
+							return
+						}
+						markSent(sessionID)
+					}(session.ID, *user.TelegramID)
+				} else if user.Email != "" && s.emailSender != nil {
+					go func(sessionID uuid.UUID, toEmail string) {
+						ctxAsync := context.Background()
+						if errE := s.sendSessionNotificationByEmail(ctxAsync, toEmail, telegram.NotificationTypeSessionCompletingSoon, nil); errE != nil {
+							logger.Printf("CheckAndNotifyCompletingSessions: ошибка отправки уведомления на email для сессии %s: %v", sessionID, errE)
+							return
+						}
+						markSent(sessionID)
+					}(session.ID, user.Email)
+				}
 			}
 		}
 	}
-
 	return nil
 }
 
@@ -3028,23 +3137,27 @@ func (s *ServiceImpl) CheckAndAutoEnableChemistry(ctx context.Context) error {
 				continue
 			}
 
-			// Отправляем уведомление пользователю асинхронно
 			go func(sessionID uuid.UUID, userID uuid.UUID) {
 				ctxAsync := context.Background()
 				user, err := s.userService.GetUserByID(ctxAsync, userID)
-				if err != nil {
+				if err != nil || user == nil {
 					logger.Printf("CheckAndAutoEnableChemistry: ошибка получения пользователя для уведомления - UserID=%s, error=%v", userID, err)
 					return
 				}
-
-				// Отправляем уведомление через Telegram
-				err = s.telegramBot.SendSessionNotification(user.TelegramID, telegram.NotificationTypeChemistryAutoEnabled, nil)
-				if err != nil {
-					logger.Printf("CheckAndAutoEnableChemistry: ошибка отправки уведомления - UserID=%s, TelegramID=%s, error=%v",
-						user.ID, user.TelegramID, err)
-				} else {
-					logger.Printf("CheckAndAutoEnableChemistry: уведомление отправлено - UserID=%s, TelegramID=%s",
-						user.ID, user.TelegramID)
+				if user.TelegramID != nil && s.telegramBot != nil {
+					tgID := *user.TelegramID
+					err = s.telegramBot.SendSessionNotification(tgID, telegram.NotificationTypeChemistryAutoEnabled, nil)
+					if err != nil {
+						logger.Printf("CheckAndAutoEnableChemistry: ошибка отправки уведомления - UserID=%s, TelegramID=%d, error=%v",
+							user.ID, tgID, err)
+					} else {
+						logger.Printf("CheckAndAutoEnableChemistry: уведомление отправлено - UserID=%s, TelegramID=%d",
+							user.ID, tgID)
+					}
+				} else if user.Email != "" && s.emailSender != nil {
+					if errE := s.sendSessionNotificationByEmail(ctxAsync, user.Email, telegram.NotificationTypeChemistryAutoEnabled, nil); errE != nil {
+						logger.Printf("CheckAndAutoEnableChemistry: ошибка отправки уведомления на email - UserID=%s: %v", user.ID, errE)
+					}
 				}
 			}(session.ID, session.UserID)
 		}

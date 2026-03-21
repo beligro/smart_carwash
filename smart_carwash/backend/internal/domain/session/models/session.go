@@ -52,6 +52,7 @@ type Session struct {
 	ActiveEndedAt                          *time.Time     `json:"active_ended_at,omitempty" gorm:"column:active_ended_at"`      // Время фактического окончания мойки
 	CompletionSource                       string         `json:"completion_source,omitempty" gorm:"column:completion_source"`  // Источник завершения (timer/admin/cashier/client/anpr)
 	CompletionUserID                       *uuid.UUID     `json:"completion_user_id,omitempty" gorm:"column:completion_user_id"` // ID пользователя, завершившего сессию (если вручную)
+	Source                                 string         `json:"source" gorm:"default:telegram"`                               // Источник создания: telegram | web
 	SessionTimeoutMinutes                  int            `json:"session_timeout_minutes" gorm:"-"`    // Время ожидания старта мойки в минутах (виртуальное поле)
 	CooldownMinutes                        *int           `json:"cooldown_minutes,omitempty" gorm:"-"` // Время кулдауна в минутах (виртуальное поле)
 	DeletedAt                              gorm.DeletedAt `json:"-" gorm:"index"`
@@ -80,6 +81,7 @@ type CreateSessionRequest struct {
 	Email                string    `json:"email"`              // Email для чека
 	RentalTimeMinutes    int       `json:"rental_time_minutes" binding:"required"`
 	IdempotencyKey       string    `json:"idempotency_key" binding:"required"`
+	Source               string    `json:"source"` // telegram | web, по умолчанию telegram
 }
 
 // CreateSessionWithPaymentRequest представляет запрос на создание сессии с платежом
@@ -93,6 +95,7 @@ type CreateSessionWithPaymentRequest struct {
 	Email                string    `json:"email"`              // Email для чека
 	RentalTimeMinutes    int       `json:"rental_time_minutes" binding:"required"`
 	IdempotencyKey       string    `json:"idempotency_key" binding:"required"`
+	Source               string    `json:"source"` // telegram | web, по умолчанию telegram
 }
 
 // CreateSessionWithPaymentResponse представляет ответ на создание сессии с платежом

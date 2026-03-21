@@ -340,6 +340,7 @@ const UserManagement = () => {
           <tr>
             <Th theme={theme}>ID</Th>
             <Th theme={theme}>Telegram ID</Th>
+            <Th theme={theme}>Email</Th>
             <Th theme={theme}>Имя пользователя</Th>
             <Th theme={theme}>Имя</Th>
             <Th theme={theme}>Фамилия</Th>
@@ -356,7 +357,8 @@ const UserManagement = () => {
             return (
               <RowComponent key={user.id} theme={theme}>
                 <Td>{user.id.substring(0, 8)}...</Td>
-                <Td>{user.telegram_id}</Td>
+                <Td>{user.telegram_id ?? '-'}</Td>
+                <Td>{user.email || '—'}</Td>
                 <Td>{user.username || '-'}</Td>
                 <Td>{user.first_name || '-'}</Td>
                 <Td>{user.last_name || '-'}</Td>
@@ -391,7 +393,8 @@ const UserManagement = () => {
         data={users}
         columns={[
           { key: 'id', label: 'ID', accessor: (item) => item.id.substring(0, 8) + '...' },
-          { key: 'telegram_id', label: 'Telegram ID', accessor: (item) => item.telegram_id },
+          { key: 'telegram_id', label: 'Telegram ID', accessor: (item) => item.telegram_id ?? '-' },
+          { key: 'email', label: 'Email', accessor: (item) => item.email || '—' },
           { key: 'username', label: 'Имя пользователя', accessor: (item) => item.username || '-' },
           { key: 'first_name', label: 'Имя', accessor: (item) => item.first_name || '-' },
           { key: 'last_name', label: 'Фамилия', accessor: (item) => item.last_name || '-' },
@@ -483,7 +486,12 @@ const UserManagement = () => {
                   
                   <DetailGroup>
                     <DetailLabel theme={theme}>Telegram ID:</DetailLabel>
-                    <DetailValue theme={theme}>{userDetails.telegram_id}</DetailValue>
+                    <DetailValue theme={theme}>{userDetails.telegram_id ?? '—'}</DetailValue>
+                  </DetailGroup>
+                  
+                  <DetailGroup>
+                    <DetailLabel theme={theme}>Email:</DetailLabel>
+                    <DetailValue theme={theme}>{userDetails.email || '—'}</DetailValue>
                   </DetailGroup>
                   
                   <DetailGroup>

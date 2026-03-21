@@ -7,14 +7,14 @@
 set -e
 
 # Конфигурация
-DOMAIN="h2o-nsk.ru"
-NGINX_SSL_DIR="/home/artem/smart_carwash/smart_carwash/nginx/ssl"
-PROJECT_DIR="/home/artem/smart_carwash/smart_carwash"
-LOG_FILE="/home/artem/smart_carwash/smart_carwash/logs/ssl_renew.log"
+DOMAIN="79.141.66.210.nip.io"
+NGINX_SSL_DIR="/root/smart_carwash/smart_carwash/nginx/ssl"
+PROJECT_DIR="/root/smart_carwash/smart_carwash"
+# Логи в stdout (в файл не пишем)
 
-# Функция логирования
+# Функция логирования (только в терминал)
 log() {
-    echo "[$(date '+%Y-%m-%d %H:%M:%S')] $1" | tee -a "$LOG_FILE"
+    echo "[$(date '+%Y-%m-%d %H:%M:%S')] $1"
 }
 
 # Функция проверки срока действия сертификата

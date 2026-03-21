@@ -29,7 +29,7 @@ type SessionExtensionUpdater interface {
 
 // TinkoffClient интерфейс для работы с Tinkoff API
 type TinkoffClient interface {
-	CreatePayment(orderID string, amount int, description string, receipt map[string]interface{}) (*TinkoffPaymentResponse, error)
+	CreatePayment(orderID string, amount int, description string, receipt map[string]interface{}, successURL, failURL string) (*TinkoffPaymentResponse, error)
 	GetPaymentStatus(paymentID string) (*TinkoffPaymentStatusResponse, error)
 	RefundPayment(paymentID string, amount int) (*TinkoffRefundResponse, error)
 	VerifyWebhookSignature(data []byte, signature string) bool
@@ -97,6 +97,8 @@ type service struct {
 	tinkoffClient           TinkoffClient
 	terminalKey             string
 	secretKey               string
+	tinkoffWebSuccessURL    string
+	tinkoffWebFailURL       string
 	metrics                 *metrics.Metrics
 	webhookQueue            *WebhookQueue
 }
@@ -109,7 +111,7 @@ func generateRandomString(length int) string {
 }
 
 // NewService создает новый экземпляр Service
-func NewService(repository repository.Repository, settingsRepo settingsRepo.Repository, sessionUpdater SessionStatusUpdater, sessionExtensionUpdater SessionExtensionUpdater, tinkoffClient TinkoffClient, terminalKey, secretKey string, metrics *metrics.Metrics) Service {
+func NewService(repository repository.Repository, settingsRepo settingsRepo.Repository, sessionUpdater SessionStatusUpdater, sessionExtensionUpdater SessionExtensionUpdater, tinkoffClient TinkoffClient, terminalKey, secretKey, tinkoffWebSuccessURL, tinkoffWebFailURL string, metrics *metrics.Metrics) Service {
 	s := &service{
 		repository:              repository,
 		settingsRepo:            settingsRepo,
@@ -118,6 +120,8 @@ func NewService(repository repository.Repository, settingsRepo settingsRepo.Repo
 		tinkoffClient:           tinkoffClient,
 		terminalKey:             terminalKey,
 		secretKey:               secretKey,
+		tinkoffWebSuccessURL:    tinkoffWebSuccessURL,
+		tinkoffWebFailURL:       tinkoffWebFailURL,
 		metrics:                 metrics,
 	}
 
@@ -253,7 +257,7 @@ func (s *service) CalculateExtensionPrice(ctx context.Context, req *models.Calcu
 	}, nil
 }
 
-// CreatePayment создает платеж в Tinkoff и сохраняет в БД
+// CreatePayment создает платеж в Tinkoff и сохраняет в БД (в тестовом режиме — только запись в БД со статусом succeeded, без Tinkoff)
 func (s *service) CreatePayment(ctx context.Context, req *models.CreatePaymentRequest) (*models.CreatePaymentResponse, error) {
 	// Проверяем, есть ли уже pending платеж для этой сессии
 	existingPayments, err := s.repository.GetPaymentsBySessionID(ctx, req.SessionID)
@@ -284,7 +288,12 @@ func (s *service) CreatePayment(ctx context.Context, req *models.CreatePaymentRe
 	// Создаем чек для фискализации
 	receipt := s.buildReceipt(req.Amount, req.Email)
 
-	tinkoffResp, err := s.tinkoffClient.CreatePayment(orderID, req.Amount, description, receipt)
+	successURL, failURL := "", ""
+	if req.Source == "web" {
+		successURL = s.tinkoffWebSuccessURL
+		failURL = s.tinkoffWebFailURL
+	}
+	tinkoffResp, err := s.tinkoffClient.CreatePayment(orderID, req.Amount, description, receipt, successURL, failURL)
 	if err != nil {
 		return nil, fmt.Errorf("ошибка создания платежа в Tinkoff: %w", err)
 	}
@@ -354,7 +363,12 @@ func (s *service) CreateExtensionPayment(ctx context.Context, req *models.Create
 	// Создаем чек для фискализации
 	receipt := s.buildReceipt(req.Amount, req.Email)
 
-	tinkoffResp, err := s.tinkoffClient.CreatePayment(orderID, req.Amount, description, receipt)
+	successURL, failURL := "", ""
+	if req.Source == "web" {
+		successURL = s.tinkoffWebSuccessURL
+		failURL = s.tinkoffWebFailURL
+	}
+	tinkoffResp, err := s.tinkoffClient.CreatePayment(orderID, req.Amount, description, receipt, successURL, failURL)
 	if err != nil {
 		return nil, fmt.Errorf("ошибка создания платежа продления в Tinkoff: %w", err)
 	}

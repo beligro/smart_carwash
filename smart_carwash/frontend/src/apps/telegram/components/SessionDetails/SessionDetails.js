@@ -146,6 +146,7 @@ const ChemistryEnableButton = ({ session, theme, onChemistryEnabled }) => {
 const SessionDetails = ({ theme = 'light', user }) => {
   const { sessionId } = useParams();
   const navigate = useNavigate();
+  const pathBase = '/telegram';
   
   const [session, setSession] = useState(null);
   const [payment, setPayment] = useState(null);
@@ -340,7 +341,7 @@ const SessionDetails = ({ theme = 'light', user }) => {
       if (response && response.payment) {
         setPayment(response.payment);
         // Перенаправляем на страницу оплаты
-        navigate('/telegram/payment', { 
+        navigate(`${pathBase}/payment`, { 
           state: { 
             session: response.session,
             payment: response.payment,
@@ -374,7 +375,7 @@ const SessionDetails = ({ theme = 'light', user }) => {
       if (response && response.payment) {
         setPayment(response.payment);
         // Перенаправляем на страницу оплаты
-        navigate('/telegram/payment', { 
+        navigate(`${pathBase}/payment`, { 
           state: { 
             session: response.session,
             payment: response.payment,
@@ -620,7 +621,7 @@ const SessionDetails = ({ theme = 'light', user }) => {
   // Функция для возврата на главную страницу
   const handleBack = () => {
     // Всегда возвращаемся на главную страницу
-    navigate('/telegram');
+    navigate(`${pathBase}`);
   };
 
   // Обработчик отмены сессии
@@ -945,7 +946,7 @@ const SessionDetails = ({ theme = 'light', user }) => {
                       // Запрашиваем последний платеж по сессии
                       const response = await ApiService.getUserSessionForPayment(session.user_id);
                       
-                      navigate('/telegram/payment', {
+                      navigate(`${pathBase}/payment`, {
                         state: {
                           session: response.session,
                           payment: response.payment,

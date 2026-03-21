@@ -121,6 +121,7 @@ const formatQueueText = (queueInfo) => {
  */
 const WashInfo = ({ washInfo, theme = 'light', onCreateSession, onViewHistory, onCancelSession, onChemistryEnabled, onCompleteSession, onStartSession, user }) => {
   const navigate = useNavigate();
+  const pathBase = '/telegram';
   const [isCanceling, setIsCanceling] = useState(false);
   const [sessionPayments, setSessionPayments] = useState(null);
   const [loadingPayments, setLoadingPayments] = useState(false);
@@ -279,7 +280,7 @@ const WashInfo = ({ washInfo, theme = 'light', onCreateSession, onViewHistory, o
   const handleViewSessionDetails = () => {
     try {
       if (userSession && userSession.id) {
-        navigate(`/telegram/session/${userSession.id}`);
+        navigate(`${pathBase}/session/${userSession.id}`);
       }
     } catch (error) {
       alert('Ошибка при переходе к деталям сессии: ' + error.message);
@@ -289,7 +290,7 @@ const WashInfo = ({ washInfo, theme = 'light', onCreateSession, onViewHistory, o
   // Обработчик нажатия на кнопку "Записаться на мойку"
   const handleCreateSessionClick = () => {
     try {
-      navigate('/telegram/booking');
+      navigate(`${pathBase}/booking`);
     } catch (error) {
       alert('Ошибка при переходе на страницу записи: ' + error.message);
     }
@@ -401,7 +402,7 @@ const WashInfo = ({ washInfo, theme = 'light', onCreateSession, onViewHistory, o
       
       if (response && response.payment) {
         // Перенаправляем на страницу оплаты
-        navigate('/telegram/payment', { 
+        navigate(`${pathBase}/payment`, { 
           state: { 
             session: response.session,
             payment: response.payment,
@@ -432,7 +433,7 @@ const WashInfo = ({ washInfo, theme = 'light', onCreateSession, onViewHistory, o
       
       if (response && response.payment) {
         // Перенаправляем на страницу оплаты
-        navigate('/telegram/payment', { 
+        navigate(`${pathBase}/payment`, { 
           state: { 
             session: response.session,
             payment: response.payment,
@@ -859,7 +860,7 @@ const WashInfo = ({ washInfo, theme = 'light', onCreateSession, onViewHistory, o
                       // Запрашиваем последний платеж по сессии
                       const response = await ApiService.getUserSessionForPayment(userSession.user_id);
                       
-                      navigate('/telegram/payment', {
+                      navigate(`${pathBase}/payment`, {
                         state: {
                           session: response.session,
                           payment: response.payment,

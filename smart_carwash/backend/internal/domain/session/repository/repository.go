@@ -37,6 +37,9 @@ type Repository interface {
 	// Методы с блокировкой для предотвращения дедлоков
 	GetSessionByIDForUpdate(ctx context.Context, id uuid.UUID) (*models.Session, error)
 	UpdateSessionInTransaction(ctx context.Context, session *models.Session) error
+
+	// ReassignSessionsToUser переносит все сессии с одного пользователя на другого (для привязки аккаунтов)
+	ReassignSessionsToUser(ctx context.Context, fromUserID, toUserID uuid.UUID) error
 }
 
 // PostgresRepository реализация Repository для PostgreSQL
@@ -410,4 +413,11 @@ func (r *PostgresRepository) GetLastSessionByCarNumber(ctx context.Context, carN
 	}
 
 	return &session, nil
+}
+
+// ReassignSessionsToUser переносит все сессии с одного пользователя на другого
+func (r *PostgresRepository) ReassignSessionsToUser(ctx context.Context, fromUserID, toUserID uuid.UUID) error {
+	return r.db.WithContext(ctx).Model(&models.Session{}).
+		Where("user_id = ?", fromUserID).
+		Update("user_id", toUserID).Error
 }

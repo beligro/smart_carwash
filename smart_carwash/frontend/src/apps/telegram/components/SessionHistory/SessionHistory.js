@@ -14,6 +14,7 @@ import ApiService from '../../../../shared/services/ApiService';
  */
 const SessionHistory = ({ user, theme = 'light' }) => {
   const navigate = useNavigate();
+  const pathBase = '/telegram';
   const [sessions, setSessions] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -66,7 +67,7 @@ const SessionHistory = ({ user, theme = 'light' }) => {
 
   // Функция для перехода на страницу сессии
   const handleViewSessionDetails = (sessionId) => {
-    navigate(`/telegram/session/${sessionId}`);
+    navigate(`${pathBase}/session/${sessionId}`);
   };
 
   return (

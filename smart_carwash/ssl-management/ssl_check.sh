@@ -7,7 +7,7 @@
 set -e
 
 # Конфигурация
-DOMAIN="h2o-nsk.ru"
+DOMAIN="79.141.66.210.nip.io"
 NGINX_SSL_DIR="/home/artem/smart_carwash/smart_carwash/nginx/ssl"
 PROJECT_DIR="/home/artem/smart_carwash/smart_carwash"
 

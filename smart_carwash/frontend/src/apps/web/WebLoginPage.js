@@ -1,0 +1,389 @@
+import React, { useState, useEffect } from 'react';
+import { useNavigate, useLocation, Link } from 'react-router-dom';
+import styled from 'styled-components';
+import WebApiService from '../../shared/services/WebApiService';
+
+const Page = styled.div`
+  min-height: 100vh;
+  width: 100vw;
+  margin: 0;
+  padding: 24px;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(160deg, #e0eaf0 0%, #e8eef3 50%, #f0f4f8 100%);
+  background-attachment: fixed;
+`;
+
+const Card = styled.div`
+  background: white;
+  border-radius: 12px;
+  padding: 28px;
+  width: 100%;
+  max-width: 400px;
+  box-sizing: border-box;
+  box-shadow: 0 4px 24px rgba(0,0,0,0.08);
+`;
+
+const Title = styled.h1`
+  margin: 0 0 24px;
+  font-size: 1.5rem;
+  color: #333;
+  text-align: center;
+`;
+
+const Tabs = styled.div`
+  display: flex;
+  margin-bottom: 20px;
+  border-bottom: 1px solid #ddd;
+`;
+
+const Tab = styled.button`
+  flex: 1;
+  padding: 10px;
+  border: none;
+  background: none;
+  cursor: pointer;
+  font-size: 15px;
+  color: ${p => p.$active ? '#2481cc' : '#666'};
+  font-weight: ${p => p.$active ? 600 : 400};
+  border-bottom: 2px solid ${p => p.$active ? '#2481cc' : 'transparent'};
+  margin-bottom: -1px;
+`;
+
+const Input = styled.input`
+  width: 100%;
+  box-sizing: border-box;
+  padding: 12px 14px;
+  font-size: 16px;
+  border: 1px solid #ddd;
+  border-radius: 8px;
+  margin-bottom: 12px;
+  &:focus {
+    outline: none;
+    border-color: #2481cc;
+  }
+`;
+
+const PasswordWrap = styled.div`
+  position: relative;
+  margin-bottom: 12px;
+`;
+
+const InputWithEye = styled(Input)`
+  padding-right: 44px;
+  margin-bottom: 0;
+`;
+
+const EyeBtn = styled.button`
+  position: absolute;
+  right: 10px;
+  top: 50%;
+  transform: translateY(-50%);
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 4px 6px;
+  font-size: 18px;
+  line-height: 1;
+  opacity: 0.65;
+  &:hover {
+    opacity: 1;
+  }
+`;
+
+const Button = styled.button`
+  width: 100%;
+  padding: 14px;
+  font-size: 16px;
+  font-weight: 600;
+  color: white;
+  background: #2481cc;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  margin-top: 8px;
+  transition: background 0.2s;
+  &:hover:not(:disabled) {
+    background: #1a6ba8;
+  }
+  &:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+  }
+`;
+
+const Error = styled.p`
+  color: #c62828;
+  font-size: 14px;
+  margin: 8px 0 0;
+`;
+
+const MIN_PASSWORD_LENGTH = 8;
+
+const WebLoginPage = () => {
+  const navigate = useNavigate();
+  const location = useLocation();
+  const [mode, setMode] = useState(location.state?.tab === 'register' ? 'register' : 'login');
+  const [registerStep, setRegisterStep] = useState(1);
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [passwordConfirm, setPasswordConfirm] = useState('');
+  const [code, setCode] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+  const [resendCooldown, setResendCooldown] = useState(0);
+  const [showPassword, setShowPassword] = useState(false);
+  const [showPasswordConfirm, setShowPasswordConfirm] = useState(false);
+  const [lastRegisterEmail, setLastRegisterEmail] = useState('');
+  const [lastRegisterSentAt, setLastRegisterSentAt] = useState(0);
+  const REGISTER_CODE_TTL_SEC = 15 * 60;
+
+  useEffect(() => {
+    if (registerStep !== 2 || resendCooldown <= 0) return;
+    const t = setInterval(() => {
+      setResendCooldown((prev) => (prev <= 1 ? 0 : prev - 1));
+    }, 1000);
+    return () => clearInterval(t);
+  }, [registerStep, resendCooldown]);
+
+  const handleLogin = async (e) => {
+    e.preventDefault();
+    setError('');
+    const em = email.trim().toLowerCase();
+    if (!em) {
+      setError('Введите email');
+      return;
+    }
+    if (!password) {
+      setError('Введите пароль');
+      return;
+    }
+    setLoading(true);
+    try {
+      const res = await WebApiService.login(em, password);
+      localStorage.setItem('web_token', res.token);
+      localStorage.setItem('web_user', JSON.stringify(res.user));
+      navigate('/web', { replace: true });
+      window.location.reload();
+    } catch (err) {
+      setError(err.response?.data?.error || err.message || 'Ошибка входа');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleRegisterSendCode = async (e) => {
+    e.preventDefault();
+    setError('');
+    const em = email.trim().toLowerCase();
+    if (!em) {
+      setError('Введите email');
+      return;
+    }
+    if (password.length < MIN_PASSWORD_LENGTH) {
+      setError(`Пароль не менее ${MIN_PASSWORD_LENGTH} символов`);
+      return;
+    }
+    if (password !== passwordConfirm) {
+      setError('Пароли не совпадают');
+      return;
+    }
+    const now = Date.now();
+    const elapsed = Math.floor((now - lastRegisterSentAt) / 1000);
+    if (em === lastRegisterEmail && lastRegisterSentAt > 0 && elapsed < REGISTER_CODE_TTL_SEC) {
+      setRegisterStep(2);
+      setResendCooldown(elapsed >= 60 ? 0 : 60 - elapsed);
+      return;
+    }
+    setLoading(true);
+    try {
+      await WebApiService.registerSendCode(em, password, passwordConfirm);
+      setLastRegisterEmail(em);
+      setLastRegisterSentAt(now);
+      setRegisterStep(2);
+      setResendCooldown(60);
+    } catch (err) {
+      setError(err.response?.data?.error || err.message || 'Не удалось отправить код');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleRegisterVerify = async (e) => {
+    e.preventDefault();
+    setError('');
+    if (!code.trim()) {
+      setError('Введите код из письма');
+      return;
+    }
+    const em = email.trim().toLowerCase();
+    setLoading(true);
+    try {
+      const res = await WebApiService.registerVerify(em, code.trim(), password, passwordConfirm);
+      localStorage.setItem('web_token', res.token);
+      localStorage.setItem('web_user', JSON.stringify(res.user));
+      navigate('/web', { replace: true });
+      window.location.reload();
+    } catch (err) {
+      setError(err.response?.data?.error || err.message || 'Неверный код');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleResendCode = async () => {
+    if (resendCooldown > 0) return;
+    const em = email.trim().toLowerCase();
+    setError('');
+    setLoading(true);
+    try {
+      await WebApiService.registerSendCode(em, password, passwordConfirm);
+      setResendCooldown(60);
+    } catch (err) {
+      setError(err.response?.data?.error || err.message || 'Не удалось отправить код');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const switchToLogin = () => {
+    setMode('login');
+    setError('');
+    setRegisterStep(1);
+    setCode('');
+  };
+
+  const switchToRegister = () => {
+    setMode('register');
+    setError('');
+    setRegisterStep(1);
+    setCode('');
+    setResendCooldown(0);
+  };
+
+  return (
+    <Page>
+      <Card>
+        <Title>H2O</Title>
+        <Tabs>
+          <Tab $active={mode === 'login'} onClick={switchToLogin} type="button">Вход</Tab>
+          <Tab $active={mode === 'register'} onClick={switchToRegister} type="button">Регистрация</Tab>
+        </Tabs>
+
+        {mode === 'login' && (
+          <form onSubmit={handleLogin}>
+            <Input
+              type="email"
+              placeholder="Email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              autoComplete="email"
+              autoFocus
+            />
+            <PasswordWrap>
+              <InputWithEye
+                type={showPassword ? 'text' : 'password'}
+                placeholder="Пароль"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                autoComplete="current-password"
+              />
+              <EyeBtn type="button" onClick={() => setShowPassword((s) => !s)} aria-label={showPassword ? 'Скрыть пароль' : 'Показать пароль'}>
+                {showPassword ? '🙈' : '👁'}
+              </EyeBtn>
+            </PasswordWrap>
+            <Link to="/web/login/forgot" style={{ marginTop: 4, marginBottom: 8, display: 'block', color: '#2481cc', fontSize: 13, textDecoration: 'underline' }}>
+              Забыли пароль?
+            </Link>
+            {error && <Error>{error}</Error>}
+            <Button type="submit" disabled={loading}>
+              {loading ? 'Вход…' : 'Войти'}
+            </Button>
+          </form>
+        )}
+
+        {mode === 'register' && registerStep === 1 && (
+          <form onSubmit={handleRegisterSendCode}>
+            <Input
+              type="email"
+              placeholder="Email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              autoComplete="email"
+              autoFocus
+            />
+            <PasswordWrap>
+              <InputWithEye
+                type={showPassword ? 'text' : 'password'}
+                placeholder="Пароль (не менее 8 символов)"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                autoComplete="new-password"
+              />
+              <EyeBtn
+                type="button"
+                onClick={() => setShowPassword((s) => !s)}
+                aria-label={showPassword ? 'Скрыть пароль' : 'Показать пароль'}
+              >
+                {showPassword ? '🙈' : '👁'}
+              </EyeBtn>
+            </PasswordWrap>
+            <PasswordWrap>
+              <InputWithEye
+                type={showPasswordConfirm ? 'text' : 'password'}
+                placeholder="Подтверждение пароля"
+                value={passwordConfirm}
+                onChange={(e) => setPasswordConfirm(e.target.value)}
+                autoComplete="new-password"
+              />
+              <EyeBtn
+                type="button"
+                onClick={() => setShowPasswordConfirm((s) => !s)}
+                aria-label={showPasswordConfirm ? 'Скрыть пароль' : 'Показать пароль'}
+              >
+                {showPasswordConfirm ? '🙈' : '👁'}
+              </EyeBtn>
+            </PasswordWrap>
+            {error && <Error>{error}</Error>}
+            <Button type="submit" disabled={loading}>
+              {loading ? 'Отправка…' : 'Отправить код на email'}
+            </Button>
+          </form>
+        )}
+
+        {mode === 'register' && registerStep === 2 && (
+          <form onSubmit={handleRegisterVerify}>
+            <Input
+              type="text"
+              placeholder="Код из письма"
+              value={code}
+              onChange={(e) => setCode(e.target.value)}
+              autoFocus
+              maxLength={6}
+            />
+            {error && <Error>{error}</Error>}
+            <Button type="submit" disabled={loading}>
+              {loading ? 'Проверка…' : 'Зарегистрироваться'}
+            </Button>
+            <Button
+              type="button"
+              onClick={handleResendCode}
+              disabled={loading || resendCooldown > 0}
+              style={{ background: '#666', marginTop: 8 }}
+            >
+              {resendCooldown > 0 ? `Отправить повторно через ${resendCooldown} сек` : 'Отправить повторно'}
+            </Button>
+            <Button type="button" onClick={() => { setRegisterStep(1); setCode(''); setError(''); }} disabled={loading} style={{ background: '#555', marginTop: 8 }}>
+              Изменить email
+            </Button>
+          </form>
+        )}
+      </Card>
+    </Page>
+  );
+};
+
+export default WebLoginPage;
