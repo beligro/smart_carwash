@@ -162,27 +162,33 @@ func main() {
 	linkTokenRepo := linktokenRepo.NewPostgresRepository(db)
 	linkTokenSvc := linktokenService.NewService(linkTokenRepo, userRepository, sessionRepository, cfg)
 
-	// Создаем Telegram бота
-	bot, err := telegram.NewBot(userSvc, cfg, linkTokenSvc)
+	// Создаем Telegram бота (сбой сети/API — не фатально: API и веб работают без уведомлений в Telegram)
+	tgBot, err := telegram.NewBot(userSvc, cfg, linkTokenSvc)
 	if err != nil {
-		log.WithField("error", err).Fatal("Ошибка создания Telegram бота")
+		log.WithField("error", err).Error("Telegram бот не инициализирован: уведомления в Telegram и обработка вебхука отключены")
+	}
+	var sessionTelegram telegram.NotificationService
+	if tgBot != nil {
+		sessionTelegram = tgBot
 	}
 
 	// Создаем сервис сессий с зависимостями (emailSender для уведомлений на email пользователям без Telegram)
-	sessionSvc := sessionService.NewService(sessionRepository, washboxSvc, userSvc, bot, emailSender, nil, modbusAdapter, settingsSvc, cfg.CashierUserID, appMetrics, db, washboxLogSvc)
+	sessionSvc := sessionService.NewService(sessionRepository, washboxSvc, userSvc, sessionTelegram, emailSender, nil, modbusAdapter, settingsSvc, cfg.CashierUserID, appMetrics, db, washboxLogSvc)
 
 	// Создаем сервис платежей с зависимостью от sessionSvc как SessionStatusUpdater и SessionExtensionUpdater
 	paymentSvc := paymentService.NewService(paymentRepository, settingsRepository, sessionSvc, sessionSvc, tinkoffClient, cfg.TinkoffTerminalKey, cfg.TinkoffSecretKey, cfg.TinkoffWebSuccessURL, cfg.TinkoffWebFailURL, appMetrics)
 
 	// Обновляем sessionSvc с правильным paymentSvc
-	sessionSvc = sessionService.NewService(sessionRepository, washboxSvc, userSvc, bot, emailSender, paymentSvc, modbusAdapter, settingsSvc, cfg.CashierUserID, appMetrics, db, washboxLogSvc)
+	sessionSvc = sessionService.NewService(sessionRepository, washboxSvc, userSvc, sessionTelegram, emailSender, paymentSvc, modbusAdapter, settingsSvc, cfg.CashierUserID, appMetrics, db, washboxLogSvc)
 
 	// Создаем сервис очереди, который зависит от сервисов сессий, боксов и пользователей
 	queueSvc := queueService.NewService(sessionSvc, washboxSvc, userSvc, appMetrics)
 
 	// Устанавливаем вебхук для бота
-	if err := bot.SetWebhook(); err != nil {
-		log.WithField("error", err).Warn("Ошибка установки вебхука")
+	if tgBot != nil {
+		if err := tgBot.SetWebhook(); err != nil {
+			log.WithField("error", err).Warn("Ошибка установки вебхука")
+		}
 	}
 
 	// Создаем Dahua сервис
@@ -261,6 +267,11 @@ func main() {
 
 		// Вебхук для Telegram бота
 		api.POST("/webhook", func(c *gin.Context) {
+			if tgBot == nil {
+				// 200 — чтобы Telegram не долбил ретраями; обновления теряются, пока бот снова не поднимется
+				c.JSON(http.StatusOK, gin.H{"status": "ok", "telegram": "disabled"})
+				return
+			}
 			// Читаем тело запроса
 			body, err := c.GetRawData()
 			if err != nil {
@@ -276,7 +287,7 @@ func main() {
 			}
 
 			// Обрабатываем обновление
-			bot.ProcessUpdate(update)
+			tgBot.ProcessUpdate(update)
 
 			c.JSON(http.StatusOK, gin.H{"status": "ok"})
 		})
@@ -330,11 +341,15 @@ func main() {
 		}
 	}()
 
-	// Запускаем бота в отдельной горутине
-	go func() {
-		logger.Info("Starting Telegram bot")
-		bot.Start()
-	}()
+	// Запускаем бота в отдельной горутине (long polling), только если инициализация прошла
+	if tgBot != nil {
+		go func() {
+			logger.Info("Starting Telegram bot")
+			tgBot.Start()
+		}()
+	} else {
+		logger.Info("Telegram bot long polling не запущен (бот не инициализирован)")
+	}
 
 	// Запускаем периодическую задачу для обработки очереди (старт сразу)
 	go func() {
