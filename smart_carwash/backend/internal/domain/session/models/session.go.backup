@@ -48,13 +48,8 @@ type Session struct {
 	CreatedAt                              time.Time      `json:"created_at"`
 	UpdatedAt                              time.Time      `json:"updated_at"`
 	StatusUpdatedAt                        time.Time      `json:"status_updated_at"`                   // Время последнего обновления статуса
-	ActiveStartedAt                        *time.Time     `json:"active_started_at,omitempty" gorm:"column:active_started_at"`  // Время фактического начала мойки (переход в active)
-	ActiveEndedAt                          *time.Time     `json:"active_ended_at,omitempty" gorm:"column:active_ended_at"`      // Время фактического окончания мойки
-	CompletionSource                       string         `json:"completion_source,omitempty" gorm:"column:completion_source"`  // Источник завершения (timer/admin/cashier/client/anpr)
-	CompletionUserID                       *uuid.UUID     `json:"completion_user_id,omitempty" gorm:"column:completion_user_id"` // ID пользователя, завершившего сессию (если вручную)
-	SessionTimeoutMinutes                  int            `json:"session_timeout_minutes" gorm:"-"`                                // Время ожидания старта мойки в минутах (виртуальное поле)
-	CooldownMinutes                        *int           `json:"cooldown_minutes,omitempty" gorm:"-"`                             // Время кулдауна в минутах (виртуальное поле)
-	LoyaltyCounted                         bool           `json:"loyalty_counted" gorm:"default:false;column:loyalty_counted"`     // Засчитана ли в программе лояльности
+	SessionTimeoutMinutes                  int            `json:"session_timeout_minutes" gorm:"-"`    // Время ожидания старта мойки в минутах (виртуальное поле)
+	CooldownMinutes                        *int           `json:"cooldown_minutes,omitempty" gorm:"-"` // Время кулдауна в минутах (виртуальное поле)
 	DeletedAt                              gorm.DeletedAt `json:"-" gorm:"index"`
 }
 
@@ -166,7 +161,6 @@ type StartSessionResponse struct {
 // CompleteSessionRequest представляет запрос на завершение сессии
 type CompleteSessionRequest struct {
 	SessionID uuid.UUID `json:"session_id" binding:"required"`
-	CompletionSource string `json:"completion_source,omitempty"`
 }
 
 // CompleteSessionResponse представляет ответ на завершение сессии

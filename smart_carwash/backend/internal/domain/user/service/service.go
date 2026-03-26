@@ -25,6 +25,11 @@ type Service interface {
 	// Административные методы
 	AdminListUsers(ctx context.Context, req *models.AdminListUsersRequest) (*models.AdminListUsersResponse, error)
 	AdminGetUser(ctx context.Context, req *models.AdminGetUserRequest) (*models.AdminGetUserResponse, error)
+	
+	// Программа лояльности
+	IncrementWashCount(ctx context.Context, userID uuid.UUID) error
+	ResetWashCount(ctx context.Context, userID uuid.UUID) error
+	GetLoyaltyProgress(ctx context.Context, userID uuid.UUID) (int, int, error) // count, nextFreeAt, error
 }
 
 // ServiceImpl реализация Service
@@ -179,4 +184,54 @@ func (s *ServiceImpl) UpdateEmail(ctx context.Context, req *models.UpdateEmailRe
 		Success: true,
 		User:    *user,
 	}, nil
+}
+
+// IncrementWashCount увеличивает счетчик завершенных моек (атомарно)
+func (s *ServiceImpl) IncrementWashCount(ctx context.Context, userID uuid.UUID) error {
+	// TODO: Добавить метод AtomicIncrementWashCount в repository
+	// Пока используем простой подход (без полной защиты от race)
+	user, err := s.repo.GetUserByID(ctx, userID)
+	if err != nil {
+		return fmt.Errorf("пользователь не найден: %w", err)
+	}
+
+	user.CompletedWashesCount++
+
+	if err := s.repo.UpdateUser(ctx, user); err != nil {
+		return fmt.Errorf("ошибка обновления счетчика: %w", err)
+	}
+
+	return nil
+}
+
+// ResetWashCount обнуляет счетчик моек после использования бесплатной
+func (s *ServiceImpl) ResetWashCount(ctx context.Context, userID uuid.UUID) error {
+	user, err := s.repo.GetUserByID(ctx, userID)
+	if err != nil {
+		return fmt.Errorf("пользователь не найден: %w", err)
+	}
+
+	// Обнуляем счетчик
+	user.CompletedWashesCount = 0
+
+	// Сохраняем
+	if err := s.repo.UpdateUser(ctx, user); err != nil {
+		return fmt.Errorf("ошибка обнуления счетчика: %w", err)
+	}
+
+	return nil
+}
+
+// GetLoyaltyProgress возвращает прогресс программы лояльности
+// Возвращает: текущий count, номер следующей бесплатной мойки
+func (s *ServiceImpl) GetLoyaltyProgress(ctx context.Context, userID uuid.UUID) (int, int, error) {
+	user, err := s.repo.GetUserByID(ctx, userID)
+	if err != nil {
+		return 0, 0, fmt.Errorf("пользователь не найден: %w", err)
+	}
+
+	count := user.CompletedWashesCount
+	nextFreeAt := ((count / 10) + 1) * 10 // Следующая бесплатная: 10, 20, 30...
+
+	return count, nextFreeAt, nil
 }

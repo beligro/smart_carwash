@@ -10,7 +10,6 @@ import (
 	settingsModels "carwash_backend/internal/domain/settings/models"
 	settingsService "carwash_backend/internal/domain/settings/service"
 	"carwash_backend/internal/domain/telegram"
-	userModels "carwash_backend/internal/domain/user/models"
 	userService "carwash_backend/internal/domain/user/service"
 	washboxModels "carwash_backend/internal/domain/washbox/models"
 	washboxService "carwash_backend/internal/domain/washbox/service"
@@ -29,7 +28,6 @@ import (
 
 	"github.com/google/uuid"
 	"gorm.io/gorm"
-	"gorm.io/gorm/clause"
 )
 
 // Service интерфейс для бизнес-логики сессий
@@ -51,7 +49,6 @@ type Service interface {
 	CheckAndExpireReservedSessions(ctx context.Context) error
 	CheckAndNotifyExpiringReservedSessions(ctx context.Context) error
 	CheckAndNotifyCompletingSessions(ctx context.Context) error
-	CheckAndCancelAbandonedCreatedSessions(ctx context.Context) error
 	CountSessionsByStatus(ctx context.Context, status string) (int, error)
 	GetSessionsByStatus(ctx context.Context, status string) ([]models.Session, error)
 	GetUserSessionHistory(ctx context.Context, req *models.GetUserSessionHistoryRequest) ([]models.Session, error)
@@ -271,26 +268,6 @@ func (s *ServiceImpl) CreateSession(ctx context.Context, req *models.CreateSessi
 // CreateSessionWithPayment создает сессию с платежом
 func (s *ServiceImpl) CreateSessionWithPayment(ctx context.Context, req *models.CreateSessionWithPaymentRequest) (*models.CreateSessionWithPaymentResponse, error) {
 	logger.Printf("Service - CreateSessionWithPayment: начало создания сессии с платежом, user_id: %s, service_type: %s", req.UserID.String(), req.ServiceType)
-
-	// LOYALTY: Проверка с защитой от race condition
-	if req.ServiceType == "wash" && req.WithChemistry && s.userService != nil {
-		var shouldCreateFree bool
-		err := s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-			var user userModels.User
-			if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).
-				First(&user, "id = ?", req.UserID).Error; err != nil {
-				return err
-			}
-			if user.IsSubscribedToChannel && user.CompletedWashesCount > 0 &&
-				user.CompletedWashesCount%10 == 0 {
-				shouldCreateFree = true
-			}
-			return nil
-		})
-		if err == nil && shouldCreateFree {
-			return s.createFreeSession(ctx, req)
-		}
-	}
 
 	// 1. Создаем сессию
 	session, err := s.CreateSession(ctx, &models.CreateSessionRequest{
@@ -723,22 +700,6 @@ func (s *ServiceImpl) CompleteSession(ctx context.Context, req *models.CompleteS
 		if err != nil {
 			return nil, err
 		}
-
-		// LOYALTY: Инкремент (только платные!)
-		if session.ServiceType == "wash" && session.WasChemistryOn && !session.LoyaltyCounted && s.userService != nil && s.paymentService != nil {
-			payment, err := s.paymentService.GetMainPaymentBySessionID(ctx, session.ID)
-			if err != nil {
-				logger.Printf("LOYALTY WARNING: Платеж не найден session_id=%s", session.ID)
-			} else if payment != nil && payment.Amount > 0 {
-				user, _ := s.userService.GetUserByID(ctx, session.UserID)
-				if user != nil && user.IsSubscribedToChannel {
-					s.userService.IncrementWashCount(ctx, session.UserID)
-					session.LoyaltyCounted = true
-					s.repo.UpdateSession(ctx, session)
-				}
-			}
-		}
-
 		return &models.CompleteSessionResponse{Session: session}, nil
 	}
 
@@ -781,9 +742,9 @@ func (s *ServiceImpl) CompleteSession(ctx context.Context, req *models.CompleteS
 		// Обновляем статус сессии на complete, время обновления статуса и сбрасываем флаг уведомления
 		lockedSession.CompletionSource = "client"
 		lockedSession.Status = models.SessionStatusComplete
-		if req.CompletionSource != "" {
-			lockedSession.CompletionSource = req.CompletionSource
-		}
+			if req.CompletionSource != "" {
+				lockedSession.CompletionSource = req.CompletionSource
+			}
 		lockedSession.StatusUpdatedAt = time.Now()
 		lockedSession.IsCompletingNotificationSent = false
 
@@ -936,20 +897,6 @@ func (s *ServiceImpl) CompleteSessionWithoutRefund(ctx context.Context, sessionI
 		if err != nil {
 			return err
 		}
-
-		// LOYALTY: Инкремент
-		if session.ServiceType == "wash" && session.WasChemistryOn && !session.LoyaltyCounted && s.userService != nil && s.paymentService != nil {
-			payment, err := s.paymentService.GetMainPaymentBySessionID(ctx, session.ID)
-			if err == nil && payment != nil && payment.Amount > 0 {
-				user, _ := s.userService.GetUserByID(ctx, session.UserID)
-				if user != nil && user.IsSubscribedToChannel {
-					s.userService.IncrementWashCount(ctx, session.UserID)
-					session.LoyaltyCounted = true
-					s.repo.UpdateSession(ctx, session)
-				}
-			}
-		}
-
 		return nil
 	}
 
@@ -1423,40 +1370,6 @@ func (s *ServiceImpl) CheckAndCompleteExpiredSessions(ctx context.Context) error
 		// Учитываем время продления, если оно есть
 		totalTime := rentalTime + session.ExtensionTimeMinutes
 
-		// ПРОВЕРКА ХИМИИ ОТДЕЛЬНО (если она активна и не выключена)
-		if session.WasChemistryOn && session.ChemistryStartedAt != nil && session.ChemistryEndedAt == nil {
-			// Считаем общее время химии (начальное + продление)
-			chemistryTotalTime := session.ChemistryTimeMinutes + session.ExtensionChemistryTimeMinutes
-			chemistryElapsed := now.Sub(*session.ChemistryStartedAt)
-			
-			// Если время химии истекло
-			if chemistryElapsed >= time.Duration(chemistryTotalTime)*time.Minute {
-				logger.Printf("CheckAndCompleteExpiredSessions: время химии истекло, выключаем - SessionID=%s, elapsed=%v, total=%d мин", 
-					session.ID, chemistryElapsed, chemistryTotalTime)
-				
-				// Выключаем химию через Modbus
-				if session.BoxID != nil && s.modbusService != nil {
-					box, err := s.washboxService.GetWashBoxByID(ctx, *session.BoxID)
-					if err == nil && box.ChemistryCoilRegister != nil {
-						if err := s.modbusService.WriteChemistryCoil(ctx, *session.BoxID, *box.ChemistryCoilRegister, false); err != nil {
-							logger.Printf("CheckAndCompleteExpiredSessions: ошибка выключения химии - SessionID=%s, error=%v", session.ID, err)
-						} else {
-							logger.Printf("CheckAndCompleteExpiredSessions: химия выключена - SessionID=%s", session.ID)
-						}
-					}
-				}
-				
-				// Обновляем chemistry_ended_at в БД
-				err = s.repo.UpdateSessionFields(ctx, session.ID, map[string]interface{}{
-					"chemistry_ended_at": now,
-					"updated_at":         now,
-				})
-				if err != nil {
-					logger.Printf("CheckAndCompleteExpiredSessions: ошибка обновления chemistry_ended_at - SessionID=%s, error=%v", session.ID, err)
-				}
-			}
-		}
-
 		// Проверяем, прошло ли выбранное время с момента начала сессии
 		if now.Sub(startTime) >= time.Duration(totalTime)*time.Minute {
 			// Если прошло время, завершаем сессию
@@ -1465,26 +1378,12 @@ func (s *ServiceImpl) CheckAndCompleteExpiredSessions(ctx context.Context) error
 			// Обновляем статус сессии на complete, время обновления статуса и сбрасываем флаг уведомления
 			session.CompletionSource = "timer"
 			session.Status = models.SessionStatusComplete
-			session.StatusUpdatedAt = time.Now()
-			session.IsCompletingNotificationSent = false
+			session.StatusUpdatedAt = time.Now()         // Обновляем время изменения статуса
+			session.IsCompletingNotificationSent = false // Сбрасываем флаг, чтобы уведомление могло быть отправлено снова
 			err = s.repo.UpdateSession(ctx, &session)
 			if err != nil {
 				return err
 			}
-
-			// LOYALTY: Инкремент
-			if session.ServiceType == "wash" && session.WasChemistryOn && !session.LoyaltyCounted && s.userService != nil && s.paymentService != nil {
-				payment, _ := s.paymentService.GetMainPaymentBySessionID(ctx, session.ID)
-				if payment != nil && payment.Amount > 0 {
-					user, _ := s.userService.GetUserByID(ctx, session.UserID)
-					if user != nil && user.IsSubscribedToChannel {
-						s.userService.IncrementWashCount(ctx, session.UserID)
-						session.LoyaltyCounted = true
-						s.repo.UpdateSession(ctx, &session)
-					}
-				}
-			}
-
 			if session.BoxID != nil && s.washboxService != nil {
 				// Исключаем сессии кассира из кулдауна
 				if s.cashierUserID != "" {
@@ -2137,42 +2036,6 @@ func (s *ServiceImpl) CheckAndNotifyCompletingSessions(ctx context.Context) erro
 	return nil
 }
 
-
-// CheckAndCancelAbandonedCreatedSessions cancels sessions in created status older than 10 minutes.
-// Prevents cashier from encountering a stale unconfirmed Telegram session instead of creating a new one.
-func (s *ServiceImpl) CheckAndCancelAbandonedCreatedSessions(ctx context.Context) error {
-	startTime := time.Now()
-	defer func() {
-		logger.Printf("CheckAndCancelAbandonedCreatedSessions: done in %v", time.Since(startTime))
-	}()
-
-	createdSessions, err := s.repo.GetSessionsByStatus(ctx, models.SessionStatusCreated)
-	if err != nil {
-		return err
-	}
-
-	if len(createdSessions) == 0 {
-		return nil
-	}
-
-	now := time.Now()
-	for _, session := range createdSessions {
-		if now.Sub(session.CreatedAt) > 10*time.Minute {
-			session.Status = models.SessionStatusCanceled
-			session.CompletionSource = "timeout"
-			session.StatusUpdatedAt = now
-			if err := s.repo.UpdateSession(ctx, &session); err != nil {
-				logger.Printf("CheckAndCancelAbandonedCreatedSessions: error canceling %s: %v", session.ID, err)
-				continue
-			}
-			logger.Printf("CheckAndCancelAbandonedCreatedSessions: canceled %s car=%s created=%s",
-				session.ID, session.CarNumber, session.CreatedAt.Format("2006-01-02T15:04:05Z07:00"))
-		}
-	}
-
-	return nil
-}
-
 // CountSessionsByStatus подсчитывает количество сессий с определенным статусом
 func (s *ServiceImpl) CountSessionsByStatus(ctx context.Context, status string) (int, error) {
 	return s.repo.CountSessionsByStatus(ctx, status)
@@ -2539,28 +2402,25 @@ func (s *ServiceImpl) UpdateSessionExtension(ctx context.Context, sessionID uuid
 				session.RequestedExtensionChemistryTimeMinutes, session.ID)
 		} else if session.WithChemistry {
 			// Применяем логику химии при продлении для существующей химии
-		if session.WasChemistryOn && session.ChemistryEndedAt == nil {
-			// Химия активна - продлеваем на докупленное время
-			session.ChemistryTimeMinutes += session.RequestedExtensionChemistryTimeMinutes
-			session.ExtensionChemistryTimeMinutes += session.RequestedExtensionChemistryTimeMinutes
-			logger.Printf("UpdateSessionExtension: химия активна, продлеваем на %d минут, общее время %d минут, extension %d, SessionID=%s",
-				session.RequestedExtensionChemistryTimeMinutes, session.ChemistryTimeMinutes, session.ExtensionChemistryTimeMinutes, session.ID)
-		} else if session.ChemistryStartedAt == nil {
-			// Химия не использована - даем на первоначальное + докупленное время
-			totalChemistryTime := session.ChemistryTimeMinutes + session.RequestedExtensionChemistryTimeMinutes
-			session.ChemistryTimeMinutes = totalChemistryTime
-			session.ExtensionChemistryTimeMinutes += session.RequestedExtensionChemistryTimeMinutes
-			logger.Printf("UpdateSessionExtension: химия не использована, общее время %d минут, extension %d, SessionID=%s",
-				totalChemistryTime, session.ExtensionChemistryTimeMinutes, session.ID)
-		} else {
-			// Химия уже использована - даем только на докупленное время и сбрасываем флаги
-			session.ChemistryTimeMinutes = session.RequestedExtensionChemistryTimeMinutes
-			session.ExtensionChemistryTimeMinutes = session.RequestedExtensionChemistryTimeMinutes
-			session.ChemistryStartedAt = nil
-			session.ChemistryEndedAt = nil
-			session.WasChemistryOn = false
-			logger.Printf("UpdateSessionExtension: химия использована, новое время %d минут, extension %d, сброшены флаги, SessionID=%s",
-				session.RequestedExtensionChemistryTimeMinutes, session.ExtensionChemistryTimeMinutes, session.ID)
+			if session.WasChemistryOn && session.ChemistryEndedAt == nil {
+				// Химия активна - продлеваем на докупленное время
+				session.ChemistryTimeMinutes += session.RequestedExtensionChemistryTimeMinutes
+				logger.Printf("UpdateSessionExtension: химия активна, продлеваем на %d минут, общее время %d минут, SessionID=%s",
+					session.RequestedExtensionChemistryTimeMinutes, session.ChemistryTimeMinutes, session.ID)
+			} else if session.ChemistryStartedAt == nil {
+				// Химия не использована - даем на первоначальное + докупленное время
+				totalChemistryTime := session.ChemistryTimeMinutes + session.RequestedExtensionChemistryTimeMinutes
+				session.ChemistryTimeMinutes = totalChemistryTime
+				logger.Printf("UpdateSessionExtension: химия не использована, общее время %d минут, SessionID=%s",
+					totalChemistryTime, session.ID)
+			} else {
+				// Химия уже использована - даем только на докупленное время и сбрасываем флаги
+				session.ChemistryTimeMinutes = session.RequestedExtensionChemistryTimeMinutes
+				session.ChemistryStartedAt = nil
+				session.ChemistryEndedAt = nil
+				session.WasChemistryOn = false
+				logger.Printf("UpdateSessionExtension: химия использована, новое время %d минут, сброшены флаги, SessionID=%s",
+					session.RequestedExtensionChemistryTimeMinutes, session.ID)
 			}
 		}
 
@@ -2693,7 +2553,7 @@ func (s *ServiceImpl) CashierCompleteSession(ctx context.Context, req *models.Ca
 
 	// Завершаем сессию
 	response, err := s.CompleteSession(ctx, &models.CompleteSessionRequest{
-		SessionID:        req.SessionID,
+		SessionID:         req.SessionID,
 		CompletionSource: "cashier",
 	})
 	if err != nil {
@@ -2852,11 +2712,10 @@ func (s *ServiceImpl) EnableChemistry(ctx context.Context, req *models.EnableChe
 
 	logger.Printf("Химия включена: SessionID=%s, ChemistryTimeMinutes=%d", session.ID, session.ChemistryTimeMinutes)
 
-	// ИСПРАВЛЕНИЕ: Убрали AutoDisableChemistry (таймер) - химия теперь выключается через CheckAndCompleteExpiredSessions
-	// Это позволяет правильно работать при продлении химии
-	// if session.ChemistryTimeMinutes > 0 {
-	// 	s.AutoDisableChemistry(session.ID, session.ChemistryTimeMinutes)
-	// }
+	// Запускаем автоматическое выключение химии через указанное время
+	if session.ChemistryTimeMinutes > 0 {
+		s.AutoDisableChemistry(session.ID, session.ChemistryTimeMinutes)
+	}
 
 	return &models.EnableChemistryResponse{
 		Session: *session,
@@ -3316,26 +3175,4 @@ func (s *ServiceImpl) GetActiveSessionByBoxID(ctx context.Context, boxID uuid.UU
 	}
 
 	return &session, nil
-}
-
-func (s *ServiceImpl) createFreeSession(ctx context.Context, req *models.CreateSessionWithPaymentRequest) (*models.CreateSessionWithPaymentResponse, error) {
-	session, _ := s.CreateSession(ctx, &models.CreateSessionRequest{
-		UserID: req.UserID, ServiceType: "wash", WithChemistry: true,
-		ChemistryTimeMinutes: 5, CarNumber: req.CarNumber, RentalTimeMinutes: 30, IdempotencyKey: req.IdempotencyKey,
-	})
-
-	// TODO: Создать платеж с payment_method="loyalty" вместо "cashier"
-	// Пока используем cashier с amount=0 (работает, но не семантично)
-	s.paymentService.CreateForCashier(ctx, session.ID, 0)
-
-	// CRITICAL: Обнуление счетчика (если упадет - НЕ создаем сессию!)
-	if err := s.userService.ResetWashCount(ctx, req.UserID); err != nil {
-		logger.Printf("LOYALTY CRITICAL: Ошибка обнуления счетчика user_id=%s: %v", req.UserID, err)
-		return nil, fmt.Errorf("не удалось обнулить счетчик лояльности: %w", err)
-	}
-
-	session.Status = models.SessionStatusInQueue
-	session.StatusUpdatedAt = time.Now()
-	s.repo.UpdateSession(ctx, session)
-	return &models.CreateSessionWithPaymentResponse{Session: *session, Payment: nil}, nil
 }

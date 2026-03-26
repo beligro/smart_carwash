@@ -1,0 +1,332 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:18                      # Точная версия (не latest!)
+    container_name: carwash_postgres
+    restart: unless-stopped                 # Автозапуск при reboot
+    
+    # КОМАНДА С ОПТИМИЗАЦИЯМИ (все параметры напрямую, БЕЗ конфиг файла!)
+    command: >
+      postgres
+      -c checkpoint_timeout=15min
+      -c max_wal_size=2GB
+      -c min_wal_size=512MB
+      -c shared_buffers=512MB
+      -c effective_cache_size=2GB
+      -c work_mem=32MB
+      -c maintenance_work_mem=128MB
+      -c wal_buffers=32MB
+      -c random_page_cost=1.1
+      -c effective_io_concurrency=200
+      -c checkpoint_completion_target=0.9
+      -c synchronous_commit=off
+      -c wal_compression=on
+      -c wal_writer_delay=10ms
+      -c bgwriter_delay=50ms
+      -c bgwriter_lru_maxpages=500
+      -c bgwriter_lru_multiplier=2.0
+      -c autovacuum=on
+      -c autovacuum_max_workers=3
+      -c autovacuum_naptime=1min
+      -c log_checkpoints=on
+      -c log_connections=on
+      -c log_disconnections=on
+      -c log_lock_waits=on
+      -c log_min_duration_statement=1000
+      -c max_parallel_workers_per_gather=2
+      -c max_parallel_workers=4
+    
+    # VOLUMES (данные отдельно от контейнера!)
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - postgres_wal:/var/lib/postgresql/wal
+    
+    # ENVIRONMENT
+    environment:
+      - POSTGRES_USER=${POSTGRES_USER}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+      - POSTGRES_DB=${POSTGRES_DB}
+      - PGDATA=/var/lib/postgresql/data/18/docker  # Путь к данным PG18
+    
+    # СЕТЬ (статический IP для бэкенда!)
+    networks:
+      carwash_network:
+        ipv4_address: 172.18.0.2            # Бэкенд ищет postgres по этому IP!
+    
+    # ПОРТЫ (только localhost!)
+    ports:
+      - "127.0.0.1:5432:5432"
+    
+    # HEALTHCHECK
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    
+    # ЛОГИ (ограничить размер)
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "50m"
+        max-file: "3"
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: carwash_backend
+    restart: always
+    depends_on:
+      - postgres
+    env_file:
+      - .env
+    ports:
+      - "127.0.0.1:6060:6060"  # pprof для профилирования (только локальный доступ)
+    volumes:
+      - backend_logs:/var/log/backend
+    networks:
+      - carwash_network
+    security_opt:
+      - no-new-privileges:true
+    tmpfs:
+      - /tmp
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: carwash_frontend
+    depends_on:
+      - postgres
+    restart: always
+    environment:
+      REACT_APP_API_URL: ${REACT_APP_API_URL}
+    networks:
+      - carwash_network
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  nginx:
+    build:
+      context: ./nginx
+      dockerfile: Dockerfile
+    container_name: carwash_nginx
+    restart: always
+    ports:
+      - "80:80"
+      - "443:443"
+    depends_on:
+      - backend
+      - frontend
+    volumes:
+      - ./nginx/ssl:/etc/nginx/ssl
+      - /var/log/ssl_auto_renew.log:/var/log/ssl_auto_renew.log:ro
+      - /var/log/ssl_check.log:/var/log/ssl_check.log:ro
+    networks:
+      - carwash_network
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  #postgres-backup:
+  #  image: postgres:latest
+  #  container_name: carwash_postgres_backup
+  #  environment:
+  #    - POSTGRES_HOST=postgres
+  #    - POSTGRES_USER=${POSTGRES_USER}
+  #    - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+  #    - POSTGRES_DB=${POSTGRES_DB}
+  #  volumes:
+  #    - ./backups:/backups
+  #    - ./backup_script.sh:/backup_script.sh:ro
+  #  command: ["bash", "/backup_script.sh"]
+  #  networks:
+  #    - carwash_network
+  #  depends_on:
+  #    - postgres
+  #  logging:
+  #    driver: "json-file"
+  #    options:
+  #      max-size: "10m"
+  #      max-file: "3"
+
+  # Мониторинг - Loki для логов (отключен)
+  # loki:
+  #   image: grafana/loki:2.9.0
+  #   container_name: carwash_loki
+  #   restart: always
+  #   ports:
+  #     - "3100:3100"
+  #   volumes:
+  #     - ./monitoring/loki-config.yml:/etc/loki/local-config.yaml:ro
+  #     - loki_data:/loki
+  #   command: -config.file=/etc/loki/local-config.yaml
+  #   networks:
+  #     - carwash_network
+  #   # Ограничения ресурсов для предотвращения перегрузки
+  #   deploy:
+  #     resources:
+  #       limits:
+  #         cpus: '1.0'
+  #         memory: 1G
+  #       reservations:
+  #         cpus: '0.5'
+  #         memory: 512M
+  #   logging:
+  #     driver: "json-file"
+  #     options:
+  #       max-size: "10m"
+  #       max-file: "3"
+
+  # Promtail для сбора логов (отключен)
+  # promtail:
+  #   image: grafana/promtail:2.9.0
+  #   container_name: carwash_promtail
+  #   restart: always
+  #   volumes:
+  #     - ./monitoring/promtail-config.yml:/etc/promtail/config.yml:ro
+  #     - backend_logs:/var/log/backend:ro
+  #   command: -config.file=/etc/promtail/config.yml
+  #   networks:
+  #     - carwash_network
+  #   depends_on:
+  #     - loki
+  #   # Ограничения ресурсов
+  #   deploy:
+  #     resources:
+  #       limits:
+  #         cpus: '0.5'
+  #         memory: 256M
+  #       reservations:
+  #         cpus: '0.2'
+  #         memory: 128M
+  #   logging:
+  #     driver: "json-file"
+  #     options:
+  #       max-size: "10m"
+  #       max-file: "3"
+
+  # Prometheus для метрик
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: carwash_prometheus
+    depends_on:
+      - backend
+    restart: always
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./monitoring/prometheus-rules:/etc/prometheus/rules:ro
+      - prometheus_data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.console.libraries=/etc/prometheus/console_libraries'
+      - '--web.console.templates=/etc/prometheus/consoles'
+      - '--storage.tsdb.retention.time=7d'
+      - '--storage.tsdb.retention.size=1GB'
+      - '--web.enable-lifecycle'
+      - '--storage.tsdb.wal-compression'
+      - '--storage.tsdb.min-block-duration=2h'
+      - '--storage.tsdb.max-block-duration=2h'
+    networks:
+      - carwash_network
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # Node Exporter для системных метрик
+  node-exporter:
+    image: prom/node-exporter:latest
+    container_name: carwash_node_exporter
+    depends_on:
+      - backend
+    restart: always
+    ports:
+      - "9100:9100"
+    volumes:
+      - /proc:/host/proc:ro
+      - /sys:/host/sys:ro
+      - /:/rootfs:ro
+    command:
+      - '--path.procfs=/host/proc'
+      - '--path.rootfs=/rootfs'
+      - '--path.sysfs=/host/sys'
+      - '--collector.filesystem.mount-points-exclude=^/(sys|proc|dev|host|etc)($$|/)'
+    networks:
+      - carwash_network
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # Grafana для визуализации
+  grafana:
+    image: grafana/grafana:latest
+    container_name: carwash_grafana
+    restart: always
+    ports:
+      - "3000:3000"
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+      - GF_USERS_ALLOW_SIGN_UP=false
+      - GF_INSTALL_PLUGINS=grafana-piechart-panel
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./monitoring/grafana-dashboards:/etc/grafana/provisioning/dashboards:ro
+      - ./monitoring/grafana-datasources:/etc/grafana/provisioning/datasources:ro
+    networks:
+      - carwash_network
+    depends_on:
+      - prometheus
+    # Ограничения ресурсов
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 512M
+        reservations:
+          cpus: '0.2'
+          memory: 256M
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+networks:
+  carwash_network:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.18.0.0/16
+          gateway: 172.18.0.1
+
+volumes:
+  postgres_data:
+    name: smart_carwash_postgres_data
+    external: true
+  postgres_wal:
+    name: smart_carwash_postgres_wal
+    external: true 
+  loki_data:
+  prometheus_data:
+  grafana_data:
+  backend_logs:

@@ -23,6 +23,7 @@ import (
 	carwashStatusService "carwash_backend/internal/domain/carwash_status/service"
 	dahuaHandlers "carwash_backend/internal/domain/dahua/handlers"
 	dahuaService "carwash_backend/internal/domain/dahua/service"
+	loyaltyHandlers "carwash_backend/internal/domain/loyalty/handlers"
 	modbusAdapter "carwash_backend/internal/domain/modbus/adapter"
 	modbusHandlers "carwash_backend/internal/domain/modbus/handlers"
 	modbusService "carwash_backend/internal/domain/modbus/service"
@@ -184,6 +185,7 @@ func main() {
 	sessionHandler := sessionHandlers.NewHandler(sessionSvc, paymentSvc, authSvc, cfg.APIKey1C)
 	queueHandler := queueHandlers.NewHandler(queueSvc)
 	settingsHandler := settingsHandlers.NewHandler(settingsSvc)
+	loyaltyHandler := loyaltyHandlers.NewHandler(userSvc)
 	authHandler := authHandlers.NewHandler(authSvc)
 	paymentHandler := paymentHandlers.NewHandler(paymentSvc, authSvc)
 	modbusHandler := modbusHandlers.NewHandler(modbusSvc)
@@ -255,12 +257,15 @@ func main() {
 				return
 			}
 
-			// Обрабатываем обновление
-			bot.ProcessUpdate(update)
+		// Обрабатываем обновление
+		bot.ProcessUpdate(update)
 
-			c.JSON(http.StatusOK, gin.H{"status": "ok"})
-		})
-	}
+		c.JSON(http.StatusOK, gin.H{"status": "ok"})
+	})
+	
+	// Loyalty API
+	api.GET("/loyalty/progress", loyaltyHandler.GetLoyaltyProgress)
+}
 
 	// Создаем HTTP сервер с таймаутами
 	server := &http.Server{
