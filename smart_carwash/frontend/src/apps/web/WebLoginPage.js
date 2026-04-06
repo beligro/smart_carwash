@@ -356,6 +356,10 @@ const WebLoginPage = () => {
 
         {mode === 'register' && registerStep === 2 && (
           <form onSubmit={handleRegisterVerify}>
+            <p style={{ margin: '0 0 12px', fontSize: '14px', color: '#555', lineHeight: '1.5' }}>
+              Код подтверждения отправлен на <strong>{email}</strong>.<br/>
+              Если письмо не пришло — проверьте папку <strong>Спам</strong>.
+            </p>
             <Input
               type="text"
               placeholder="Код из письма"
