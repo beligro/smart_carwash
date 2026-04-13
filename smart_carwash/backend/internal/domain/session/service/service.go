@@ -1525,6 +1525,9 @@ func (s *ServiceImpl) CheckAndCompleteExpiredSessions(ctx context.Context) error
 						if err != nil {
 							return err
 						}
+						if session.CarNumber != "" {
+							_ = s.washboxService.SetCooldownByCarNumber(ctx, *session.BoxID, session.CarNumber, cooldownUntil)
+						}
 					} else if err == nil && session.UserID == cashierUserID {
 						// Для сессий кассира устанавливаем cooldown по госномеру
 						if session.CarNumber != "" {
@@ -1876,6 +1879,7 @@ func (s *ServiceImpl) ProcessQueue(ctx context.Context) error {
 			lockedSession.BoxNumber = &box.Number
 			lockedSession.Status = models.SessionStatusAssigned
 			lockedSession.StatusUpdatedAt = time.Now()
+			lockedSession.IsPriority = false // Сбрасываем приоритет после назначения бокса
 
 			if err := tx.Save(&lockedSession).Error; err != nil {
 				return fmt.Errorf("ошибка обновления сессии: %w", err)
@@ -3058,9 +3062,10 @@ func (s *ServiceImpl) ReassignSession(ctx context.Context, req *models.ReassignS
 	session.ChemistryStartedAt = nil
 	session.ChemistryEndedAt = nil
 
-	// Возвращаем сессию в очередь
+	// Возвращаем сессию в очередь с приоритетом (клиент уже оплатил и ждал)
 	session.Status = models.SessionStatusInQueue
 	session.StatusUpdatedAt = time.Now() // Сбрасываем таймер
+	session.IsPriority = true             // Переставленный клиент получает приоритет в очереди
 
 	// Обновляем сессию в БД
 	err = s.repo.UpdateSession(ctx, session)

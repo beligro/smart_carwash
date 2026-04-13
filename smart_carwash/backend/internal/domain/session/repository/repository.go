@@ -190,7 +190,7 @@ func (r *PostgresRepository) UpdateSessionFields(ctx context.Context, sessionID 
 // GetSessionsByStatus получает сессии по статусу
 func (r *PostgresRepository) GetSessionsByStatus(ctx context.Context, status string) ([]models.Session, error) {
 	var sessions []models.Session
-	err := r.db.WithContext(ctx).Where("status = ?", status).Order("status_updated_at ASC").Find(&sessions).Error
+	err := r.db.WithContext(ctx).Where("status = ?", status).Order("is_priority DESC, status_updated_at ASC").Find(&sessions).Error
 	return sessions, err
 }
 

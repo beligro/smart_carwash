@@ -304,6 +304,18 @@ const SessionCardComponent = ({ session, onStart, onComplete, onCancel, onEnable
           <SessionStatus theme={theme}>
             {getStatusText(session.status)}
           </SessionStatus>
+          {session.is_priority && (
+            <span style={{
+              backgroundColor: '#ff5722',
+              color: 'white',
+              fontSize: '11px',
+              fontWeight: 'bold',
+              padding: '2px 7px',
+              borderRadius: '10px',
+              marginLeft: '6px',
+              whiteSpace: 'nowrap'
+            }}>⚡ Приоритет</span>
+          )}
         </SessionInfo>
         
         {(session.status === 'active' || session.status === 'assigned') && timeLeft !== null && (
