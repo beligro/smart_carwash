@@ -150,7 +150,7 @@ type TokenClaims struct {
 	ID       uuid.UUID `json:"id"`
 	Username string    `json:"username"`
 	IsAdmin  bool      `json:"is_admin"`
-	Role     string    `json:"role,omitempty"`
+	Role     string    `json:"role,omitempty"` // super_admin, limited_admin, cashier, cleaner, web
 }
 
 // TwoFactorAuthSettings представляет настройки двухфакторной аутентификации
@@ -222,4 +222,54 @@ type CashierPaymentsRequest struct {
 	CashierID uuid.UUID `json:"cashier_id" binding:"required"`
 	Limit     int       `json:"limit"`
 	Offset    int       `json:"offset"`
+}
+
+// WebRegisterSendCodeRequest запрос на отправку кода при регистрации
+type WebRegisterSendCodeRequest struct {
+	Email           string `json:"email" binding:"required"`
+	Password        string `json:"password" binding:"required"`
+	PasswordConfirm string `json:"password_confirm" binding:"required"`
+}
+
+// WebRegisterVerifyRequest запрос на верификацию email и создание пользователя
+type WebRegisterVerifyRequest struct {
+	Email           string `json:"email" binding:"required"`
+	Code            string `json:"code" binding:"required"`
+	Password        string `json:"password" binding:"required"`
+	PasswordConfirm string `json:"password_confirm" binding:"required"`
+}
+
+// WebLoginRequest запрос на вход по email и паролю
+type WebLoginRequest struct {
+	Email    string `json:"email" binding:"required"`
+	Password string `json:"password" binding:"required"`
+}
+
+// WebAuthResponse ответ с JWT и пользователем (регистрация, вход)
+type WebAuthResponse struct {
+	Token     string    `json:"token"`
+	ExpiresAt time.Time `json:"expires_at"`
+	User      WebUser   `json:"user"`
+}
+
+// WebUser минимальные данные пользователя для веб-клиента
+type WebUser struct {
+	ID               uuid.UUID `json:"id"`
+	Email            string    `json:"email"`
+	TelegramID       *int64    `json:"telegram_id,omitempty"`
+	CarNumber        string    `json:"car_number"`
+	CarNumberCountry string    `json:"car_number_country"`
+}
+
+// WebChangePasswordSendCodeRequest запрос на отправку кода для смены пароля
+type WebChangePasswordSendCodeRequest struct {
+	Email string `json:"email" binding:"required"`
+}
+
+// WebChangePasswordConfirmRequest запрос на смену пароля после ввода кода
+type WebChangePasswordConfirmRequest struct {
+	Email             string `json:"email" binding:"required"`
+	Code              string `json:"code" binding:"required"`
+	NewPassword       string `json:"new_password" binding:"required"`
+	NewPasswordConfirm string `json:"new_password_confirm" binding:"required"`
 }

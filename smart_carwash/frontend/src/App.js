@@ -5,6 +5,9 @@ import './shared/styles/global.css';
 // Импорт приложений
 import HomePage from './apps/home/HomePage';
 import TelegramApp from './apps/telegram/TelegramApp';
+import WebLoginPage from './apps/web/WebLoginPage';
+import WebForgotPasswordPage from './apps/web/WebForgotPasswordPage';
+import WebApp from './apps/web/WebApp';
 import AdminApp from './apps/admin/AdminApp';
 import CashierApp from './apps/cashier/CashierApp';
 import AdminLoginPage from './apps/admin/AdminLoginPage';
@@ -29,6 +32,11 @@ function App() {
         
         {/* Маршруты для Telegram Mini App */}
         <Route path="/telegram/*" element={<TelegramApp />} />
+
+        {/* Веб-версия: логин, восстановление пароля и приложение */}
+        <Route path="/web/login" element={<WebLoginPage />} />
+        <Route path="/web/login/forgot" element={<WebForgotPasswordPage />} />
+        <Route path="/web/*" element={<WebApp />} />
         
         {/* Маршруты для интерфейса администратора */}
         <Route path="/admin/login" element={<AdminLoginPage />} />

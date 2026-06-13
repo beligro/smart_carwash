@@ -9,18 +9,20 @@ import (
 
 // User представляет пользователя системы
 type User struct {
-	ID              uuid.UUID      `json:"id" gorm:"primaryKey;type:uuid;default:gen_random_uuid()"`
-	TelegramID      int64          `json:"telegram_id" gorm:"uniqueIndex"`
-	Username        string         `json:"username"`
-	FirstName       string         `json:"first_name"`
-	LastName        string         `json:"last_name"`
-	CarNumber       string         `json:"car_number"`
-	CarNumberCountry string        `json:"car_number_country" gorm:"default:'RUS'"`
-	Email           string         `json:"email"`
-	IsAdmin         bool           `json:"is_admin" gorm:"default:false"`
-	CreatedAt       time.Time      `json:"created_at"`
-	UpdatedAt       time.Time      `json:"updated_at"`
-	DeletedAt       gorm.DeletedAt `json:"-" gorm:"index"`
+	ID                uuid.UUID      `json:"id" gorm:"primaryKey;type:uuid;default:gen_random_uuid()"`
+	TelegramID        *int64         `json:"telegram_id" gorm:"uniqueIndex"` // nullable для веб-пользователей
+	Username          string         `json:"username"`
+	FirstName         string         `json:"first_name"`
+	LastName          string         `json:"last_name"`
+	CarNumber         string         `json:"car_number"`
+	CarNumberCountry  string         `json:"car_number_country" gorm:"default:'RUS'"`
+	Email             string         `json:"email"`
+	PasswordHash      string         `json:"-" gorm:"column:password_hash"`      // bcrypt, только для веб-пользователей
+	EmailVerifiedAt   *time.Time     `json:"email_verified_at"`                  // когда почта подтверждена
+	IsAdmin           bool           `json:"is_admin" gorm:"default:false"`
+	CreatedAt         time.Time      `json:"created_at"`
+	UpdatedAt         time.Time      `json:"updated_at"`
+	DeletedAt         gorm.DeletedAt `json:"-" gorm:"index"`
 }
 
 // CreateUserRequest представляет запрос на создание пользователя

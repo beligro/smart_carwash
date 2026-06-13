@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import styles from './PaymentPage.module.css';
 import { Card, Button } from '../../../../shared/components/UI';
 import ApiService from '../../../../shared/services/ApiService';
@@ -17,14 +17,59 @@ import ApiService from '../../../../shared/services/ApiService';
  */
 const PaymentPage = ({ session, payment: initialPayment, onPaymentComplete, onPaymentFailed, onBack, theme = 'light', paymentType = 'main' }) => {
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [paymentFailed, setPaymentFailed] = useState(false);
   const [retryCount, setRetryCount] = useState(0);
   const [payment, setPayment] = useState(initialPayment);
-  
+  const [returnHandled, setReturnHandled] = useState(false);
+
   const themeClass = theme === 'dark' ? styles.dark : styles.light;
-  
+
+  // Обработка возврата с Tinkoff (веб: редирект на success/fail URL)
+  useEffect(() => {
+    const returnType = searchParams.get('return');
+    if (returnType !== 'success' && returnType !== 'fail') return;
+    if (returnHandled) return;
+
+    setReturnHandled(true);
+    setSearchParams({}, { replace: true });
+
+    if (session && initialPayment) {
+      // Данные сессии уже в памяти (типично для Telegram Mini App) — не дёргаем API, сразу флоу как после fetch
+      if (returnType === 'success') {
+        onPaymentComplete?.(session);
+      } else {
+        onPaymentFailed?.(session);
+      }
+      return;
+    }
+
+    const fetchAndHandle = async () => {
+      setLoading(true);
+      try {
+        const response = await ApiService.getUserSessionForPayment(session?.user_id || session?.id);
+        const sess = response?.session;
+        if (!sess) {
+          setError('Сессия не найдена');
+          setLoading(false);
+          return;
+        }
+        if (returnType === 'success') {
+          onPaymentComplete?.(sess);
+        } else {
+          onPaymentFailed?.(sess);
+        }
+      } catch (e) {
+        setError('Не удалось загрузить данные сессии');
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchAndHandle();
+  }, [searchParams, returnHandled, session, initialPayment, onPaymentComplete, onPaymentFailed, setSearchParams]);
+
   // Форматирование цены в рубли
   const formatPrice = (priceInKopecks) => {
     if (!priceInKopecks) return '0 ₽';
@@ -64,10 +109,7 @@ const PaymentPage = ({ session, payment: initialPayment, onPaymentComplete, onPa
     }
     
     if (payment && payment.payment_url) {
-      // Открываем страницу оплаты в новом окне
       window.open(payment.payment_url, '_blank');
-      
-      // Начинаем проверку статуса платежа
       startPaymentStatusCheck();
     }
   };

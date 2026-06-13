@@ -80,7 +80,8 @@ services:
     container_name: carwash_backend
     restart: always
     depends_on:
-      - postgres
+      postgres:
+        condition: service_healthy
     env_file:
       - .env
     ports:
@@ -91,6 +92,10 @@ services:
       - carwash_network
     security_opt:
       - no-new-privileges:true
+    environment:
+      - HTTPS_PROXY=socks5://moika:tg-proxy-2026@178.72.168.63:10800
+      - HTTP_PROXY=socks5://moika:tg-proxy-2026@178.72.168.63:10800
+      - NO_PROXY=192.168.0.0/16,10.0.0.0/8,127.0.0.1,localhost
     tmpfs:
       - /tmp
     logging:

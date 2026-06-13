@@ -81,7 +81,8 @@ type CreatePaymentRequest struct {
 	SessionID uuid.UUID `json:"session_id" binding:"required"`
 	Amount    int       `json:"amount" binding:"required"`
 	Currency  string    `json:"currency" binding:"required"`
-	Email     string    `json:"email"` // Email для чека
+	Email     string    `json:"email"`   // Email для чека
+	Source    string    `json:"source"`  // telegram | web — для выбора success/fail URL
 }
 
 // CreatePaymentResponse представляет ответ на создание платежа
@@ -94,7 +95,8 @@ type CreateExtensionPaymentRequest struct {
 	SessionID uuid.UUID `json:"session_id" binding:"required"`
 	Amount    int       `json:"amount" binding:"required"`
 	Currency  string    `json:"currency" binding:"required"`
-	Email     string    `json:"email"` // Email для чека
+	Email     string    `json:"email"`   // Email для чека
+	Source    string    `json:"source"` // telegram | web
 }
 
 // CreateExtensionPaymentResponse представляет ответ на создание платежа продления

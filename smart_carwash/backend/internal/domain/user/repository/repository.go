@@ -13,6 +13,7 @@ import (
 type Repository interface {
 	CreateUser(ctx context.Context, user *models.User) error
 	GetUserByTelegramID(ctx context.Context, telegramID int64) (*models.User, error)
+	GetUserByEmail(ctx context.Context, email string) (*models.User, error)
 	GetUserByID(ctx context.Context, id uuid.UUID) (*models.User, error)
 	GetUsersByIDs(ctx context.Context, ids []uuid.UUID) (map[uuid.UUID]*models.User, error)
 	GetUserByCarNumber(ctx context.Context, carNumber string) (*models.User, error)
@@ -43,6 +44,16 @@ func (r *PostgresRepository) CreateUser(ctx context.Context, user *models.User) 
 func (r *PostgresRepository) GetUserByTelegramID(ctx context.Context, telegramID int64) (*models.User, error) {
 	var user models.User
 	err := r.db.WithContext(ctx).Where("telegram_id = ?", telegramID).First(&user).Error
+	if err != nil {
+		return nil, err
+	}
+	return &user, nil
+}
+
+// GetUserByEmail получает пользователя по email (email должен быть нормализован вызывателем)
+func (r *PostgresRepository) GetUserByEmail(ctx context.Context, email string) (*models.User, error) {
+	var user models.User
+	err := r.db.WithContext(ctx).Where("email = ?", email).First(&user).Error
 	if err != nil {
 		return nil, err
 	}

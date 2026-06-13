@@ -1,0 +1,41 @@
+/* Веб-версия: полноэкранный фон без полос */
+
+.root {
+  min-height: 100vh;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  background: linear-gradient(160deg, #e0eaf0 0%, #e8eef3 50%, #f0f4f8 100%);
+  background-attachment: fixed;
+  color: #1a1a1a;
+}
+
+.appContainer {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+  width: 100%;
+  max-width: 800px;
+  margin: 0 auto;
+  background: transparent;
+  box-sizing: border-box;
+}
+
+.content {
+  flex: 1;
+  padding: 16px;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+@media (min-width: 600px) {
+  .content {
+    padding: 24px 32px 32px;
+  }
+}
+
+@media (min-width: 900px) {
+  .content {
+    padding: 28px 40px 40px;
+  }
+}

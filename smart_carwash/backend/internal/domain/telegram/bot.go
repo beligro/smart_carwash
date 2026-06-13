@@ -40,15 +40,21 @@ type NotificationService interface {
 	SendSessionReassignmentNotification(telegramID int64, serviceType string) error
 }
 
+// LinkTokenConsumer интерфейс для привязки аккаунта по токену (из веб-версии)
+type LinkTokenConsumer interface {
+	ConsumeToken(ctx context.Context, token string, telegramID int64, telegramFirstName, telegramLastName, telegramUserName string) error
+}
+
 // Bot структура для работы с Telegram ботом
 type Bot struct {
-	bot     *tgbotapi.BotAPI
-	service service.Service
-	config  *config.Config
+	bot              *tgbotapi.BotAPI
+	service          service.Service
+	config           *config.Config
+	linkTokenConsumer LinkTokenConsumer
 }
 
 // NewBot создает новый экземпляр Bot
-func NewBot(service service.Service, config *config.Config) (*Bot, error) {
+func NewBot(svc service.Service, config *config.Config, linkTokenConsumer LinkTokenConsumer) (*Bot, error) {
 	// Создаем бота
 	bot, err := tgbotapi.NewBotAPI(config.TelegramToken)
 	if err != nil {
@@ -61,9 +67,10 @@ func NewBot(service service.Service, config *config.Config) (*Bot, error) {
 	logger.Printf("Авторизован как %s", bot.Self.UserName)
 
 	return &Bot{
-		bot:     bot,
-		service: service,
-		config:  config,
+		bot:               bot,
+		service:           svc,
+		config:            config,
+		linkTokenConsumer: linkTokenConsumer,
 	}, nil
 }
 
@@ -140,7 +147,32 @@ func (b *Bot) handleMessage(message *tgbotapi.Message) {
 // handleStartCommand обрабатывает команду /start
 func (b *Bot) handleStartCommand(message *tgbotapi.Message) {
 	ctx := context.Background()
-	// Создаем пользователя
+	args := strings.TrimSpace(message.CommandArguments())
+
+	// Привязка аккаунта с веба: /start link_XXXXXXXX
+	if strings.HasPrefix(args, "link_") && b.linkTokenConsumer != nil {
+		from := message.From
+		firstName := ""
+		lastName := ""
+		userName := ""
+		if from != nil {
+			firstName = from.FirstName
+			lastName = from.LastName
+			userName = from.UserName
+		}
+		err := b.linkTokenConsumer.ConsumeToken(ctx, args, message.From.ID, firstName, lastName, userName)
+		if err != nil {
+			logger.Printf("Ошибка привязки по токену: %v", err)
+			msg := tgbotapi.NewMessage(message.Chat.ID, "Не удалось привязать аккаунт: "+err.Error())
+			_, _ = b.bot.Send(msg)
+			return
+		}
+		msg := tgbotapi.NewMessage(message.Chat.ID, "Готово! Аккаунт привязан. История моек теперь синхронизирована с сайтом.")
+		_, _ = b.bot.Send(msg)
+		return
+	}
+
+	// Обычный вход: создаем/получаем пользователя по telegram_id
 	_, err := b.service.CreateUser(ctx, &models.CreateUserRequest{
 		TelegramID: message.From.ID,
 		Username:   message.From.UserName,

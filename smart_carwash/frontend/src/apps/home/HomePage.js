@@ -86,6 +86,39 @@ const TelegramButton = styled.a`
   }
 `;
 
+const WebButton = styled.a`
+  display: inline-block;
+  margin-top: 20px;
+  padding: 12px 30px;
+  background: linear-gradient(135deg, #28a745 0%, #1e7e34 100%);
+  color: white;
+  text-decoration: none;
+  border-radius: 25px;
+  font-weight: bold;
+  font-size: 1.1rem;
+  transition: all 0.3s ease;
+  box-shadow: 0 4px 15px rgba(40, 167, 69, 0.3);
+  
+  &:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 6px 20px rgba(40, 167, 69, 0.5);
+    background: linear-gradient(135deg, #34ce57 0%, #28a745 100%);
+    text-decoration: none;
+  }
+  
+  @media (max-width: 768px) {
+    font-size: 1rem;
+    padding: 10px 25px;
+  }
+`;
+
+const ButtonGroup = styled.div`
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+`;
+
 const MainContent = styled.main`
   max-width: 1200px;
   margin: 0 auto;
@@ -314,9 +347,14 @@ const HomePage = () => {
       <Header>
         <Logo>H2O - Автомойка Самообслуживания</Logo>
         <Tagline>Мой хорошо - мой сам! С 28 апреля 2009 года</Tagline>
-        <TelegramButton href="https://t.me/h2o_nsk_bot" target="_blank" rel="noopener noreferrer">
-          📱 Открыть Telegram бот
-        </TelegramButton>
+        <ButtonGroup>
+          <WebButton href="https://h2o-nsk.ru/web" target="_blank" rel="noopener noreferrer">
+            🚗 Помыть машину на сайте
+          </WebButton>
+          <TelegramButton href="https://t.me/h2o_nsk_bot" target="_blank" rel="noopener noreferrer">
+            📱 Открыть Telegram бот
+          </TelegramButton>
+        </ButtonGroup>
       </Header>
 
       <MainContent>
@@ -512,9 +550,14 @@ const HomePage = () => {
           <CTADescription>
             Откройте наш Telegram-бот, выберите услуги и приезжайте на мойку
           </CTADescription>
-          <TelegramButton href="https://t.me/h2o_nsk_bot" target="_blank" rel="noopener noreferrer">
-            📱 Открыть @h2o_nsk_bot
-          </TelegramButton>
+          <ButtonGroup>
+            <WebButton href="https://h2o-nsk.ru/web" target="_blank" rel="noopener noreferrer">
+              🚗 Помыть машину на сайте
+            </WebButton>
+            <TelegramButton href="https://t.me/h2o_nsk_bot" target="_blank" rel="noopener noreferrer">
+              📱 Открыть @h2o_nsk_bot
+            </TelegramButton>
+          </ButtonGroup>
         </CTASection>
       </MainContent>
 

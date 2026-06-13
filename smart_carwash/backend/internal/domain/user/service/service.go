@@ -5,9 +5,10 @@ import (
 	"carwash_backend/internal/domain/user/repository"
 	"carwash_backend/internal/utils"
 	"context"
-
 	"fmt"
 	"regexp"
+	"strings"
+	"time"
 
 	"github.com/google/uuid"
 )
@@ -16,11 +17,17 @@ import (
 type Service interface {
 	CreateUser(ctx context.Context, req *models.CreateUserRequest) (*models.User, error)
 	GetUserByTelegramID(ctx context.Context, telegramID int64) (*models.User, error)
+	GetUserByEmail(ctx context.Context, email string) (*models.User, error)
 	GetUserByID(ctx context.Context, id uuid.UUID) (*models.User, error)
 	GetUsersByIDs(ctx context.Context, ids []uuid.UUID) (map[uuid.UUID]*models.User, error)
 	GetUserByCarNumber(ctx context.Context, carNumber string) (*models.User, error)
 	UpdateCarNumber(ctx context.Context, req *models.UpdateCarNumberRequest) (*models.UpdateCarNumberResponse, error)
 	UpdateEmail(ctx context.Context, req *models.UpdateEmailRequest) (*models.UpdateEmailResponse, error)
+	UpdateUser(ctx context.Context, user *models.User) error
+
+	// Веб-пользователи (регистрация по email)
+	CreateWebUser(ctx context.Context, email, passwordHash string) (*models.User, error)
+	UpdatePassword(ctx context.Context, userID uuid.UUID, passwordHash string) error
 
 	// Административные методы
 	AdminListUsers(ctx context.Context, req *models.AdminListUsersRequest) (*models.AdminListUsersResponse, error)
@@ -46,9 +53,10 @@ func (s *ServiceImpl) CreateUser(ctx context.Context, req *models.CreateUserRequ
 		return existingUser, nil
 	}
 
+	tgID := req.TelegramID
 	// Создаем нового пользователя
 	user := &models.User{
-		TelegramID: req.TelegramID,
+		TelegramID: &tgID,
 		Username:   req.Username,
 		FirstName:  req.FirstName,
 		LastName:   req.LastName,
@@ -67,6 +75,42 @@ func (s *ServiceImpl) CreateUser(ctx context.Context, req *models.CreateUserRequ
 // GetUserByTelegramID получает пользователя по Telegram ID
 func (s *ServiceImpl) GetUserByTelegramID(ctx context.Context, telegramID int64) (*models.User, error) {
 	return s.repo.GetUserByTelegramID(ctx, telegramID)
+}
+
+// normalizeEmail приводит email к нижнему регистру и убирает пробелы
+func normalizeEmail(email string) string {
+	return strings.ToLower(strings.TrimSpace(email))
+}
+
+// GetUserByEmail получает пользователя по email
+func (s *ServiceImpl) GetUserByEmail(ctx context.Context, email string) (*models.User, error) {
+	return s.repo.GetUserByEmail(ctx, normalizeEmail(email))
+}
+
+// CreateWebUser создаёт веб-пользователя после верификации email (пароль уже захэширован)
+func (s *ServiceImpl) CreateWebUser(ctx context.Context, email, passwordHash string) (*models.User, error) {
+	email = normalizeEmail(email)
+	now := time.Now()
+	user := &models.User{
+		Email:           email,
+		EmailVerifiedAt: &now,
+		PasswordHash:    passwordHash,
+		IsAdmin:         false,
+	}
+	if err := s.repo.CreateUser(ctx, user); err != nil {
+		return nil, err
+	}
+	return user, nil
+}
+
+// UpdatePassword обновляет пароль пользователя (новый hash уже захэширован)
+func (s *ServiceImpl) UpdatePassword(ctx context.Context, userID uuid.UUID, passwordHash string) error {
+	user, err := s.repo.GetUserByID(ctx, userID)
+	if err != nil {
+		return err
+	}
+	user.PasswordHash = passwordHash
+	return s.repo.UpdateUser(ctx, user)
 }
 
 // GetUserByID получает пользователя по ID
@@ -179,4 +223,9 @@ func (s *ServiceImpl) UpdateEmail(ctx context.Context, req *models.UpdateEmailRe
 		Success: true,
 		User:    *user,
 	}, nil
+}
+
+// UpdateUser обновляет пользователя (для веб-авторизации и привязки)
+func (s *ServiceImpl) UpdateUser(ctx context.Context, user *models.User) error {
+	return s.repo.UpdateUser(ctx, user)
 }

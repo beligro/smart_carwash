@@ -18,11 +18,15 @@ import (
 	authHandlers "carwash_backend/internal/domain/auth/handlers"
 	authRepo "carwash_backend/internal/domain/auth/repository"
 	authService "carwash_backend/internal/domain/auth/service"
+	"carwash_backend/internal/domain/auth/webcodes"
+	rusender "carwash_backend/internal/domain/email/rusender"
 	carwashStatusHandlers "carwash_backend/internal/domain/carwash_status/handlers"
 	carwashStatusRepo "carwash_backend/internal/domain/carwash_status/repository"
 	carwashStatusService "carwash_backend/internal/domain/carwash_status/service"
 	dahuaHandlers "carwash_backend/internal/domain/dahua/handlers"
 	dahuaService "carwash_backend/internal/domain/dahua/service"
+	linktokenRepo "carwash_backend/internal/domain/linktoken/repository"
+	linktokenService "carwash_backend/internal/domain/linktoken/service"
 	modbusAdapter "carwash_backend/internal/domain/modbus/adapter"
 	modbusHandlers "carwash_backend/internal/domain/modbus/handlers"
 	modbusService "carwash_backend/internal/domain/modbus/service"
@@ -48,6 +52,7 @@ import (
 	washboxlogHandlers "carwash_backend/internal/domain/washboxlog/handlers"
 	washboxlogRepo "carwash_backend/internal/domain/washboxlog/repository"
 	washboxlogService "carwash_backend/internal/domain/washboxlog/service"
+	webHandlers "carwash_backend/internal/domain/web/handlers"
 	"carwash_backend/internal/logger"
 	"carwash_backend/internal/metrics"
 	"carwash_backend/internal/middleware"
@@ -82,9 +87,9 @@ func main() {
 	appMetrics := metrics.NewMetrics()
 	log.Info("Metrics initialized")
 
-	// Применяем миграции
+	// Применяем миграции (с повторами: Postgres может быть ещё не готов)
 	if err := runMigrations(cfg); err != nil {
-		log.WithField("error", err).Error("Ошибка применения миграций")
+		log.WithField("error", err).Fatal("Ошибка применения миграций — приложение не запущено")
 	}
 
 	// Подключаемся к базе данных с retry механизмом
@@ -138,7 +143,14 @@ func main() {
 	userSvc := userService.NewService(userRepository)
 	settingsSvc := settingsService.NewService(settingsRepository)
 	washboxSvc := washboxService.NewService(washboxRepository, sessionRepository, settingsSvc, db, modbusAdapter, washboxLogSvc)
-	authSvc := authService.NewService(authRepository, cfg)
+	// Веб-авторизация: коды на email через RuSender
+	webCodeStore := webcodes.NewStore()
+	var emailSender *rusender.Client
+	if cfg.RusenderApiKey != "" && cfg.RusenderFromEmail != "" {
+		emailSender = rusender.NewClient(cfg.RusenderApiKey, cfg.RusenderFromEmail)
+	}
+	webEmailCodeSender := webcodes.NewWebEmailCodeSender(webCodeStore, emailSender)
+	authSvc := authService.NewService(authRepository, cfg, userSvc, webEmailCodeSender)
 
 	// Создаем Modbus service для админских операций
 	modbusSvc := modbusService.NewModbusService(db, cfg)
@@ -146,27 +158,37 @@ func main() {
 	// Создаем фоновые задачи для кассиров
 	backgroundTasks := authService.NewBackgroundTasks(authRepository)
 
-	// Создаем Telegram бота
-	bot, err := telegram.NewBot(userSvc, cfg)
+	// Репозиторий и сервис токенов привязки Telegram (для веб-версии и бота)
+	linkTokenRepo := linktokenRepo.NewPostgresRepository(db)
+	linkTokenSvc := linktokenService.NewService(linkTokenRepo, userRepository, sessionRepository, cfg)
+
+	// Создаем Telegram бота (сбой сети/API — не фатально: API и веб работают без уведомлений в Telegram)
+	tgBot, err := telegram.NewBot(userSvc, cfg, linkTokenSvc)
 	if err != nil {
-		log.WithField("error", err).Fatal("Ошибка создания Telegram бота")
+		log.WithField("error", err).Error("Telegram бот не инициализирован: уведомления в Telegram и обработка вебхука отключены")
+	}
+	var sessionTelegram telegram.NotificationService
+	if tgBot != nil {
+		sessionTelegram = tgBot
 	}
 
-	// Создаем сервис сессий с зависимостями
-	sessionSvc := sessionService.NewService(sessionRepository, washboxSvc, userSvc, bot, nil, modbusAdapter, settingsSvc, cfg.CashierUserID, appMetrics, db, washboxLogSvc) // paymentSvc будет nil пока
+	// Создаем сервис сессий с зависимостями (emailSender для уведомлений на email пользователям без Telegram)
+	sessionSvc := sessionService.NewService(sessionRepository, washboxSvc, userSvc, sessionTelegram, emailSender, nil, modbusAdapter, settingsSvc, cfg.CashierUserID, appMetrics, db, washboxLogSvc)
 
 	// Создаем сервис платежей с зависимостью от sessionSvc как SessionStatusUpdater и SessionExtensionUpdater
-	paymentSvc := paymentService.NewService(paymentRepository, settingsRepository, sessionSvc, sessionSvc, tinkoffClient, cfg.TinkoffTerminalKey, cfg.TinkoffSecretKey, appMetrics)
+	paymentSvc := paymentService.NewService(paymentRepository, settingsRepository, sessionSvc, sessionSvc, tinkoffClient, cfg.TinkoffTerminalKey, cfg.TinkoffSecretKey, cfg.TinkoffWebSuccessURL, cfg.TinkoffWebFailURL, appMetrics)
 
 	// Обновляем sessionSvc с правильным paymentSvc
-	sessionSvc = sessionService.NewService(sessionRepository, washboxSvc, userSvc, bot, paymentSvc, modbusAdapter, settingsSvc, cfg.CashierUserID, appMetrics, db, washboxLogSvc)
+	sessionSvc = sessionService.NewService(sessionRepository, washboxSvc, userSvc, sessionTelegram, emailSender, paymentSvc, modbusAdapter, settingsSvc, cfg.CashierUserID, appMetrics, db, washboxLogSvc)
 
 	// Создаем сервис очереди, который зависит от сервисов сессий, боксов и пользователей
 	queueSvc := queueService.NewService(sessionSvc, washboxSvc, userSvc, appMetrics)
 
 	// Устанавливаем вебхук для бота
-	if err := bot.SetWebhook(); err != nil {
-		log.WithField("error", err).Warn("Ошибка установки вебхука")
+	if tgBot != nil {
+		if err := tgBot.SetWebhook(); err != nil {
+			log.WithField("error", err).Warn("Ошибка установки вебхука")
+		}
 	}
 
 	// Создаем Dahua сервис
@@ -187,6 +209,7 @@ func main() {
 	authHandler := authHandlers.NewHandler(authSvc)
 	paymentHandler := paymentHandlers.NewHandler(paymentSvc, authSvc)
 	modbusHandler := modbusHandlers.NewHandler(modbusSvc)
+	webHandler := webHandlers.NewHandler(userSvc, sessionSvc, linkTokenSvc, paymentSvc)
 	dahuaHandler := dahuaHandlers.NewHandler(dahuaSvc)
 	carwashStatusHandler := carwashStatusHandlers.NewHandler(carwashStatusSvc, authHandler.GetAdminMiddleware())
 	// Хендлер истории изменений боксов
@@ -235,12 +258,20 @@ func main() {
 		authHandler.RegisterRoutes(api)
 		paymentHandler.RegisterRoutes(api)
 		modbusHandler.RegisterRoutes(api)
+		// Веб-API для клиентов с JWT (user_id из токена)
+		webGroup := api.Group("/web", authHandler.GetWebAuthMiddleware())
+		webHandler.RegisterRoutes(webGroup)
 		dahuaHandlers.SetupRoutes(api, dahuaHandler)
 		carwashStatusHandler.RegisterRoutes(api)
 		washboxLogHandler.RegisterRoutes(api, authHandler.GetAdminMiddleware())
 
 		// Вебхук для Telegram бота
 		api.POST("/webhook", func(c *gin.Context) {
+			if tgBot == nil {
+				// 200 — чтобы Telegram не долбил ретраями; обновления теряются, пока бот снова не поднимется
+				c.JSON(http.StatusOK, gin.H{"status": "ok", "telegram": "disabled"})
+				return
+			}
 			// Читаем тело запроса
 			body, err := c.GetRawData()
 			if err != nil {
@@ -256,7 +287,7 @@ func main() {
 			}
 
 			// Обрабатываем обновление
-			bot.ProcessUpdate(update)
+			tgBot.ProcessUpdate(update)
 
 			c.JSON(http.StatusOK, gin.H{"status": "ok"})
 		})
@@ -310,11 +341,15 @@ func main() {
 		}
 	}()
 
-	// Запускаем бота в отдельной горутине
-	go func() {
-		logger.Info("Starting Telegram bot")
-		bot.Start()
-	}()
+	// Запускаем бота в отдельной горутине (long polling), только если инициализация прошла
+	if tgBot != nil {
+		go func() {
+			logger.Info("Starting Telegram bot")
+			tgBot.Start()
+		}()
+	} else {
+		logger.Info("Telegram bot long polling не запущен (бот не инициализирован)")
+	}
 
 	// Запускаем периодическую задачу для обработки очереди (старт сразу)
 	go func() {
@@ -600,52 +635,65 @@ func connectToDatabaseWithRetry(cfg *config.Config) (*gorm.DB, error) {
 	return nil, fmt.Errorf("не удалось подключиться к базе данных после %d попыток", maxRetries)
 }
 
-// runMigrations применяет миграции к базе данных
+// runMigrations применяет миграции к базе данных (с повторами при недоступности БД)
 func runMigrations(cfg *config.Config) error {
 	logger.Info("Applying database migrations...")
 
-	// Формируем DSN для миграций
 	dsn := fmt.Sprintf("postgres://%s:%s@%s:%d/%s?sslmode=disable",
 		cfg.PostgresUser, cfg.PostgresPassword, cfg.PostgresHost, cfg.PostgresPort, cfg.PostgresDB)
 
-	// Определяем путь к директории с миграциями
 	migrationsPath := "./migrations"
-
-	// Проверяем существование директории
 	if _, err := os.Stat(migrationsPath); os.IsNotExist(err) {
-		// Если директория не существует, пробуем другой путь
 		migrationsPath = "/app/migrations"
 		if _, err := os.Stat(migrationsPath); os.IsNotExist(err) {
 			return fmt.Errorf("директория с миграциями не найдена: %v", err)
 		}
 	}
 
-	// Получаем абсолютный путь к директории с миграциями
 	migrationsPath, err := filepath.Abs(migrationsPath)
 	if err != nil {
 		return fmt.Errorf("ошибка получения пути к миграциям: %v", err)
 	}
+	// file:// URL должен использовать прямые слэши (важно в Docker/Windows)
+	migrationsPath = filepath.ToSlash(migrationsPath)
 
 	logger.Info("Migration path", map[string]interface{}{
 		"path": migrationsPath,
 	})
 
-	// Создаем URL для миграций
 	migrationsURL := fmt.Sprintf("file://%s", migrationsPath)
 
-	// Создаем экземпляр migrate
-	m, err := migrate.New(migrationsURL, dsn)
-	if err != nil {
-		return fmt.Errorf("ошибка создания экземпляра migrate: %v", err)
+	const maxAttempts = 15
+	const delay = 2 * time.Second
+
+	for attempt := 1; attempt <= maxAttempts; attempt++ {
+		m, err := migrate.New(migrationsURL, dsn)
+		if err != nil {
+			logger.GetLogger().WithFields(logrus.Fields{
+				"attempt": attempt,
+				"max":     maxAttempts,
+				"error":   err,
+			}).Warn("Миграции: недоступна БД, повтор через 2 сек...")
+			time.Sleep(delay)
+			continue
+		}
+
+		if err := m.Up(); err != nil && err != migrate.ErrNoChange {
+			m.Close()
+			logger.GetLogger().WithFields(logrus.Fields{
+				"attempt": attempt,
+				"error":   err,
+			}).Warn("Миграции: ошибка применения, повтор через 2 сек...")
+			time.Sleep(delay)
+			continue
+		}
+
+		m.Close()
+		logger.Info("Database migrations applied successfully")
+		return nil
 	}
 
-	// Применяем миграции
-	if err := m.Up(); err != nil && err != migrate.ErrNoChange {
-		return fmt.Errorf("ошибка применения миграций: %v", err)
-	}
-
-	logger.Info("Database migrations applied successfully")
-	return nil
+	return fmt.Errorf("не удалось применить миграции после %d попыток", maxAttempts)
 }
 
 // systemMonitor запускает системный мониторинг

@@ -5,16 +5,20 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"regexp"
+	"strings"
 	"sync"
 	"time"
 
 	"carwash_backend/internal/config"
 	"carwash_backend/internal/domain/auth/models"
 	"carwash_backend/internal/domain/auth/repository"
+	userModels "carwash_backend/internal/domain/user/models"
 
 	"github.com/golang-jwt/jwt/v4"
 	"github.com/google/uuid"
 	"golang.org/x/crypto/bcrypt"
+	"gorm.io/gorm"
 )
 
 var (
@@ -35,6 +39,17 @@ var (
 
 	// ErrAdminAlreadyExists возвращается при попытке создать второго администратора
 	ErrAdminAlreadyExists = errors.New("администратор уже существует")
+
+	// ErrWebAuthNotConfigured веб-авторизация не настроена
+	ErrWebAuthNotConfigured = errors.New("веб-авторизация не настроена")
+	// ErrUserAlreadyExists пользователь с таким email уже зарегистрирован
+	ErrUserAlreadyExists = errors.New("пользователь с таким email уже зарегистрирован")
+	// ErrInvalidVerificationCode неверный или истёкший код подтверждения
+	ErrInvalidVerificationCode = errors.New("неверный или истёкший код подтверждения")
+)
+
+var (
+	emailRegex = regexp.MustCompile(`^[^\s@]+@[^\s@]+\.[^\s@]+$`)
 )
 
 // Service интерфейс для бизнес-логики авторизации
@@ -70,6 +85,35 @@ type Service interface {
 	EnableTwoFactorAuth(ctx context.Context, userID uuid.UUID) (string, error)
 	DisableTwoFactorAuth(ctx context.Context, userID uuid.UUID) error
 	VerifyTwoFactorCode(ctx context.Context, userID uuid.UUID, code string) (bool, error)
+
+	// Веб-авторизация по email (JWT для веб-клиента)
+	GenerateWebToken(userID uuid.UUID) (string, time.Time, error)
+	ValidateWebToken(tokenString string) (*models.TokenClaims, error)
+	InvalidateWebToken(tokenString string)
+
+	// Регистрация и вход по email
+	RegisterSendCode(ctx context.Context, email, password, passwordConfirm string) error
+	VerifyEmailAndRegister(ctx context.Context, email, code, password, passwordConfirm string) (*models.WebAuthResponse, error)
+	LoginWeb(ctx context.Context, email, password string) (*models.WebAuthResponse, error)
+
+	// Смена пароля по коду на email
+	ChangePasswordSendCode(ctx context.Context, email string) error
+	ChangePasswordConfirm(ctx context.Context, email, code, newPassword, newPasswordConfirm string) error
+}
+
+// WebUserAuth интерфейс для создания/обновления веб-пользователей (user service)
+type WebUserAuth interface {
+	GetUserByEmail(ctx context.Context, email string) (*userModels.User, error)
+	CreateWebUser(ctx context.Context, email, passwordHash string) (*userModels.User, error)
+	UpdatePassword(ctx context.Context, userID uuid.UUID, passwordHash string) error
+}
+
+// WebEmailCodeSender отправка и проверка кодов на email
+type WebEmailCodeSender interface {
+	SendRegisterCode(ctx context.Context, email string) error
+	VerifyRegisterCode(email, code string) bool
+	SendPasswordChangeCode(ctx context.Context, email string) error
+	VerifyPasswordChangeCode(email, code string) bool
 }
 
 // invalidTokenCacheEntry запись в кэше невалидных токенов
@@ -79,20 +123,22 @@ type invalidTokenCacheEntry struct {
 
 // ServiceImpl реализация Service
 type ServiceImpl struct {
-	repo   repository.Repository
-	config *config.Config
-	// Кэш невалидных токенов: токен -> время истечения кэша
-	// TTL = 5 минут - чтобы не забивать память навсегда
+	repo             repository.Repository
+	config           *config.Config
+	webUserAuth      WebUserAuth      // опционально, для веб-авторизации
+	webEmailCodeSender WebEmailCodeSender // опционально
 	invalidTokenCache sync.Map
 	cacheTTL          time.Duration
 }
 
 // NewService создает новый экземпляр Service
-func NewService(repo repository.Repository, config *config.Config) *ServiceImpl {
+func NewService(repo repository.Repository, config *config.Config, webUserAuth WebUserAuth, webEmailCodeSender WebEmailCodeSender) *ServiceImpl {
 	service := &ServiceImpl{
-		repo:     repo,
-		config:   config,
-		cacheTTL: 5 * time.Minute, // TTL для кэша невалидных токенов
+		repo:                repo,
+		config:              config,
+		webUserAuth:         webUserAuth,
+		webEmailCodeSender:  webEmailCodeSender,
+		cacheTTL:            5 * time.Minute,
 	}
 
 	// Запускаем фоновую очистку кэша
@@ -954,4 +1000,218 @@ func (s *ServiceImpl) GetCleaners(ctx context.Context) (*models.GetCleanersRespo
 // GetCleanerByID получает уборщика по ID
 func (s *ServiceImpl) GetCleanerByID(ctx context.Context, id uuid.UUID) (*models.Cleaner, error) {
 	return s.repo.GetCleanerByID(ctx, id)
+}
+
+// GenerateWebToken генерирует JWT для веб-клиента (aud=web, id=user_id). Срок жизни 7 дней, чтобы пользователь не вылетал из аккаунта.
+func (s *ServiceImpl) GenerateWebToken(userID uuid.UUID) (string, time.Time, error) {
+	expiresAt := time.Now().Add(7 * 24 * time.Hour)
+	token := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
+		"id":       userID.String(),
+		"username": "",
+		"is_admin": false,
+		"role":     "web",
+		"exp":      expiresAt.Unix(),
+	})
+	tokenString, err := token.SignedString([]byte(s.config.JWTSecret))
+	if err != nil {
+		return "", time.Time{}, err
+	}
+	return tokenString, expiresAt, nil
+}
+
+// InvalidateWebToken помечает веб-токен как недействительный (после выхода)
+func (s *ServiceImpl) InvalidateWebToken(tokenString string) {
+	s.addToInvalidTokenCache(tokenString)
+}
+
+// ValidateWebToken проверяет JWT веб-клиента и возвращает user_id (в claims.ID)
+func (s *ServiceImpl) ValidateWebToken(tokenString string) (*models.TokenClaims, error) {
+	if s.isInInvalidTokenCache(tokenString) {
+		return nil, errors.New("токен недействителен")
+	}
+	token, err := jwt.Parse(tokenString, func(token *jwt.Token) (interface{}, error) {
+		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
+			return nil, fmt.Errorf("неожиданный метод подписи: %v", token.Header["alg"])
+		}
+		return []byte(s.config.JWTSecret), nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	if !token.Valid {
+		return nil, errors.New("недействительный токен")
+	}
+	claims, ok := token.Claims.(jwt.MapClaims)
+	if !ok {
+		return nil, errors.New("недействительные данные токена")
+	}
+	role, _ := claims["role"].(string)
+	if role != "web" {
+		return nil, errors.New("токен не для веб-клиента")
+	}
+	if exp, ok := claims["exp"].(float64); ok {
+		if time.Now().Unix() > int64(exp) {
+			return nil, errors.New("токен истёк")
+		}
+	}
+	idStr, _ := claims["id"].(string)
+	userID, err := uuid.Parse(idStr)
+	if err != nil {
+		return nil, err
+	}
+	return &models.TokenClaims{
+		ID:   userID,
+		Role: "web",
+	}, nil
+}
+
+func normalizeEmail(email string) string {
+	return strings.ToLower(strings.TrimSpace(email))
+}
+
+const minPasswordLength = 8
+const bcryptCostWeb = 12
+
+// RegisterSendCode отправляет код подтверждения на email при регистрации
+func (s *ServiceImpl) RegisterSendCode(ctx context.Context, email, password, passwordConfirm string) error {
+	if s.webUserAuth == nil || s.webEmailCodeSender == nil {
+		return ErrWebAuthNotConfigured
+	}
+	email = normalizeEmail(email)
+	if !emailRegex.MatchString(email) {
+		return fmt.Errorf("неверный формат email")
+	}
+	if password != passwordConfirm {
+		return fmt.Errorf("пароли не совпадают")
+	}
+	if len(password) < minPasswordLength {
+		return fmt.Errorf("пароль должен быть не менее %d символов", minPasswordLength)
+	}
+	_, err := s.webUserAuth.GetUserByEmail(ctx, email)
+	if err == nil {
+		return ErrUserAlreadyExists
+	}
+	if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
+		return err
+	}
+	return s.webEmailCodeSender.SendRegisterCode(ctx, email)
+}
+
+// VerifyEmailAndRegister проверяет код и создаёт пользователя
+func (s *ServiceImpl) VerifyEmailAndRegister(ctx context.Context, email, code, password, passwordConfirm string) (*models.WebAuthResponse, error) {
+	if s.webUserAuth == nil || s.webEmailCodeSender == nil {
+		return nil, ErrWebAuthNotConfigured
+	}
+	email = normalizeEmail(email)
+	if !emailRegex.MatchString(email) {
+		return nil, fmt.Errorf("неверный формат email")
+	}
+	if password != passwordConfirm {
+		return nil, fmt.Errorf("пароли не совпадают")
+	}
+	if len(password) < minPasswordLength {
+		return nil, fmt.Errorf("пароль должен быть не менее %d символов", minPasswordLength)
+	}
+	if !s.webEmailCodeSender.VerifyRegisterCode(email, code) {
+		return nil, ErrInvalidVerificationCode
+	}
+	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(password), bcryptCostWeb)
+	if err != nil {
+		return nil, err
+	}
+	user, err := s.webUserAuth.CreateWebUser(ctx, email, string(hashedPassword))
+	if err != nil {
+		return nil, err
+	}
+	token, expiresAt, err := s.GenerateWebToken(user.ID)
+	if err != nil {
+		return nil, err
+	}
+	return &models.WebAuthResponse{
+		Token:     token,
+		ExpiresAt: expiresAt,
+		User:      userToWebUser(user),
+	}, nil
+}
+
+// LoginWeb вход по email и паролю
+func (s *ServiceImpl) LoginWeb(ctx context.Context, email, password string) (*models.WebAuthResponse, error) {
+	if s.webUserAuth == nil {
+		return nil, ErrWebAuthNotConfigured
+	}
+	email = normalizeEmail(email)
+	user, err := s.webUserAuth.GetUserByEmail(ctx, email)
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, ErrInvalidCredentials
+		}
+		return nil, err
+	}
+	if user.PasswordHash == "" {
+		return nil, ErrInvalidCredentials
+	}
+	if err := bcrypt.CompareHashAndPassword([]byte(user.PasswordHash), []byte(password)); err != nil {
+		return nil, ErrInvalidCredentials
+	}
+	token, expiresAt, err := s.GenerateWebToken(user.ID)
+	if err != nil {
+		return nil, err
+	}
+	return &models.WebAuthResponse{
+		Token:     token,
+		ExpiresAt: expiresAt,
+		User:      userToWebUser(user),
+	}, nil
+}
+
+// ChangePasswordSendCode отправляет код на email для смены пароля
+func (s *ServiceImpl) ChangePasswordSendCode(ctx context.Context, email string) error {
+	if s.webUserAuth == nil || s.webEmailCodeSender == nil {
+		return ErrWebAuthNotConfigured
+	}
+	email = normalizeEmail(email)
+	_, err := s.webUserAuth.GetUserByEmail(ctx, email)
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return ErrInvalidCredentials
+		}
+		return err
+	}
+	return s.webEmailCodeSender.SendPasswordChangeCode(ctx, email)
+}
+
+// ChangePasswordConfirm проверяет код и обновляет пароль
+func (s *ServiceImpl) ChangePasswordConfirm(ctx context.Context, email, code, newPassword, newPasswordConfirm string) error {
+	if s.webUserAuth == nil || s.webEmailCodeSender == nil {
+		return ErrWebAuthNotConfigured
+	}
+	email = normalizeEmail(email)
+	if newPassword != newPasswordConfirm {
+		return fmt.Errorf("пароли не совпадают")
+	}
+	if len(newPassword) < minPasswordLength {
+		return fmt.Errorf("пароль должен быть не менее %d символов", minPasswordLength)
+	}
+	if !s.webEmailCodeSender.VerifyPasswordChangeCode(email, code) {
+		return ErrInvalidVerificationCode
+	}
+	user, err := s.webUserAuth.GetUserByEmail(ctx, email)
+	if err != nil {
+		return err
+	}
+	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(newPassword), bcryptCostWeb)
+	if err != nil {
+		return err
+	}
+	return s.webUserAuth.UpdatePassword(ctx, user.ID, string(hashedPassword))
+}
+
+func userToWebUser(u *userModels.User) models.WebUser {
+	return models.WebUser{
+		ID:               u.ID,
+		Email:            u.Email,
+		TelegramID:       u.TelegramID,
+		CarNumber:        u.CarNumber,
+		CarNumberCountry: u.CarNumberCountry,
+	}
 }

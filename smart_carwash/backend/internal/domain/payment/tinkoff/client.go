@@ -42,15 +42,22 @@ func NewClient(terminalKey, secretKey, successURL, failURL string) service.Tinko
 }
 
 // CreatePayment создает платеж в Tinkoff
-func (c *Client) CreatePayment(orderID string, amount int, description string, receipt map[string]interface{}) (*service.TinkoffPaymentResponse, error) {
+func (c *Client) CreatePayment(orderID string, amount int, description string, receipt map[string]interface{}, successURL, failURL string) (*service.TinkoffPaymentResponse, error) {
+	sURL, fURL := c.successURL, c.failURL
+	if successURL != "" {
+		sURL = successURL
+	}
+	if failURL != "" {
+		fURL = failURL
+	}
 	// Формируем параметры запроса
 	params := map[string]interface{}{
 		"TerminalKey": c.terminalKey,
 		"Amount":      amount,
 		"OrderId":     orderID,
 		"Description": description,
-		"SuccessURL":  c.successURL,
-		"FailURL":     c.failURL,
+		"SuccessURL":  sURL,
+		"FailURL":     fURL,
 	}
 
 	// Добавляем подпись

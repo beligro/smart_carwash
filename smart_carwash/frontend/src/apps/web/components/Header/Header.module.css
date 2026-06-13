@@ -1,0 +1,181 @@
+  .header {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 16px;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+    transition: background-color 0.3s ease, color 0.3s ease;
+    position: relative;
+    min-height: 56px;
+    z-index: 1000;
+  }
+  
+  .light {
+    background-color: #FFFFFF;
+    color: #000000;
+  }
+  
+  .dark {
+    background-color: #2C2C2C;
+    color: #FFFFFF;
+  }
+  
+  .logo {
+    font-size: 24px;
+    font-weight: bold;
+    display: flex;
+    align-items: center;
+  }
+  
+  .logoIcon {
+    margin-right: 8px;
+    font-size: 28px;
+  }
+
+  .backButton {
+    background: none;
+    border: none;
+    font-size: 28px;
+    cursor: pointer;
+    padding: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    position: absolute;
+    left: 8px;
+    top: 0;
+    bottom: 0;
+    width: 48px;
+    height: 100%;
+    z-index: 10;
+    user-select: none;
+    -webkit-tap-highlight-color: transparent;
+    touch-action: manipulation;
+    -webkit-user-select: none;
+    margin: 0;
+  }
+
+  .backButton:hover {
+    opacity: 0.6;
+  }
+
+  .backButton:active {
+    opacity: 0.4;
+  }
+
+  .light .backButton {
+    color: #000000;
+  }
+
+  .dark .backButton {
+    color: #ffffff;
+  }
+
+  .logoutButtonDesktop {
+    position: absolute;
+    right: 16px;
+    top: 50%;
+    transform: translateY(-50%);
+    padding: 8px 16px;
+    border-radius: 999px;
+    border: none;
+    cursor: pointer;
+    font-size: 14px;
+    font-weight: 600;
+    background-color: #c62828;
+    color: #ffffff;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.15);
+  }
+
+  .logoutButtonDesktop:hover {
+    background-color: #b71c1c;
+  }
+
+  .menuButtonMobile {
+    display: none;
+  }
+
+  .menuOverlay {
+    position: fixed;
+    top: 56px;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.35);
+    z-index: 999;
+  }
+
+  .menuContent {
+    background: #ffffff;
+    padding: 16px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+    border-bottom-left-radius: 12px;
+    border-bottom-right-radius: 12px;
+  }
+
+  .menuLogoutButton {
+    width: 100%;
+    padding: 12px 16px;
+    border-radius: 8px;
+    border: none;
+    background-color: #c62828;
+    color: #ffffff;
+    font-size: 15px;
+    font-weight: 600;
+    cursor: pointer;
+  }
+
+  .menuLogoutButton:hover {
+    background-color: #b71c1c;
+  }
+
+  @media (min-width: 600px) {
+    .header {
+      padding: 18px 24px;
+      min-height: 60px;
+    }
+    .logo {
+      font-size: 26px;
+    }
+    .logoIcon {
+      font-size: 30px;
+    }
+
+    .menuButtonMobile {
+      display: none;
+    }
+  }
+
+  @media (max-width: 599px) {
+    .logoutButtonDesktop {
+      display: none;
+    }
+
+  .menuButtonMobile {
+    background: none;
+    border: none;
+    font-size: 26px;
+    line-height: 1;
+    cursor: pointer;
+    padding: 0;
+    position: absolute;
+    right: 8px;
+    top: 0;
+    bottom: 0;
+    min-width: 48px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 10;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  .light .menuButtonMobile {
+    color: #1a1a1a;
+  }
+
+  .dark .menuButtonMobile {
+    color: #ffffff;
+  }
+  }
+  

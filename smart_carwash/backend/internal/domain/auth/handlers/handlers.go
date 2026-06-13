@@ -18,10 +18,8 @@ type Handler struct {
 }
 
 // NewHandler создает новый экземпляр Handler
-func NewHandler(service service.Service) *Handler {
-	return &Handler{
-		service: service,
-	}
+func NewHandler(s service.Service) *Handler {
+	return &Handler{service: s}
 }
 
 // RegisterRoutes регистрирует маршруты для авторизации
@@ -33,6 +31,17 @@ func (h *Handler) RegisterRoutes(router *gin.RouterGroup) {
 		authRoutes.POST("/cashier/login", h.loginCashier)
 		authRoutes.POST("/cleaner/login", h.loginCleaner)
 		authRoutes.POST("/logout", h.authMiddleware(), h.logout)
+
+		// Веб-авторизация по email
+		webAuth := authRoutes.Group("/web")
+		{
+			webAuth.POST("/register/send-code", h.webRegisterSendCode)
+			webAuth.POST("/register/verify", h.webRegisterVerify)
+			webAuth.POST("/login", h.webLogin)
+			webAuth.POST("/logout", h.webLogoutMiddleware(), h.webLogout)
+			webAuth.POST("/change-password/send-code", h.webChangePasswordSendCode)
+			webAuth.POST("/change-password/confirm", h.webChangePasswordConfirm)
+		}
 
 		// Маршруты для управления кассирами (только для администратора)
 		cashierRoutes := authRoutes.Group("/cashiers", h.adminMiddleware())
@@ -334,6 +343,28 @@ func (h *Handler) GetCleanerMiddleware() gin.HandlerFunc {
 	return h.cleanerMiddleware()
 }
 
+// GetWebAuthMiddleware возвращает middleware для веб-клиента (JWT с role=web)
+func (h *Handler) GetWebAuthMiddleware() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		token := c.GetHeader("Authorization")
+		if token == "" {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "Требуется авторизация"})
+			c.Abort()
+			return
+		}
+		token = strings.TrimPrefix(token, "Bearer ")
+		claims, err := h.service.ValidateWebToken(token)
+		if err != nil {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": err.Error()})
+			c.Abort()
+			return
+		}
+		c.Set("user_id", claims.ID)
+		c.Set("role", "web")
+		c.Next()
+	}
+}
+
 // startShift обработчик для начала смены кассира
 func (h *Handler) startShift(c *gin.Context) {
 	// Получаем ID кассира из контекста (установлен middleware)
@@ -544,4 +575,132 @@ func (h *Handler) deleteCleaner(c *gin.Context) {
 
 	// Возвращаем результат
 	c.JSON(http.StatusOK, gin.H{"message": "Уборщик удален успешно"})
+}
+
+// webRegisterSendCode отправляет код подтверждения на email при регистрации
+func (h *Handler) webRegisterSendCode(c *gin.Context) {
+	var req models.WebRegisterSendCodeRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	if err := h.service.RegisterSendCode(c.Request.Context(), req.Email, req.Password, req.PasswordConfirm); err != nil {
+		if err == service.ErrUserAlreadyExists {
+			c.JSON(http.StatusConflict, gin.H{"error": err.Error()})
+			return
+		}
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"success": true})
+}
+
+// webRegisterVerify проверяет код и создаёт пользователя, возвращает JWT
+func (h *Handler) webRegisterVerify(c *gin.Context) {
+	var req models.WebRegisterVerifyRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	resp, err := h.service.VerifyEmailAndRegister(c.Request.Context(), req.Email, req.Code, req.Password, req.PasswordConfirm)
+	if err != nil {
+		if err == service.ErrInvalidVerificationCode {
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			return
+		}
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, resp)
+}
+
+// webLogin вход по email и паролю
+func (h *Handler) webLogin(c *gin.Context) {
+	var req models.WebLoginRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	resp, err := h.service.LoginWeb(c.Request.Context(), req.Email, req.Password)
+	if err != nil {
+		if err == service.ErrInvalidCredentials {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": err.Error()})
+			return
+		}
+		if err == service.ErrWebAuthNotConfigured {
+			c.JSON(http.StatusServiceUnavailable, gin.H{"error": err.Error()})
+			return
+		}
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, resp)
+}
+
+// webLogoutMiddleware проверяет веб-JWT и устанавливает user_id в контексте
+func (h *Handler) webLogoutMiddleware() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		token := c.GetHeader("Authorization")
+		if token == "" {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "Требуется авторизация"})
+			c.Abort()
+			return
+		}
+		token = strings.TrimPrefix(token, "Bearer ")
+		claims, err := h.service.ValidateWebToken(token)
+		if err != nil {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": err.Error()})
+			c.Abort()
+			return
+		}
+		c.Set("user_id", claims.ID)
+		c.Set("role", "web")
+		c.Set("_web_token", token)
+		c.Next()
+	}
+}
+
+// webLogout инвалидирует веб-токен
+func (h *Handler) webLogout(c *gin.Context) {
+	token, _ := c.Get("_web_token")
+	if tokenStr, ok := token.(string); ok {
+		h.service.InvalidateWebToken(tokenStr)
+	}
+	c.JSON(http.StatusOK, gin.H{"message": "Выход выполнен успешно"})
+}
+
+// webChangePasswordSendCode отправляет код на email для смены пароля
+func (h *Handler) webChangePasswordSendCode(c *gin.Context) {
+	var req models.WebChangePasswordSendCodeRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	if err := h.service.ChangePasswordSendCode(c.Request.Context(), req.Email); err != nil {
+		if err == service.ErrInvalidCredentials {
+			c.JSON(http.StatusNotFound, gin.H{"error": "Пользователь с таким email не найден"})
+			return
+		}
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"success": true})
+}
+
+// webChangePasswordConfirm смена пароля после ввода кода
+func (h *Handler) webChangePasswordConfirm(c *gin.Context) {
+	var req models.WebChangePasswordConfirmRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	if err := h.service.ChangePasswordConfirm(c.Request.Context(), req.Email, req.Code, req.NewPassword, req.NewPasswordConfirm); err != nil {
+		if err == service.ErrInvalidVerificationCode {
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			return
+		}
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"success": true})
 }
