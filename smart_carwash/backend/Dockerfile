@@ -22,6 +22,11 @@ FROM alpine:latest
 # Устанавливаем рабочую директорию
 WORKDIR /app
 
+# Устанавливаем CA сертификаты (включая Минцифры России для Tinkoff)
+RUN apk add --no-cache ca-certificates
+COPY certs/ /usr/local/share/ca-certificates/
+RUN update-ca-certificates
+
 # Создаем директорию для логов
 RUN mkdir -p /var/log/backend
 
