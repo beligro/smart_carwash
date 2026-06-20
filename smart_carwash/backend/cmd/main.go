@@ -52,6 +52,7 @@ import (
 	washboxlogHandlers "carwash_backend/internal/domain/washboxlog/handlers"
 	washboxlogRepo "carwash_backend/internal/domain/washboxlog/repository"
 	washboxlogService "carwash_backend/internal/domain/washboxlog/service"
+	guestHandlers "carwash_backend/internal/domain/guest/handlers"
 	webHandlers "carwash_backend/internal/domain/web/handlers"
 	"carwash_backend/internal/logger"
 	"carwash_backend/internal/metrics"
@@ -210,6 +211,7 @@ func main() {
 	paymentHandler := paymentHandlers.NewHandler(paymentSvc, authSvc)
 	modbusHandler := modbusHandlers.NewHandler(modbusSvc)
 	webHandler := webHandlers.NewHandler(userSvc, sessionSvc, linkTokenSvc, paymentSvc)
+	guestHandler := guestHandlers.NewHandler(sessionSvc, paymentSvc)
 	dahuaHandler := dahuaHandlers.NewHandler(dahuaSvc)
 	carwashStatusHandler := carwashStatusHandlers.NewHandler(carwashStatusSvc, authHandler.GetAdminMiddleware())
 	// Хендлер истории изменений боксов
@@ -258,6 +260,10 @@ func main() {
 		authHandler.RegisterRoutes(api)
 		paymentHandler.RegisterRoutes(api)
 		modbusHandler.RegisterRoutes(api)
+		// Гостевое API — без авторизации, доступ по guest_token
+		guestGroup := api.Group("/guest")
+		guestHandler.RegisterRoutes(guestGroup)
+
 		// Веб-API для клиентов с JWT (user_id из токена)
 		webGroup := api.Group("/web", authHandler.GetWebAuthMiddleware())
 		webHandler.RegisterRoutes(webGroup)

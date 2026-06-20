@@ -62,7 +62,8 @@ type Session struct {
 	ActiveEndedAt                          *time.Time     `json:"active_ended_at,omitempty" gorm:"column:active_ended_at"`      // Время фактического окончания мойки
 	CompletionSource                       string         `json:"completion_source,omitempty" gorm:"column:completion_source"`  // Источник завершения (timer/admin/cashier/client/anpr)
 	CompletionUserID                       *uuid.UUID     `json:"completion_user_id,omitempty" gorm:"column:completion_user_id"` // ID пользователя, завершившего сессию (если вручную)
-	Source                                 string         `json:"source" gorm:"default:telegram"`                               // Источник создания: telegram | web
+	Source                                 string         `json:"source" gorm:"default:telegram"`                               // Источник создания: telegram | web | guest
+	GuestToken                             *string        `json:"guest_token,omitempty" gorm:"column:guest_token;uniqueIndex"`  // Токен для гостевого доступа к сессии
 	IsPriority                             bool           `json:"is_priority" gorm:"column:is_priority;default:false"`              // Приоритет в очереди (переставленные клиенты)
 	SessionTimeoutMinutes                  int            `json:"session_timeout_minutes" gorm:"-"`    // Время ожидания старта мойки в минутах (виртуальное поле)
 	CooldownMinutes                        *int           `json:"cooldown_minutes,omitempty" gorm:"-"` // Время кулдауна в минутах (виртуальное поле)

@@ -18,6 +18,7 @@ type Repository interface {
 	GetLastSessionByCarNumber(ctx context.Context, carNumber string) (*models.Session, error)
 	GetUserSessionForPayment(ctx context.Context, userID uuid.UUID) (*models.Session, error)
 	GetSessionByIdempotencyKey(ctx context.Context, key string) (*models.Session, error)
+	GetSessionByGuestToken(ctx context.Context, token string) (*models.Session, error)
 	UpdateSession(ctx context.Context, session *models.Session) error
 	UpdateSessionFields(ctx context.Context, sessionID uuid.UUID, fields map[string]interface{}) error
 	GetSessionsByStatus(ctx context.Context, status string) ([]models.Session, error)
@@ -166,6 +167,16 @@ func (r *PostgresRepository) CheckActiveSessionWithLock(ctx context.Context, use
 func (r *PostgresRepository) GetSessionByIdempotencyKey(ctx context.Context, key string) (*models.Session, error) {
 	var session models.Session
 	err := r.db.WithContext(ctx).Where("idempotency_key = ?", key).First(&session).Error
+	if err != nil {
+		return nil, err
+	}
+	return &session, nil
+}
+
+// GetSessionByGuestToken получает сессию по гостевому токену
+func (r *PostgresRepository) GetSessionByGuestToken(ctx context.Context, token string) (*models.Session, error) {
+	var session models.Session
+	err := r.db.WithContext(ctx).Where("guest_token = ?", token).First(&session).Error
 	if err != nil {
 		return nil, err
 	}

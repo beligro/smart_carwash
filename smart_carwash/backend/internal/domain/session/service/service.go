@@ -62,6 +62,10 @@ type Service interface {
 	ExtendFromCashier(ctx context.Context, req *models.ExtendSession1CRequest) (*models.Session, error)
 	GetActiveSessionByCarNumber(ctx context.Context, carNumber string) (*models.Session, error)
 
+	// Гостевые методы (без авторизации)
+	GetSessionByGuestToken(ctx context.Context, token string) (*models.Session, error)
+	UpdateSessionGuestToken(ctx context.Context, sessionID uuid.UUID, token string) error
+
 	// Административные методы
 	AdminListSessions(ctx context.Context, req *models.AdminListSessionsRequest) (*models.AdminListSessionsResponse, error)
 	AdminGetSession(ctx context.Context, req *models.AdminGetSessionRequest) (*models.AdminGetSessionResponse, error)
@@ -3242,6 +3246,19 @@ func (s *ServiceImpl) GetActiveSessionByCarNumber(ctx context.Context, carNumber
 		session.ID, session.CarNumber, session.Status)
 
 	return session, nil
+}
+
+// GetSessionByGuestToken получает сессию по гостевому токену
+func (s *ServiceImpl) GetSessionByGuestToken(ctx context.Context, token string) (*models.Session, error) {
+	return s.repo.GetSessionByGuestToken(ctx, token)
+}
+
+// UpdateSessionGuestToken сохраняет guest_token в сессии
+func (s *ServiceImpl) UpdateSessionGuestToken(ctx context.Context, sessionID uuid.UUID, token string) error {
+	return s.repo.UpdateSessionFields(ctx, sessionID, map[string]interface{}{
+		"guest_token": token,
+		"updated_at":  time.Now(),
+	})
 }
 
 // GetLastSessionByCarNumber получает последнюю сессию по номеру автомобиля (любой статус)

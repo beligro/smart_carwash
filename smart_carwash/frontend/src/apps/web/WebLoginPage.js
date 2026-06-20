@@ -386,6 +386,31 @@ const WebLoginPage = () => {
           </form>
         )}
       </Card>
+
+      {/* Гостевой режим — мойка без регистрации */}
+      <div style={{ textAlign: 'center', marginTop: 20, padding: '0 16px' }}>
+        <p style={{ fontSize: 13, color: '#888', marginBottom: 8 }}>
+          Не хотите регистрироваться?
+        </p>
+        <button
+          type="button"
+          onClick={() => navigate('/web/guest')}
+          style={{
+            background: 'transparent',
+            border: '1.5px solid #1a73e8',
+            color: '#1a73e8',
+            borderRadius: 10,
+            padding: '12px 24px',
+            fontSize: 14,
+            fontWeight: 600,
+            cursor: 'pointer',
+            width: '100%',
+            maxWidth: 360,
+          }}
+        >
+          Помыть без регистрации
+        </button>
+      </div>
     </Page>
   );
 };
