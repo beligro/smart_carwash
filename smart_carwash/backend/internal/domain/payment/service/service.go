@@ -104,6 +104,8 @@ type service struct {
 	secretKey               string
 	tinkoffWebSuccessURL    string
 	tinkoffWebFailURL       string
+	tinkoffGuestSuccessURL  string
+	tinkoffGuestFailURL     string
 	metrics                 *metrics.Metrics
 	webhookQueue            *WebhookQueue
 }
@@ -116,7 +118,7 @@ func generateRandomString(length int) string {
 }
 
 // NewService создает новый экземпляр Service
-func NewService(repository repository.Repository, settingsRepo settingsRepo.Repository, sessionUpdater SessionStatusUpdater, sessionExtensionUpdater SessionExtensionUpdater, tinkoffClient TinkoffClient, terminalKey, secretKey, tinkoffWebSuccessURL, tinkoffWebFailURL string, metrics *metrics.Metrics) Service {
+func NewService(repository repository.Repository, settingsRepo settingsRepo.Repository, sessionUpdater SessionStatusUpdater, sessionExtensionUpdater SessionExtensionUpdater, tinkoffClient TinkoffClient, terminalKey, secretKey, tinkoffWebSuccessURL, tinkoffWebFailURL, tinkoffGuestSuccessURL, tinkoffGuestFailURL string, metrics *metrics.Metrics) Service {
 	s := &service{
 		repository:              repository,
 		settingsRepo:            settingsRepo,
@@ -127,6 +129,8 @@ func NewService(repository repository.Repository, settingsRepo settingsRepo.Repo
 		secretKey:               secretKey,
 		tinkoffWebSuccessURL:    tinkoffWebSuccessURL,
 		tinkoffWebFailURL:       tinkoffWebFailURL,
+		tinkoffGuestSuccessURL:  tinkoffGuestSuccessURL,
+		tinkoffGuestFailURL:     tinkoffGuestFailURL,
 		metrics:                 metrics,
 	}
 
@@ -344,6 +348,9 @@ func (s *service) CreatePayment(ctx context.Context, req *models.CreatePaymentRe
 	if req.Source == "web" {
 		successURL = s.tinkoffWebSuccessURL
 		failURL = s.tinkoffWebFailURL
+	} else if req.Source == "guest" {
+		successURL = s.tinkoffGuestSuccessURL
+		failURL = s.tinkoffGuestFailURL
 	}
 	tinkoffResp, err := s.tinkoffClient.CreatePayment(orderID, chargeAmount, description, receipt, successURL, failURL)
 	if err != nil {
@@ -419,6 +426,9 @@ func (s *service) CreateExtensionPayment(ctx context.Context, req *models.Create
 	if req.Source == "web" {
 		successURL = s.tinkoffWebSuccessURL
 		failURL = s.tinkoffWebFailURL
+	} else if req.Source == "guest" {
+		successURL = s.tinkoffGuestSuccessURL
+		failURL = s.tinkoffGuestFailURL
 	}
 	tinkoffResp, err := s.tinkoffClient.CreatePayment(orderID, req.Amount, description, receipt, successURL, failURL)
 	if err != nil {

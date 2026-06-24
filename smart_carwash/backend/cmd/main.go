@@ -177,7 +177,7 @@ func main() {
 	sessionSvc := sessionService.NewService(sessionRepository, washboxSvc, userSvc, sessionTelegram, emailSender, nil, modbusAdapter, settingsSvc, cfg.CashierUserID, appMetrics, db, washboxLogSvc)
 
 	// Создаем сервис платежей с зависимостью от sessionSvc как SessionStatusUpdater и SessionExtensionUpdater
-	paymentSvc := paymentService.NewService(paymentRepository, settingsRepository, sessionSvc, sessionSvc, tinkoffClient, cfg.TinkoffTerminalKey, cfg.TinkoffSecretKey, cfg.TinkoffWebSuccessURL, cfg.TinkoffWebFailURL, appMetrics)
+	paymentSvc := paymentService.NewService(paymentRepository, settingsRepository, sessionSvc, sessionSvc, tinkoffClient, cfg.TinkoffTerminalKey, cfg.TinkoffSecretKey, cfg.TinkoffWebSuccessURL, cfg.TinkoffWebFailURL, cfg.TinkoffGuestSuccessURL, cfg.TinkoffGuestFailURL, appMetrics)
 
 	// Обновляем sessionSvc с правильным paymentSvc
 	sessionSvc = sessionService.NewService(sessionRepository, washboxSvc, userSvc, sessionTelegram, emailSender, paymentSvc, modbusAdapter, settingsSvc, cfg.CashierUserID, appMetrics, db, washboxLogSvc)

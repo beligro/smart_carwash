@@ -34,6 +34,8 @@ type Config struct {
 	TinkoffFailURL       string
 	TinkoffWebSuccessURL string
 	TinkoffWebFailURL    string
+	TinkoffGuestSuccessURL string
+	TinkoffGuestFailURL    string
 
 	// Настройки 1C интеграции
 	APIKey1C      string
@@ -111,6 +113,8 @@ func LoadConfig() (*Config, error) {
 		TinkoffFailURL:       getEnv("TINKOFF_FAIL_URL", "https://t.me/your_bot?startapp=payment_fail"),
 		TinkoffWebSuccessURL: getEnv("TINKOFF_WEB_SUCCESS_URL", "https://h2o-nsk.ru/web/payment/success"),
 		TinkoffWebFailURL:    getEnv("TINKOFF_WEB_FAIL_URL", "https://h2o-nsk.ru/web/payment/fail"),
+		TinkoffGuestSuccessURL: getEnv("TINKOFF_GUEST_SUCCESS_URL", "https://h2o-nsk.ru/web/guest/payment?return=success"),
+		TinkoffGuestFailURL:    getEnv("TINKOFF_GUEST_FAIL_URL", "https://h2o-nsk.ru/web/guest/payment?return=fail"),
 
 		// Настройки 1C интеграции
 		APIKey1C:      getEnv("API_KEY_1C", ""),
