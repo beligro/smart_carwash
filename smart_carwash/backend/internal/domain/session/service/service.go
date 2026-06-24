@@ -261,9 +261,12 @@ func (s *ServiceImpl) CreateSession(ctx context.Context, req *models.CreateSessi
 		return existingSessionByKey, nil
 	}
 
-	// Проверяем, есть ли у пользователя активная сессия
+	// Проверяем, есть ли у пользователя активная сессия.
+	// Для гостей (UserID == uuid.Nil) эта проверка пропускается: у всех гостей
+	// одинаковый нулевой UserID, поэтому проверка по user_id заблокировала бы
+	// всех гостей кроме первого. Защита от дублей для гостей работает по car_number выше.
 	existingSession, err := s.repo.GetActiveSessionByUserID(ctx, req.UserID)
-	if err == nil && existingSession != nil {
+	if req.UserID != uuid.Nil && err == nil && existingSession != nil {
 		// У пользователя уже есть активная сессия
 		logger.Printf("Service - CreateSession: у пользователя уже есть активная сессия, session_id: %s, user_id: %s, status: %s", existingSession.ID.String(), req.UserID.String(), existingSession.Status)
 
