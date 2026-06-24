@@ -1768,7 +1768,12 @@ func (s *ServiceImpl) ProcessQueue(ctx context.Context) error {
 			}
 		}
 
-		if isCashierSession && session.CarNumber != "" {
+		// Гостевые сессии имеют общий служебный user_id, поэтому кулдаун по user_id
+		// для них некорректен (смешал бы разных гостей). Используем кулдаун по
+		// car_number, как для кассира.
+		isGuestSession := session.Source == "guest"
+
+		if (isCashierSession || isGuestSession) && session.CarNumber != "" {
 			// Сначала пробуем боксы в кулдауне для этого госномера
 			for _, b := range allBoxes {
 				if isInCooldownForCar(b, session.CarNumber, session.ServiceType) {
@@ -1831,8 +1836,8 @@ func (s *ServiceImpl) ProcessQueue(ctx context.Context) error {
 				boxIsAvailable = true
 			} else if lockedBox.Status == washboxModels.StatusBusy {
 				// Бокс занят, проверяем кулдаун
-				if isCashierSession && session.CarNumber != "" {
-					// Для кассирских сессий проверяем кулдаун по госномеру
+				if (isCashierSession || isGuestSession) && session.CarNumber != "" {
+					// Для кассирских и гостевых сессий проверяем кулдаун по госномеру
 					if lockedBox.LastCompletedSessionCarNumber != nil &&
 						*lockedBox.LastCompletedSessionCarNumber == session.CarNumber &&
 						lockedBox.CooldownUntil != nil &&
