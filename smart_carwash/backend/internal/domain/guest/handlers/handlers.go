@@ -15,6 +15,11 @@ import (
 	"github.com/google/uuid"
 )
 
+// GuestUserID — служебный пользователь для всех гостевых сессий.
+// Создаётся миграцией 000045. Конкретные гости различаются по guest_token,
+// а не по user_id (он общий, нужен только для FK sessions.user_id -> users.id).
+var GuestUserID = uuid.MustParse("11111111-1111-1111-1111-111111111111")
+
 // Handler обработчики гостевого API (/guest/*), без JWT
 type Handler struct {
 	sessionSvc sessionService.Service
@@ -56,9 +61,10 @@ func (h *Handler) createGuestSession(c *gin.Context) {
 	// Генерируем guest_token — уникальный токен для доступа к сессии без аккаунта
 	guestToken := generateGuestToken()
 
-	// Создаём сессию с нулевым UserID (гость без аккаунта)
+	// Создаём сессию от имени служебного гостевого пользователя.
+	// Идентификация конкретного гостя — через guest_token (cookie).
 	req := &sessionModels.CreateSessionWithPaymentRequest{
-		UserID:               uuid.Nil,
+		UserID:               GuestUserID,
 		ServiceType:          body.ServiceType,
 		WithChemistry:        body.WithChemistry,
 		ChemistryTimeMinutes: body.ChemistryTimeMinutes,
