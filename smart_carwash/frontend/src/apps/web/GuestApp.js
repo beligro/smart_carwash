@@ -10,6 +10,45 @@ const GuestPaymentPage = lazy(() => import('./GuestPaymentPage'));
 
 const BASE = '/web/guest';
 
+// Экран после завершения мойки: предложение зарегистрироваться + преимущества
+const GuestCompletionOffer = ({ onFinish }) => (
+  <div style={{ padding: 16, maxWidth: 480, margin: '0 auto' }}>
+    <div style={{ background: '#f0fdf4', borderRadius: 12, padding: '20px', textAlign: 'center' }}>
+      <p style={{ fontSize: 20, fontWeight: 700, margin: '0 0 8px', color: '#2e7d32' }}>
+        Мойка завершена!
+      </p>
+      <p style={{ fontSize: 14, color: '#555', margin: '0 0 4px' }}>
+        Спасибо, что воспользовались нашей мойкой.
+      </p>
+    </div>
+
+    <div style={{ background: '#f8f9fa', borderRadius: 12, padding: '16px 20px', marginTop: 12 }}>
+      <p style={{ fontSize: 15, fontWeight: 600, margin: '0 0 10px' }}>
+        Зарегистрируйтесь и получите больше:
+      </p>
+      <ul style={{ margin: 0, paddingLeft: 18, fontSize: 14, color: '#444', lineHeight: 1.7 }}>
+        <li>История моек и платежей</li>
+        <li>Уведомления о статусе и завершении</li>
+        <li>Программа лояльности — каждая N-я мойка в подарок</li>
+        <li>Быстрый повторный заказ без ввода данных</li>
+      </ul>
+    </div>
+
+    <a
+      href="/web/login"
+      style={{ display: 'block', textAlign: 'center', textDecoration: 'none', background: '#1a73e8', color: '#fff', borderRadius: 10, padding: '14px 0', fontSize: 15, fontWeight: 600, marginTop: 16 }}
+    >
+      Зарегистрироваться
+    </a>
+    <button
+      onClick={onFinish}
+      style={{ width: '100%', background: 'transparent', color: '#888', border: 'none', padding: '14px 0', fontSize: 14, cursor: 'pointer', marginTop: 4 }}
+    >
+      Помыть ещё раз без регистрации
+    </button>
+  </div>
+);
+
 const GuestApp = () => {
   const navigate = useNavigate();
   const location = useLocation();
@@ -34,12 +73,26 @@ const GuestApp = () => {
   // После завершения/отмены сессии: сброс на форму новой мойки
   const scheduleTerminalReset = (session) => {
     if (!session || !isTerminal(session)) return;
+    // Для завершённой мойки не сбрасываем автоматически — показываем экран
+    // с предложением регистрации; пользователь сам закрывает его.
+    if (session.status === 'complete') return;
     if (sessionResetTimer.current) return;
     sessionResetTimer.current = setTimeout(() => {
       clearGuestToken();
       setWashInfo((prev) => (prev ? { ...prev, userSession: null, payment: null } : prev));
       sessionResetTimer.current = null;
     }, 5000);
+  };
+
+  // Завершение гостем экрана после мойки: чистим cookie и возвращаем к форме
+  const handleGuestFinish = () => {
+    if (sessionResetTimer.current) {
+      clearTimeout(sessionResetTimer.current);
+      sessionResetTimer.current = null;
+    }
+    clearGuestToken();
+    setWashInfo((prev) => (prev ? { ...prev, userSession: null, payment: null } : prev));
+    navigate(BASE, { replace: true });
   };
 
   const startSessionPolling = () => {
@@ -182,6 +235,8 @@ const GuestApp = () => {
                 element={
                   error ? (
                     <p style={{ color: 'red', padding: 16 }}>{error}</p>
+                  ) : washInfo?.userSession?.status === 'complete' ? (
+                    <GuestCompletionOffer onFinish={handleGuestFinish} />
                   ) : washInfo ? (
                     <WashInfo
                       washInfo={washInfo}
