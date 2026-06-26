@@ -5,6 +5,7 @@ import styles from './WebApp.module.css';
 
 const Header = lazy(() => import('./components/Header'));
 const WashInfo = lazy(() => import('./components/WashInfo/WashInfo'));
+const BookingPage = lazy(() => import('./components/BookingPage'));
 const GuestPaymentPage = lazy(() => import('./GuestPaymentPage'));
 
 const BASE = '/web/guest';
@@ -200,6 +201,16 @@ const GuestApp = () => {
                 }
               />
               <Route
+                path="/booking"
+                element={
+                  <BookingPage
+                    theme="light"
+                    user={null}
+                    onCreateSession={handleCreateSession}
+                  />
+                }
+              />
+              <Route
                 path="/payment"
                 element={
                   <GuestPaymentPage
@@ -213,7 +224,7 @@ const GuestApp = () => {
                   />
                 }
               />
-              <Route path="*" element={<Navigate to="/" replace />} />
+              <Route path="*" element={<Navigate to={BASE} replace />} />
             </Routes>
           </Suspense>
         </div>
