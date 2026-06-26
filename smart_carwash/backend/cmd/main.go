@@ -264,6 +264,30 @@ func main() {
 		guestGroup := api.Group("/guest")
 		guestHandler.RegisterRoutes(guestGroup)
 
+		// Отметка выполненного ТО бокса (кнопка-ссылка в алерте Максу). Доступ по токену.
+		api.GET("/maintenance/to-done", func(c *gin.Context) {
+			if cfg.MaintenanceToken == "" || c.Query("token") != cfg.MaintenanceToken {
+				c.String(http.StatusForbidden, "Доступ запрещён")
+				return
+			}
+			boxNumber := c.Query("box")
+			if boxNumber == "" {
+				c.String(http.StatusBadRequest, "Не указан бокс")
+				return
+			}
+			// Текущая сумма проданных минут бокса становится новой точкой отсчёта (сброс счётчика)
+			var currentMinutes int64
+			db.Raw(`SELECT COALESCE(SUM(s.rental_time_minutes + s.extension_time_minutes),0)
+				FROM sessions s JOIN wash_boxes w ON w.id = s.box_id
+				WHERE w.number = ? AND s.status = 'complete'`, boxNumber).Scan(&currentMinutes)
+			res := db.Exec(`UPDATE box_maintenance SET baseline_minutes = ?, last_to_at = NOW(), alerted = false, updated_at = NOW() WHERE box_number = ?`, currentMinutes, boxNumber)
+			if res.Error != nil || res.RowsAffected == 0 {
+				c.String(http.StatusNotFound, "Бокс не найден в учёте ТО")
+				return
+			}
+			c.Data(http.StatusOK, "text/html; charset=utf-8", []byte("<html><head><meta name='viewport' content='width=device-width,initial-scale=1'></head><body style='font-family:sans-serif;text-align:center;padding:40px;color:#2e7d32'><h2>ТО бокса №"+boxNumber+" отмечено</h2><p style='color:#555'>Счётчик моточасов сброшен. Следующее ТО — через 500 моточасов.</p></body></html>"))
+		})
+
 		// Веб-API для клиентов с JWT (user_id из токена)
 		webGroup := api.Group("/web", authHandler.GetWebAuthMiddleware())
 		webHandler.RegisterRoutes(webGroup)

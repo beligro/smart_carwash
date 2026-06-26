@@ -41,6 +41,9 @@ type Config struct {
 	APIKey1C      string
 	CashierUserID string
 
+	// Токен для отметки выполненного ТО боксов (ссылка-кнопка в алерте)
+	MaintenanceToken string
+
 	// Настройки Modbus
 	ModbusEnabled bool
 	ModbusHost    string
@@ -119,6 +122,8 @@ func LoadConfig() (*Config, error) {
 		// Настройки 1C интеграции
 		APIKey1C:      getEnv("API_KEY_1C", ""),
 		CashierUserID: getEnv("CASHIER_USER_ID", ""),
+
+		MaintenanceToken: getEnv("MAINTENANCE_TOKEN", ""),
 
 		// Настройки Modbus
 		ModbusEnabled: modbusEnabled,
