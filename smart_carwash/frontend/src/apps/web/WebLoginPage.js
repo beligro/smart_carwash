@@ -121,6 +121,59 @@ const Error = styled.p`
   margin: 8px 0 0;
 `;
 
+const GuestButton = styled.button`
+  width: 100%;
+  max-width: 400px;
+  padding: 20px;
+  font-size: 1.2rem;
+  font-weight: 700;
+  color: white;
+  background: linear-gradient(135deg, #28a745 0%, #1e7e34 100%);
+  border: none;
+  border-radius: 14px;
+  cursor: pointer;
+  box-shadow: 0 6px 20px rgba(40, 167, 69, 0.35);
+  transition: transform 0.2s, box-shadow 0.2s;
+  &:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 8px 26px rgba(40, 167, 69, 0.5);
+  }
+`;
+
+const GuestHint = styled.p`
+  max-width: 400px;
+  text-align: center;
+  color: #4a5b66;
+  font-size: 14px;
+  margin: 10px 0 0;
+`;
+
+const Divider = styled.div`
+  max-width: 400px;
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  color: #8a99a4;
+  font-size: 13px;
+  margin: 24px 0;
+  &::before, &::after {
+    content: '';
+    flex: 1;
+    height: 1px;
+    background: #cfd8df;
+  }
+`;
+
+const RegHint = styled.p`
+  max-width: 400px;
+  text-align: center;
+  color: #5a6b76;
+  font-size: 13px;
+  line-height: 1.5;
+  margin: 16px 0 0;
+`;
+
 const MIN_PASSWORD_LENGTH = 8;
 
 const WebLoginPage = () => {
@@ -266,8 +319,16 @@ const WebLoginPage = () => {
 
   return (
     <Page>
+      {/* Приоритетный сценарий — помыть как гость, без регистрации */}
+      <GuestButton type="button" onClick={() => navigate('/web/guest')}>
+        🚗 Помыть машину как гость
+      </GuestButton>
+      <GuestHint>Без регистрации — выбрали услугу, оплатили и поехали</GuestHint>
+
+      <Divider>есть учётная запись?</Divider>
+
       <Card>
-        <Title>H2O</Title>
+        <Title>Вход в аккаунт</Title>
         <Tabs>
           <Tab $active={mode === 'login'} onClick={switchToLogin} type="button">Вход</Tab>
           <Tab $active={mode === 'register'} onClick={switchToRegister} type="button">Регистрация</Tab>
@@ -387,30 +448,11 @@ const WebLoginPage = () => {
         )}
       </Card>
 
-      {/* Гостевой режим — мойка без регистрации */}
-      <div style={{ textAlign: 'center', marginTop: 20, padding: '0 16px' }}>
-        <p style={{ fontSize: 13, color: '#888', marginBottom: 8 }}>
-          Не хотите регистрироваться?
-        </p>
-        <button
-          type="button"
-          onClick={() => navigate('/web/guest')}
-          style={{
-            background: 'transparent',
-            border: '1.5px solid #1a73e8',
-            color: '#1a73e8',
-            borderRadius: 10,
-            padding: '12px 24px',
-            fontSize: 14,
-            fontWeight: 600,
-            cursor: 'pointer',
-            width: '100%',
-            maxWidth: 360,
-          }}
-        >
-          Помыть без регистрации
-        </button>
-      </div>
+      <RegHint>
+        Регистрация не обязательна — помыть можно и без неё.
+        Но с аккаунтом удобнее: история моек, уведомления о статусе
+        и программа лояльности.
+      </RegHint>
     </Page>
   );
 };
