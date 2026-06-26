@@ -180,6 +180,16 @@ func (r *PostgresRepository) GetSessionByGuestToken(ctx context.Context, token s
 	if err != nil {
 		return nil, err
 	}
+
+	// Заполняем виртуальное поле BoxNumber (gorm:"-"), если бокс назначен
+	if session.BoxID != nil {
+		var boxNumber int
+		err = r.db.WithContext(ctx).Table("wash_boxes").Where("id = ?", *session.BoxID).Select("number").Scan(&boxNumber).Error
+		if err == nil {
+			session.BoxNumber = &boxNumber
+		}
+	}
+
 	return &session, nil
 }
 
