@@ -39,6 +39,105 @@ func (h *Handler) RegisterRoutes(router *gin.RouterGroup) {
 	router.POST("/sessions/with-payment", h.createGuestSession)
 	router.GET("/sessions/:token", h.getGuestSession)
 	router.POST("/sessions/:token/extend", h.extendGuestSession)
+	router.POST("/sessions/:token/start", h.startGuestSession)
+	router.POST("/sessions/:token/cancel", h.cancelGuestSession)
+	router.POST("/sessions/:token/enable-chemistry", h.enableGuestChemistry)
+	router.POST("/sessions/:token/complete", h.completeGuestSession)
+	router.GET("/sessions/:token/payments", h.getGuestSessionPayments)
+}
+
+// completeGuestSession — POST /api/guest/sessions/:token/complete
+func (h *Handler) completeGuestSession(c *gin.Context) {
+	session, ok := h.resolveGuestSession(c)
+	if !ok {
+		return
+	}
+	resp, err := h.sessionSvc.CompleteSession(c.Request.Context(), &sessionModels.CompleteSessionRequest{
+		SessionID:        session.ID,
+		CompletionSource: "client",
+	})
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, resp)
+}
+
+// getGuestSessionPayments — GET /api/guest/sessions/:token/payments
+func (h *Handler) getGuestSessionPayments(c *gin.Context) {
+	session, ok := h.resolveGuestSession(c)
+	if !ok {
+		return
+	}
+	resp, err := h.sessionSvc.GetSessionPayments(c.Request.Context(), &sessionModels.GetSessionPaymentsRequest{
+		SessionID: session.ID,
+	})
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, resp)
+}
+
+// startGuestSession — POST /api/guest/sessions/:token/start
+func (h *Handler) startGuestSession(c *gin.Context) {
+	session, ok := h.resolveGuestSession(c)
+	if !ok {
+		return
+	}
+	s, err := h.sessionSvc.StartSession(c.Request.Context(), &sessionModels.StartSessionRequest{SessionID: session.ID})
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, sessionModels.StartSessionResponse{Session: s})
+}
+
+// cancelGuestSession — POST /api/guest/sessions/:token/cancel (с возвратом средств)
+func (h *Handler) cancelGuestSession(c *gin.Context) {
+	session, ok := h.resolveGuestSession(c)
+	if !ok {
+		return
+	}
+	resp, err := h.sessionSvc.CancelSession(c.Request.Context(), &sessionModels.CancelSessionRequest{
+		SessionID:  session.ID,
+		UserID:     session.UserID, // служебный гостевой пользователь
+		SkipRefund: false,          // гостю возвращаем средства
+	})
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, resp)
+}
+
+// enableGuestChemistry — POST /api/guest/sessions/:token/enable-chemistry
+func (h *Handler) enableGuestChemistry(c *gin.Context) {
+	session, ok := h.resolveGuestSession(c)
+	if !ok {
+		return
+	}
+	resp, err := h.sessionSvc.EnableChemistry(c.Request.Context(), &sessionModels.EnableChemistryRequest{SessionID: session.ID})
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, resp)
+}
+
+// resolveGuestSession находит сессию по :token из URL. Токен из cookie/URL и есть авторизация гостя.
+func (h *Handler) resolveGuestSession(c *gin.Context) (*sessionModels.Session, bool) {
+	token := c.Param("token")
+	if token == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "не указан токен"})
+		return nil, false
+	}
+	session, err := h.sessionSvc.GetSessionByGuestToken(c.Request.Context(), token)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "сессия не найдена"})
+		return nil, false
+	}
+	return session, true
 }
 
 // createGuestSession — POST /api/guest/sessions/with-payment

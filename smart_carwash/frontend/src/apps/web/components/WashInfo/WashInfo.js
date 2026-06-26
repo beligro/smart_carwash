@@ -119,9 +119,12 @@ const formatQueueText = (queueInfo) => {
  * @param {Function} props.onCancelSession - Функция для отмены сессии
  * @param {Object} props.user - Данные пользователя
  */
-const WashInfo = ({ washInfo, theme = 'light', onCreateSession, onViewHistory, onLinkTelegram, onCancelSession, onChemistryEnabled, onCompleteSession, onStartSession, user, basePath: basePathProp }) => {
+const WashInfo = ({ washInfo, theme = 'light', onCreateSession, onViewHistory, onLinkTelegram, onCancelSession, onChemistryEnabled, onCompleteSession, onStartSession, user, basePath: basePathProp, apiService }) => {
   const navigate = useNavigate();
   const pathBase = basePathProp ?? '/web';
+  // Источник API: по умолчанию авторизованный WebApiService; для гостевого режима
+  // передаётся GuestApiService с совместимыми сигнатурами. Поведение по умолчанию не меняется.
+  const api = apiService || WebApiService;
   const [isCanceling, setIsCanceling] = useState(false);
   const [sessionPayments, setSessionPayments] = useState(null);
   const [loadingPayments, setLoadingPayments] = useState(false);
@@ -219,7 +222,7 @@ const WashInfo = ({ washInfo, theme = 'light', onCreateSession, onViewHistory, o
     
     try {
       setLoadingPayments(true);
-      const payments = await WebApiService.getSessionPayments(userSession.id);
+      const payments = await api.getSessionPayments(userSession.id);
       setSessionPayments(payments);
     } catch (error) {
       console.error('Ошибка при загрузке платежей сессии:', error);
@@ -247,7 +250,7 @@ const WashInfo = ({ washInfo, theme = 'light', onCreateSession, onViewHistory, o
       if (allChemistryTimesFromSettings.length === 0) {
         const loadSettings = async () => {
           try {
-            const response = await WebApiService.getAvailableChemistryTimes(userSession.service_type);
+            const response = await api.getAvailableChemistryTimes(userSession.service_type);
             if (response && response.available_chemistry_times) {
               setAllChemistryTimesFromSettings(response.available_chemistry_times);
               
@@ -299,7 +302,7 @@ const WashInfo = ({ washInfo, theme = 'light', onCreateSession, onViewHistory, o
 
   // Обработчик отмены сессии
   const handleCancelSession = async () => {
-    if (!userSession || !user) return;
+    if (!userSession) return; // user может отсутствовать в гостевом режиме
     
     const confirmMessage = refundInfo.hasRefund 
       ? `Вы уверены, что хотите отменить сессию? Деньги в размере ${formatAmountWithRefund(payment)} будут возвращены на карту.`
@@ -309,7 +312,7 @@ const WashInfo = ({ washInfo, theme = 'light', onCreateSession, onViewHistory, o
     
     try {
       setIsCanceling(true);
-      await onCancelSession(userSession.id, user.id);
+      await onCancelSession(userSession.id, user?.id);
     } catch (error) {
       alert('Ошибка при отмене сессии: ' + error.message);
     } finally {
@@ -324,7 +327,7 @@ const WashInfo = ({ washInfo, theme = 'light', onCreateSession, onViewHistory, o
       
       // Если настройки еще не загружены, загружаем их
       if (allRentalTimesFromSettings.length === 0) {
-        const response = await WebApiService.getAvailableRentalTimes(serviceType);
+        const response = await api.getAvailableRentalTimes(serviceType);
         if (response && response.available_times) {
           setAllRentalTimesFromSettings(response.available_times);
           setAvailableRentalTimes(response.available_times);
@@ -354,7 +357,7 @@ const WashInfo = ({ washInfo, theme = 'light', onCreateSession, onViewHistory, o
       
       // Если настройки еще не загружены, загружаем их
       if (allChemistryTimesFromSettings.length === 0) {
-        const response = await WebApiService.getAvailableChemistryTimes(serviceType);
+        const response = await api.getAvailableChemistryTimes(serviceType);
         if (response && response.available_chemistry_times) {
           setAllChemistryTimesFromSettings(response.available_chemistry_times);
         }
@@ -398,7 +401,7 @@ const WashInfo = ({ washInfo, theme = 'light', onCreateSession, onViewHistory, o
       setActionLoading(true);
       
       // Вызываем API для продления сессии с оплатой
-      const response = await WebApiService.extendSessionWithPayment(userSession.id, selectedExtensionTime, selectedChemistryTime);
+      const response = await api.extendSessionWithPayment(userSession.id, selectedExtensionTime, selectedChemistryTime);
       
       if (response && response.payment) {
         // Перенаправляем на страницу оплаты
@@ -429,7 +432,7 @@ const WashInfo = ({ washInfo, theme = 'light', onCreateSession, onViewHistory, o
       setActionLoading(true);
       
       // Вызываем API для докупки химии (ExtensionTimeMinutes = 0, ExtensionChemistryTimeMinutes = selectedChemistryTime)
-      const response = await WebApiService.extendSessionWithPayment(userSession.id, 0, selectedChemistryTime);
+      const response = await api.extendSessionWithPayment(userSession.id, 0, selectedChemistryTime);
       
       if (response && response.payment) {
         // Перенаправляем на страницу оплаты
@@ -507,12 +510,12 @@ const WashInfo = ({ washInfo, theme = 'light', onCreateSession, onViewHistory, o
       setActionLoading(true);
       
       // Вызываем API для завершения сессии
-      const response = await WebApiService.completeSession(userSession.id);
+      const response = await api.completeSession(userSession.id);
       
       if (response && response.session) {
         // Немедленно обновляем данные сессии для мгновенного отображения изменений
         try {
-          const updatedSessionData = await WebApiService.getSessionById(userSession.id);
+          const updatedSessionData = await api.getSessionById(userSession.id);
           if (updatedSessionData && updatedSessionData.session) {
             // Обновляем данные через callback, если он передан
             if (onCompleteSession) {
@@ -537,12 +540,12 @@ const WashInfo = ({ washInfo, theme = 'light', onCreateSession, onViewHistory, o
       setActionLoading(true);
       
       // Вызываем API для обновления статуса сессии
-      const response = await WebApiService.startSession(userSession.id);
+      const response = await api.startSession(userSession.id);
       
       if (response && response.session) {
         // Немедленно обновляем данные сессии для мгновенного отображения изменений
         try {
-          const updatedSessionData = await WebApiService.getSessionById(userSession.id);
+          const updatedSessionData = await api.getSessionById(userSession.id);
           if (updatedSessionData && updatedSessionData.session) {
             // Обновляем данные через callback, если он передан
             if (onStartSession) {
@@ -691,11 +694,11 @@ const WashInfo = ({ washInfo, theme = 'light', onCreateSession, onViewHistory, o
                     theme={theme} 
                   onClick={async () => {
                     try {
-                      await WebApiService.enableChemistry(userSession.id);
+                      await api.enableChemistry(userSession.id);
                       
                       // Немедленно обновляем данные сессии для мгновенного отображения изменений
                       try {
-                        const updatedSessionData = await WebApiService.getSessionById(userSession.id);
+                        const updatedSessionData = await api.getSessionById(userSession.id);
                         if (updatedSessionData && updatedSessionData.session) {
                           // Обновляем данные через callback, если он передан
                           if (onChemistryEnabled) {
@@ -858,7 +861,7 @@ const WashInfo = ({ washInfo, theme = 'light', onCreateSession, onViewHistory, o
                   onClick={async () => {
                     try {
                       // Запрашиваем последний платеж по сессии
-                      const response = await WebApiService.getUserSessionForPayment(userSession.user_id);
+                      const response = await api.getUserSessionForPayment(userSession.user_id);
                       
                       navigate(`${pathBase}/payment`, {
                         state: {

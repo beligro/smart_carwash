@@ -3258,7 +3258,19 @@ func (s *ServiceImpl) GetActiveSessionByCarNumber(ctx context.Context, carNumber
 
 // GetSessionByGuestToken получает сессию по гостевому токену
 func (s *ServiceImpl) GetSessionByGuestToken(ctx context.Context, token string) (*models.Session, error) {
-	return s.repo.GetSessionByGuestToken(ctx, token)
+	session, err := s.repo.GetSessionByGuestToken(ctx, token)
+	if err != nil {
+		return nil, err
+	}
+	// Заполняем session_timeout_minutes из настроек (для таймера ожидания старта)
+	if session != nil {
+		sessionTimeout, err := s.settingsService.GetSessionTimeout(ctx)
+		if err != nil {
+			sessionTimeout = 3
+		}
+		session.SessionTimeoutMinutes = sessionTimeout
+	}
+	return session, nil
 }
 
 // UpdateSessionGuestToken сохраняет guest_token в сессии

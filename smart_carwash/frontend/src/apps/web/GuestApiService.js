@@ -1,6 +1,9 @@
 /**
  * GuestApiService — API для гостевого режима.
- * Не требует JWT. Доступ к сессии через guest_token, хранящийся в cookie.
+ * Не требует JWT. Доступ к сессии через guest_token (cookie).
+ * Сигнатуры методов совместимы с WebApiService, чтобы переиспользовать
+ * общие компоненты (WashInfo и др.). sessionId/userId в аргументах
+ * игнорируются — сессия определяется по guest_token из cookie.
  */
 
 import axios from 'axios';
@@ -30,14 +33,14 @@ export function clearGuestToken() {
   document.cookie = `${COOKIE_NAME}=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;`;
 }
 
-// --- API methods ---
+function tokenOrThrow() {
+  const t = getGuestToken();
+  if (!t) throw new Error('Нет токена гостевой сессии');
+  return t;
+}
 
 const GuestApiService = {
-  /**
-   * Создать сессию без авторизации.
-   * Возвращает { session, payment, guest_token }.
-   * После успешного вызова сохраняет guest_token в cookie.
-   */
+  // --- Создание сессии (без авторизации) ---
   createSession: async (data) => {
     const { v4: uuidv4 } = await import('uuid');
     const payload = {
@@ -50,69 +53,104 @@ const GuestApiService = {
       idempotency_key: uuidv4(),
     };
     const res = await guestApi.post('/guest/sessions/with-payment', payload);
-    if (res.data?.guest_token) {
-      setGuestToken(res.data.guest_token);
-    }
+    if (res.data?.guest_token) setGuestToken(res.data.guest_token);
     return res.data;
   },
 
-  /**
-   * Получить статус сессии по guest_token.
-   * Возвращает { session, payment }.
-   */
+  // createSessionWithPayment — алиас под сигнатуру WebApiService (для WashInfo/booking)
+  createSessionWithPayment: async (data) => {
+    return GuestApiService.createSession({
+      serviceType: data.serviceType || data.service_type,
+      withChemistry: data.withChemistry ?? data.with_chemistry,
+      chemistryTimeMinutes: data.chemistryTimeMinutes ?? data.chemistry_time_minutes,
+      carNumber: data.carNumber || data.car_number,
+      carNumberCountry: data.carNumberCountry || data.car_number_country,
+      rentalTimeMinutes: data.rentalTimeMinutes || data.rental_time_minutes,
+    });
+  },
+
+  // --- Чтение сессии (по токену; sessionId игнорируется) ---
   getSession: async (token) => {
-    const t = token || getGuestToken();
-    if (!t) throw new Error('Нет токена гостевой сессии');
+    const t = token || tokenOrThrow();
     const res = await guestApi.get(`/guest/sessions/${t}`);
     return res.data;
   },
 
-  /**
-   * Продлить сессию.
-   * Возвращает { session, payment } с новым платёжным URL.
-   */
-  extendSession: async (extensionTimeMinutes, extensionChemistryTimeMinutes = 0, token) => {
-    const t = token || getGuestToken();
-    if (!t) throw new Error('Нет токена гостевой сессии');
-    const res = await guestApi.post(`/guest/sessions/${t}/extend`, {
+  getSessionById: async (_sessionId) => {
+    const res = await guestApi.get(`/guest/sessions/${tokenOrThrow()}`);
+    return res.data; // { session, payment }
+  },
+
+  getUserSession: async () => {
+    try {
+      const res = await guestApi.get(`/guest/sessions/${tokenOrThrow()}`);
+      return res.data;
+    } catch (e) {
+      if (e.response?.status === 404) return { session: null };
+      throw e;
+    }
+  },
+
+  getUserSessionForPayment: async (_userId) => {
+    const res = await guestApi.get(`/guest/sessions/${tokenOrThrow()}`);
+    return res.data;
+  },
+
+  getSessionPayments: async (_sessionId) => {
+    const res = await guestApi.get(`/guest/sessions/${tokenOrThrow()}/payments`);
+    return res.data; // { main_payment, extension_payments }
+  },
+
+  // --- Действия (по токену) ---
+  startSession: async (_sessionId) => {
+    const res = await guestApi.post(`/guest/sessions/${tokenOrThrow()}/start`, {});
+    return res.data;
+  },
+
+  completeSession: async (_sessionId) => {
+    const res = await guestApi.post(`/guest/sessions/${tokenOrThrow()}/complete`, {});
+    return res.data;
+  },
+
+  cancelSession: async (_sessionId) => {
+    const res = await guestApi.post(`/guest/sessions/${tokenOrThrow()}/cancel`, {});
+    return res.data;
+  },
+
+  enableChemistry: async (_sessionId) => {
+    const res = await guestApi.post(`/guest/sessions/${tokenOrThrow()}/enable-chemistry`, {});
+    return res.data;
+  },
+
+  extendSessionWithPayment: async (_sessionId, extensionTimeMinutes, extensionChemistryTimeMinutes = 0) => {
+    const res = await guestApi.post(`/guest/sessions/${tokenOrThrow()}/extend`, {
       extension_time_minutes: extensionTimeMinutes,
       extension_chemistry_time_minutes: extensionChemistryTimeMinutes,
     });
     return res.data;
   },
 
-  /**
-   * Получить статус очереди (публичный endpoint — без авторизации).
-   */
+  // --- Публичные справочники (без токена) ---
   getQueueStatus: async () => {
     const res = await guestApi.get('/queue-status');
     return res.data;
   },
 
-  /**
-   * Получить статус мойки (публичный).
-   */
   getCarwashStatus: async () => {
     const res = await guestApi.get('/carwash/status');
     return res.data;
   },
 
-  /**
-   * Рассчитать стоимость услуги.
-   */
   calculatePrice: async (data) => {
     const res = await guestApi.post('/payments/calculate-price', {
-      service_type: data.serviceType,
-      with_chemistry: data.withChemistry || false,
-      chemistry_time_minutes: data.chemistryTimeMinutes || 0,
-      rental_time_minutes: data.rentalTimeMinutes,
+      service_type: data.serviceType || data.service_type,
+      with_chemistry: data.withChemistry ?? data.with_chemistry ?? false,
+      chemistry_time_minutes: data.chemistryTimeMinutes ?? data.chemistry_time_minutes ?? 0,
+      rental_time_minutes: data.rentalTimeMinutes || data.rental_time_minutes,
     });
     return res.data;
   },
 
-  /**
-   * Получить доступные времена аренды.
-   */
   getAvailableRentalTimes: async (serviceType) => {
     try {
       const res = await guestApi.get(`/settings/rental-times?service_type=${serviceType}`);
@@ -122,9 +160,6 @@ const GuestApiService = {
     }
   },
 
-  /**
-   * Получить доступные времена химии.
-   */
   getAvailableChemistryTimes: async (serviceType) => {
     try {
       const res = await guestApi.get(`/settings/available-chemistry-times?service_type=${serviceType}`);
