@@ -24,7 +24,7 @@ const STATUS_COLORS = {
   ok: { fill: '#16a34a', text: '#ffffff', label: 'В норме (< 450 мч)' },
   soon: { fill: '#f59e0b', text: '#1f2937', label: 'Скоро ТО (450–499 мч)' },
   overdue: { fill: '#dc2626', text: '#ffffff', label: 'Просрочено (≥ 500 мч)' },
-  service: { fill: '#6b7280', text: '#ffffff', label: 'В сервисе (простой)' },
+  service: { fill: '#6b7280', text: '#ffffff', label: 'В сервисе' },
   none: { fill: '#cbd5e1', text: '#475569', label: 'Без учёта ТО' },
 };
 
@@ -384,6 +384,10 @@ const BoxMaintenanceManagement = () => {
             const fill = data && data.in_service ? 'url(#serviceStripes)' : palette.fill;
             const clickable = !!data;
             const mh = data ? (data.motor_hours ?? data.motorHours ?? 0) : null;
+            const svcRaw = data ? (data.service_minutes_30d ?? data.serviceMinutes30d) : null;
+            const svcHours = (svcRaw === null || svcRaw === undefined || Number.isNaN(Number(svcRaw)))
+              ? null
+              : Math.round(Number(svcRaw) / 60);
             return (
               <g
                 key={slot.number}
@@ -403,17 +407,22 @@ const BoxMaintenanceManagement = () => {
                 <text x={PAD + slot.x + slot.w / 2} y={PAD + slot.y + 1} textAnchor="middle" fontSize={0.7} fill={palette.text} opacity={0.85}>
                   {isVacuum ? 'ПЫЛЕСОС' : 'БОКС'}
                 </text>
-                <text x={PAD + slot.x + slot.w / 2} y={PAD + slot.y + slot.h / 2} textAnchor="middle" fontSize={2.2} fontWeight="800" fill={palette.text}>
+                <text x={PAD + slot.x + slot.w / 2} y={PAD + slot.y + slot.h / 2 - 0.4} textAnchor="middle" fontSize={2.0} fontWeight="800" fill={palette.text}>
                   {slot.number}
                 </text>
                 {data && !data.in_service && (
-                  <text x={PAD + slot.x + slot.w / 2} y={PAD + slot.y + slot.h - 0.6} textAnchor="middle" fontSize={1.05} fontWeight="700" fill={palette.text}>
-                    {`${mh}/${TO_LIMIT}`}
+                  <text x={PAD + slot.x + slot.w / 2} y={PAD + slot.y + slot.h - 1.5} textAnchor="middle" fontSize={1.25} fontWeight="700" fill={palette.text}>
+                    {mh}
                   </text>
                 )}
                 {data && data.in_service && (
-                  <text x={PAD + slot.x + slot.w / 2} y={PAD + slot.y + slot.h - 0.6} textAnchor="middle" fontSize={1.0} fontWeight="700" fill="#ffffff">
+                  <text x={PAD + slot.x + slot.w / 2} y={PAD + slot.y + slot.h - 1.5} textAnchor="middle" fontSize={0.95} fontWeight="700" fill="#ffffff">
                     {formatDuration(data.in_service_since || data.inServiceSince, nowMs)}
+                  </text>
+                )}
+                {data && svcHours !== null && (
+                  <text x={PAD + slot.x + slot.w / 2} y={PAD + slot.y + slot.h - 0.4} textAnchor="middle" fontSize={0.8} fontWeight="600" fill={data.in_service ? '#ffffff' : palette.text} opacity={0.85}>
+                    {`серв ${svcHours}ч/30д`}
                   </text>
                 )}
               </g>
@@ -447,14 +456,14 @@ const BoxMaintenanceManagement = () => {
               <div>Последнее ТО</div>
               <div>{formatDate(selected.last_to_at ?? selected.lastToAt)}</div>
               <div>Статус бокса</div>
-              <div>{selected.in_service ? 'В сервисе (простой)' : 'В работе'}</div>
+              <div>{selected.in_service ? 'В сервисе сейчас' : 'В работе'}</div>
               {selected.in_service && (
                 <>
                   <div>В сервисе уже</div>
                   <div>{formatDuration(selected.in_service_since ?? selected.inServiceSince, nowMs)}</div>
                 </>
               )}
-              <div>Простой за 30 дней</div>
+              <div>В сервисе за последние 30 дней</div>
               <div>{formatServiceMinutes(selected.service_minutes_30d ?? selected.serviceMinutes30d)}</div>
             </InfoGrid>
 
