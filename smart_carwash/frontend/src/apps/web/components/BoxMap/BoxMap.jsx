@@ -117,11 +117,15 @@ function BoxMap({ boxes = [] }) {
   const VB_W = BUILDING_W + PAD * 2;
   const VB_H = BUILDING_H + PAD * 2;
 
-  // Определяет палитру: кулдаун имеет приоритет визуализации над free
+  // Определяет палитру: кулдаун имеет приоритет визуализации, пока нет активной сессии.
+  // Во время кулдауна бокс физически остаётся busy (свет/оборудование), активной
+  // оплаченной сессии нет — поэтому показываем "Кулдаун" при любом статусе, кроме
+  // случая, когда реально идёт мойка (есть отсчёт secondsLeft).
   const paletteFor = (data, t) => {
     const status = data?.status;
     const cdLeft = t?.cooldownLeft;
-    if (typeof cdLeft === "number" && cdLeft > 0 && (status === "free" || !status)) {
+    const hasActiveSession = typeof t?.secondsLeft === "number" && t.secondsLeft > 0;
+    if (typeof cdLeft === "number" && cdLeft > 0 && !hasActiveSession) {
       return { palette: COOLDOWN, isCooldown: true };
     }
     return { palette: (status && STATUS_COLORS[status]) || NEUTRAL, isCooldown: false };
