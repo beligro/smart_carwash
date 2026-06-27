@@ -60,10 +60,10 @@ const STATUS_COLORS = {
   busy:        { fill: "#dc2626", text: "#ffffff", label: "Идёт мойка" },
   reserved:    { fill: "#f59e0b", text: "#1f2937", label: "Назначен" },
   maintenance: { fill: "#6b7280", text: "#ffffff", label: "В сервисе" },
-  cleaning:    { fill: "#38bdf8", text: "#0b3a52", label: "Уборка" },
 };
-const COOLDOWN = { fill: "#a855f7", text: "#ffffff", label: "Кулдаун" };
-const NEUTRAL = { fill: "#cbd5e1", text: "#475569", label: "Нет данных" };
+const COOLDOWN = { fill: "#a855f7", text: "#ffffff", label: "Бронь за клиентом" };
+// Технический фолбэк для боксов без статуса — в легенде не показываем.
+const NEUTRAL = { fill: "#cbd5e1", text: "#475569", label: "" };
 
 const fmt = (s) => {
   const v = Math.max(0, Math.floor(s));
@@ -205,7 +205,6 @@ function BoxMap({ boxes = [] }) {
           </li>
         ))}
         <li><span className="boxmap__chip" style={{ background: COOLDOWN.fill }} />{COOLDOWN.label}</li>
-        <li><span className="boxmap__chip" style={{ background: NEUTRAL.fill }} />{NEUTRAL.label}</li>
       </ul>
     </div>
   );
