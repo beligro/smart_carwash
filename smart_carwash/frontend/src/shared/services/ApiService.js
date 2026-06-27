@@ -698,6 +698,21 @@ const ApiService = {
     return response.data;
   },
 
+  // === МЕТОДЫ ДЛЯ ТО АППАРАТОВ (МОТОЧАСЫ) ===
+
+  // Состояние всех боксов по учёту ТО (моточасы, простои, журнал)
+  getBoxMaintenance: async () => {
+    const response = await api.get('/admin/box-maintenance');
+    return response.data;
+  },
+
+  // Отметить ТО выполненным для бокса (внепланово/планово)
+  resetBoxMaintenance: async (boxNumber, data = {}) => {
+    const snakeData = toSnakeCase(data);
+    const response = await api.post(`/admin/box-maintenance/${boxNumber}/reset`, snakeData);
+    return response.data;
+  },
+
   // === МЕТОДЫ ДЛЯ РАБОТЫ С УБОРКОЙ ===
   
   // Состояние спецбокса уборщика

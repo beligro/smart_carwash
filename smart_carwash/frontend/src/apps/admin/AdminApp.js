@@ -15,6 +15,7 @@ import SettingsManagement from './components/SettingsManagement';
 import ModbusDashboard from './components/ModbusDashboard';
 import CleaningLogsManagement from './components/CleaningLogsManagement';
 import WashboxChangeLogs from './components/WashboxChangeLogs';
+import BoxMaintenanceManagement from './components/BoxMaintenanceManagement';
 
 
 const AdminContainer = styled.div`
@@ -287,6 +288,11 @@ const AdminApp = () => {
             </NavLink>
           </NavItem>
           <NavItem>
+            <NavLink to="/admin/maintenance" theme={theme} isActive={location.pathname === '/admin/maintenance'}>
+              ТО аппаратов
+            </NavLink>
+          </NavItem>
+          <NavItem>
             <NavLink to="/admin/sessions" theme={theme} isActive={location.pathname === '/admin/sessions'}>
               Сессии мойки
             </NavLink>
@@ -345,6 +351,7 @@ const AdminApp = () => {
         <Routes>
           <Route path="/" element={<Dashboard />} />
           <Route path="/washboxes" element={<WashBoxManagement />} />
+          <Route path="/maintenance" element={<BoxMaintenanceManagement />} />
           <Route path="/sessions" element={<SessionManagement />} />
           <Route path="/queue" element={<QueueStatus />} />
           <Route path="/users" element={<UserManagement />} />
@@ -390,6 +397,16 @@ const AdminApp = () => {
                 onClick={() => setIsMobileMenuOpen(false)}
               >
                 Боксы мойки
+              </MobileNavLink>
+            </MobileNavItem>
+            <MobileNavItem>
+              <MobileNavLink 
+                to="/admin/maintenance" 
+                theme={theme} 
+                isActive={location.pathname === '/admin/maintenance'}
+                onClick={() => setIsMobileMenuOpen(false)}
+              >
+                ТО аппаратов
               </MobileNavLink>
             </MobileNavItem>
             <MobileNavItem>

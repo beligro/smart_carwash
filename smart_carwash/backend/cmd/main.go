@@ -11,6 +11,7 @@ import (
 	"os/signal"
 	"path/filepath"
 	"runtime"
+	"strconv"
 	"syscall"
 	"time"
 
@@ -280,13 +281,228 @@ func main() {
 			db.Raw(`SELECT COALESCE(SUM(s.rental_time_minutes + s.extension_time_minutes),0)
 				FROM sessions s JOIN wash_boxes w ON w.id = s.box_id
 				WHERE w.number = ? AND s.status = 'complete'`, boxNumber).Scan(&currentMinutes)
+			// Моточасы на момент отметки (до сброса) — для журнала ТО
+			var baselineMinutes int64
+			db.Raw(`SELECT COALESCE(baseline_minutes,0) FROM box_maintenance WHERE box_number = ?`, boxNumber).Scan(&baselineMinutes)
+			motorHours := (currentMinutes - baselineMinutes) / 60
+			if motorHours < 0 {
+				motorHours = 0
+			}
 			res := db.Exec(`UPDATE box_maintenance SET baseline_minutes = ?, last_to_at = NOW(), alerted = false, updated_at = NOW() WHERE box_number = ?`, currentMinutes, boxNumber)
 			if res.Error != nil || res.RowsAffected == 0 {
 				c.String(http.StatusNotFound, "Бокс не найден в учёте ТО")
 				return
 			}
+			// Журнал ТО: фиксируем отметку из Telegram-кнопки
+			db.Exec(`INSERT INTO box_maintenance_log (box_number, performed_by, motor_hours_at_reset, reason, comment)
+				VALUES (?,?,?,?,?)`, boxNumber, "Telegram (Макс)", motorHours, "Плановое ТО", "")
 			c.Data(http.StatusOK, "text/html; charset=utf-8", []byte("<html><head><meta name='viewport' content='width=device-width,initial-scale=1'></head><body style='font-family:sans-serif;text-align:center;padding:40px;color:#2e7d32'><h2>ТО бокса №"+boxNumber+" отмечено</h2><p style='color:#555'>Счётчик моточасов сброшен. Следующее ТО — через 500 моточасов.</p></body></html>"))
 		})
+
+		// Админская мнемосхема ТО аппаратов (учёт моточасов, простои, журнал ТО).
+		// Доступ — под админским JWT (как и остальные /admin/* ручки).
+		maintAdmin := api.Group("/admin")
+		maintAdmin.Use(authHandler.GetAdminMiddleware())
+		{
+			// GET /admin/box-maintenance — состояние всех боксов учёта ТО
+			maintAdmin.GET("/box-maintenance", func(c *gin.Context) {
+				const threshold = 450
+				const limitMH = 500
+
+				type boxRow struct {
+					BoxNumber       int
+					TotalMinutes    int64
+					BaselineMinutes int64
+					LastToAt        time.Time
+					Alerted         bool
+					BoxStatus       *string
+					BoxUpdatedAt    *time.Time
+				}
+				var rows []boxRow
+				db.Raw(`
+					SELECT bm.box_number AS box_number,
+						COALESCE((SELECT SUM(s.rental_time_minutes + s.extension_time_minutes)
+								  FROM sessions s JOIN wash_boxes w2 ON w2.id = s.box_id
+								  WHERE w2.number = bm.box_number AND s.status = 'complete'), 0) AS total_minutes,
+						bm.baseline_minutes AS baseline_minutes,
+						bm.last_to_at AS last_to_at,
+						bm.alerted AS alerted,
+						w.status AS box_status,
+						w.updated_at AS box_updated_at
+					FROM box_maintenance bm
+					LEFT JOIN wash_boxes w ON w.number = bm.box_number AND w.deleted_at IS NULL
+					ORDER BY bm.box_number`).Scan(&rows)
+
+				// Момент входа в текущий сервис (последний переход в maintenance)
+				type sinceRow struct {
+					BoxNumber int
+					EnteredAt time.Time
+				}
+				var sinceRows []sinceRow
+				db.Raw(`SELECT box_number, MAX(created_at) AS entered_at
+						FROM washbox_change_logs
+						WHERE action = 'status_change' AND new_status = 'maintenance'
+						GROUP BY box_number`).Scan(&sinceRows)
+				sinceMap := make(map[int]time.Time, len(sinceRows))
+				for _, r := range sinceRows {
+					sinceMap[r.BoxNumber] = r.EnteredAt
+				}
+
+				// Суммарный простой в сервисе за 30 дней (минуты), по журналу смены статусов
+				type svcRow struct {
+					BoxNumber int
+					Minutes   int64
+				}
+				var svcRows []svcRow
+				db.Raw(`
+					WITH events AS (
+						SELECT box_number, created_at, new_status,
+							LEAD(created_at) OVER (PARTITION BY box_number ORDER BY created_at) AS next_at
+						FROM washbox_change_logs
+						WHERE action = 'status_change' AND new_status IS NOT NULL
+					)
+					SELECT box_number,
+						COALESCE(SUM(EXTRACT(EPOCH FROM (
+							LEAST(COALESCE(next_at, NOW()), NOW())
+							- GREATEST(created_at, NOW() - INTERVAL '30 days')
+						)) / 60), 0)::bigint AS minutes
+					FROM events
+					WHERE new_status = 'maintenance'
+					  AND COALESCE(next_at, NOW()) > NOW() - INTERVAL '30 days'
+					GROUP BY box_number`).Scan(&svcRows)
+				svcMap := make(map[int]int64, len(svcRows))
+				for _, r := range svcRows {
+					svcMap[r.BoxNumber] = r.Minutes
+				}
+
+				// Журнал ТО — последние 5 записей на бокс
+				type histRow struct {
+					BoxNumber         int
+					PerformedAt       time.Time
+					PerformedBy       *string
+					MotorHoursAtReset *int
+					Reason            *string
+					Comment           *string
+				}
+				var histRows []histRow
+				db.Raw(`
+					SELECT box_number, performed_at, performed_by, motor_hours_at_reset, reason, comment
+					FROM (
+						SELECT *, ROW_NUMBER() OVER (PARTITION BY box_number ORDER BY performed_at DESC) AS rn
+						FROM box_maintenance_log
+					) t
+					WHERE rn <= 5
+					ORDER BY box_number, performed_at DESC`).Scan(&histRows)
+				histMap := make(map[int][]gin.H)
+				for _, h := range histRows {
+					histMap[h.BoxNumber] = append(histMap[h.BoxNumber], gin.H{
+						"performed_at":         h.PerformedAt,
+						"performed_by":         h.PerformedBy,
+						"motor_hours_at_reset": h.MotorHoursAtReset,
+						"reason":               h.Reason,
+						"comment":              h.Comment,
+					})
+				}
+
+				result := make([]gin.H, 0, len(rows))
+				for _, r := range rows {
+					mh := (r.TotalMinutes - r.BaselineMinutes) / 60
+					if mh < 0 {
+						mh = 0
+					}
+					status := "ok"
+					if mh >= limitMH {
+						status = "overdue"
+					} else if mh >= threshold {
+						status = "soon"
+					}
+					percent := int(float64(mh)/float64(limitMH)*100 + 0.5)
+					inService := r.BoxStatus != nil && *r.BoxStatus == "maintenance"
+					var inServiceSince interface{}
+					if inService {
+						if t, ok := sinceMap[r.BoxNumber]; ok {
+							inServiceSince = t
+						} else if r.BoxUpdatedAt != nil {
+							inServiceSince = *r.BoxUpdatedAt
+						}
+					}
+					hist := histMap[r.BoxNumber]
+					if hist == nil {
+						hist = []gin.H{}
+					}
+					var svc int64
+					if v, ok := svcMap[r.BoxNumber]; ok {
+						svc = v
+					}
+					result = append(result, gin.H{
+						"box_number":          r.BoxNumber,
+						"motor_hours":         mh,
+						"last_to_at":          r.LastToAt,
+						"threshold":           threshold,
+						"limit":               limitMH,
+						"percent":             percent,
+						"status":              status,
+						"alerted":             r.Alerted,
+						"in_service":          inService,
+						"in_service_since":    inServiceSince,
+						"service_minutes_30d": svc,
+						"history":             hist,
+					})
+				}
+				c.JSON(http.StatusOK, result)
+			})
+
+			// POST /admin/box-maintenance/:box/reset — отметить ТO выполненным (внепланово/планово)
+			maintAdmin.POST("/box-maintenance/:box/reset", func(c *gin.Context) {
+				boxNum, err := strconv.Atoi(c.Param("box"))
+				if err != nil {
+					c.JSON(http.StatusBadRequest, gin.H{"error": "некорректный номер бокса"})
+					return
+				}
+				var body struct {
+					Reason  string `json:"reason"`
+					Comment string `json:"comment"`
+				}
+				_ = c.ShouldBindJSON(&body)
+
+				var cnt int64
+				db.Raw(`SELECT COUNT(*) FROM box_maintenance WHERE box_number = ?`, boxNum).Scan(&cnt)
+				if cnt == 0 {
+					c.JSON(http.StatusNotFound, gin.H{"error": "бокс не найден в учёте ТО"})
+					return
+				}
+
+				var totalMinutes, baseline int64
+				db.Raw(`SELECT COALESCE(SUM(s.rental_time_minutes + s.extension_time_minutes),0)
+						FROM sessions s JOIN wash_boxes w ON w.id = s.box_id
+						WHERE w.number = ? AND s.status = 'complete'`, boxNum).Scan(&totalMinutes)
+				db.Raw(`SELECT COALESCE(baseline_minutes,0) FROM box_maintenance WHERE box_number = ?`, boxNum).Scan(&baseline)
+				mh := (totalMinutes - baseline) / 60
+				if mh < 0 {
+					mh = 0
+				}
+
+				performedBy := "admin"
+				if u, ok := c.Get("username"); ok {
+					if us, ok2 := u.(string); ok2 && us != "" {
+						performedBy = us
+					}
+				}
+
+				if res := db.Exec(`UPDATE box_maintenance SET baseline_minutes = ?, last_to_at = NOW(), alerted = false, updated_at = NOW() WHERE box_number = ?`, totalMinutes, boxNum); res.Error != nil {
+					c.JSON(http.StatusInternalServerError, gin.H{"error": "не удалось обновить учёт ТО"})
+					return
+				}
+				db.Exec(`INSERT INTO box_maintenance_log (box_number, performed_by, motor_hours_at_reset, reason, comment)
+						VALUES (?,?,?,?,?)`, boxNum, performedBy, mh, body.Reason, body.Comment)
+
+				c.JSON(http.StatusOK, gin.H{
+					"status":               "ok",
+					"box_number":           boxNum,
+					"motor_hours_at_reset": mh,
+				})
+			})
+		}
 
 		// Веб-API для клиентов с JWT (user_id из токена)
 		webGroup := api.Group("/web", authHandler.GetWebAuthMiddleware())
