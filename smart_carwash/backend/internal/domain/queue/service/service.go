@@ -212,6 +212,33 @@ func (s *ServiceImpl) GetQueueStatus(ctx context.Context, includeUsers bool) (*m
 		return nil, err
 	}
 
+	// Обогащаем занятые боксы остатком времени активной сессии (для табло мнемосхемы).
+	// seconds_left = (rental + extension)*60 - прошло с момента перехода в active.
+	// При продлении extension увеличивается → таймер автоматически растёт.
+	if activeSessions, aerr := s.sessionService.GetSessionsByStatus(ctx, sessionModels.SessionStatusActive); aerr == nil {
+		now := time.Now()
+		secondsByBox := make(map[uuid.UUID]int)
+		for i := range activeSessions {
+			as := activeSessions[i]
+			if as.BoxID == nil {
+				continue
+			}
+			totalSec := (as.RentalTimeMinutes + as.ExtensionTimeMinutes) * 60
+			elapsed := int(now.Sub(as.StatusUpdatedAt).Seconds())
+			left := totalSec - elapsed
+			if left < 0 {
+				left = 0
+			}
+			secondsByBox[*as.BoxID] = left
+		}
+		for i := range allBoxes {
+			if sl, ok := secondsByBox[allBoxes[i].ID]; ok {
+				v := sl
+				allBoxes[i].SecondsLeft = &v
+			}
+		}
+	}
+
 	// Проверяем контекст после каждого шага
 	if ctx.Err() != nil {
 		return nil, ctx.Err()

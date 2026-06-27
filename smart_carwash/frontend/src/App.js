@@ -8,6 +8,7 @@ import TelegramApp from './apps/telegram/TelegramApp';
 import WebLoginPage from './apps/web/WebLoginPage';
 import WebForgotPasswordPage from './apps/web/WebForgotPasswordPage';
 import GuestApp from './apps/web/GuestApp';
+import StatusBoard from './apps/web/StatusBoard';
 import WebApp from './apps/web/WebApp';
 import AdminApp from './apps/admin/AdminApp';
 import CashierApp from './apps/cashier/CashierApp';
@@ -37,6 +38,8 @@ function App() {
         {/* Веб-версия: логин, восстановление пароля и приложение */}
         <Route path="/web/login" element={<WebLoginPage />} />
         <Route path="/web/login/forgot" element={<WebForgotPasswordPage />} />
+        {/* Публичное табло статуса боксов */}
+        <Route path="/status" element={<StatusBoard />} />
         {/* Гостевой режим — без регистрации, перед /web/* чтобы перехватить /web/guest/* */}
         <Route path="/web/guest/*" element={<GuestApp />} />
         <Route path="/web/*" element={<WebApp />} />
