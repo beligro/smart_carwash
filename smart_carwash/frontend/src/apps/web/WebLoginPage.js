@@ -348,7 +348,7 @@ const WebLoginPage = () => {
       </GuestButton>
       <GuestHint>Без регистрации — выбрали услугу, оплатили и поехали</GuestHint>
 
-      <StatusLink href="/status">
+      <StatusLink href="/status" target="_blank" rel="noopener noreferrer">
         📊 Статус загруженности в реальном времени
       </StatusLink>
 

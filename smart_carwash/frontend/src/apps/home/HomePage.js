@@ -380,7 +380,7 @@ const HomePage = () => {
           <TelegramButton href="https://t.me/h2o_nsk_bot" target="_blank" rel="noopener noreferrer">
             📱 Открыть Telegram бот
           </TelegramButton>
-          <StatusButton href="/status">
+          <StatusButton href="/status" target="_blank" rel="noopener noreferrer">
             📊 Статус загруженности в реальном времени
           </StatusButton>
         </ButtonGroup>
@@ -586,7 +586,7 @@ const HomePage = () => {
             <TelegramButton href="https://t.me/h2o_nsk_bot" target="_blank" rel="noopener noreferrer">
               📱 Открыть @h2o_nsk_bot
             </TelegramButton>
-            <StatusButton href="/status">
+            <StatusButton href="/status" target="_blank" rel="noopener noreferrer">
               📊 Статус загруженности в реальном времени
             </StatusButton>
           </ButtonGroup>
