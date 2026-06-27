@@ -112,6 +112,32 @@ const WebButton = styled.a`
   }
 `;
 
+const StatusButton = styled.a`
+  display: inline-block;
+  margin-top: 20px;
+  padding: 14px 32px;
+  background: linear-gradient(135deg, #7c3aed 0%, #6d28d9 100%);
+  color: white;
+  text-decoration: none;
+  border-radius: 25px;
+  font-weight: bold;
+  font-size: 1.15rem;
+  transition: all 0.3s ease;
+  box-shadow: 0 4px 15px rgba(124, 58, 237, 0.35);
+
+  &:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 6px 20px rgba(124, 58, 237, 0.55);
+    color: white;
+    text-decoration: none;
+  }
+
+  @media (max-width: 768px) {
+    font-size: 1rem;
+    padding: 12px 24px;
+  }
+`;
+
 const ButtonGroup = styled.div`
   display: flex;
   flex-direction: column;
@@ -354,6 +380,9 @@ const HomePage = () => {
           <TelegramButton href="https://t.me/h2o_nsk_bot" target="_blank" rel="noopener noreferrer">
             📱 Открыть Telegram бот
           </TelegramButton>
+          <StatusButton href="/status">
+            📊 Статус загруженности в реальном времени
+          </StatusButton>
         </ButtonGroup>
       </Header>
 
@@ -557,6 +586,9 @@ const HomePage = () => {
             <TelegramButton href="https://t.me/h2o_nsk_bot" target="_blank" rel="noopener noreferrer">
               📱 Открыть @h2o_nsk_bot
             </TelegramButton>
+            <StatusButton href="/status">
+              📊 Статус загруженности в реальном времени
+            </StatusButton>
           </ButtonGroup>
         </CTASection>
       </MainContent>

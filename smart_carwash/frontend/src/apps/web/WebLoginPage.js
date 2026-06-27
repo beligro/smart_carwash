@@ -165,6 +165,29 @@ const Divider = styled.div`
   }
 `;
 
+const StatusLink = styled.a`
+  display: block;
+  width: 100%;
+  max-width: 400px;
+  box-sizing: border-box;
+  margin-top: 14px;
+  padding: 14px 20px;
+  text-align: center;
+  text-decoration: none;
+  font-size: 1rem;
+  font-weight: 600;
+  color: #6d28d9;
+  background: #f3e8ff;
+  border: 1.5px solid #c4b5fd;
+  border-radius: 12px;
+  transition: background 0.2s;
+  &:hover {
+    background: #ede0ff;
+    color: #5b21b6;
+    text-decoration: none;
+  }
+`;
+
 const RegHint = styled.p`
   max-width: 400px;
   text-align: center;
@@ -324,6 +347,10 @@ const WebLoginPage = () => {
         🚗 Помыть машину как гость
       </GuestButton>
       <GuestHint>Без регистрации — выбрали услугу, оплатили и поехали</GuestHint>
+
+      <StatusLink href="/status">
+        📊 Статус загруженности в реальном времени
+      </StatusLink>
 
       <Divider>есть учётная запись?</Divider>
 
