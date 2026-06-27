@@ -274,6 +274,14 @@ const BoxMaintenanceManagement = () => {
   const [submitting, setSubmitting] = useState(false);
   const [feedback, setFeedback] = useState('');
 
+  // Состояние формы ротации аппаратов
+  const [swapOpen, setSwapOpen] = useState(false);
+  const [swapA, setSwapA] = useState('');
+  const [swapB, setSwapB] = useState('');
+  const [swapComment, setSwapComment] = useState('');
+  const [swapSubmitting, setSwapSubmitting] = useState(false);
+  const [swapFeedback, setSwapFeedback] = useState('');
+
   const isMounted = useRef(true);
 
   const load = useCallback(async (silent = false) => {
@@ -315,6 +323,14 @@ const BoxMaintenanceManagement = () => {
 
   const selected = selectedNumber != null ? byNumber.get(selectedNumber) : null;
 
+  const boxNumbers = useMemo(
+    () => boxes
+      .map((b) => b.box_number ?? b.boxNumber)
+      .filter((n) => n != null)
+      .sort((a, b) => a - b),
+    [boxes],
+  );
+
   const paletteFor = (data) => {
     if (!data) return STATUS_COLORS.none;
     if (data.in_service) return STATUS_COLORS.service;
@@ -333,6 +349,38 @@ const BoxMaintenanceManagement = () => {
   const closeModal = () => {
     setSelectedNumber(null);
     setConfirmOpen(false);
+  };
+
+  const openSwap = () => {
+    setSwapOpen(true);
+    setSwapA('');
+    setSwapB('');
+    setSwapComment('');
+    setSwapFeedback('');
+  };
+
+  const closeSwap = () => {
+    setSwapOpen(false);
+  };
+
+  const submitSwap = async () => {
+    const a = Number(swapA);
+    const b = Number(swapB);
+    if (!a || !b || a === b) {
+      setSwapFeedback('Ошибка: выберите два разных бокса.');
+      return;
+    }
+    setSwapSubmitting(true);
+    setSwapFeedback('');
+    try {
+      await ApiService.swapBoxMaintenance(a, b, swapComment);
+      await load(true);
+      setSwapOpen(false);
+    } catch (e) {
+      setSwapFeedback('Ошибка: не удалось выполнить ротацию.');
+    } finally {
+      setSwapSubmitting(false);
+    }
   };
 
   const submitReset = async () => {
@@ -356,9 +404,14 @@ const BoxMaintenanceManagement = () => {
     <Container theme={theme}>
       <HeaderRow>
         <Title>ТО аппаратов</Title>
-        <Button theme={theme} onClick={() => load()} disabled={loading}>
-          {loading ? 'Обновление…' : 'Обновить'}
-        </Button>
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+          <Button theme={theme} onClick={openSwap} disabled={boxNumbers.length < 2}>
+            Ротация аппаратов
+          </Button>
+          <Button theme={theme} onClick={() => load()} disabled={loading}>
+            {loading ? 'Обновление…' : 'Обновить'}
+          </Button>
+        </div>
       </HeaderRow>
 
       {error && <ErrorText>{error}</ErrorText>}
@@ -446,6 +499,60 @@ const BoxMaintenanceManagement = () => {
           </li>
         ))}
       </Legend>
+
+      {swapOpen && (
+        <Overlay onClick={closeSwap}>
+          <Modal theme={theme} onClick={(e) => e.stopPropagation()}>
+            <ModalHeader>
+              <h3 style={{ margin: 0 }}>Ротация аппаратов</h3>
+              <CloseButton theme={theme} onClick={closeSwap}>×</CloseButton>
+            </ModalHeader>
+
+            {swapFeedback && <ErrorText>{swapFeedback}</ErrorText>}
+
+            <div style={{ fontSize: '0.9rem', opacity: 0.8, marginBottom: 8 }}>
+              Выберите два бокса, между которыми переставлены аппараты. Моточасы и дата ТО переедут вместе с аппаратами.
+            </div>
+
+            <Label>Первый бокс</Label>
+            <Select theme={theme} value={swapA} onChange={(e) => setSwapA(e.target.value)}>
+              <option value="">— выберите бокс —</option>
+              {boxNumbers.map((n) => (
+                <option key={n} value={n} disabled={String(n) === String(swapB)}>№{n}</option>
+              ))}
+            </Select>
+
+            <Label>Второй бокс</Label>
+            <Select theme={theme} value={swapB} onChange={(e) => setSwapB(e.target.value)}>
+              <option value="">— выберите бокс —</option>
+              {boxNumbers.map((n) => (
+                <option key={n} value={n} disabled={String(n) === String(swapA)}>№{n}</option>
+              ))}
+            </Select>
+
+            {swapA && swapB && swapA !== swapB && (
+              <ConfirmBox theme={theme}>
+                <div style={{ fontWeight: 600 }}>
+                  Поменять местами учёт ТО боксов №{swapA} и №{swapB}?
+                </div>
+                <div style={{ fontSize: '0.85rem', opacity: 0.85, marginTop: 6 }}>
+                  Моточасы и дата ТО переедут вместе с аппаратами.
+                </div>
+              </ConfirmBox>
+            )}
+
+            <Label>Комментарий (необязательно)</Label>
+            <TextArea theme={theme} value={swapComment} onChange={(e) => setSwapComment(e.target.value)} placeholder="Доп. информация о перестановке" />
+
+            <ModalActions>
+              <Button theme={theme} onClick={closeSwap} disabled={swapSubmitting}>Отмена</Button>
+              <Button primary theme={theme} onClick={submitSwap} disabled={swapSubmitting || !swapA || !swapB || swapA === swapB}>
+                {swapSubmitting ? 'Выполнение…' : 'Переставить'}
+              </Button>
+            </ModalActions>
+          </Modal>
+        </Overlay>
+      )}
 
       {selected && (
         <Overlay onClick={closeModal}>

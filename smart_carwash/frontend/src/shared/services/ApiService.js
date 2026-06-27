@@ -713,6 +713,16 @@ const ApiService = {
     return response.data;
   },
 
+  // Парная ротация аппаратов: обмен учётом ТО между двумя боксами
+  swapBoxMaintenance: async (boxA, boxB, comment = '') => {
+    const response = await api.post('/admin/box-maintenance/swap', {
+      box_a: boxA,
+      box_b: boxB,
+      comment,
+    });
+    return response.data;
+  },
+
   // === МЕТОДЫ ДЛЯ РАБОТЫ С УБОРКОЙ ===
   
   // Состояние спецбокса уборщика

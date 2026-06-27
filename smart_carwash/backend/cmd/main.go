@@ -502,6 +502,129 @@ func main() {
 					"motor_hours_at_reset": mh,
 				})
 			})
+
+			// POST /admin/box-maintenance/swap — парная ротация аппаратов между боксами.
+			// Моточасы и дата ТО "переезжают" вместе с аппаратом за счёт обмена счётчиками.
+			maintAdmin.POST("/box-maintenance/swap", func(c *gin.Context) {
+				var body struct {
+					BoxA    int    `json:"box_a"`
+					BoxB    int    `json:"box_b"`
+					Comment string `json:"comment"`
+				}
+				if err := c.ShouldBindJSON(&body); err != nil {
+					c.JSON(http.StatusBadRequest, gin.H{"error": "некорректное тело запроса"})
+					return
+				}
+				if body.BoxA == body.BoxB {
+					c.JSON(http.StatusBadRequest, gin.H{"error": "нужно выбрать два разных бокса"})
+					return
+				}
+
+				performedBy := "admin"
+				if u, ok := c.Get("username"); ok {
+					if us, ok2 := u.(string); ok2 && us != "" {
+						performedBy = us
+					}
+				}
+
+				roundHours := func(minutes int64) int64 {
+					if minutes < 0 {
+						minutes = 0
+					}
+					return (minutes + 30) / 60
+				}
+
+				err := db.Transaction(func(tx *gorm.DB) error {
+					type bmRow struct {
+						BoxNumber       int
+						BaselineMinutes int64
+						LastToAt        time.Time
+						Alerted         bool
+					}
+					var rows []bmRow
+					if e := tx.Raw(`SELECT box_number, baseline_minutes, last_to_at, alerted
+									FROM box_maintenance WHERE box_number IN (?, ?)`, body.BoxA, body.BoxB).Scan(&rows).Error; e != nil {
+						return e
+					}
+					if len(rows) != 2 {
+						return fmt.Errorf("not_found")
+					}
+					byNum := make(map[int]bmRow, 2)
+					for _, r := range rows {
+						byNum[r.BoxNumber] = r
+					}
+					a, okA := byNum[body.BoxA]
+					b, okB := byNum[body.BoxB]
+					if !okA || !okB {
+						return fmt.Errorf("not_found")
+					}
+
+					var soldA, soldB int64
+					if e := tx.Raw(`SELECT COALESCE(SUM(s.rental_time_minutes + s.extension_time_minutes),0)
+									FROM sessions s JOIN wash_boxes w ON w.id = s.box_id
+									WHERE w.number = ? AND s.status = 'complete'`, body.BoxA).Scan(&soldA).Error; e != nil {
+						return e
+					}
+					if e := tx.Raw(`SELECT COALESCE(SUM(s.rental_time_minutes + s.extension_time_minutes),0)
+									FROM sessions s JOIN wash_boxes w ON w.id = s.box_id
+									WHERE w.number = ? AND s.status = 'complete'`, body.BoxB).Scan(&soldB).Error; e != nil {
+						return e
+					}
+
+					// Минуты с последнего ТО у каждого аппарата (наработка, которая переезжает)
+					minA := soldA - a.BaselineMinutes
+					minB := soldB - b.BaselineMinutes
+
+					// Новые baseline так, чтобы (sold - baseline) у бокса отражал пришедший аппарат
+					newBaselineA := soldA - minB
+					newBaselineB := soldB - minA
+
+					// Бокс A получает дату/флаг ТО от аппарата B и наоборот
+					if e := tx.Exec(`UPDATE box_maintenance SET baseline_minutes = ?, last_to_at = ?, alerted = ?, updated_at = NOW() WHERE box_number = ?`,
+						newBaselineA, b.LastToAt, b.Alerted, body.BoxA).Error; e != nil {
+						return e
+					}
+					if e := tx.Exec(`UPDATE box_maintenance SET baseline_minutes = ?, last_to_at = ?, alerted = ?, updated_at = NOW() WHERE box_number = ?`,
+						newBaselineB, a.LastToAt, a.Alerted, body.BoxB).Error; e != nil {
+						return e
+					}
+
+					mhA := roundHours(minB) // моточасы, которые теперь на боксе A (аппарат из B)
+					mhB := roundHours(minA) // моточасы, которые теперь на боксе B (аппарат из A)
+
+					commentA := fmt.Sprintf("Аппарат перемещён: бокс №%d ↔ бокс №%d (теперь %d мч)", body.BoxA, body.BoxB, mhA)
+					commentB := fmt.Sprintf("Аппарат перемещён: бокс №%d ↔ бокс №%d (теперь %d мч)", body.BoxB, body.BoxA, mhB)
+					if body.Comment != "" {
+						commentA = commentA + " | " + body.Comment
+						commentB = commentB + " | " + body.Comment
+					}
+
+					if e := tx.Exec(`INSERT INTO box_maintenance_log (box_number, performed_by, motor_hours_at_reset, reason, comment)
+									VALUES (?,?,?,?,?)`, body.BoxA, performedBy, mhA, "Ротация аппарата", commentA).Error; e != nil {
+						return e
+					}
+					if e := tx.Exec(`INSERT INTO box_maintenance_log (box_number, performed_by, motor_hours_at_reset, reason, comment)
+									VALUES (?,?,?,?,?)`, body.BoxB, performedBy, mhB, "Ротация аппарата", commentB).Error; e != nil {
+						return e
+					}
+					return nil
+				})
+
+				if err != nil {
+					if err.Error() == "not_found" {
+						c.JSON(http.StatusNotFound, gin.H{"error": "один из боксов не найден в учёте ТО"})
+						return
+					}
+					c.JSON(http.StatusInternalServerError, gin.H{"error": "не удалось выполнить ротацию"})
+					return
+				}
+
+				c.JSON(http.StatusOK, gin.H{
+					"status": "ok",
+					"box_a":  body.BoxA,
+					"box_b":  body.BoxB,
+				})
+			})
 		}
 
 		// Веб-API для клиентов с JWT (user_id из токена)
