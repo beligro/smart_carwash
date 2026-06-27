@@ -11,6 +11,7 @@ function mapData(data) {
   const boxes = (data?.all_boxes || []).map((b) => {
     const box = { number: b.number, status: b.status };
     if (typeof b.seconds_left === 'number') box.secondsLeft = b.seconds_left;
+    if (typeof b.reserved_seconds_left === 'number') box.reservedSecondsLeft = b.reserved_seconds_left;
     if (b.cooldown_until) {
       const left = Math.floor((new Date(b.cooldown_until).getTime() - now) / 1000);
       if (left > 0) box.cooldownSecondsLeft = left;

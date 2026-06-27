@@ -10,6 +10,7 @@ import (
 	"carwash_backend/internal/domain/queue/models"
 	sessionModels "carwash_backend/internal/domain/session/models"
 	sessionService "carwash_backend/internal/domain/session/service"
+	settingsService "carwash_backend/internal/domain/settings/service"
 	userModels "carwash_backend/internal/domain/user/models"
 	userService "carwash_backend/internal/domain/user/service"
 	washboxModels "carwash_backend/internal/domain/washbox/models"
@@ -27,19 +28,21 @@ type Service interface {
 
 // ServiceImpl реализация Service
 type ServiceImpl struct {
-	sessionService sessionService.Service
-	washboxService washboxService.Service
-	userService    userService.Service
-	metrics        *metrics.Metrics
+	sessionService  sessionService.Service
+	washboxService  washboxService.Service
+	userService     userService.Service
+	settingsService settingsService.Service
+	metrics         *metrics.Metrics
 }
 
 // NewService создает новый экземпляр Service
-func NewService(sessionService sessionService.Service, washboxService washboxService.Service, userService userService.Service, metrics *metrics.Metrics) *ServiceImpl {
+func NewService(sessionService sessionService.Service, washboxService washboxService.Service, userService userService.Service, settingsService settingsService.Service, metrics *metrics.Metrics) *ServiceImpl {
 	return &ServiceImpl{
-		sessionService: sessionService,
-		washboxService: washboxService,
-		userService:    userService,
-		metrics:        metrics,
+		sessionService:  sessionService,
+		washboxService:  washboxService,
+		userService:     userService,
+		settingsService: settingsService,
+		metrics:         metrics,
 	}
 }
 
@@ -235,6 +238,33 @@ func (s *ServiceImpl) GetQueueStatus(ctx context.Context, includeUsers bool) (*m
 			if sl, ok := secondsByBox[allBoxes[i].ID]; ok {
 				v := sl
 				allBoxes[i].SecondsLeft = &v
+			}
+		}
+	}
+
+	// Обогащаем назначенные (reserved/«Назначен») боксы остатком времени до авто-старта (для табло мнемосхемы).
+	// reserved_seconds_left = sessionTimeout*60 - прошло с момента перехода в assigned. То же значение,
+	// что использует CheckAndExpireReservedSessions для авто-старта. Дефенсивно: при ошибке просто пропускаем.
+	if assignedSessions, aerr := s.sessionService.GetSessionsByStatus(ctx, sessionModels.SessionStatusAssigned); aerr == nil {
+		if sessionTimeout, terr := s.settingsService.GetSessionTimeout(ctx); terr == nil {
+			now := time.Now()
+			reservedByBox := make(map[uuid.UUID]int)
+			for i := range assignedSessions {
+				as := assignedSessions[i]
+				if as.BoxID == nil {
+					continue
+				}
+				left := sessionTimeout*60 - int(now.Sub(as.StatusUpdatedAt).Seconds())
+				if left < 0 {
+					left = 0
+				}
+				reservedByBox[*as.BoxID] = left
+			}
+			for i := range allBoxes {
+				if rl, ok := reservedByBox[allBoxes[i].ID]; ok {
+					v := rl
+					allBoxes[i].ReservedSecondsLeft = &v
+				}
 			}
 		}
 	}

@@ -89,6 +89,7 @@ function BoxMap({ boxes = [] }) {
       init[b.number] = {
         secondsLeft: typeof b.secondsLeft === "number" ? b.secondsLeft : null,
         cooldownLeft: typeof b.cooldownSecondsLeft === "number" ? b.cooldownSecondsLeft : null,
+        reservedLeft: typeof b.reservedSecondsLeft === "number" ? b.reservedSecondsLeft : null,
       };
     }
     setTimers(init);
@@ -102,9 +103,10 @@ function BoxMap({ boxes = [] }) {
         let changed = false;
         for (const k in prev) {
           const t = prev[k];
-          const nt = { secondsLeft: t.secondsLeft, cooldownLeft: t.cooldownLeft };
+          const nt = { secondsLeft: t.secondsLeft, cooldownLeft: t.cooldownLeft, reservedLeft: t.reservedLeft };
           if (typeof t.secondsLeft === "number" && t.secondsLeft > 0) { nt.secondsLeft = t.secondsLeft - 1; changed = true; }
           if (typeof t.cooldownLeft === "number" && t.cooldownLeft > 0) { nt.cooldownLeft = t.cooldownLeft - 1; changed = true; }
+          if (typeof t.reservedLeft === "number" && t.reservedLeft > 0) { nt.reservedLeft = t.reservedLeft - 1; changed = true; }
           next[k] = nt;
         }
         return changed ? next : prev;
@@ -151,8 +153,9 @@ function BoxMap({ boxes = [] }) {
             const t = timers[slot.number];
             const { palette, isCooldown } = paletteFor(data, t);
             const isBusy = data?.status === "busy";
-            const secs = isCooldown ? t?.cooldownLeft : t?.secondsLeft;
-            const showTimer = (isBusy && typeof t?.secondsLeft === "number") || isCooldown;
+            const isReserved = !isCooldown && data?.status === "reserved";
+            const secs = isCooldown ? t?.cooldownLeft : (isReserved ? t?.reservedLeft : t?.secondsLeft);
+            const showTimer = (isBusy && typeof t?.secondsLeft === "number") || isCooldown || (isReserved && typeof t?.reservedLeft === "number");
 
             return (
               <g key={slot.number} data-box={slot.number} data-status={data?.status || "unknown"} className={isBusy ? "boxmap__slot boxmap__slot--busy" : "boxmap__slot"}>
@@ -178,8 +181,9 @@ function BoxMap({ boxes = [] }) {
             const t = timers[p.number];
             const { palette, isCooldown } = paletteFor(data, t);
             const isBusy = data?.status === "busy";
-            const secs = isCooldown ? t?.cooldownLeft : t?.secondsLeft;
-            const showTimer = (isBusy && typeof t?.secondsLeft === "number") || isCooldown;
+            const isReserved = !isCooldown && data?.status === "reserved";
+            const secs = isCooldown ? t?.cooldownLeft : (isReserved ? t?.reservedLeft : t?.secondsLeft);
+            const showTimer = (isBusy && typeof t?.secondsLeft === "number") || isCooldown || (isReserved && typeof t?.reservedLeft === "number");
             return (
               <g key={p.number} data-box={p.number} data-status={data?.status || "unknown"} className={isBusy ? "boxmap__slot boxmap__slot--busy" : "boxmap__slot"}>
                 <circle cx={PAD + p.cx} cy={PAD + AIR_CY} r={AIR_R} fill={palette.fill} stroke="#ffffff" strokeWidth={0.15} />

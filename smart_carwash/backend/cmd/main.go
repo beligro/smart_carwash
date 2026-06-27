@@ -184,7 +184,7 @@ func main() {
 	sessionSvc = sessionService.NewService(sessionRepository, washboxSvc, userSvc, sessionTelegram, emailSender, paymentSvc, modbusAdapter, settingsSvc, cfg.CashierUserID, appMetrics, db, washboxLogSvc)
 
 	// Создаем сервис очереди, который зависит от сервисов сессий, боксов и пользователей
-	queueSvc := queueService.NewService(sessionSvc, washboxSvc, userSvc, appMetrics)
+	queueSvc := queueService.NewService(sessionSvc, washboxSvc, userSvc, settingsSvc, appMetrics)
 
 	// Устанавливаем вебхук для бота
 	if tgBot != nil {
