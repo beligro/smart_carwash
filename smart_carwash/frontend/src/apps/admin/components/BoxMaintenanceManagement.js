@@ -404,26 +404,33 @@ const BoxMaintenanceManagement = () => {
                   strokeWidth={0.08}
                   rx={0.25}
                 />
-                <text x={PAD + slot.x + slot.w / 2} y={PAD + slot.y + 1} textAnchor="middle" fontSize={0.7} fill={palette.text} opacity={0.85}>
-                  {isVacuum ? 'ПЫЛЕСОС' : 'БОКС'}
-                </text>
-                <text x={PAD + slot.x + slot.w / 2} y={PAD + slot.y + slot.h / 2 - 0.4} textAnchor="middle" fontSize={2.0} fontWeight="800" fill={palette.text}>
-                  {slot.number}
+                <text x={PAD + slot.x + slot.w / 2} y={PAD + slot.y + 0.85} textAnchor="middle" fontSize={0.6} fill={palette.text} opacity={0.8}>
+                  {isVacuum ? 'ПЫЛЕСОС' : `БОКС ${slot.number}`}
                 </text>
                 {data && !data.in_service && (
-                  <text x={PAD + slot.x + slot.w / 2} y={PAD + slot.y + slot.h - 1.5} textAnchor="middle" fontSize={1.25} fontWeight="700" fill={palette.text}>
+                  <text x={PAD + slot.x + slot.w / 2} y={PAD + slot.y + 2.9} textAnchor="middle" fontSize={1.7} fontWeight="800" fill={palette.text}>
                     {mh}
                   </text>
                 )}
+                {isVacuum && (
+                  <text x={PAD + slot.x + slot.w / 2} y={PAD + slot.y + slot.h / 2 + 0.6} textAnchor="middle" fontSize={1.6} fontWeight="800" fill={palette.text}>
+                    {slot.number}
+                  </text>
+                )}
                 {data && data.in_service && (
-                  <text x={PAD + slot.x + slot.w / 2} y={PAD + slot.y + slot.h - 1.5} textAnchor="middle" fontSize={0.95} fontWeight="700" fill="#ffffff">
+                  <text x={PAD + slot.x + slot.w / 2} y={PAD + slot.y + 2.8} textAnchor="middle" fontSize={0.95} fontWeight="700" fill="#ffffff" textLength={slot.w - 0.6} lengthAdjust="spacingAndGlyphs">
                     {formatDuration(data.in_service_since || data.inServiceSince, nowMs)}
                   </text>
                 )}
                 {data && svcHours !== null && (
-                  <text x={PAD + slot.x + slot.w / 2} y={PAD + slot.y + slot.h - 0.4} textAnchor="middle" fontSize={0.8} fontWeight="600" fill={data.in_service ? '#ffffff' : palette.text} opacity={0.85}>
-                    {`серв ${svcHours}ч/30д`}
-                  </text>
+                  <>
+                    <text x={PAD + slot.x + slot.w / 2} y={PAD + slot.y + slot.h - 1.15} textAnchor="middle" fontSize={0.7} fontWeight="600" fill="#111827">
+                      в серв.
+                    </text>
+                    <text x={PAD + slot.x + slot.w / 2} y={PAD + slot.y + slot.h - 0.35} textAnchor="middle" fontSize={0.95} fontWeight="800" fill="#111827" textLength={slot.w - 0.8} lengthAdjust="spacingAndGlyphs">
+                      {`${svcHours}ч / 30д`}
+                    </text>
+                  </>
                 )}
               </g>
             );
