@@ -142,10 +142,10 @@ function BoxMap({ boxes = [] }) {
           role="img"
           aria-label="План автомойки со статусами боксов"
         >
-          <rect x={PAD - 0.3} y={PAD - 0.3} width={BUILDING_W + 0.6} height={BUILDING_H + 0.6} fill="none" stroke="#1f2937" strokeWidth={0.35} />
-          <rect x={PAD} y={PAD + BAY_DEPTH} width={BUILDING_W} height={BUILDING_H - 2 * BAY_DEPTH} fill="#e5e7eb" />
-          <rect x={PAD + 2 * BOX_W} y={PAD + TOP_Y} width={WALL_T} height={BAY_DEPTH} fill="#1f2937" />
-          <rect x={PAD + 2 * BOX_W} y={PAD + BOT_Y} width={WALL_T} height={BAY_DEPTH} fill="#1f2937" />
+          <rect x={PAD - 0.3} y={PAD - 0.3} width={BUILDING_W + 0.6} height={BUILDING_H + 0.6} rx={0.6} fill="rgba(255,255,255,0.02)" stroke="rgba(255,255,255,0.16)" strokeWidth={0.18} />
+          <rect x={PAD} y={PAD + BAY_DEPTH} width={BUILDING_W} height={BUILDING_H - 2 * BAY_DEPTH} fill="rgba(255,255,255,0.035)" />
+          <rect x={PAD + 2 * BOX_W} y={PAD + TOP_Y} width={WALL_T} height={BAY_DEPTH} rx={0.15} fill="rgba(255,255,255,0.16)" />
+          <rect x={PAD + 2 * BOX_W} y={PAD + BOT_Y} width={WALL_T} height={BAY_DEPTH} rx={0.15} fill="rgba(255,255,255,0.16)" />
 
           {/* Боксы / пылесосы */}
           {LAYOUT.map((slot) => {
@@ -159,7 +159,7 @@ function BoxMap({ boxes = [] }) {
 
             return (
               <g key={slot.number} data-box={slot.number} data-status={data?.status || "unknown"} className={isBusy ? "boxmap__slot boxmap__slot--busy" : "boxmap__slot"}>
-                <rect x={PAD + slot.x + 0.1} y={PAD + slot.y + 0.1} width={slot.w - 0.2} height={slot.h - 0.2} fill={palette.fill} stroke="#0f172a" strokeWidth={0.08} rx={0.25} />
+                <rect x={PAD + slot.x + 0.15} y={PAD + slot.y + 0.15} width={slot.w - 0.3} height={slot.h - 0.3} fill={palette.fill} stroke="rgba(255,255,255,0.16)" strokeWidth={0.07} rx={0.55} />
                 <text x={PAD + slot.x + slot.w / 2} y={PAD + slot.y + 1} textAnchor="middle" fontSize={0.7} fill={palette.text} opacity={0.85}>
                   {slot.kind === "vacuum" ? "ПЫЛЕСОС" : "БОКС"}
                 </text>
