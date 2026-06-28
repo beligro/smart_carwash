@@ -13,11 +13,12 @@
     <link rel="manifest" href="%PUBLIC_URL%/manifest.json" />
     <title>Автомойка H2O</title>
     <script async src="https://telegram.org/js/telegram-web-app.js"></script>
-    <!-- Umami analytics (self-hosted). Не трекаем админку. -->
+    <!-- Umami analytics (self-hosted). Не трекаем стафф: админ/кассир/уборщик. -->
     <script>
       (function () {
         try {
-          if (!location.pathname.startsWith('/admin')) {
+          var staff = /^\/(admin|cashier|cleaner)(\/|$)/;
+          if (!staff.test(location.pathname)) {
             var s = document.createElement('script');
             s.defer = true;
             s.src = 'https://stats.h2o-nsk.ru/script.js';
