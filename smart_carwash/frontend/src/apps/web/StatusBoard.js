@@ -70,6 +70,12 @@ const StatusBoard = () => {
             : 'Свободно — заехать можно сразу после оплаты'}
         </div>
 
+        {/* CTA — записаться на мойку */}
+        <div style={ctaWrapStyle}>
+          <a href="/web/login" style={ctaButtonStyle}>🚗 Помыть машину</a>
+          <div style={ctaHintStyle}>Без регистрации, вход или регистрация — на следующем шаге</div>
+        </div>
+
         {error && (
           <p style={{ color: '#c62828', textAlign: 'center' }}>Не удалось загрузить статус, повтор…</p>
         )}
@@ -93,5 +99,12 @@ const bannerBase = {
 };
 const bannerQueueStyle = { ...bannerBase, background: '#fff3cd', color: '#7a5c00' };
 const bannerFreeStyle = { ...bannerBase, background: '#e8f5e9', color: '#2e7d32' };
+const ctaWrapStyle = { textAlign: 'center', margin: '0 0 18px' };
+const ctaButtonStyle = {
+  display: 'inline-block', background: 'linear-gradient(135deg, #0ea5e9 0%, #0284c7 100%)',
+  color: '#fff', textDecoration: 'none', fontWeight: 800, fontSize: '1.2rem',
+  padding: '16px 40px', borderRadius: 14, boxShadow: '0 4px 16px rgba(2,132,199,0.4)',
+};
+const ctaHintStyle = { marginTop: 8, fontSize: '0.9rem', color: '#64748b' };
 
 export default StatusBoard;
