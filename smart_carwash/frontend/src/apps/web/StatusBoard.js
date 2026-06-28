@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import axios from 'axios';
 import BoxMap from './components/BoxMap/BoxMap';
+import logoUrl from './assets/h2o-logo.webp';
 
 const baseURL = process.env.REACT_APP_API_URL || '/api';
 const POLL_MS = 4000;
@@ -61,6 +62,13 @@ const StatusBoard = () => {
   return (
     <div style={pageStyle}>
       <div style={{ maxWidth: 1100, margin: '0 auto' }}>
+        <header style={headerStyle}>
+          <a href="/" style={logoLinkStyle} aria-label="На главную H2O">
+            <img src={logoUrl} alt="H2O — автомойка самообслуживания" style={logoImgStyle} />
+          </a>
+          <a href="/" style={homeLinkStyle}>← На главную</a>
+        </header>
+
         <h1 style={titleStyle}>Автомойка H2O — статус боксов</h1>
 
         {/* Общая очередь */}
@@ -72,12 +80,12 @@ const StatusBoard = () => {
 
         {/* CTA — записаться на мойку */}
         <div style={ctaWrapStyle}>
-          <a href="/web/login" style={ctaButtonStyle}>🚗 Помыть машину</a>
+          <a href="/web/login" style={ctaButtonStyle}>Помыть машину</a>
           <div style={ctaHintStyle}>Без регистрации, вход или регистрация — на следующем шаге</div>
         </div>
 
         {error && (
-          <p style={{ color: '#c62828', textAlign: 'center' }}>Не удалось загрузить статус, повтор…</p>
+          <p style={{ color: '#ff8a8a', textAlign: 'center' }}>Не удалось загрузить статус, повтор…</p>
         )}
 
         <BoxMap boxes={boxes} />
@@ -89,22 +97,41 @@ const StatusBoard = () => {
 const pageStyle = {
   minHeight: '100vh',
   padding: '24px 16px',
-  background: 'linear-gradient(160deg, #e0eaf0 0%, #eef3f7 100%)',
+  background:
+    'radial-gradient(1200px 600px at 80% -10%, rgba(25,217,255,0.20), transparent 60%),' +
+    'radial-gradient(900px 500px at 0% 10%, rgba(80,120,255,0.14), transparent 60%),' +
+    'linear-gradient(180deg, #0b1a2b 0%, #0a1626 100%)',
+  color: '#f3f7ff',
   boxSizing: 'border-box',
+  fontFamily: 'Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif',
 };
-const titleStyle = { textAlign: 'center', fontSize: '1.5rem', color: '#1f2937', margin: '0 0 16px' };
+const headerStyle = {
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'space-between',
+  gap: 16,
+  marginBottom: 20,
+};
+const logoLinkStyle = { display: 'inline-flex', alignItems: 'center', textDecoration: 'none' };
+const logoImgStyle = { height: 48, width: 'auto', display: 'block' };
+const homeLinkStyle = {
+  color: '#9fb2c8', textDecoration: 'none', fontSize: '0.95rem', fontWeight: 600,
+  border: '1px solid rgba(255,255,255,0.08)', borderRadius: 999, padding: '8px 16px',
+  background: 'rgba(255,255,255,0.04)',
+};
+const titleStyle = { textAlign: 'center', fontSize: '1.6rem', fontWeight: 800, color: '#f3f7ff', margin: '0 0 16px', letterSpacing: '-0.02em' };
 const bannerBase = {
-  textAlign: 'center', fontSize: '1.1rem', fontWeight: 700, borderRadius: 12,
-  padding: '14px 20px', marginBottom: 16,
+  textAlign: 'center', fontSize: '1.1rem', fontWeight: 700, borderRadius: 14,
+  padding: '14px 20px', marginBottom: 16, border: '1px solid rgba(255,255,255,0.08)',
 };
-const bannerQueueStyle = { ...bannerBase, background: '#fff3cd', color: '#7a5c00' };
-const bannerFreeStyle = { ...bannerBase, background: '#e8f5e9', color: '#2e7d32' };
+const bannerQueueStyle = { ...bannerBase, background: 'rgba(245,158,11,0.14)', color: '#ffd591', borderColor: 'rgba(245,158,11,0.35)' };
+const bannerFreeStyle = { ...bannerBase, background: 'rgba(34,197,94,0.14)', color: '#86efac', borderColor: 'rgba(34,197,94,0.35)' };
 const ctaWrapStyle = { textAlign: 'center', margin: '0 0 18px' };
 const ctaButtonStyle = {
-  display: 'inline-block', background: 'linear-gradient(135deg, #0ea5e9 0%, #0284c7 100%)',
-  color: '#fff', textDecoration: 'none', fontWeight: 800, fontSize: '1.2rem',
-  padding: '16px 40px', borderRadius: 14, boxShadow: '0 4px 16px rgba(2,132,199,0.4)',
+  display: 'inline-block', background: 'linear-gradient(135deg, #19d9ff 0%, #0aa5e8 100%)',
+  color: '#0b1a2b', textDecoration: 'none', fontWeight: 800, fontSize: '1.2rem',
+  padding: '16px 44px', borderRadius: 14, boxShadow: '0 20px 60px -20px rgba(25,217,255,0.7)',
 };
-const ctaHintStyle = { marginTop: 8, fontSize: '0.9rem', color: '#64748b' };
+const ctaHintStyle = { marginTop: 10, fontSize: '0.9rem', color: '#9fb2c8' };
 
 export default StatusBoard;

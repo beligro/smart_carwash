@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate, useLocation, Link } from 'react-router-dom';
 import styled from 'styled-components';
 import WebApiService from '../../shared/services/WebApiService';
+import logoUrl from './assets/h2o-logo.webp';
 
 const Page = styled.div`
   min-height: 100vh;
@@ -12,32 +13,77 @@ const Page = styled.div`
   display: flex;
   flex-direction: column;
   align-items: center;
-  justify-content: center;
-  background: linear-gradient(160deg, #e0eaf0 0%, #e8eef3 50%, #f0f4f8 100%);
+  background:
+    radial-gradient(1200px 600px at 80% -10%, rgba(25,217,255,0.20), transparent 60%),
+    radial-gradient(900px 500px at 0% 10%, rgba(80,120,255,0.14), transparent 60%),
+    linear-gradient(180deg, #0b1a2b 0%, #0a1626 100%);
   background-attachment: fixed;
+  color: #f3f7ff;
+  font-family: Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+`;
+
+const Header = styled.header`
+  width: 100%;
+  max-width: 480px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 28px;
+`;
+
+const LogoLink = styled.a`
+  display: inline-flex;
+  align-items: center;
+  text-decoration: none;
+`;
+
+const LogoImg = styled.img`
+  height: 48px;
+  width: auto;
+  display: block;
+`;
+
+const HomeLink = styled.a`
+  color: #9fb2c8;
+  text-decoration: none;
+  font-size: 0.95rem;
+  font-weight: 600;
+  border: 1px solid rgba(255,255,255,0.08);
+  border-radius: 999px;
+  padding: 8px 16px;
+  background: rgba(255,255,255,0.04);
+  transition: color 0.2s, background 0.2s;
+  &:hover {
+    color: #f3f7ff;
+    background: rgba(255,255,255,0.08);
+  }
 `;
 
 const Card = styled.div`
-  background: white;
-  border-radius: 12px;
+  background: #13243a;
+  border: 1px solid rgba(255,255,255,0.08);
+  border-radius: 16px;
   padding: 28px;
   width: 100%;
   max-width: 400px;
   box-sizing: border-box;
-  box-shadow: 0 4px 24px rgba(0,0,0,0.08);
+  box-shadow: 0 10px 30px -10px rgba(0,0,0,0.5);
 `;
 
 const Title = styled.h1`
   margin: 0 0 24px;
   font-size: 1.5rem;
-  color: #333;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  color: #f3f7ff;
   text-align: center;
 `;
 
 const Tabs = styled.div`
   display: flex;
   margin-bottom: 20px;
-  border-bottom: 1px solid #ddd;
+  border-bottom: 1px solid rgba(255,255,255,0.08);
 `;
 
 const Tab = styled.button`
@@ -47,9 +93,9 @@ const Tab = styled.button`
   background: none;
   cursor: pointer;
   font-size: 15px;
-  color: ${p => p.$active ? '#2481cc' : '#666'};
+  color: ${p => p.$active ? '#19d9ff' : '#9fb2c8'};
   font-weight: ${p => p.$active ? 600 : 400};
-  border-bottom: 2px solid ${p => p.$active ? '#2481cc' : 'transparent'};
+  border-bottom: 2px solid ${p => p.$active ? '#19d9ff' : 'transparent'};
   margin-bottom: -1px;
 `;
 
@@ -58,12 +104,18 @@ const Input = styled.input`
   box-sizing: border-box;
   padding: 12px 14px;
   font-size: 16px;
-  border: 1px solid #ddd;
-  border-radius: 8px;
+  color: #f3f7ff;
+  background: rgba(255,255,255,0.04);
+  border: 1px solid rgba(255,255,255,0.12);
+  border-radius: 10px;
   margin-bottom: 12px;
+  &::placeholder {
+    color: #7e91a8;
+  }
   &:focus {
     outline: none;
-    border-color: #2481cc;
+    border-color: #19d9ff;
+    box-shadow: 0 0 0 3px rgba(25,217,255,0.18);
   }
 `;
 
@@ -86,28 +138,46 @@ const EyeBtn = styled.button`
   border: none;
   cursor: pointer;
   padding: 4px 6px;
-  font-size: 18px;
-  line-height: 1;
-  opacity: 0.65;
+  line-height: 0;
+  color: #9fb2c8;
+  opacity: 0.85;
   &:hover {
     opacity: 1;
+    color: #f3f7ff;
   }
 `;
+
+const EyeIcon = ({ off }) => (
+  off ? (
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M9.88 9.88a3 3 0 1 0 4.24 4.24" />
+      <path d="M10.73 5.08A10.43 10.43 0 0 1 12 5c7 0 10 7 10 7a13.16 13.16 0 0 1-1.67 2.68" />
+      <path d="M6.61 6.61A13.526 13.526 0 0 0 2 12s3 7 10 7a9.74 9.74 0 0 0 5.39-1.61" />
+      <line x1="2" y1="2" x2="22" y2="22" />
+    </svg>
+  ) : (
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z" />
+      <circle cx="12" cy="12" r="3" />
+    </svg>
+  )
+);
 
 const Button = styled.button`
   width: 100%;
   padding: 14px;
   font-size: 16px;
-  font-weight: 600;
-  color: white;
-  background: #2481cc;
+  font-weight: 700;
+  color: #0b1a2b;
+  background: linear-gradient(135deg, #19d9ff 0%, #0aa5e8 100%);
   border: none;
-  border-radius: 8px;
+  border-radius: 10px;
   cursor: pointer;
   margin-top: 8px;
-  transition: background 0.2s;
+  transition: transform 0.2s, box-shadow 0.2s, opacity 0.2s;
   &:hover:not(:disabled) {
-    background: #1a6ba8;
+    transform: translateY(-1px);
+    box-shadow: 0 20px 60px -20px rgba(25,217,255,0.7);
   }
   &:disabled {
     opacity: 0.6;
@@ -115,8 +185,18 @@ const Button = styled.button`
   }
 `;
 
+const SecondaryButton = styled(Button)`
+  color: #f3f7ff;
+  background: rgba(255,255,255,0.06);
+  border: 1px solid rgba(255,255,255,0.12);
+  &:hover:not(:disabled) {
+    box-shadow: none;
+    background: rgba(255,255,255,0.1);
+  }
+`;
+
 const Error = styled.p`
-  color: #c62828;
+  color: #ff8a8a;
   font-size: 14px;
   margin: 8px 0 0;
 `;
@@ -126,24 +206,24 @@ const GuestButton = styled.button`
   max-width: 400px;
   padding: 20px;
   font-size: 1.2rem;
-  font-weight: 700;
-  color: white;
-  background: linear-gradient(135deg, #28a745 0%, #1e7e34 100%);
+  font-weight: 800;
+  color: #0b1a2b;
+  background: linear-gradient(135deg, #19d9ff 0%, #0aa5e8 100%);
   border: none;
-  border-radius: 14px;
+  border-radius: 16px;
   cursor: pointer;
-  box-shadow: 0 6px 20px rgba(40, 167, 69, 0.35);
+  box-shadow: 0 20px 60px -20px rgba(25,217,255,0.7);
   transition: transform 0.2s, box-shadow 0.2s;
   &:hover {
     transform: translateY(-2px);
-    box-shadow: 0 8px 26px rgba(40, 167, 69, 0.5);
+    box-shadow: 0 24px 70px -18px rgba(25,217,255,0.85);
   }
 `;
 
 const GuestHint = styled.p`
   max-width: 400px;
   text-align: center;
-  color: #4a5b66;
+  color: #9fb2c8;
   font-size: 14px;
   margin: 10px 0 0;
 `;
@@ -154,14 +234,14 @@ const Divider = styled.div`
   display: flex;
   align-items: center;
   gap: 12px;
-  color: #8a99a4;
+  color: #7e91a8;
   font-size: 13px;
   margin: 24px 0;
   &::before, &::after {
     content: '';
     flex: 1;
     height: 1px;
-    background: #cfd8df;
+    background: rgba(255,255,255,0.1);
   }
 `;
 
@@ -176,14 +256,14 @@ const StatusLink = styled.a`
   text-decoration: none;
   font-size: 1rem;
   font-weight: 600;
-  color: #6d28d9;
-  background: #f3e8ff;
-  border: 1.5px solid #c4b5fd;
+  color: #19d9ff;
+  background: rgba(25,217,255,0.08);
+  border: 1px solid rgba(25,217,255,0.3);
   border-radius: 12px;
-  transition: background 0.2s;
+  transition: background 0.2s, color 0.2s;
   &:hover {
-    background: #ede0ff;
-    color: #5b21b6;
+    background: rgba(25,217,255,0.14);
+    color: #6fe6ff;
     text-decoration: none;
   }
 `;
@@ -191,7 +271,7 @@ const StatusLink = styled.a`
 const RegHint = styled.p`
   max-width: 400px;
   text-align: center;
-  color: #5a6b76;
+  color: #9fb2c8;
   font-size: 13px;
   line-height: 1.5;
   margin: 16px 0 0;
@@ -342,14 +422,21 @@ const WebLoginPage = () => {
 
   return (
     <Page>
+      <Header>
+        <LogoLink href="/" aria-label="На главную H2O">
+          <LogoImg src={logoUrl} alt="H2O — автомойка самообслуживания" />
+        </LogoLink>
+        <HomeLink href="/">← На главную</HomeLink>
+      </Header>
+
       {/* Приоритетный сценарий — помыть как гость, без регистрации */}
       <GuestButton type="button" onClick={() => navigate('/web/guest')}>
-        🚗 Помыть машину как гость
+        Помыть машину как гость
       </GuestButton>
       <GuestHint>Без регистрации — выбрали услугу, оплатили и поехали</GuestHint>
 
       <StatusLink href="/status" target="_blank" rel="noopener noreferrer">
-        📊 Статус загруженности в реальном времени
+        Статус загруженности в реальном времени
       </StatusLink>
 
       <Divider>есть учётная запись?</Divider>
@@ -380,10 +467,10 @@ const WebLoginPage = () => {
                 autoComplete="current-password"
               />
               <EyeBtn type="button" onClick={() => setShowPassword((s) => !s)} aria-label={showPassword ? 'Скрыть пароль' : 'Показать пароль'}>
-                {showPassword ? '🙈' : '👁'}
+                <EyeIcon off={showPassword} />
               </EyeBtn>
             </PasswordWrap>
-            <Link to="/web/login/forgot" style={{ marginTop: 4, marginBottom: 8, display: 'block', color: '#2481cc', fontSize: 13, textDecoration: 'underline' }}>
+            <Link to="/web/login/forgot" style={{ marginTop: 4, marginBottom: 8, display: 'block', color: '#19d9ff', fontSize: 13, textDecoration: 'underline' }}>
               Забыли пароль?
             </Link>
             {error && <Error>{error}</Error>}
@@ -416,7 +503,7 @@ const WebLoginPage = () => {
                 onClick={() => setShowPassword((s) => !s)}
                 aria-label={showPassword ? 'Скрыть пароль' : 'Показать пароль'}
               >
-                {showPassword ? '🙈' : '👁'}
+                <EyeIcon off={showPassword} />
               </EyeBtn>
             </PasswordWrap>
             <PasswordWrap>
@@ -432,7 +519,7 @@ const WebLoginPage = () => {
                 onClick={() => setShowPasswordConfirm((s) => !s)}
                 aria-label={showPasswordConfirm ? 'Скрыть пароль' : 'Показать пароль'}
               >
-                {showPasswordConfirm ? '🙈' : '👁'}
+                <EyeIcon off={showPasswordConfirm} />
               </EyeBtn>
             </PasswordWrap>
             {error && <Error>{error}</Error>}
@@ -444,9 +531,9 @@ const WebLoginPage = () => {
 
         {mode === 'register' && registerStep === 2 && (
           <form onSubmit={handleRegisterVerify}>
-            <p style={{ margin: '0 0 12px', fontSize: '14px', color: '#555', lineHeight: '1.5' }}>
-              Код подтверждения отправлен на <strong>{email}</strong>.<br/>
-              Если письмо не пришло — проверьте папку <strong>Спам</strong>.
+            <p style={{ margin: '0 0 12px', fontSize: '14px', color: '#9fb2c8', lineHeight: '1.5' }}>
+              Код подтверждения отправлен на <strong style={{ color: '#f3f7ff' }}>{email}</strong>.<br/>
+              Если письмо не пришло — проверьте папку <strong style={{ color: '#f3f7ff' }}>Спам</strong>.
             </p>
             <Input
               type="text"
@@ -460,17 +547,16 @@ const WebLoginPage = () => {
             <Button type="submit" disabled={loading}>
               {loading ? 'Проверка…' : 'Зарегистрироваться'}
             </Button>
-            <Button
+            <SecondaryButton
               type="button"
               onClick={handleResendCode}
               disabled={loading || resendCooldown > 0}
-              style={{ background: '#666', marginTop: 8 }}
             >
               {resendCooldown > 0 ? `Отправить повторно через ${resendCooldown} сек` : 'Отправить повторно'}
-            </Button>
-            <Button type="button" onClick={() => { setRegisterStep(1); setCode(''); setError(''); }} disabled={loading} style={{ background: '#555', marginTop: 8 }}>
+            </SecondaryButton>
+            <SecondaryButton type="button" onClick={() => { setRegisterStep(1); setCode(''); setError(''); }} disabled={loading}>
               Изменить email
-            </Button>
+            </SecondaryButton>
           </form>
         )}
       </Card>
