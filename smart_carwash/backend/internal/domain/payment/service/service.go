@@ -13,6 +13,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net/url"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -115,6 +117,20 @@ func generateRandomString(length int) string {
 	bytes := make([]byte, length)
 	rand.Read(bytes)
 	return hex.EncodeToString(bytes)[:length]
+}
+
+// appendGuestToken добавляет guest-токен в URL возврата Tinkoff (параметр gt).
+// Нужно для восстановления гостевой сессии, если банк открывает возврат
+// в другом браузере, где нет cookie с токеном.
+func appendGuestToken(baseURL, token string) string {
+	if baseURL == "" || token == "" {
+		return baseURL
+	}
+	sep := "?"
+	if strings.Contains(baseURL, "?") {
+		sep = "&"
+	}
+	return baseURL + sep + "gt=" + url.QueryEscape(token)
 }
 
 // NewService создает новый экземпляр Service
@@ -349,8 +365,10 @@ func (s *service) CreatePayment(ctx context.Context, req *models.CreatePaymentRe
 		successURL = s.tinkoffWebSuccessURL
 		failURL = s.tinkoffWebFailURL
 	} else if req.Source == "guest" {
-		successURL = s.tinkoffGuestSuccessURL
-		failURL = s.tinkoffGuestFailURL
+		// Токен в URL возврата: если банк открывает возврат в другом браузере
+		// (нет cookie), фронт восстановит сессию по параметру gt.
+		successURL = appendGuestToken(s.tinkoffGuestSuccessURL, req.GuestToken)
+		failURL = appendGuestToken(s.tinkoffGuestFailURL, req.GuestToken)
 	}
 	tinkoffResp, err := s.tinkoffClient.CreatePayment(orderID, chargeAmount, description, receipt, successURL, failURL)
 	if err != nil {
@@ -427,8 +445,8 @@ func (s *service) CreateExtensionPayment(ctx context.Context, req *models.Create
 		successURL = s.tinkoffWebSuccessURL
 		failURL = s.tinkoffWebFailURL
 	} else if req.Source == "guest" {
-		successURL = s.tinkoffGuestSuccessURL
-		failURL = s.tinkoffGuestFailURL
+		successURL = appendGuestToken(s.tinkoffGuestSuccessURL, req.GuestToken)
+		failURL = appendGuestToken(s.tinkoffGuestFailURL, req.GuestToken)
 	}
 	tinkoffResp, err := s.tinkoffClient.CreatePayment(orderID, req.Amount, description, receipt, successURL, failURL)
 	if err != nil {

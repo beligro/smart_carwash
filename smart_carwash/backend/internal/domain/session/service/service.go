@@ -380,11 +380,12 @@ func (s *ServiceImpl) CreateSessionWithPayment(ctx context.Context, req *models.
 
 	// 3. Создаем платеж через Payment Service
 	paymentResp, err := s.paymentService.CreatePayment(ctx, &paymentModels.CreatePaymentRequest{
-		SessionID: session.ID,
-		Amount:    priceResp.Price,
-		Currency:  priceResp.Currency,
-		Email:     session.Email, // Передаем email из сессии
-		Source:    source,
+		SessionID:  session.ID,
+		Amount:     priceResp.Price,
+		Currency:   priceResp.Currency,
+		Email:      session.Email, // Передаем email из сессии
+		Source:     source,
+		GuestToken: req.GuestToken, // Для guest: попадает в URL возврата Tinkoff
 	})
 	if err != nil {
 		return nil, fmt.Errorf("ошибка создания платежа: %w", err)
@@ -1178,12 +1179,17 @@ func (s *ServiceImpl) ExtendSessionWithPayment(ctx context.Context, req *models.
 	}
 
 	// Создаем платеж продления через Payment Service
+	guestToken := ""
+	if session.GuestToken != nil {
+		guestToken = *session.GuestToken
+	}
 	paymentResp, err := s.paymentService.CreateExtensionPayment(ctx, &paymentModels.CreateExtensionPaymentRequest{
-		SessionID: session.ID,
-		Amount:    priceResp.Price,
-		Currency:  priceResp.Currency,
-		Email:     session.Email,
-		Source:    session.Source,
+		SessionID:  session.ID,
+		Amount:     priceResp.Price,
+		Currency:   priceResp.Currency,
+		Email:      session.Email,
+		Source:     session.Source,
+		GuestToken: guestToken,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("ошибка создания платежа продления: %w", err)

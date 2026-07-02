@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import GuestApiService, { getGuestToken } from './GuestApiService';
+import GuestApiService, { getGuestToken, setGuestToken } from './GuestApiService';
 
 const SERVICES = { wash: 'Мойка', air_dry: 'Обдув', vacuum: 'Пылесос' };
 
@@ -28,14 +28,20 @@ const GuestPaymentPage = ({
   const [error, setError] = useState(null);
   const [returnHandled, setReturnHandled] = useState(false);
 
-  // Обработка возврата с Tinkoff (?return=success|fail)
+  // Обработка возврата с Tinkoff (?return=success|fail&gt=<токен>)
   useEffect(() => {
     const returnType = searchParams.get('return');
     if (!returnType || returnHandled) return;
+
+    // Восстанавливаем токен из URL: банк мог открыть возврат в другом
+    // браузере, где нет cookie гостевой сессии.
+    const gtFromUrl = searchParams.get('gt');
+    if (gtFromUrl) setGuestToken(gtFromUrl);
+
     setReturnHandled(true);
     setSearchParams({}, { replace: true });
 
-    const token = getGuestToken();
+    const token = gtFromUrl || getGuestToken();
     if (!token) {
       setError('Сессия не найдена');
       return;

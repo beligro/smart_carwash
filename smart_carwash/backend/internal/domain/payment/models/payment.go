@@ -78,11 +78,12 @@ type PriceBreakdown struct {
 
 // CreatePaymentRequest представляет запрос на создание платежа
 type CreatePaymentRequest struct {
-	SessionID uuid.UUID `json:"session_id" binding:"required"`
-	Amount    int       `json:"amount" binding:"required"`
-	Currency  string    `json:"currency" binding:"required"`
-	Email     string    `json:"email"`   // Email для чека
-	Source    string    `json:"source"`  // telegram | web — для выбора success/fail URL
+	SessionID  uuid.UUID `json:"session_id" binding:"required"`
+	Amount     int       `json:"amount" binding:"required"`
+	Currency   string    `json:"currency" binding:"required"`
+	Email      string    `json:"email"`       // Email для чека
+	Source     string    `json:"source"`      // telegram | web — для выбора success/fail URL
+	GuestToken string    `json:"guest_token"` // Для source=guest: добавляется в URL возврата, чтобы восстановить сессию в другом браузере
 }
 
 // CreatePaymentResponse представляет ответ на создание платежа
@@ -92,11 +93,12 @@ type CreatePaymentResponse struct {
 
 // CreateExtensionPaymentRequest представляет запрос на создание платежа продления
 type CreateExtensionPaymentRequest struct {
-	SessionID uuid.UUID `json:"session_id" binding:"required"`
-	Amount    int       `json:"amount" binding:"required"`
-	Currency  string    `json:"currency" binding:"required"`
-	Email     string    `json:"email"`   // Email для чека
-	Source    string    `json:"source"` // telegram | web
+	SessionID  uuid.UUID `json:"session_id" binding:"required"`
+	Amount     int       `json:"amount" binding:"required"`
+	Currency   string    `json:"currency" binding:"required"`
+	Email      string    `json:"email"`       // Email для чека
+	Source     string    `json:"source"`      // telegram | web
+	GuestToken string    `json:"guest_token"` // Для source=guest: добавляется в URL возврата
 }
 
 // CreateExtensionPaymentResponse представляет ответ на создание платежа продления

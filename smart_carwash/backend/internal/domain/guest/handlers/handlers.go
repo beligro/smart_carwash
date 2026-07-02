@@ -172,6 +172,7 @@ func (h *Handler) createGuestSession(c *gin.Context) {
 		RentalTimeMinutes:    body.RentalTimeMinutes,
 		IdempotencyKey:       body.IdempotencyKey,
 		Source:               "guest",
+		GuestToken:           guestToken, // Попадает в URL возврата Tinkoff (параметр gt) для восстановления cookie
 	}
 
 	resp, err := h.sessionSvc.CreateSessionWithPayment(c.Request.Context(), req)

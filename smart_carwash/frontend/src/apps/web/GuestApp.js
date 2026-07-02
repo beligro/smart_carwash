@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useRef, Suspense, lazy } from 'react';
 import { Routes, Route, Navigate, useNavigate, useLocation } from 'react-router-dom';
-import GuestApiService, { getGuestToken, clearGuestToken } from './GuestApiService';
+import GuestApiService, { getGuestToken, setGuestToken, clearGuestToken } from './GuestApiService';
 import styles from './WebApp.module.css';
 
 const Header = lazy(() => import('./components/Header'));
@@ -130,6 +130,13 @@ const GuestApp = () => {
   // Инициализация
   useEffect(() => {
     const load = async () => {
+      // Восстановление сессии после возврата из банка: если возврат открылся
+      // в другом браузере (нет cookie), токен приходит в URL (?gt=...).
+      try {
+        const gt = new URLSearchParams(window.location.search).get('gt');
+        if (gt) setGuestToken(gt);
+      } catch {}
+
       try {
         setCarwashStatus(await GuestApiService.getCarwashStatus());
       } catch {

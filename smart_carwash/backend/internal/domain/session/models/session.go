@@ -107,7 +107,8 @@ type CreateSessionWithPaymentRequest struct {
 	Email                string    `json:"email"`              // Email для чека
 	RentalTimeMinutes    int       `json:"rental_time_minutes" binding:"required"`
 	IdempotencyKey       string    `json:"idempotency_key" binding:"required"`
-	Source               string    `json:"source"` // telegram | web, по умолчанию telegram
+	Source               string    `json:"source"`      // telegram | web, по умолчанию telegram
+	GuestToken           string    `json:"guest_token"` // Для source=guest: попадает в URL возврата Tinkoff
 }
 
 // CreateSessionWithPaymentResponse представляет ответ на создание сессии с платежом
