@@ -71,7 +71,9 @@ const UserInfo = styled.div`
 
 const Username = styled.span`
   margin-right: 15px;
-  font-weight: 500;
+  font-weight: 700;
+  font-size: 1.15rem;
+  color: ${props => props.theme?.primaryColor || '#007bff'};
 `;
 
 const ShiftButton = styled.button`

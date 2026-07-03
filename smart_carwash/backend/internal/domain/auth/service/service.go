@@ -658,8 +658,14 @@ func (s *ServiceImpl) StartShift(ctx context.Context, req *models.StartShiftRequ
 	}
 
 	// Создаем новую смену
-	now := time.Now()
-	expiresAt := now.Add(24 * time.Hour) // Смена длится 24 часа
+	// Смена истекает в 09:00 по Новосибирску (UTC+7) = 02:00 UTC каждый день.
+	// Находим ближайшее 02:00 UTC, которое строго позже now.
+	now := time.Now().UTC()
+	todayExpire := time.Date(now.Year(), now.Month(), now.Day(), 2, 0, 0, 0, time.UTC)
+	if !now.Before(todayExpire) {
+		todayExpire = todayExpire.Add(24 * time.Hour)
+	}
+	expiresAt := todayExpire
 
 	shift := &models.CashierShift{
 		CashierID: req.CashierID,
