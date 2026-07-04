@@ -63,6 +63,7 @@ type Repository interface {
 	GetActiveCashierShift(ctx context.Context) (*models.CashierShift, error)
 	GetActiveCashierShifts(ctx context.Context) ([]models.CashierShift, error)
 	UpdateCashierShift(ctx context.Context, shift *models.CashierShift) error
+	DeactivateExpiredCashierShifts(ctx context.Context) (int64, error)
 	DeleteCashierShift(ctx context.Context, id uuid.UUID) error
 
 	// Методы для работы с уборщиками
@@ -281,6 +282,21 @@ func (r *PostgresRepository) GetActiveCashierShifts(ctx context.Context) ([]mode
 // UpdateCashierShift обновляет смену
 func (r *PostgresRepository) UpdateCashierShift(ctx context.Context, shift *models.CashierShift) error {
 	return r.db.WithContext(ctx).Save(shift).Error
+}
+
+// DeactivateExpiredCashierShifts массово деактивирует все истёкшие активные смены.
+// ended_at выставляется в expires_at (реальный момент окончания смены), а не в now,
+// чтобы отчётность по сменам оставалась точной независимо от интервала фоновой задачи.
+// Обновление через map, а не через struct, чтобы GORM не пропустил is_active=false как нулевое значение.
+func (r *PostgresRepository) DeactivateExpiredCashierShifts(ctx context.Context) (int64, error) {
+	res := r.db.WithContext(ctx).
+		Model(&models.CashierShift{}).
+		Where("is_active = ? AND expires_at <= ?", true, time.Now()).
+		Updates(map[string]interface{}{
+			"is_active": false,
+			"ended_at":  gorm.Expr("expires_at"),
+		})
+	return res.RowsAffected, res.Error
 }
 
 // DeleteCashierShift удаляет смену

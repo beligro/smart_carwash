@@ -3,7 +3,6 @@ package service
 import (
 	"carwash_backend/internal/logger"
 	"context"
-	"time"
 
 	"carwash_backend/internal/domain/auth/repository"
 )
@@ -20,38 +19,19 @@ func NewBackgroundTasks(repo repository.Repository) *BackgroundTasks {
 	}
 }
 
-// DeactivateExpiredShifts деактивирует истекшие смены кассиров
+// DeactivateExpiredShifts деактивирует истекшие смены кассиров.
+// Одним UPDATE закрывает все смены с is_active=true и expires_at <= now.
+// Раньше здесь использовался GetActiveCashierShifts, который сам фильтровал expires_at > now,
+// из-за чего истёкшие смены никогда не попадали в выборку и не закрывались.
 func (bt *BackgroundTasks) DeactivateExpiredShifts(ctx context.Context) error {
-	logger.Info("Запуск задачи деактивации истекших смен кассиров")
-
-	// Получаем все активные смены
-	activeShifts, err := bt.repo.GetActiveCashierShifts(ctx)
+	deactivatedCount, err := bt.repo.DeactivateExpiredCashierShifts(ctx)
 	if err != nil {
-		logger.Printf("Ошибка получения активных смен: %v", err)
+		logger.Printf("Ошибка деактивации истекших смен: %v", err)
 		return err
 	}
 
-	now := time.Now()
-	deactivatedCount := 0
-
-	for _, shift := range activeShifts {
-		// Проверяем, истекла ли смена
-		if now.After(shift.ExpiresAt) {
-			// Деактивируем смену
-			shift.IsActive = false
-			endedAt := now
-			shift.EndedAt = &endedAt
-
-			if err := bt.repo.UpdateCashierShift(ctx, &shift); err != nil {
-				logger.Printf("Ошибка деактивации смены %s: %v", shift.ID, err)
-				continue
-			}
-
-			logger.Printf("Смена %s деактивирована (истекла в %s)", shift.ID, shift.ExpiresAt.Format(time.RFC3339))
-			deactivatedCount++
-		}
+	if deactivatedCount > 0 {
+		logger.Printf("Задача деактивации завершена. Деактивировано смен: %d", deactivatedCount)
 	}
-
-	logger.Printf("Задача деактивации завершена. Деактивировано смен: %d", deactivatedCount)
 	return nil
 }

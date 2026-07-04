@@ -428,6 +428,19 @@ const CashierApp = () => {
     }
   };
 
+  // Тихая перепроверка статуса смены без баннера ошибки. Нужна, чтобы при истечении
+  // смены (09:00 НСК) кассира автоматически вернуло к экрану открытия смены,
+  // даже если вкладка браузера оставалась открытой и не перезагружалась.
+  const pollShiftStatus = async () => {
+    try {
+      const response = await ApiService.getShiftStatus();
+      setHasActiveShift(response.has_active_shift);
+      setShiftInfo(response.shift);
+    } catch (error) {
+      // Сетевые сбои поллинга игнорируем, чтобы не мешать работе кассира
+    }
+  };
+
   const handleStartShift = async () => {
     setLoadingShift(true);
     setError(null);
@@ -703,6 +716,10 @@ const CashierApp = () => {
 
   // Поллинг для сессий каждые 3 секунды без показа загрузки (только для вкладки sessions)
   usePolling(pollSessions, 3000, hasActiveShift && !!shiftInfo && activeTab === 'sessions', [activeTab]);
+
+  // Перепроверка статуса смены раз в минуту: при истечении смены в 09:00 НСК
+  // hasActiveShift станет false и кассиру покажется экран открытия новой смены.
+  usePolling(pollShiftStatus, 60000, hasActiveShift && !!shiftInfo, []);
   
   // Если идет загрузка, показываем пустой контент
   if (isLoading) {
