@@ -202,7 +202,7 @@ const fmtDowntime = (minutes) => {
   return `${m} мин`;
 };
 
-const actionLabel = (a) => (a === 'repair' ? 'ремонт' : 'замена');
+const actionLabel = (a) => (a === 'repair' ? 'ремонт' : a === 'clean' ? 'чистка' : 'замена');
 
 // Модалка закрытия наряда вынесена в общий компонент ./CloseTicketModal
 // (переиспользуется на странице «ТО аппаратов»).

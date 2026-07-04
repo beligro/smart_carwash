@@ -24,6 +24,7 @@ const (
 const (
 	ActionReplace = "replace"
 	ActionRepair  = "repair"
+	ActionClean   = "clean"
 )
 
 // SymptomType — справочник симптомов кассира.
@@ -57,6 +58,7 @@ type ComponentType struct {
 	Name       string `json:"name"`
 	SortOrder  int    `json:"sort_order"`
 	Repairable bool   `json:"repairable"`
+	Cleanable  bool   `json:"cleanable"`
 }
 
 func (ComponentType) TableName() string { return "component_types" }
@@ -121,7 +123,7 @@ type OpenTicketRequest struct {
 // WorkInput — одна выполненная работа при закрытии наряда.
 type WorkInput struct {
 	ComponentID int    `json:"component_id" binding:"required"`
-	Action      string `json:"action" binding:"required,oneof=replace repair"`
+	Action      string `json:"action" binding:"required,oneof=replace repair clean"`
 }
 
 // CloseTicketRequest — закрытие наряда мастером.

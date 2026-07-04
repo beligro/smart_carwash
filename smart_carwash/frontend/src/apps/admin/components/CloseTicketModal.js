@@ -172,13 +172,14 @@ const CloseTicketModal = ({ ticket, onClose, onClosed }) => {
                   />
                   <span style={{ flex: 1 }}>{child.name}</span>
                   {selected[child.id]?.checked && (
-                    child.repairable ? (
+                    (child.repairable || child.cleanable) ? (
                       <Select
                         value={selected[child.id]?.action || 'replace'}
                         onChange={(e) => setAction(child.id, e.target.value)}
                       >
                         <option value="replace">замена</option>
-                        <option value="repair">ремонт</option>
+                        {child.repairable && <option value="repair">ремонт</option>}
+                        {child.cleanable && <option value="clean">чистка</option>}
                       </Select>
                     ) : (
                       <Muted style={{ fontSize: '0.82rem' }}>только замена</Muted>
