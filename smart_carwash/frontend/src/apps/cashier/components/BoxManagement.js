@@ -247,7 +247,7 @@ const getChemistryText = (chemistryEnabled) => {
 /**
  * Компонент для отображения одного бокса
  */
-const BoxCardComponent = ({ box, onSetMaintenance, actionLoading, theme }) => {
+const BoxCardComponent = ({ box, onSetMaintenance, actionLoading, theme, reason }) => {
   return (
     <BoxCard theme={theme} status={box.status}>
       <BoxHeader>
@@ -256,6 +256,11 @@ const BoxCardComponent = ({ box, onSetMaintenance, actionLoading, theme }) => {
           <BoxStatus theme={theme}>
             {getStatusText(box.status)}
           </BoxStatus>
+          {box.status === 'maintenance' && reason && (
+            <BoxStatus theme={theme} style={{ color: '#dc3545', fontWeight: 600, marginTop: 2 }}>
+              Причина: {reason.symptom}{reason.comment ? ` — ${reason.comment}` : ''}
+            </BoxStatus>
+          )}
         </BoxInfo>
       </BoxHeader>
 
@@ -301,6 +306,8 @@ const BoxManagement = () => {
     status: '',
     serviceType: ''
   });
+  // Причины (симптомы) по боксам в сервисе — из открытых нарядов
+  const [reasonByBox, setReasonByBox] = useState({});
   // Модалка постановки в сервис: выбор симптома + комментарий
   const [maintBox, setMaintBox] = useState(null); // { id, number }
   const [symptoms, setSymptoms] = useState([]);
@@ -312,6 +319,20 @@ const BoxManagement = () => {
     loadBoxes();
   }, [filters]);
 
+  // Подтягиваем открытые наряды и строим карту номер бокса -> причина
+  const loadReasons = async () => {
+    try {
+      const resp = await ApiService.getCashierOpenTickets();
+      const map = {};
+      (resp.tickets || []).forEach((t) => {
+        map[t.box_number] = { symptom: t.symptom_name || 'не указана', comment: t.cashier_comment || '' };
+      });
+      setReasonByBox(map);
+    } catch (error) {
+      // Причины — вспомогательная информация, ошибку не показываем
+    }
+  };
+
   const loadBoxes = async () => {
     setLoading(true);
     setError(null);
@@ -319,6 +340,7 @@ const BoxManagement = () => {
     try {
       const response = await ApiService.getCashierWashBoxes(filters);
       setBoxes(response.wash_boxes || []);
+      loadReasons();
     } catch (error) {
       console.error('Ошибка загрузки боксов:', error);
       setError('Ошибка загрузки боксов');
@@ -340,6 +362,7 @@ const BoxManagement = () => {
         }
         return prevBoxes;
       });
+      loadReasons();
     } catch (error) {
       console.error('Ошибка поллинга боксов:', error);
       // Не показываем ошибку при поллинге, чтобы не мешать пользователю
@@ -456,6 +479,7 @@ const BoxManagement = () => {
             onSetMaintenance={handleSetMaintenance}
             actionLoading={actionLoading}
             theme={theme}
+            reason={reasonByBox[box.number]}
           />
         ))
       )}

@@ -32,6 +32,7 @@ func (h *Handler) RegisterRoutes(router *gin.RouterGroup, cashierMiddleware gin.
 	{
 		cashier.GET("/service-symptoms", h.getSymptoms)
 		cashier.POST("/service-tickets", h.openTicket)
+		cashier.GET("/service-tickets/open", h.listOpenTicketsCashier)
 	}
 
 	// Админ: журнал, справочник работ, закрытие наряда, получатели уведомлений.
@@ -80,6 +81,17 @@ func (h *Handler) openTicket(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"ticket": ticket})
+}
+
+// listOpenTicketsCashier GET /cashier/service-tickets/open — открытые наряды (для показа причины на боксах кассиру)
+func (h *Handler) listOpenTicketsCashier(c *gin.Context) {
+	open := models.TicketStatusOpen
+	tickets, err := h.service.ListTickets(c.Request.Context(), &open, nil, nil, 200)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"tickets": tickets})
 }
 
 // getCatalog GET /admin/service-catalog?box_number=N

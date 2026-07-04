@@ -731,6 +731,12 @@ const ApiService = {
     return response.data;
   },
 
+  // Кассир: открытые наряды (для показа причины на странице боксов)
+  getCashierOpenTickets: async () => {
+    const response = await api.get('/cashier/service-tickets/open');
+    return response.data;
+  },
+
   // Кассир: открыть наряд (поставить бокс в сервис с симптомом и комментарием)
   createServiceTicket: async ({ box_id, symptom_id, comment }) => {
     const response = await api.post('/cashier/service-tickets', {
