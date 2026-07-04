@@ -40,6 +40,7 @@ type WashBox struct {
 	LastCompletedSessionCarNumber *string        `json:"last_completed_session_car_number"`
 	LastCompletedAt               *time.Time     `json:"last_completed_at"`
 	CooldownUntil                 *time.Time     `json:"cooldown_until"`
+	ServiceUntil                  *time.Time     `json:"service_until"` // Таймерный сервис (чистка пылесоса): авто-возврат в работу после этого момента
 	SecondsLeft                   *int           `json:"seconds_left,omitempty" gorm:"-"`     // Остаток времени активной сессии в секундах (вирт., для табло)
 	ReservedSecondsLeft           *int           `json:"reserved_seconds_left,omitempty" gorm:"-"` // Остаток до авто-старта назначенного бокса (вирт., для табло)
 	LightStatus                   *bool          `json:"light_status,omitempty" gorm:"-"`     // Статус света (не хранится в БД, заполняется из modbus_connection_statuses)
@@ -206,6 +207,18 @@ type CashierListWashBoxesResponse struct {
 // CashierSetMaintenanceRequest запрос на перевод бокса в режим обслуживания
 type CashierSetMaintenanceRequest struct {
 	ID uuid.UUID `json:"id" binding:"required"`
+}
+
+// CashierStartTimedServiceRequest запрос на таймерный сервис бокса (чистка пылесоса)
+type CashierStartTimedServiceRequest struct {
+	ID      uuid.UUID `json:"id" binding:"required"`
+	Minutes int       `json:"minutes"` // 0 => значение по умолчанию (12 мин)
+}
+
+// CashierStartTimedServiceResponse ответ на таймерный сервис
+type CashierStartTimedServiceResponse struct {
+	WashBox WashBox `json:"wash_box"`
+	Message string  `json:"message"`
 }
 
 // CashierSetMaintenanceResponse ответ на перевод бокса в режим обслуживания

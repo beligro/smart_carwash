@@ -43,6 +43,8 @@ type Service interface {
 	// Методы для кассира
 	CashierListWashBoxes(ctx context.Context, req *models.CashierListWashBoxesRequest) (*models.CashierListWashBoxesResponse, error)
 	CashierSetMaintenance(ctx context.Context, req *models.CashierSetMaintenanceRequest) (*models.CashierSetMaintenanceResponse, error)
+	CashierStartTimedService(ctx context.Context, req *models.CashierStartTimedServiceRequest) (*models.CashierStartTimedServiceResponse, error)
+	AutoReturnTimedService(ctx context.Context) error
 
 	// Методы для уборщиков
 	CleanerListWashBoxes(ctx context.Context, req *models.CleanerListWashBoxesRequest) (*models.CleanerListWashBoxesResponse, error)
@@ -523,6 +525,68 @@ func (s *ServiceImpl) CashierSetMaintenance(ctx context.Context, req *models.Cas
 		WashBox: *updatedBox,
 		Message: "Бокс переведен в режим обслуживания",
 	}, nil
+}
+
+const defaultTimedServiceMinutes = 12
+
+// CashierStartTimedService переводит бокс в сервис на заданное время (чистка пылесоса)
+// с автоматическим возвратом в работу. Не наряд: без симптома/push/статистики.
+func (s *ServiceImpl) CashierStartTimedService(ctx context.Context, req *models.CashierStartTimedServiceRequest) (*models.CashierStartTimedServiceResponse, error) {
+	washBox, err := s.repo.GetWashBoxByID(ctx, req.ID)
+	if err != nil {
+		return nil, err
+	}
+	if washBox.Status != models.StatusFree {
+		return nil, errors.New("на чистку можно перевести только свободный бокс")
+	}
+
+	minutes := req.Minutes
+	if minutes <= 0 {
+		minutes = defaultTimedServiceMinutes
+	}
+	until := time.Now().Add(time.Duration(minutes) * time.Minute)
+	washBox.Status = models.StatusMaintenance
+	washBox.ServiceUntil = &until
+
+	updatedBox, err := s.repo.UpdateWashBox(ctx, washBox)
+	if err != nil {
+		return nil, err
+	}
+	if s.logSvc != nil {
+		_ = s.logSvc.RecordStatusChange(ctx, updatedBox.ID, models.StatusFree, models.StatusMaintenance, nil)
+	}
+
+	return &models.CashierStartTimedServiceResponse{
+		WashBox: *updatedBox,
+		Message: fmt.Sprintf("Бокс на чистке, вернётся в работу через %d мин", minutes),
+	}, nil
+}
+
+// AutoReturnTimedService возвращает в работу боксы, у которых истёк таймерный сервис.
+func (s *ServiceImpl) AutoReturnTimedService(ctx context.Context) error {
+	boxes, err := s.repo.GetExpiredTimedServiceBoxes(ctx)
+	if err != nil {
+		return err
+	}
+	for i := range boxes {
+		box := boxes[i]
+		prev := box.Status
+		box.Status = models.StatusFree
+		box.ServiceUntil = nil
+		updatedBox, err := s.repo.UpdateWashBox(ctx, &box)
+		if err != nil {
+			logger.Printf("Ошибка авто-возврата бокса %d из чистки: %v", box.Number, err)
+			continue
+		}
+		if s.logSvc != nil {
+			_ = s.logSvc.RecordStatusChange(ctx, updatedBox.ID, prev, models.StatusFree, nil)
+		}
+		// Выключаем свет при возврате в работу
+		if s.modbusAdapter != nil && updatedBox.LightCoilRegister != nil && *updatedBox.LightCoilRegister != "" {
+			_ = s.modbusAdapter.WriteLightCoil(ctx, updatedBox.ID, *updatedBox.LightCoilRegister, false)
+		}
+	}
+	return nil
 }
 
 // CleanerListWashBoxes получает список боксов для уборщика

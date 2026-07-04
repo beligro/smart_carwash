@@ -53,6 +53,7 @@ func (h *Handler) RegisterRoutes(router *gin.RouterGroup, cleanerMiddleware gin.
 	{
 		cashierRoutes.GET("", h.cashierListWashBoxes)
 		cashierRoutes.POST("/maintenance", h.cashierSetMaintenance)
+		cashierRoutes.POST("/timed-service", h.cashierStartTimedService)
 	}
 
 	// Маршруты для уборщика

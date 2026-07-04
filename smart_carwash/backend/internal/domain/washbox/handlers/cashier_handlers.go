@@ -60,6 +60,21 @@ func (h *Handler) cashierListWashBoxes(c *gin.Context) {
 	c.JSON(http.StatusOK, resp)
 }
 
+// cashierStartTimedService обработчик таймерного сервиса бокса (чистка пылесоса)
+func (h *Handler) cashierStartTimedService(c *gin.Context) {
+	var req models.CashierStartTimedServiceRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	resp, err := h.service.CashierStartTimedService(c.Request.Context(), &req)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, resp)
+}
+
 // cashierSetMaintenance обработчик для перевода бокса в режим обслуживания кассиром
 func (h *Handler) cashierSetMaintenance(c *gin.Context) {
 	var req models.CashierSetMaintenanceRequest

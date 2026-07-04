@@ -648,6 +648,12 @@ const ApiService = {
     }
   },
 
+  // Таймерный сервис бокса (чистка пылесоса): авто-возврат через minutes минут
+  startCashierTimedService: async (boxId, minutes = 12) => {
+    const response = await api.post('/cashier/washboxes/timed-service', { id: boxId, minutes });
+    return response.data;
+  },
+
   // Перевести бокс в режим обслуживания
   setCashierMaintenance: async (boxId) => {
     try {

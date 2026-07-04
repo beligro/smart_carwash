@@ -94,6 +94,16 @@ const ActionButton = styled.button`
       background-color: #c82333;
     }
   }
+
+  &.cleaning {
+    background-color: #0891b2;
+    color: white;
+    margin-top: 8px;
+
+    &:hover:not(:disabled) {
+      background-color: #0e7490;
+    }
+  }
 `;
 
 const LoadingSpinner = styled.div`
@@ -247,7 +257,8 @@ const getChemistryText = (chemistryEnabled) => {
 /**
  * Компонент для отображения одного бокса
  */
-const BoxCardComponent = ({ box, onSetMaintenance, actionLoading, theme, reason }) => {
+const BoxCardComponent = ({ box, onSetMaintenance, onTimedService, actionLoading, theme, reason }) => {
+  const isVacuum = box.service_type === 'vacuum';
   return (
     <BoxCard theme={theme} status={box.status}>
       <BoxHeader>
@@ -256,7 +267,12 @@ const BoxCardComponent = ({ box, onSetMaintenance, actionLoading, theme, reason 
           <BoxStatus theme={theme}>
             {getStatusText(box.status)}
           </BoxStatus>
-          {box.status === 'maintenance' && reason && (
+          {box.status === 'maintenance' && box.service_until && (
+            <BoxStatus theme={theme} style={{ color: '#0891b2', fontWeight: 600, marginTop: 2 }}>
+              Чистка — вернётся в работу автоматически
+            </BoxStatus>
+          )}
+          {box.status === 'maintenance' && !box.service_until && reason && (
             <BoxStatus theme={theme} style={{ color: '#dc3545', fontWeight: 600, marginTop: 2 }}>
               Причина: {reason.symptom}{reason.comment ? ` — ${reason.comment}` : ''}
             </BoxStatus>
@@ -287,6 +303,15 @@ const BoxCardComponent = ({ box, onSetMaintenance, actionLoading, theme, reason 
           disabled={actionLoading[box.id]}
         >
           {actionLoading[box.id] ? 'Переводим...' : 'Перевести на сервис'}
+        </ActionButton>
+      )}
+      {box.status === 'free' && isVacuum && (
+        <ActionButton
+          className="cleaning"
+          onClick={() => onTimedService(box)}
+          disabled={actionLoading[box.id]}
+        >
+          {actionLoading[box.id] ? 'Переводим...' : 'На чистку (12 мин)'}
         </ActionButton>
       )}
     </BoxCard>
@@ -418,6 +443,21 @@ const BoxManagement = () => {
     }
   };
 
+  // Таймерный сервис пылесоса (чистка): бокс сам вернётся в работу через 12 мин
+  const handleTimedService = async (box) => {
+    const boxId = box.id;
+    setActionLoading(prev => ({ ...prev, [boxId]: true }));
+    try {
+      await ApiService.startCashierTimedService(boxId, 12);
+      await loadBoxes();
+    } catch (error) {
+      console.error('Ошибка перевода на чистку:', error);
+      setError('Ошибка перевода на чистку: ' + (error.response?.data?.error || error.message));
+    } finally {
+      setActionLoading(prev => ({ ...prev, [boxId]: false }));
+    }
+  };
+
   const handleFilterChange = (filterType, value) => {
     setFilters(prev => ({
       ...prev,
@@ -477,6 +517,7 @@ const BoxManagement = () => {
             key={box.id}
             box={box}
             onSetMaintenance={handleSetMaintenance}
+            onTimedService={handleTimedService}
             actionLoading={actionLoading}
             theme={theme}
             reason={reasonByBox[box.number]}

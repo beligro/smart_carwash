@@ -944,6 +944,28 @@ func main() {
 		}
 	}()
 
+	// Запускаем периодическую задачу авто-возврата боксов из таймерного сервиса (чистка пылесосов)
+	go func() {
+		time.Sleep(10 * time.Second)
+		ticker := time.NewTicker(15 * time.Second)
+		defer ticker.Stop()
+
+		for {
+			select {
+			case <-ticker.C:
+				func() {
+					ctx2, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+					defer cancel()
+					if err := washboxSvc.AutoReturnTimedService(ctx2); err != nil {
+						log.WithField("error", err).Error("Ошибка авто-возврата боксов из таймерного сервиса")
+					}
+				}()
+			case <-done:
+				return
+			}
+		}
+	}()
+
 	// Запускаем периодическую задачу для проверки и отправки уведомлений о скором завершении сессий (старт через 7 сек)
 	go func() {
 		time.Sleep(7 * time.Second) // Разносим запуск задач
