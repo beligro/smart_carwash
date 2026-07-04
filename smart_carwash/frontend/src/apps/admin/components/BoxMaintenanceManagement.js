@@ -20,17 +20,28 @@ const TOP_Y = 0;
 const BOT_Y = BUILDING_H - BAY_DEPTH;
 const WALL_T = 1.5;
 const AIR_CY = BUILDING_H / 2; // центр проезда — там метки воздуха
-const AIR_R = 1.4;
+const AIR_R = 1.6;
+
+// Позиции колонок (как в публичной схеме BoxMap): нужны для меток воздуха.
+const slotX = (i) => (i < 2 ? i * BOX_W : 2 * BOX_W + WALL_T + (i - 2) * BOX_W);
+const AIR_POINTS = [
+  { number: 21, cx: slotX(2) },
+  { number: 22, cx: slotX(6) },
+  { number: 23, cx: slotX(8) },
+];
 
 const TO_LIMIT = 500;
+
+const WORK_GREEN = '#16a34a';
+const SERVICE_RED = '#dc2626';
 
 // Палитра статусов ТО
 const STATUS_COLORS = {
   ok: { fill: '#16a34a', text: '#ffffff', label: 'В норме (< 450 мч)' },
   soon: { fill: '#f59e0b', text: '#1f2937', label: 'Скоро ТО (450–499 мч)' },
   overdue: { fill: '#dc2626', text: '#ffffff', label: 'Просрочено (≥ 500 мч)' },
-  working: { fill: '#0891b2', text: '#ffffff', label: 'В работе (пылесос/воздух, без ТО)' },
-  service: { fill: '#6b7280', text: '#ffffff', label: 'В сервисе' },
+  working: { fill: WORK_GREEN, text: '#ffffff', label: 'В работе' },
+  service: { fill: SERVICE_RED, text: '#ffffff', label: 'В сервисе / сломан' },
   none: { fill: '#cbd5e1', text: '#475569', label: 'Нет данных' },
 };
 
@@ -475,7 +486,7 @@ const BoxMaintenanceManagement = () => {
             const hasTO = !!(data && data.has_maintenance);
             const inSvc = !!(data && data.in_service);
             const palette = paletteFor(data);
-            const fill = inSvc ? 'url(#serviceStripes)' : palette.fill;
+            const fill = palette.fill; // зелёный = работает, красный = в сервисе/сломан
             const clickable = !!data;
             const mh = data ? (data.motor_hours ?? 0) : null;
             const svcRaw = data ? data.service_minutes_30d : null;
@@ -499,14 +510,19 @@ const BoxMaintenanceManagement = () => {
                   strokeWidth={0.08}
                   rx={0.25}
                 />
-                <text x={cx} y={PAD + slot.y + 0.95} textAnchor="middle" fontSize={0.62} fontWeight="700" fill={palette.text} opacity={0.9}>
-                  {isVacuum ? `ПЫЛЕСОС ${slot.number}` : `БОКС ${slot.number}`}
+                <text x={cx} y={PAD + slot.y + 0.95} textAnchor="middle" fontSize={0.6} fontWeight="700" fill={palette.text} opacity={0.9}>
+                  {isVacuum ? 'ПЫЛЕСОС' : `БОКС ${slot.number}`}
                 </text>
 
-                {/* Моточасы — только для боксов с учётом ТО и не в сервисе */}
-                {hasTO && !inSvc && (
+                {/* По центру: моточасы (мойка), либо номер (пылесос) — как у боксов */}
+                {!inSvc && hasTO && (
                   <text x={cx} y={PAD + slot.y + 3.1} textAnchor="middle" fontSize={1.7} fontWeight="800" fill={palette.text}>
                     {mh}
+                  </text>
+                )}
+                {!inSvc && isVacuum && (
+                  <text x={cx} y={PAD + slot.y + 3.3} textAnchor="middle" fontSize={1.9} fontWeight="800" fill={palette.text}>
+                    {slot.number}
                   </text>
                 )}
 
@@ -519,7 +535,7 @@ const BoxMaintenanceManagement = () => {
 
                 {/* Простой за 30 дней — снизу */}
                 {svcHours !== null && svcHours > 0 && (
-                  <text x={cx} y={PAD + slot.y + slot.h - 0.5} textAnchor="middle" fontSize={0.72} fontWeight="700" fill="#111827" textLength={slot.w - 0.8} lengthAdjust="spacingAndGlyphs">
+                  <text x={cx} y={PAD + slot.y + slot.h - 0.5} textAnchor="middle" fontSize={0.72} fontWeight="700" fill={inSvc ? '#ffffff' : '#111827'} textLength={slot.w - 0.8} lengthAdjust="spacingAndGlyphs">
                     {`в серв. ${svcHours}ч/30д`}
                   </text>
                 )}
@@ -527,12 +543,11 @@ const BoxMaintenanceManagement = () => {
             );
           })}
 
-          {/* Воздух (21–23) — метки в центральном проезде */}
-          {LAYOUT.filter((s) => s.kind === 'air').map((slot) => {
+          {/* Воздух (21–23) — метки в центральном проезде (в LAYOUT их нет, задаём отдельно) */}
+          {AIR_POINTS.map((slot) => {
             const data = byNumber.get(slot.number);
             const inSvc = !!(data && data.in_service);
             const palette = paletteFor(data);
-            const fill = inSvc ? 'url(#serviceStripes)' : palette.fill;
             const cx = PAD + slot.cx;
             const cy = PAD + AIR_CY;
             return (
@@ -541,11 +556,11 @@ const BoxMaintenanceManagement = () => {
                 style={{ cursor: data ? 'pointer' : 'default' }}
                 onClick={() => openBox(slot.number)}
               >
-                <circle cx={cx} cy={cy} r={AIR_R} fill={fill} stroke="#0f172a" strokeWidth={0.1} />
-                <text x={cx} y={cy - 0.15} textAnchor="middle" fontSize={0.5} fontWeight="700" fill={palette.text}>ВОЗДУХ</text>
-                <text x={cx} y={cy + 0.85} textAnchor="middle" fontSize={1.0} fontWeight="800" fill={palette.text}>{slot.number}</text>
+                <circle cx={cx} cy={cy} r={AIR_R} fill={palette.fill} stroke="#0f172a" strokeWidth={0.12} />
+                <text x={cx} y={cy - 0.35} textAnchor="middle" fontSize={0.5} fontWeight="700" fill={palette.text}>ВОЗДУХ</text>
+                <text x={cx} y={cy + 0.9} textAnchor="middle" fontSize={1.3} fontWeight="800" fill={palette.text}>{slot.number}</text>
                 {inSvc && (
-                  <text x={cx} y={cy + AIR_R + 1.1} textAnchor="middle" fontSize={0.8} fontWeight="700" fill="#111827">
+                  <text x={cx} y={cy + AIR_R + 1.2} textAnchor="middle" fontSize={0.85} fontWeight="700" fill="#111827">
                     {formatDuration(data.in_service_since, nowMs)}
                   </text>
                 )}
