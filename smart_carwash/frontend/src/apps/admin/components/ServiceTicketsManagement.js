@@ -237,11 +237,15 @@ const CloseTicketModal = ({ ticket, onClose, onClosed }) => {
     }));
   };
 
-  const submit = async () => {
-    const works = Object.entries(selected)
-      .filter(([, v]) => v.checked)
-      .map(([componentId, v]) => ({ component_id: Number(componentId), action: v.action }));
+  const works = Object.entries(selected)
+    .filter(([, v]) => v.checked)
+    .map(([componentId, v]) => ({ component_id: Number(componentId), action: v.action }));
 
+  const submit = async () => {
+    if (works.length === 0) {
+      setError('Отметьте хотя бы одну выполненную работу');
+      return;
+    }
     setSubmitting(true);
     setError(null);
     try {
@@ -295,9 +299,14 @@ const CloseTicketModal = ({ ticket, onClose, onClosed }) => {
           placeholder="Что сделано, детали"
         />
 
+        {works.length === 0 && (
+          <div style={{ color: '#b26a00', fontSize: '0.85rem', marginBottom: 10 }}>
+            Отметьте хотя бы одну работу. Если ничего не меняли — выберите «Общее → Другое (комментарий)».
+          </div>
+        )}
         <div style={{ display: 'flex', gap: 12, justifyContent: 'flex-end' }}>
           <SecondaryButton onClick={onClose} disabled={submitting}>Отмена</SecondaryButton>
-          <PrimaryButton onClick={submit} disabled={submitting}>
+          <PrimaryButton onClick={submit} disabled={submitting || works.length === 0}>
             {submitting ? 'Закрываем...' : 'Закрыть наряд и вернуть в работу'}
           </PrimaryButton>
         </div>
