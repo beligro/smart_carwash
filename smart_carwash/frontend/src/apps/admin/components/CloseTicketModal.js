@@ -172,13 +172,17 @@ const CloseTicketModal = ({ ticket, onClose, onClosed }) => {
                   />
                   <span style={{ flex: 1 }}>{child.name}</span>
                   {selected[child.id]?.checked && (
-                    <Select
-                      value={selected[child.id]?.action || 'replace'}
-                      onChange={(e) => setAction(child.id, e.target.value)}
-                    >
-                      <option value="replace">замена</option>
-                      <option value="repair">ремонт</option>
-                    </Select>
+                    child.repairable ? (
+                      <Select
+                        value={selected[child.id]?.action || 'replace'}
+                        onChange={(e) => setAction(child.id, e.target.value)}
+                      >
+                        <option value="replace">замена</option>
+                        <option value="repair">ремонт</option>
+                      </Select>
+                    ) : (
+                      <Muted style={{ fontSize: '0.82rem' }}>только замена</Muted>
+                    )
                   )}
                 </WorkRow>
               ))}

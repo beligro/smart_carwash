@@ -52,10 +52,11 @@ func (ComponentGroup) TableName() string { return "component_groups" }
 
 // ComponentType — деталь (нижний уровень справочника работ).
 type ComponentType struct {
-	ID        int    `json:"id" gorm:"primaryKey"`
-	GroupID   int    `json:"group_id"`
-	Name      string `json:"name"`
-	SortOrder int    `json:"sort_order"`
+	ID         int    `json:"id" gorm:"primaryKey"`
+	GroupID    int    `json:"group_id"`
+	Name       string `json:"name"`
+	SortOrder  int    `json:"sort_order"`
+	Repairable bool   `json:"repairable"`
 }
 
 func (ComponentType) TableName() string { return "component_types" }
