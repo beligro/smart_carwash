@@ -75,6 +75,12 @@ func (s *ServiceImpl) GetCatalog(ctx context.Context, boxNumber int) ([]models.C
 
 // OpenTicket ставит бокс в сервис и открывает наряд, затем шлёт push получателям.
 func (s *ServiceImpl) OpenTicket(ctx context.Context, cashierID *uuid.UUID, req *models.OpenTicketRequest) (*models.ServiceTicket, error) {
+	// Симптом обязателен: нельзя ставить бокс в сервис без указания причины.
+	// Проверяем ДО перевода бокса в maintenance, чтобы не оставить бокс без наряда.
+	if req.SymptomID == nil {
+		return nil, errors.New("укажите причину (симптом) для постановки в сервис")
+	}
+
 	box, err := s.washboxSvc.GetWashBoxByID(ctx, req.BoxID)
 	if err != nil {
 		return nil, errors.New("бокс не найден")

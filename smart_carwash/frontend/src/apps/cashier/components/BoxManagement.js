@@ -371,6 +371,10 @@ const BoxManagement = () => {
   // Подтверждение: открываем наряд (бокс -> сервис + симптом + комментарий)
   const submitMaintenance = async () => {
     if (!maintBox) return;
+    if (!symptomId) {
+      setError('Выберите, что случилось (симптом) — без причины перевести в сервис нельзя');
+      return;
+    }
     const boxId = maintBox.id;
     setMaintSubmitting(true);
     setActionLoading(prev => ({ ...prev, [boxId]: true }));
@@ -481,6 +485,11 @@ const BoxManagement = () => {
               placeholder="Детали для мастера"
             />
 
+            {!symptomId && (
+              <div style={{ color: '#b26a00', fontSize: '0.85rem', marginBottom: 12 }}>
+                Выберите симптом — без указания причины перевести бокс в сервис нельзя.
+              </div>
+            )}
             <ModalActions>
               <ModalButton
                 className="secondary"
@@ -493,7 +502,7 @@ const BoxManagement = () => {
               <ModalButton
                 className="primary"
                 onClick={submitMaintenance}
-                disabled={maintSubmitting}
+                disabled={maintSubmitting || !symptomId}
               >
                 {maintSubmitting ? 'Переводим...' : 'Перевести на сервис'}
               </ModalButton>
