@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import styled from 'styled-components';
 import { getTheme } from '../../../shared/styles/theme';
 import ApiService from '../../../shared/services/ApiService';
+import CloseTicketModal from './CloseTicketModal';
 
 const theme = getTheme('light');
 
@@ -203,125 +204,8 @@ const fmtDowntime = (minutes) => {
 
 const actionLabel = (a) => (a === 'repair' ? 'ремонт' : 'замена');
 
-// ==================== Модалка закрытия наряда ====================
-const CloseTicketModal = ({ ticket, onClose, onClosed }) => {
-  const [catalog, setCatalog] = useState([]);
-  const [selected, setSelected] = useState({}); // componentId -> { checked, action }
-  const [masterComment, setMasterComment] = useState('');
-  const [submitting, setSubmitting] = useState(false);
-  const [error, setError] = useState(null);
-
-  useEffect(() => {
-    const load = async () => {
-      try {
-        const resp = await ApiService.getServiceCatalog(ticket.box_number);
-        setCatalog(resp.catalog || []);
-      } catch (e) {
-        setError('Не удалось загрузить справочник работ');
-      }
-    };
-    load();
-  }, [ticket.box_number]);
-
-  const toggle = (id) => {
-    setSelected(prev => ({
-      ...prev,
-      [id]: { checked: !prev[id]?.checked, action: prev[id]?.action || 'replace' },
-    }));
-  };
-
-  const setAction = (id, action) => {
-    setSelected(prev => ({
-      ...prev,
-      [id]: { checked: prev[id]?.checked ?? true, action },
-    }));
-  };
-
-  // Не-поломки (напр. «Бокс заблокирован») закрываются без выбора работ.
-  const requiresWorks = ticket.is_breakdown !== false;
-
-  const works = Object.entries(selected)
-    .filter(([, v]) => v.checked)
-    .map(([componentId, v]) => ({ component_id: Number(componentId), action: v.action }));
-
-  const submit = async () => {
-    if (requiresWorks && works.length === 0) {
-      setError('Отметьте хотя бы одну выполненную работу');
-      return;
-    }
-    setSubmitting(true);
-    setError(null);
-    try {
-      await ApiService.closeServiceTicket(ticket.id, { works, master_comment: masterComment });
-      onClosed();
-    } catch (e) {
-      setError('Ошибка закрытия наряда: ' + (e.response?.data?.error || e.message));
-    } finally {
-      setSubmitting(false);
-    }
-  };
-
-  return (
-    <Overlay onClick={submitting ? undefined : onClose}>
-      <Modal onClick={(e) => e.stopPropagation()}>
-        <Title>Закрыть наряд — бокс #{ticket.box_number}</Title>
-        {error && <ErrorMessage>{error}</ErrorMessage>}
-
-        {!requiresWorks && (
-          <div style={{ color: '#1565c0', fontSize: '0.9rem', marginBottom: 10 }}>
-            Не поломка — работы не требуются, наряд не идёт в статистику. Можно просто закрыть.
-          </div>
-        )}
-        <Muted>Отметьте выполненные работы (замена по умолчанию):</Muted>
-        <div style={{ marginTop: 12 }}>
-          {catalog.map(group => (
-            <GroupBlock key={group.id}>
-              <GroupName>{group.name} <Muted style={{ fontWeight: 400, fontSize: '0.8rem' }}>({group.carrier === 'machine' ? 'аппарат' : group.carrier === 'box' ? 'бокс' : 'общее'})</Muted></GroupName>
-              {(group.children || []).map(child => (
-                <WorkRow key={child.id}>
-                  <input
-                    type="checkbox"
-                    checked={selected[child.id]?.checked || false}
-                    onChange={() => toggle(child.id)}
-                  />
-                  <span style={{ flex: 1 }}>{child.name}</span>
-                  {selected[child.id]?.checked && (
-                    <Select
-                      value={selected[child.id]?.action || 'replace'}
-                      onChange={(e) => setAction(child.id, e.target.value)}
-                    >
-                      <option value="replace">замена</option>
-                      <option value="repair">ремонт</option>
-                    </Select>
-                  )}
-                </WorkRow>
-              ))}
-            </GroupBlock>
-          ))}
-        </div>
-
-        <label style={{ fontWeight: 500 }}>Комментарий мастера</label>
-        <TextArea
-          value={masterComment}
-          onChange={(e) => setMasterComment(e.target.value)}
-          placeholder="Что сделано, детали"
-        />
-
-        {requiresWorks && works.length === 0 && (
-          <div style={{ color: '#b26a00', fontSize: '0.85rem', marginBottom: 10 }}>
-            Отметьте хотя бы одну работу. Если ничего не меняли — выберите «Общее → Другое (комментарий)».
-          </div>
-        )}
-        <div style={{ display: 'flex', gap: 12, justifyContent: 'flex-end' }}>
-          <SecondaryButton onClick={onClose} disabled={submitting}>Отмена</SecondaryButton>
-          <PrimaryButton onClick={submit} disabled={submitting || (requiresWorks && works.length === 0)}>
-            {submitting ? 'Закрываем...' : 'Закрыть наряд и вернуть в работу'}
-          </PrimaryButton>
-        </div>
-      </Modal>
-    </Overlay>
-  );
-};
+// Модалка закрытия наряда вынесена в общий компонент ./CloseTicketModal
+// (переиспользуется на странице «ТО аппаратов»).
 
 // ==================== Журнал нарядов ====================
 const TicketsJournal = () => {

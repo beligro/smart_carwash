@@ -325,26 +325,52 @@ func main() {
 				type boxRow struct {
 					BoxNumber       int
 					TotalMinutes    int64
-					BaselineMinutes int64
-					LastToAt        time.Time
-					Alerted         bool
+					BaselineMinutes *int64
+					LastToAt        *time.Time
+					Alerted         *bool
+					HasMaintenance  bool
 					BoxStatus       *string
 					BoxUpdatedAt    *time.Time
 				}
 				var rows []boxRow
+				// Все активные боксы; учёт моточасов (box_maintenance) есть только у моечных —
+				// для остальных (воздух/пылесосы) он отсутствует (has_maintenance=false).
 				db.Raw(`
-					SELECT bm.box_number AS box_number,
+					SELECT w.number AS box_number,
 						COALESCE((SELECT SUM(s.rental_time_minutes + s.extension_time_minutes)
-								  FROM sessions s JOIN wash_boxes w2 ON w2.id = s.box_id
-								  WHERE w2.number = bm.box_number AND s.status = 'complete'), 0) AS total_minutes,
+								  FROM sessions s WHERE s.box_id = w.id AND s.status = 'complete'), 0) AS total_minutes,
 						bm.baseline_minutes AS baseline_minutes,
 						bm.last_to_at AS last_to_at,
 						bm.alerted AS alerted,
+						(bm.box_number IS NOT NULL) AS has_maintenance,
 						w.status AS box_status,
 						w.updated_at AS box_updated_at
-					FROM box_maintenance bm
-					LEFT JOIN wash_boxes w ON w.number = bm.box_number AND w.deleted_at IS NULL
-					ORDER BY bm.box_number`).Scan(&rows)
+					FROM wash_boxes w
+					LEFT JOIN box_maintenance bm ON bm.box_number = w.number
+					WHERE w.deleted_at IS NULL
+					ORDER BY w.number`).Scan(&rows)
+
+				// Открытые наряды по боксам (симптом, кто/когда, тип) — для увязки с логикой нарядов
+				type openTicketRow struct {
+					BoxNumber      int
+					TicketID       string
+					OpenedBy       *string
+					OpenedAt       time.Time
+					SymptomName    *string
+					CashierComment *string
+					IsBreakdown    bool
+				}
+				var openTickets []openTicketRow
+				db.Raw(`
+					SELECT st.box_number, st.id::text AS ticket_id, st.opened_by, st.opened_at,
+						sy.name AS symptom_name, st.cashier_comment, st.is_breakdown
+					FROM service_tickets st
+					LEFT JOIN symptom_types sy ON sy.id = st.symptom_id
+					WHERE st.status = 'open'`).Scan(&openTickets)
+				ticketMap := make(map[int]openTicketRow, len(openTickets))
+				for _, t := range openTickets {
+					ticketMap[t.BoxNumber] = t
+				}
 
 				// Момент входа в текущий сервис (последний переход в maintenance)
 				type sinceRow struct {
@@ -419,48 +445,79 @@ func main() {
 
 				result := make([]gin.H, 0, len(rows))
 				for _, r := range rows {
-					mh := (r.TotalMinutes - r.BaselineMinutes) / 60
-					if mh < 0 {
-						mh = 0
-					}
-					status := "ok"
-					if mh >= limitMH {
-						status = "overdue"
-					} else if mh >= threshold {
-						status = "soon"
-					}
-					percent := int(float64(mh)/float64(limitMH)*100 + 0.5)
 					inService := r.BoxStatus != nil && *r.BoxStatus == "maintenance"
+
+					// Открытый наряд (если есть) — источник причины/времени постановки в сервис.
+					var openTicket interface{}
 					var inServiceSince interface{}
-					if inService {
-						if t, ok := sinceMap[r.BoxNumber]; ok {
-							inServiceSince = t
+					if t, ok := ticketMap[r.BoxNumber]; ok {
+						openTicket = gin.H{
+							"id":              t.TicketID,
+							"opened_by":       t.OpenedBy,
+							"opened_at":       t.OpenedAt,
+							"symptom_name":    t.SymptomName,
+							"cashier_comment": t.CashierComment,
+							"is_breakdown":    t.IsBreakdown,
+						}
+						inServiceSince = t.OpenedAt
+					} else if inService {
+						// Наряда нет (старые/ручные переводы) — берём момент из журнала статусов.
+						if ts, ok := sinceMap[r.BoxNumber]; ok {
+							inServiceSince = ts
 						} else if r.BoxUpdatedAt != nil {
 							inServiceSince = *r.BoxUpdatedAt
 						}
 					}
-					hist := histMap[r.BoxNumber]
-					if hist == nil {
-						hist = []gin.H{}
-					}
+
 					var svc int64
 					if v, ok := svcMap[r.BoxNumber]; ok {
 						svc = v
 					}
-					result = append(result, gin.H{
+
+					row := gin.H{
 						"box_number":          r.BoxNumber,
-						"motor_hours":         mh,
-						"last_to_at":          r.LastToAt,
-						"threshold":           threshold,
-						"limit":               limitMH,
-						"percent":             percent,
-						"status":              status,
-						"alerted":             r.Alerted,
+						"box_type":            maintenanceService.BoxType(r.BoxNumber),
+						"has_maintenance":     r.HasMaintenance,
 						"in_service":          inService,
 						"in_service_since":    inServiceSince,
 						"service_minutes_30d": svc,
-						"history":             hist,
-					})
+						"open_ticket":         openTicket,
+					}
+
+					// Моточасы/плановое ТО — только для боксов с учётом (моечные).
+					if r.HasMaintenance {
+						baseline := int64(0)
+						if r.BaselineMinutes != nil {
+							baseline = *r.BaselineMinutes
+						}
+						mh := (r.TotalMinutes - baseline) / 60
+						if mh < 0 {
+							mh = 0
+						}
+						status := "ok"
+						if mh >= limitMH {
+							status = "overdue"
+						} else if mh >= threshold {
+							status = "soon"
+						}
+						hist := histMap[r.BoxNumber]
+						if hist == nil {
+							hist = []gin.H{}
+						}
+						row["motor_hours"] = mh
+						row["last_to_at"] = r.LastToAt
+						row["threshold"] = threshold
+						row["limit"] = limitMH
+						row["percent"] = int(float64(mh)/float64(limitMH)*100 + 0.5)
+						row["status"] = status
+						row["alerted"] = r.Alerted
+						row["history"] = hist
+					} else {
+						row["motor_hours"] = nil
+						row["history"] = []gin.H{}
+					}
+
+					result = append(result, row)
 				}
 				c.JSON(http.StatusOK, result)
 			})

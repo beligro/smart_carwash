@@ -3,6 +3,9 @@ import styled from 'styled-components';
 import { getTheme } from '../../../shared/styles/theme';
 import ApiService from '../../../shared/services/ApiService';
 import { LAYOUT } from '../../web/components/BoxMap/BoxMap.jsx';
+import CloseTicketModal from './CloseTicketModal';
+
+const BOX_TYPE_LABEL = { wash: 'Мойка', vacuum: 'Пылесос', air: 'Воздух' };
 
 // Физическая геометрия здания (повторяет константы публичной схемы /status,
 // сам публичный BoxMap.jsx не трогаем — переиспользуем только LAYOUT).
@@ -214,6 +217,36 @@ const ConfirmBox = styled.div`
   margin-top: 12px;
 `;
 
+const SectionTitle = styled.h3`
+  margin: 22px 0 10px;
+`;
+
+const BoxTable = styled.table`
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.9rem;
+  th, td {
+    text-align: left;
+    padding: 8px 10px;
+    border-bottom: 1px solid ${p => p.theme.borderColor};
+    vertical-align: top;
+  }
+  th { color: ${p => p.theme.textColor}; opacity: 0.7; font-weight: 600; }
+  tr.in-service { background: rgba(220, 38, 38, 0.06); }
+`;
+
+const SmallButton = styled.button`
+  padding: 6px 12px;
+  background: ${p => p.theme.primaryColor};
+  color: #fff;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 0.85rem;
+  white-space: nowrap;
+  &:disabled { opacity: 0.6; cursor: not-allowed; }
+`;
+
 const pad2 = (n) => String(n).padStart(2, '0');
 
 const formatDate = (iso) => {
@@ -266,6 +299,7 @@ const BoxMaintenanceManagement = () => {
   const [error, setError] = useState('');
   const [selectedNumber, setSelectedNumber] = useState(null);
   const [nowMs, setNowMs] = useState(Date.now());
+  const [closingTicket, setClosingTicket] = useState(null);
 
   // Состояние формы отметки ТО
   const [confirmOpen, setConfirmOpen] = useState(false);
@@ -460,7 +494,7 @@ const BoxMaintenanceManagement = () => {
                 <text x={PAD + slot.x + slot.w / 2} y={PAD + slot.y + 0.85} textAnchor="middle" fontSize={0.6} fill={palette.text} opacity={0.8}>
                   {isVacuum ? 'ПЫЛЕСОС' : `БОКС ${slot.number}`}
                 </text>
-                {data && !data.in_service && (
+                {data && !data.in_service && data.has_maintenance && (
                   <text x={PAD + slot.x + slot.w / 2} y={PAD + slot.y + 2.9} textAnchor="middle" fontSize={1.7} fontWeight="800" fill={palette.text}>
                     {mh}
                   </text>
@@ -499,6 +533,71 @@ const BoxMaintenanceManagement = () => {
           </li>
         ))}
       </Legend>
+
+      <SectionTitle>Все боксы и наряды</SectionTitle>
+      <div style={{ overflowX: 'auto' }}>
+        <BoxTable theme={theme}>
+          <thead>
+            <tr>
+              <th>Бокс</th>
+              <th>Тип</th>
+              <th>Статус</th>
+              <th>Моточасы</th>
+              <th>Наряд (причина · кто · сколько в сервисе)</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
+            {boxes.slice().sort((a, b) => (a.box_number ?? 0) - (b.box_number ?? 0)).map((b) => {
+              const t = b.open_ticket;
+              const inSvc = b.in_service;
+              return (
+                <tr key={b.box_number} className={inSvc ? 'in-service' : ''}>
+                  <td>№{b.box_number}</td>
+                  <td>{BOX_TYPE_LABEL[b.box_type] || b.box_type || '—'}</td>
+                  <td>{inSvc ? 'В сервисе' : 'В работе'}</td>
+                  <td>{b.has_maintenance ? `${b.motor_hours ?? 0} мч` : '—'}</td>
+                  <td>
+                    {t ? (
+                      <div>
+                        <div style={{ fontWeight: 600 }}>
+                          {t.symptom_name || '—'}{t.is_breakdown === false ? ' (не поломка)' : ''}
+                        </div>
+                        <div style={{ opacity: 0.7, fontSize: '0.82rem' }}>
+                          {t.opened_by || '—'} · {formatDuration(t.opened_at, nowMs)}
+                        </div>
+                        {t.cashier_comment && (
+                          <div style={{ opacity: 0.7, fontSize: '0.82rem' }}>«{t.cashier_comment}»</div>
+                        )}
+                      </div>
+                    ) : inSvc ? (
+                      <span style={{ opacity: 0.6 }}>в сервисе (без наряда)</span>
+                    ) : '—'}
+                  </td>
+                  <td>
+                    {t && (
+                      <SmallButton
+                        theme={theme}
+                        onClick={() => setClosingTicket({ id: t.id, box_number: b.box_number, is_breakdown: t.is_breakdown })}
+                      >
+                        Закрыть наряд
+                      </SmallButton>
+                    )}
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </BoxTable>
+      </div>
+
+      {closingTicket && (
+        <CloseTicketModal
+          ticket={closingTicket}
+          onClose={() => setClosingTicket(null)}
+          onClosed={() => { setClosingTicket(null); load(true); }}
+        />
+      )}
 
       {swapOpen && (
         <Overlay onClick={closeSwap}>
