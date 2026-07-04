@@ -80,6 +80,10 @@ func (s *ServiceImpl) OpenTicket(ctx context.Context, cashierID *uuid.UUID, req 
 	if req.SymptomID == nil {
 		return nil, errors.New("укажите причину (симптом) для постановки в сервис")
 	}
+	symptom, err := s.repo.GetSymptomByID(ctx, *req.SymptomID)
+	if err != nil || symptom == nil {
+		return nil, errors.New("указан несуществующий симптом")
+	}
 
 	box, err := s.washboxSvc.GetWashBoxByID(ctx, req.BoxID)
 	if err != nil {
@@ -104,6 +108,7 @@ func (s *ServiceImpl) OpenTicket(ctx context.Context, cashierID *uuid.UUID, req 
 		BoxNumber:         box.Number,
 		BoxType:           BoxType(box.Number),
 		Status:            models.TicketStatusOpen,
+		IsBreakdown:       symptom.IsBreakdown,
 		OpenedAt:          time.Now(),
 		OpenedBy:          openedBy,
 		OpenedByCashierID: cashierID,
@@ -170,9 +175,9 @@ func (s *ServiceImpl) CloseTicket(ctx context.Context, ticketID uuid.UUID, close
 	if ticket.Status != models.TicketStatusOpen {
 		return nil, errors.New("наряд уже закрыт")
 	}
-	// Закрывать наряд можно только с указанием выполненных работ (для статистики).
-	// Если по факту ничего не меняли — выбирается «Другое (комментарий)» из группы «Общее».
-	if len(req.Works) == 0 {
+	// Для поломок закрывать наряд можно только с указанием выполненных работ (для статистики).
+	// Не-поломки (напр. «Бокс заблокирован») закрываются без работ и в статистику не идут.
+	if ticket.IsBreakdown && len(req.Works) == 0 {
 		return nil, errors.New("укажите хотя бы одну выполненную работу")
 	}
 

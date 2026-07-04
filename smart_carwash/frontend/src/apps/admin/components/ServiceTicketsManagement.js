@@ -237,12 +237,15 @@ const CloseTicketModal = ({ ticket, onClose, onClosed }) => {
     }));
   };
 
+  // Не-поломки (напр. «Бокс заблокирован») закрываются без выбора работ.
+  const requiresWorks = ticket.is_breakdown !== false;
+
   const works = Object.entries(selected)
     .filter(([, v]) => v.checked)
     .map(([componentId, v]) => ({ component_id: Number(componentId), action: v.action }));
 
   const submit = async () => {
-    if (works.length === 0) {
+    if (requiresWorks && works.length === 0) {
       setError('Отметьте хотя бы одну выполненную работу');
       return;
     }
@@ -264,6 +267,11 @@ const CloseTicketModal = ({ ticket, onClose, onClosed }) => {
         <Title>Закрыть наряд — бокс #{ticket.box_number}</Title>
         {error && <ErrorMessage>{error}</ErrorMessage>}
 
+        {!requiresWorks && (
+          <div style={{ color: '#1565c0', fontSize: '0.9rem', marginBottom: 10 }}>
+            Не поломка — работы не требуются, наряд не идёт в статистику. Можно просто закрыть.
+          </div>
+        )}
         <Muted>Отметьте выполненные работы (замена по умолчанию):</Muted>
         <div style={{ marginTop: 12 }}>
           {catalog.map(group => (
@@ -299,14 +307,14 @@ const CloseTicketModal = ({ ticket, onClose, onClosed }) => {
           placeholder="Что сделано, детали"
         />
 
-        {works.length === 0 && (
+        {requiresWorks && works.length === 0 && (
           <div style={{ color: '#b26a00', fontSize: '0.85rem', marginBottom: 10 }}>
             Отметьте хотя бы одну работу. Если ничего не меняли — выберите «Общее → Другое (комментарий)».
           </div>
         )}
         <div style={{ display: 'flex', gap: 12, justifyContent: 'flex-end' }}>
           <SecondaryButton onClick={onClose} disabled={submitting}>Отмена</SecondaryButton>
-          <PrimaryButton onClick={submit} disabled={submitting || works.length === 0}>
+          <PrimaryButton onClick={submit} disabled={submitting || (requiresWorks && works.length === 0)}>
             {submitting ? 'Закрываем...' : 'Закрыть наряд и вернуть в работу'}
           </PrimaryButton>
         </div>

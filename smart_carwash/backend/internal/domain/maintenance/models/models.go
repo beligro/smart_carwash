@@ -28,12 +28,13 @@ const (
 
 // SymptomType — справочник симптомов кассира.
 type SymptomType struct {
-	ID        int    `json:"id" gorm:"primaryKey"`
-	GroupName string `json:"group_name" gorm:"column:group_name"`
-	Name      string `json:"name"`
-	BoxType   string `json:"box_type"`
-	SortOrder int    `json:"sort_order"`
-	IsActive  bool   `json:"is_active"`
+	ID          int    `json:"id" gorm:"primaryKey"`
+	GroupName   string `json:"group_name" gorm:"column:group_name"`
+	Name        string `json:"name"`
+	BoxType     string `json:"box_type"`
+	SortOrder   int    `json:"sort_order"`
+	IsActive    bool   `json:"is_active"`
+	IsBreakdown bool   `json:"is_breakdown"`
 }
 
 func (SymptomType) TableName() string { return "symptom_types" }
@@ -66,6 +67,7 @@ type ServiceTicket struct {
 	BoxNumber         int        `json:"box_number"`
 	BoxType           string     `json:"box_type"`
 	Status            string     `json:"status"`
+	IsBreakdown       bool       `json:"is_breakdown"`
 	OpenedAt          time.Time  `json:"opened_at"`
 	OpenedBy          string     `json:"opened_by"`
 	OpenedByCashierID *uuid.UUID `json:"opened_by_cashier_id" gorm:"type:uuid"`

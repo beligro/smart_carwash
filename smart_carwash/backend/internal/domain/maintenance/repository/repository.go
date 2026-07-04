@@ -14,6 +14,7 @@ import (
 type Repository interface {
 	// Справочники
 	GetSymptomsByBoxType(ctx context.Context, boxType string) ([]models.SymptomType, error)
+	GetSymptomByID(ctx context.Context, id int) (*models.SymptomType, error)
 	GetCatalog(ctx context.Context, boxType string) ([]models.CatalogGroup, error)
 	GetComponentCarrier(ctx context.Context, componentID int) (string, error)
 
@@ -45,14 +46,28 @@ func NewPostgresRepository(db *gorm.DB) *PostgresRepository {
 	return &PostgresRepository{db: db}
 }
 
-// GetSymptomsByBoxType возвращает активные симптомы для типа бокса.
+// GetSymptomsByBoxType возвращает активные симптомы для типа бокса
+// плюс общие симптомы (box_type='any', напр. «Бокс заблокирован»).
 func (r *PostgresRepository) GetSymptomsByBoxType(ctx context.Context, boxType string) ([]models.SymptomType, error) {
 	var rows []models.SymptomType
 	err := r.db.WithContext(ctx).
-		Where("is_active = true AND box_type = ?", boxType).
+		Where("is_active = true AND (box_type = ? OR box_type = ?)", boxType, models.BoxTypeAny).
 		Order("sort_order, id").
 		Find(&rows).Error
 	return rows, err
+}
+
+// GetSymptomByID возвращает симптом по id (или nil).
+func (r *PostgresRepository) GetSymptomByID(ctx context.Context, id int) (*models.SymptomType, error) {
+	var s models.SymptomType
+	err := r.db.WithContext(ctx).First(&s, "id = ?", id).Error
+	if err != nil {
+		if err == gorm.ErrRecordNotFound {
+			return nil, nil
+		}
+		return nil, err
+	}
+	return &s, nil
 }
 
 // GetCatalog возвращает группы работ (с деталями), подходящие для типа бокса (+ группы 'any').
