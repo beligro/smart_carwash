@@ -19,6 +19,8 @@ const VB_H = BUILDING_H + PAD * 2;
 const TOP_Y = 0;
 const BOT_Y = BUILDING_H - BAY_DEPTH;
 const WALL_T = 1.5;
+const AIR_CY = BUILDING_H / 2; // центр проезда — там метки воздуха
+const AIR_R = 1.4;
 
 const TO_LIMIT = 500;
 
@@ -27,8 +29,9 @@ const STATUS_COLORS = {
   ok: { fill: '#16a34a', text: '#ffffff', label: 'В норме (< 450 мч)' },
   soon: { fill: '#f59e0b', text: '#1f2937', label: 'Скоро ТО (450–499 мч)' },
   overdue: { fill: '#dc2626', text: '#ffffff', label: 'Просрочено (≥ 500 мч)' },
+  working: { fill: '#0891b2', text: '#ffffff', label: 'В работе (пылесос/воздух, без ТО)' },
   service: { fill: '#6b7280', text: '#ffffff', label: 'В сервисе' },
-  none: { fill: '#cbd5e1', text: '#475569', label: 'Без учёта ТО' },
+  none: { fill: '#cbd5e1', text: '#475569', label: 'Нет данных' },
 };
 
 const REASON_OPTIONS = [
@@ -368,6 +371,7 @@ const BoxMaintenanceManagement = () => {
   const paletteFor = (data) => {
     if (!data) return STATUS_COLORS.none;
     if (data.in_service) return STATUS_COLORS.service;
+    if (!data.has_maintenance) return STATUS_COLORS.working; // пылесос/воздух в работе
     return STATUS_COLORS[data.status] || STATUS_COLORS.none;
   };
 
@@ -464,17 +468,21 @@ const BoxMaintenanceManagement = () => {
           <rect x={PAD + 2 * BOX_W} y={PAD + TOP_Y} width={WALL_T} height={BAY_DEPTH} fill="#1f2937" />
           <rect x={PAD + 2 * BOX_W} y={PAD + BOT_Y} width={WALL_T} height={BAY_DEPTH} fill="#1f2937" />
 
-          {LAYOUT.map((slot) => {
+          {/* Тайлы боксов и пылесосов (у воздуха — отдельная геометрия ниже) */}
+          {LAYOUT.filter((s) => s.kind !== 'air').map((slot) => {
             const data = byNumber.get(slot.number);
             const isVacuum = slot.kind === 'vacuum';
+            const hasTO = !!(data && data.has_maintenance);
+            const inSvc = !!(data && data.in_service);
             const palette = paletteFor(data);
-            const fill = data && data.in_service ? 'url(#serviceStripes)' : palette.fill;
+            const fill = inSvc ? 'url(#serviceStripes)' : palette.fill;
             const clickable = !!data;
-            const mh = data ? (data.motor_hours ?? data.motorHours ?? 0) : null;
-            const svcRaw = data ? (data.service_minutes_30d ?? data.serviceMinutes30d) : null;
+            const mh = data ? (data.motor_hours ?? 0) : null;
+            const svcRaw = data ? data.service_minutes_30d : null;
             const svcHours = (svcRaw === null || svcRaw === undefined || Number.isNaN(Number(svcRaw)))
               ? null
               : Math.round(Number(svcRaw) / 60);
+            const cx = PAD + slot.x + slot.w / 2;
             return (
               <g
                 key={slot.number}
@@ -491,33 +499,55 @@ const BoxMaintenanceManagement = () => {
                   strokeWidth={0.08}
                   rx={0.25}
                 />
-                <text x={PAD + slot.x + slot.w / 2} y={PAD + slot.y + 0.85} textAnchor="middle" fontSize={0.6} fill={palette.text} opacity={0.8}>
-                  {isVacuum ? 'ПЫЛЕСОС' : `БОКС ${slot.number}`}
+                <text x={cx} y={PAD + slot.y + 0.95} textAnchor="middle" fontSize={0.62} fontWeight="700" fill={palette.text} opacity={0.9}>
+                  {isVacuum ? `ПЫЛЕСОС ${slot.number}` : `БОКС ${slot.number}`}
                 </text>
-                {data && !data.in_service && data.has_maintenance && (
-                  <text x={PAD + slot.x + slot.w / 2} y={PAD + slot.y + 2.9} textAnchor="middle" fontSize={1.7} fontWeight="800" fill={palette.text}>
+
+                {/* Моточасы — только для боксов с учётом ТО и не в сервисе */}
+                {hasTO && !inSvc && (
+                  <text x={cx} y={PAD + slot.y + 3.1} textAnchor="middle" fontSize={1.7} fontWeight="800" fill={palette.text}>
                     {mh}
                   </text>
                 )}
-                {isVacuum && (
-                  <text x={PAD + slot.x + slot.w / 2} y={PAD + slot.y + slot.h / 2 + 0.6} textAnchor="middle" fontSize={1.6} fontWeight="800" fill={palette.text}>
-                    {slot.number}
+
+                {/* В сервисе — таймер простоя по центру */}
+                {inSvc && (
+                  <text x={cx} y={PAD + slot.y + 3.2} textAnchor="middle" fontSize={0.95} fontWeight="700" fill="#ffffff" textLength={slot.w - 0.8} lengthAdjust="spacingAndGlyphs">
+                    {formatDuration(data.in_service_since, nowMs)}
                   </text>
                 )}
-                {data && data.in_service && (
-                  <text x={PAD + slot.x + slot.w / 2} y={PAD + slot.y + 2.8} textAnchor="middle" fontSize={0.95} fontWeight="700" fill="#ffffff" textLength={slot.w - 0.6} lengthAdjust="spacingAndGlyphs">
-                    {formatDuration(data.in_service_since || data.inServiceSince, nowMs)}
+
+                {/* Простой за 30 дней — снизу */}
+                {svcHours !== null && svcHours > 0 && (
+                  <text x={cx} y={PAD + slot.y + slot.h - 0.5} textAnchor="middle" fontSize={0.72} fontWeight="700" fill="#111827" textLength={slot.w - 0.8} lengthAdjust="spacingAndGlyphs">
+                    {`в серв. ${svcHours}ч/30д`}
                   </text>
                 )}
-                {data && svcHours !== null && (
-                  <>
-                    <text x={PAD + slot.x + slot.w / 2} y={PAD + slot.y + slot.h - 1.15} textAnchor="middle" fontSize={0.7} fontWeight="600" fill="#111827">
-                      в серв.
-                    </text>
-                    <text x={PAD + slot.x + slot.w / 2} y={PAD + slot.y + slot.h - 0.35} textAnchor="middle" fontSize={0.95} fontWeight="800" fill="#111827" textLength={slot.w - 0.8} lengthAdjust="spacingAndGlyphs">
-                      {`${svcHours}ч / 30д`}
-                    </text>
-                  </>
+              </g>
+            );
+          })}
+
+          {/* Воздух (21–23) — метки в центральном проезде */}
+          {LAYOUT.filter((s) => s.kind === 'air').map((slot) => {
+            const data = byNumber.get(slot.number);
+            const inSvc = !!(data && data.in_service);
+            const palette = paletteFor(data);
+            const fill = inSvc ? 'url(#serviceStripes)' : palette.fill;
+            const cx = PAD + slot.cx;
+            const cy = PAD + AIR_CY;
+            return (
+              <g
+                key={slot.number}
+                style={{ cursor: data ? 'pointer' : 'default' }}
+                onClick={() => openBox(slot.number)}
+              >
+                <circle cx={cx} cy={cy} r={AIR_R} fill={fill} stroke="#0f172a" strokeWidth={0.1} />
+                <text x={cx} y={cy - 0.15} textAnchor="middle" fontSize={0.5} fontWeight="700" fill={palette.text}>ВОЗДУХ</text>
+                <text x={cx} y={cy + 0.85} textAnchor="middle" fontSize={1.0} fontWeight="800" fill={palette.text}>{slot.number}</text>
+                {inSvc && (
+                  <text x={cx} y={cy + AIR_R + 1.1} textAnchor="middle" fontSize={0.8} fontWeight="700" fill="#111827">
+                    {formatDuration(data.in_service_since, nowMs)}
+                  </text>
                 )}
               </g>
             );
@@ -664,64 +694,102 @@ const BoxMaintenanceManagement = () => {
             {feedback && (feedback.startsWith('Ошибка') ? <ErrorText>{feedback}</ErrorText> : <SuccessText>{feedback}</SuccessText>)}
 
             <InfoGrid theme={theme}>
-              <div>Моточасы</div>
-              <div>{(selected.motor_hours ?? 0)} / {TO_LIMIT} мч{selected.status === 'overdue' ? ' (просрочено)' : selected.status === 'soon' ? ' (скоро ТО)' : ''}</div>
-              <div>Последнее ТО</div>
-              <div>{formatDate(selected.last_to_at ?? selected.lastToAt)}</div>
+              <div>Тип</div>
+              <div>{BOX_TYPE_LABEL[selected.box_type] || selected.box_type || '—'}</div>
+              {selected.has_maintenance && (
+                <>
+                  <div>Моточасы</div>
+                  <div>{(selected.motor_hours ?? 0)} / {TO_LIMIT} мч{selected.status === 'overdue' ? ' (просрочено)' : selected.status === 'soon' ? ' (скоро ТО)' : ''}</div>
+                  <div>Последнее ТО</div>
+                  <div>{formatDate(selected.last_to_at)}</div>
+                </>
+              )}
               <div>Статус бокса</div>
               <div>{selected.in_service ? 'В сервисе сейчас' : 'В работе'}</div>
               {selected.in_service && (
                 <>
                   <div>В сервисе уже</div>
-                  <div>{formatDuration(selected.in_service_since ?? selected.inServiceSince, nowMs)}</div>
+                  <div>{formatDuration(selected.in_service_since, nowMs)}</div>
                 </>
               )}
-              <div>В сервисе за последние 30 дней</div>
-              <div>{formatServiceMinutes(selected.service_minutes_30d ?? selected.serviceMinutes30d)}</div>
+              {selected.open_ticket && (
+                <>
+                  <div>Причина</div>
+                  <div>{(selected.open_ticket.symptom_name || 'не указана')}{selected.open_ticket.is_breakdown === false ? ' (не поломка)' : ''}</div>
+                </>
+              )}
+              {selected.open_ticket && selected.open_ticket.cashier_comment && (
+                <>
+                  <div>Коммент кассира</div>
+                  <div>{selected.open_ticket.cashier_comment}</div>
+                </>
+              )}
+              <div>В сервисе за 30 дней</div>
+              <div>{formatServiceMinutes(selected.service_minutes_30d)}</div>
             </InfoGrid>
 
-            {!confirmOpen ? (
-              <Button primary theme={theme} onClick={() => setConfirmOpen(true)}>
-                ТО выполнено
+            {selected.open_ticket && (
+              <Button
+                primary
+                theme={theme}
+                style={{ marginBottom: 10 }}
+                onClick={() => {
+                  setClosingTicket({ id: selected.open_ticket.id, box_number: selected.box_number, is_breakdown: selected.open_ticket.is_breakdown });
+                  closeModal();
+                }}
+              >
+                Закрыть наряд
               </Button>
-            ) : (
-              <ConfirmBox theme={theme}>
-                <div style={{ fontWeight: 600, marginBottom: 8 }}>
-                  Точно отметить ТО для бокса №{selected.box_number ?? selected.boxNumber}?
-                </div>
-                <Label>Причина</Label>
-                <Select theme={theme} value={reason} onChange={(e) => setReason(e.target.value)}>
-                  {REASON_OPTIONS.map((r) => (
-                    <option key={r} value={r}>{r}</option>
-                  ))}
-                </Select>
-                <Label>Комментарий (необязательно)</Label>
-                <TextArea theme={theme} value={comment} onChange={(e) => setComment(e.target.value)} placeholder="Доп. информация" />
-                <ModalActions>
-                  <Button theme={theme} onClick={() => setConfirmOpen(false)} disabled={submitting}>Отмена</Button>
-                  <Button primary theme={theme} onClick={submitReset} disabled={submitting}>
-                    {submitting ? 'Сохранение…' : 'Подтвердить'}
-                  </Button>
-                </ModalActions>
-              </ConfirmBox>
             )}
 
-            <HistoryTitle>История ТО (последние 5)</HistoryTitle>
-            <HistoryList>
-              {(selected.history && selected.history.length > 0) ? (
-                selected.history.map((h, idx) => (
-                  <HistoryItem key={idx} theme={theme}>
-                    <div style={{ fontWeight: 600 }}>{formatDateTime(h.performed_at ?? h.performedAt)}</div>
-                    <div>Кто: {h.performed_by ?? h.performedBy ?? '—'}</div>
-                    <div>Было моточасов: {h.motor_hours_at_reset ?? h.motorHoursAtReset ?? '—'}</div>
-                    <div>Причина: {h.reason || '—'}</div>
-                    {(h.comment) && <div>Комментарий: {h.comment}</div>}
-                  </HistoryItem>
-                ))
+            {selected.has_maintenance && (
+              !confirmOpen ? (
+                <Button primary theme={theme} onClick={() => setConfirmOpen(true)}>
+                  Отметить плановое ТО
+                </Button>
               ) : (
-                <div style={{ opacity: 0.7 }}>Записей пока нет</div>
-              )}
-            </HistoryList>
+                <ConfirmBox theme={theme}>
+                  <div style={{ fontWeight: 600, marginBottom: 8 }}>
+                    Точно отметить ТО для бокса №{selected.box_number}?
+                  </div>
+                  <Label>Причина</Label>
+                  <Select theme={theme} value={reason} onChange={(e) => setReason(e.target.value)}>
+                    {REASON_OPTIONS.map((r) => (
+                      <option key={r} value={r}>{r}</option>
+                    ))}
+                  </Select>
+                  <Label>Комментарий (необязательно)</Label>
+                  <TextArea theme={theme} value={comment} onChange={(e) => setComment(e.target.value)} placeholder="Доп. информация" />
+                  <ModalActions>
+                    <Button theme={theme} onClick={() => setConfirmOpen(false)} disabled={submitting}>Отмена</Button>
+                    <Button primary theme={theme} onClick={submitReset} disabled={submitting}>
+                      {submitting ? 'Сохранение…' : 'Подтвердить'}
+                    </Button>
+                  </ModalActions>
+                </ConfirmBox>
+              )
+            )}
+
+            {selected.has_maintenance && (
+              <>
+                <HistoryTitle>История ТО (последние 5)</HistoryTitle>
+                <HistoryList>
+                  {(selected.history && selected.history.length > 0) ? (
+                    selected.history.map((h, idx) => (
+                      <HistoryItem key={idx} theme={theme}>
+                        <div style={{ fontWeight: 600 }}>{formatDateTime(h.performed_at)}</div>
+                        <div>Кто: {h.performed_by ?? '—'}</div>
+                        <div>Было моточасов: {h.motor_hours_at_reset ?? '—'}</div>
+                        <div>Причина: {h.reason || '—'}</div>
+                        {(h.comment) && <div>Комментарий: {h.comment}</div>}
+                      </HistoryItem>
+                    ))
+                  ) : (
+                    <div style={{ opacity: 0.7 }}>Записей пока нет</div>
+                  )}
+                </HistoryList>
+              </>
+            )}
           </Modal>
         </Overlay>
       )}
