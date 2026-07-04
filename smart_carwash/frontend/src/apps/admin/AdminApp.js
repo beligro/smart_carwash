@@ -16,6 +16,7 @@ import ModbusDashboard from './components/ModbusDashboard';
 import CleaningLogsManagement from './components/CleaningLogsManagement';
 import WashboxChangeLogs from './components/WashboxChangeLogs';
 import BoxMaintenanceManagement from './components/BoxMaintenanceManagement';
+import ServiceTicketsManagement from './components/ServiceTicketsManagement';
 
 
 const AdminContainer = styled.div`
@@ -293,6 +294,11 @@ const AdminApp = () => {
             </NavLink>
           </NavItem>
           <NavItem>
+            <NavLink to="/admin/service-tickets" theme={theme} isActive={location.pathname === '/admin/service-tickets'}>
+              Сервисные наряды
+            </NavLink>
+          </NavItem>
+          <NavItem>
             <NavLink to="/admin/sessions" theme={theme} isActive={location.pathname === '/admin/sessions'}>
               Сессии мойки
             </NavLink>
@@ -352,6 +358,7 @@ const AdminApp = () => {
           <Route path="/" element={<Dashboard />} />
           <Route path="/washboxes" element={<WashBoxManagement />} />
           <Route path="/maintenance" element={<BoxMaintenanceManagement />} />
+          <Route path="/service-tickets" element={<ServiceTicketsManagement />} />
           <Route path="/sessions" element={<SessionManagement />} />
           <Route path="/queue" element={<QueueStatus />} />
           <Route path="/users" element={<UserManagement />} />
@@ -407,6 +414,16 @@ const AdminApp = () => {
                 onClick={() => setIsMobileMenuOpen(false)}
               >
                 ТО аппаратов
+              </MobileNavLink>
+            </MobileNavItem>
+            <MobileNavItem>
+              <MobileNavLink 
+                to="/admin/service-tickets" 
+                theme={theme} 
+                isActive={location.pathname === '/admin/service-tickets'}
+                onClick={() => setIsMobileMenuOpen(false)}
+              >
+                Сервисные наряды
               </MobileNavLink>
             </MobileNavItem>
             <MobileNavItem>

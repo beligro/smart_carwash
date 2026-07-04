@@ -143,6 +143,84 @@ const FilterLabel = styled.label`
   margin-right: 8px;
 `;
 
+const ModalOverlay = styled.div`
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  padding: 16px;
+`;
+
+const ModalCard = styled.div`
+  background: ${props => props.theme.cardBackground};
+  border-radius: 10px;
+  padding: 24px;
+  width: 100%;
+  max-width: 460px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.2);
+`;
+
+const ModalTitle = styled.h3`
+  margin: 0 0 16px 0;
+  color: ${props => props.theme.textColor};
+`;
+
+const ModalLabel = styled.label`
+  display: block;
+  font-size: 0.9rem;
+  color: ${props => props.theme.textColorSecondary};
+  margin-bottom: 6px;
+`;
+
+const ModalSelect = styled.select`
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid ${props => props.theme.borderColor};
+  border-radius: 6px;
+  background: ${props => props.theme.cardBackground};
+  color: ${props => props.theme.textColor};
+  font-size: 1rem;
+  margin-bottom: 16px;
+`;
+
+const ModalTextArea = styled.textarea`
+  width: 100%;
+  min-height: 72px;
+  padding: 10px 12px;
+  border: 1px solid ${props => props.theme.borderColor};
+  border-radius: 6px;
+  background: ${props => props.theme.cardBackground};
+  color: ${props => props.theme.textColor};
+  font-size: 1rem;
+  resize: vertical;
+  margin-bottom: 20px;
+  box-sizing: border-box;
+`;
+
+const ModalActions = styled.div`
+  display: flex;
+  gap: 12px;
+  justify-content: flex-end;
+`;
+
+const ModalButton = styled.button`
+  padding: 10px 18px;
+  border: none;
+  border-radius: 6px;
+  font-size: 0.95rem;
+  font-weight: 500;
+  cursor: pointer;
+
+  &:disabled { opacity: 0.5; cursor: not-allowed; }
+
+  &.primary { background: #dc3545; color: #fff; }
+  &.primary:hover:not(:disabled) { background: #c82333; }
+  &.secondary { background: ${props => props.theme.borderColor || '#e0e0e0'}; color: ${props => props.theme.textColor}; }
+`;
+
 const getStatusText = (status) => {
   switch (status) {
     case 'free': return 'Свободен';
@@ -200,7 +278,7 @@ const BoxCardComponent = ({ box, onSetMaintenance, actionLoading, theme }) => {
       {box.status === 'free' && (
         <ActionButton
           className="maintenance"
-          onClick={() => onSetMaintenance(box.id)}
+          onClick={() => onSetMaintenance(box)}
           disabled={actionLoading[box.id]}
         >
           {actionLoading[box.id] ? 'Переводим...' : 'Перевести на сервис'}
@@ -223,6 +301,12 @@ const BoxManagement = () => {
     status: '',
     serviceType: ''
   });
+  // Модалка постановки в сервис: выбор симптома + комментарий
+  const [maintBox, setMaintBox] = useState(null); // { id, number }
+  const [symptoms, setSymptoms] = useState([]);
+  const [symptomId, setSymptomId] = useState('');
+  const [maintComment, setMaintComment] = useState('');
+  const [maintSubmitting, setMaintSubmitting] = useState(false);
 
   useEffect(() => {
     loadBoxes();
@@ -262,20 +346,47 @@ const BoxManagement = () => {
     }
   };
 
-  const handleSetMaintenance = async (boxId) => {
-    if (!window.confirm('Вы уверены, что хотите перевести этот бокс в режим обслуживания?')) {
-      return;
-    }
-
-    setActionLoading(prev => ({ ...prev, [boxId]: true }));
-    
+  // Открытие модалки постановки в сервис: подгружаем симптомы по номеру бокса
+  const handleSetMaintenance = async (box) => {
+    setMaintBox(box);
+    setSymptomId('');
+    setMaintComment('');
+    setSymptoms([]);
     try {
-      await ApiService.setCashierMaintenance(boxId);
-      await loadBoxes(); // Перезагружаем список
+      const resp = await ApiService.getServiceSymptoms(box.number);
+      setSymptoms(resp.symptoms || []);
+    } catch (error) {
+      console.error('Ошибка загрузки симптомов:', error);
+      // Модалку не закрываем: можно поставить в сервис без выбора симптома
+    }
+  };
+
+  const closeMaintModal = () => {
+    setMaintBox(null);
+    setSymptoms([]);
+    setSymptomId('');
+    setMaintComment('');
+  };
+
+  // Подтверждение: открываем наряд (бокс -> сервис + симптом + комментарий)
+  const submitMaintenance = async () => {
+    if (!maintBox) return;
+    const boxId = maintBox.id;
+    setMaintSubmitting(true);
+    setActionLoading(prev => ({ ...prev, [boxId]: true }));
+    try {
+      await ApiService.createServiceTicket({
+        box_id: boxId,
+        symptom_id: symptomId ? Number(symptomId) : null,
+        comment: maintComment,
+      });
+      closeMaintModal();
+      await loadBoxes();
     } catch (error) {
       console.error('Ошибка перевода бокса на сервис:', error);
       setError('Ошибка перевода бокса на сервис: ' + (error.response?.data?.error || error.message));
     } finally {
+      setMaintSubmitting(false);
       setActionLoading(prev => ({ ...prev, [boxId]: false }));
     }
   };
@@ -343,6 +454,52 @@ const BoxManagement = () => {
             theme={theme}
           />
         ))
+      )}
+
+      {maintBox && (
+        <ModalOverlay onClick={maintSubmitting ? undefined : closeMaintModal}>
+          <ModalCard theme={theme} onClick={(e) => e.stopPropagation()}>
+            <ModalTitle theme={theme}>Бокс #{maintBox.number} → сервис</ModalTitle>
+
+            <ModalLabel theme={theme}>Что случилось?</ModalLabel>
+            <ModalSelect
+              theme={theme}
+              value={symptomId}
+              onChange={(e) => setSymptomId(e.target.value)}
+            >
+              <option value="">— выберите симптом —</option>
+              {symptoms.map(s => (
+                <option key={s.id} value={s.id}>{s.group_name}: {s.name}</option>
+              ))}
+            </ModalSelect>
+
+            <ModalLabel theme={theme}>Комментарий (необязательно)</ModalLabel>
+            <ModalTextArea
+              theme={theme}
+              value={maintComment}
+              onChange={(e) => setMaintComment(e.target.value)}
+              placeholder="Детали для мастера"
+            />
+
+            <ModalActions>
+              <ModalButton
+                className="secondary"
+                theme={theme}
+                onClick={closeMaintModal}
+                disabled={maintSubmitting}
+              >
+                Отмена
+              </ModalButton>
+              <ModalButton
+                className="primary"
+                onClick={submitMaintenance}
+                disabled={maintSubmitting}
+              >
+                {maintSubmitting ? 'Переводим...' : 'Перевести на сервис'}
+              </ModalButton>
+            </ModalActions>
+          </ModalCard>
+        </ModalOverlay>
       )}
     </Container>
   );

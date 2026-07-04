@@ -723,6 +723,65 @@ const ApiService = {
     return response.data;
   },
 
+  // === СЕРВИСНЫЕ НАРЯДЫ (Фаза 1) ===
+
+  // Кассир: симптомы для постановки бокса в сервис (фильтр по номеру бокса)
+  getServiceSymptoms: async (boxNumber) => {
+    const response = await api.get(`/cashier/service-symptoms?box_number=${boxNumber}`);
+    return response.data;
+  },
+
+  // Кассир: открыть наряд (поставить бокс в сервис с симптомом и комментарием)
+  createServiceTicket: async ({ box_id, symptom_id, comment }) => {
+    const response = await api.post('/cashier/service-tickets', {
+      box_id,
+      symptom_id: symptom_id ?? null,
+      comment: comment || '',
+    });
+    return response.data;
+  },
+
+  // Админ: журнал сервисных нарядов
+  getServiceTickets: async (filters = {}) => {
+    const queryString = toSnakeCaseQuery(filters);
+    const response = await api.get(`/admin/service-tickets?${queryString}`);
+    return response.data;
+  },
+
+  // Админ: справочник работ для закрытия наряда (по номеру бокса)
+  getServiceCatalog: async (boxNumber) => {
+    const response = await api.get(`/admin/service-catalog?box_number=${boxNumber}`);
+    return response.data;
+  },
+
+  // Админ: закрыть наряд (работы + комментарий мастера)
+  closeServiceTicket: async (ticketId, { works, master_comment }) => {
+    const response = await api.post(`/admin/service-tickets/${ticketId}/close`, {
+      works: works || [],
+      master_comment: master_comment || '',
+    });
+    return response.data;
+  },
+
+  // Админ: получатели push-уведомлений
+  getNotificationRecipients: async () => {
+    const response = await api.get('/admin/notification-recipients');
+    return response.data;
+  },
+  createNotificationRecipient: async ({ name, chat_id }) => {
+    const response = await api.post('/admin/notification-recipients', {
+      name,
+      chat_id: Number(chat_id),
+    });
+    return response.data;
+  },
+  setNotificationRecipientActive: async (id, isActive) => {
+    const response = await api.patch(`/admin/notification-recipients/${id}`, {
+      is_active: isActive,
+    });
+    return response.data;
+  },
+
   // === МЕТОДЫ ДЛЯ РАБОТЫ С УБОРКОЙ ===
   
   // Состояние спецбокса уборщика

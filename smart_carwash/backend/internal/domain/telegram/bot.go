@@ -281,6 +281,20 @@ func (b *Bot) SendBoxAssignmentNotification(telegramID int64, boxNumber int) err
 	return nil
 }
 
+// SendMaintenanceAlert отправляет произвольное уведомление на chat_id
+// (используется для push при постановке бокса в сервис — наряды).
+func (b *Bot) SendMaintenanceAlert(chatID int64, text string) error {
+	if b == nil || b.bot == nil {
+		return fmt.Errorf("telegram bot не инициализирован")
+	}
+	msg := tgbotapi.NewMessage(chatID, text)
+	msg.ParseMode = "HTML"
+	if _, err := b.bot.Send(msg); err != nil {
+		return fmt.Errorf("ошибка отправки уведомления о наряде: %v", err)
+	}
+	return nil
+}
+
 // SendSessionReassignmentNotification отправляет уведомление о переназначении сессии
 func (b *Bot) SendSessionReassignmentNotification(telegramID int64, serviceType string) error {
 	var serviceText string

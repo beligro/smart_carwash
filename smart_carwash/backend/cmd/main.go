@@ -53,6 +53,9 @@ import (
 	washboxlogHandlers "carwash_backend/internal/domain/washboxlog/handlers"
 	washboxlogRepo "carwash_backend/internal/domain/washboxlog/repository"
 	washboxlogService "carwash_backend/internal/domain/washboxlog/service"
+	maintenanceHandlers "carwash_backend/internal/domain/maintenance/handlers"
+	maintenanceRepo "carwash_backend/internal/domain/maintenance/repository"
+	maintenanceService "carwash_backend/internal/domain/maintenance/service"
 	guestHandlers "carwash_backend/internal/domain/guest/handlers"
 	webHandlers "carwash_backend/internal/domain/web/handlers"
 	"carwash_backend/internal/logger"
@@ -186,6 +189,14 @@ func main() {
 	// Создаем сервис очереди, который зависит от сервисов сессий, боксов и пользователей
 	queueSvc := queueService.NewService(sessionSvc, washboxSvc, userSvc, settingsSvc, appMetrics)
 
+	// Сервис сервисных нарядов (симптомы кассира, работы мастера, наряды, push).
+	// notifier = telegram-бот (может быть nil, тогда push отключён).
+	var maintenanceNotifier maintenanceService.Notifier
+	if tgBot != nil {
+		maintenanceNotifier = tgBot
+	}
+	maintenanceSvc := maintenanceService.NewService(maintenanceRepo.NewPostgresRepository(db), washboxSvc, maintenanceNotifier)
+
 	// Устанавливаем вебхук для бота
 	if tgBot != nil {
 		if err := tgBot.SetWebhook(); err != nil {
@@ -217,6 +228,7 @@ func main() {
 	carwashStatusHandler := carwashStatusHandlers.NewHandler(carwashStatusSvc, authHandler.GetAdminMiddleware())
 	// Хендлер истории изменений боксов
 	washboxLogHandler := washboxlogHandlers.NewHandler(washboxLogSvc)
+	maintenanceHandler := maintenanceHandlers.NewHandler(maintenanceSvc)
 
 	// Создаем роутер
 	router := gin.Default()
@@ -254,6 +266,7 @@ func main() {
 		// Регистрируем маршруты для каждого домена
 		userHandler.RegisterRoutes(api)
 		washboxHandler.RegisterRoutes(api, authHandler.GetCleanerMiddleware(), authHandler.GetAdminMiddleware())
+		maintenanceHandler.RegisterRoutes(api, middleware.CashierMiddleware(authSvc), authHandler.GetAdminMiddleware())
 		sessionHandler.RegisterRoutes(api)
 		queueCashierMiddleware := middleware.CashierMiddleware(authSvc)
 		queueHandler.RegisterRoutes(api, queueCashierMiddleware)
