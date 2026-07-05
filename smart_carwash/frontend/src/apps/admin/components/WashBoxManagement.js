@@ -528,6 +528,9 @@ const WashBoxManagement = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
+  // Сообщение блокировки снятия бокса с сервиса (показывается отдельным окном поверх,
+  // не сбрасывается автообновлением списка).
+  const [serviceBlockMsg, setServiceBlockMsg] = useState('');
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
   const [editingWashBox, setEditingWashBox] = useState(null);
@@ -762,10 +765,14 @@ const WashBoxManagement = () => {
       setFormData({ number: '', status: 'free', serviceType: 'wash', chemistryEnabled: true, priority: 'A', lightCoilRegister: '', chemistryCoilRegister: '', comment: '' });
       fetchWashBoxes();
     } catch (err) {
-      if (err.response?.data?.error) {
-        setError(err.response.data.error);
+      const msg = err.response?.data?.error || 'Ошибка при обновлении бокса';
+      // Блокировка снятия бокса с сервиса по наряду — показываем отдельным окном
+      // с переходом в «Сервисные наряды» (иначе баннер мигает из-за автообновления).
+      if (/наряд/i.test(msg)) {
+        setShowEditModal(false);
+        setServiceBlockMsg(msg);
       } else {
-        setError('Ошибка при обновлении бокса');
+        setError(msg);
       }
     } finally {
       setLoading(false);
@@ -1333,6 +1340,33 @@ const WashBoxManagement = () => {
       )}
 
       {/* Модальное окно редактирования */}
+      {serviceBlockMsg && (
+        <Modal style={{ zIndex: 1100 }}>
+          <ModalContent>
+            <ModalTitle theme={theme}>Бокс в сервисе</ModalTitle>
+            <p style={{ margin: '0 0 20px 0', color: '#333', fontSize: '0.95rem', lineHeight: 1.5 }}>
+              {serviceBlockMsg}
+            </p>
+            <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end', flexWrap: 'wrap' }}>
+              <button
+                type="button"
+                onClick={() => setServiceBlockMsg('')}
+                style={{ padding: '10px 18px', border: '1px solid #ccc', borderRadius: '6px', background: '#fff', color: '#333', cursor: 'pointer', fontSize: '0.9rem' }}
+              >
+                Закрыть
+              </button>
+              <button
+                type="button"
+                onClick={() => { setServiceBlockMsg(''); navigate('/admin/service-tickets'); }}
+                style={{ padding: '10px 18px', border: 'none', borderRadius: '6px', background: '#1976d2', color: '#fff', cursor: 'pointer', fontSize: '0.9rem', fontWeight: 600 }}
+              >
+                Перейти в «Сервисные наряды»
+              </button>
+            </div>
+          </ModalContent>
+        </Modal>
+      )}
+
       {showEditModal && (
         <Modal>
           <ModalContentWide>
