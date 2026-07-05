@@ -201,7 +201,11 @@ const ReassignSessionModal = ({
     setSymptomId('');
     setComment('');
     ApiService.getServiceSymptoms(boxNumber)
-      .then((data) => { if (!cancelled) setSymptoms(Array.isArray(data) ? data : []); })
+      .then((data) => {
+        if (cancelled) return;
+        const list = Array.isArray(data) ? data : (data && data.symptoms) || [];
+        setSymptoms(list);
+      })
       .catch(() => { if (!cancelled) setSymptoms([]); })
       .finally(() => { if (!cancelled) setLoadingSymptoms(false); });
     return () => { cancelled = true; };
@@ -276,7 +280,7 @@ const ReassignSessionModal = ({
               >
                 <option value="">{loadingSymptoms ? 'Загрузка…' : '— выберите причину —'}</option>
                 {symptoms.map((s) => (
-                  <option key={s.id} value={s.id}>{s.name}</option>
+                  <option key={s.id} value={s.id}>{s.group_name ? `${s.group_name}: ${s.name}` : s.name}</option>
                 ))}
               </Select>
               {symptomMissing && (
