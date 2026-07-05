@@ -798,6 +798,7 @@ const WashBoxManagement = () => {
 
   // Открытие модального окна редактирования
   const openEditModal = (washBox) => {
+    setError('');
     setEditingWashBox(washBox);
     setFormData({
       number: washBox.number.toString(),
@@ -1336,6 +1337,20 @@ const WashBoxManagement = () => {
         <Modal>
           <ModalContentWide>
             <ModalTitle theme={theme}>Редактировать бокс</ModalTitle>
+            {error && (
+              <div style={{
+                margin: '0 0 16px 0',
+                padding: '12px 14px',
+                borderRadius: '6px',
+                background: '#FFEBEE',
+                border: '1px solid #EF9A9A',
+                color: '#C62828',
+                fontSize: '0.9rem',
+                lineHeight: 1.4
+              }}>
+                {error}
+              </div>
+            )}
             <Form onSubmit={handleUpdate}>
               {editingWashBox && (
                 <FullWidthFormGroup>
