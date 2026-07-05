@@ -3,6 +3,7 @@ package repository
 import (
 	"context"
 	"errors"
+	"strings"
 	"time"
 
 	"carwash_backend/internal/domain/auth/models"
@@ -122,10 +123,10 @@ func (r *PostgresRepository) GetCashierByID(ctx context.Context, id uuid.UUID) (
 	return &cashier, nil
 }
 
-// GetCashierByUsername получает кассира по имени пользователя
+// GetCashierByUsername получает кассира по имени пользователя (без учёта регистра и пробелов)
 func (r *PostgresRepository) GetCashierByUsername(ctx context.Context, username string) (*models.Cashier, error) {
 	var cashier models.Cashier
-	err := r.db.WithContext(ctx).Where("username = ?", username).First(&cashier).Error
+	err := r.db.WithContext(ctx).Where("LOWER(username) = LOWER(?)", strings.TrimSpace(username)).First(&cashier).Error
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, ErrCashierNotFound

@@ -28,6 +28,7 @@ func (h *Handler) RegisterRoutes(router *gin.RouterGroup) {
 	{
 		// Маршруты для авторизации
 		authRoutes.POST("/admin/login", h.loginAdmin)
+		authRoutes.GET("/cashier/list", h.listCashiersForLogin)
 		authRoutes.POST("/cashier/login", h.loginCashier)
 		authRoutes.POST("/cleaner/login", h.loginCleaner)
 		authRoutes.POST("/logout", h.authMiddleware(), h.logout)
@@ -92,6 +93,16 @@ func (h *Handler) loginAdmin(c *gin.Context) {
 
 	// Возвращаем токен
 	c.JSON(http.StatusOK, resp)
+}
+
+// listCashiersForLogin возвращает имена активных кассиров для выпадающего списка на странице входа
+func (h *Handler) listCashiersForLogin(c *gin.Context) {
+	names, err := h.service.ListActiveCashierUsernames(c.Request.Context())
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"cashiers": names})
 }
 
 // loginCashier обработчик для авторизации кассира

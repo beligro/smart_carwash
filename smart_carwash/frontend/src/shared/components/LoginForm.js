@@ -50,6 +50,40 @@ const Input = styled.input`
   }
 `;
 
+const Select = styled.select`
+  width: 100%;
+  padding: 10px;
+  border: 1px solid ${props => props.theme.borderColor};
+  border-radius: 4px;
+  font-size: 16px;
+  background-color: ${props => props.theme.inputBackground};
+  color: ${props => props.theme.textColor};
+
+  &:focus {
+    outline: none;
+    border-color: ${props => props.theme.primaryColor};
+    box-shadow: 0 0 0 2px rgba(0, 123, 255, 0.25);
+  }
+`;
+
+const PasswordWrap = styled.div`
+  position: relative;
+`;
+
+const EyeButton = styled.button`
+  position: absolute;
+  right: 8px;
+  top: 50%;
+  transform: translateY(-50%);
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 13px;
+  color: ${props => props.theme.primaryColor};
+  padding: 4px;
+  line-height: 1;
+`;
+
 const Button = styled.button`
   padding: 10px 15px;
   background-color: ${props => props.theme.primaryColor};
@@ -84,11 +118,12 @@ const ErrorMessage = styled.div`
  * @param {string} props.redirectPath - Путь для перенаправления после успешной авторизации
  * @returns {React.ReactNode} - Форма авторизации
  */
-const LoginForm = ({ title, onLogin, redirectPath }) => {
+const LoginForm = ({ title, onLogin, redirectPath, usernameOptions }) => {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
   
   const navigate = useNavigate();
   const location = useLocation();
@@ -145,23 +180,47 @@ const LoginForm = ({ title, onLogin, redirectPath }) => {
       <Form onSubmit={handleSubmit}>
         <FormGroup>
           <Label theme={theme}>Имя пользователя</Label>
-          <Input
-            type="text"
-            value={username}
-            onChange={(e) => setUsername(e.target.value)}
-            disabled={loading}
-            theme={theme}
-          />
+          {usernameOptions && usernameOptions.length > 0 ? (
+            <Select
+              value={username}
+              onChange={(e) => setUsername(e.target.value)}
+              disabled={loading}
+              theme={theme}
+            >
+              <option value="">— выберите себя —</option>
+              {usernameOptions.map((u) => (
+                <option key={u} value={u}>{u}</option>
+              ))}
+            </Select>
+          ) : (
+            <Input
+              type="text"
+              value={username}
+              onChange={(e) => setUsername(e.target.value)}
+              disabled={loading}
+              theme={theme}
+            />
+          )}
         </FormGroup>
         <FormGroup>
           <Label theme={theme}>Пароль</Label>
-          <Input
-            type="password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            disabled={loading}
-            theme={theme}
-          />
+          <PasswordWrap>
+            <Input
+              type={showPassword ? 'text' : 'password'}
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              disabled={loading}
+              theme={theme}
+              style={{ paddingRight: 44 }}
+            />
+            <EyeButton
+              type="button"
+              onClick={() => setShowPassword((v) => !v)}
+              theme={theme}
+            >
+              {showPassword ? 'Скрыть' : 'Показать'}
+            </EyeButton>
+          </PasswordWrap>
         </FormGroup>
         <Button type="submit" disabled={loading} theme={theme}>
           {loading ? 'Вход...' : 'Войти'}

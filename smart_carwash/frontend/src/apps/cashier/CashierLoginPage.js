@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import styled from 'styled-components';
 import { getTheme } from '../../shared/styles/theme';
 import LoginForm from '../../shared/components/LoginForm';
@@ -40,6 +40,13 @@ const Content = styled.main`
  */
 const CashierLoginPage = () => {
   const theme = getTheme('light');
+  const [cashiers, setCashiers] = useState([]);
+
+  useEffect(() => {
+    AuthService.getCashierList()
+      .then(setCashiers)
+      .catch(() => setCashiers([])); // при ошибке — обычное текстовое поле
+  }, []);
 
   // Функция для авторизации кассира
   const handleLogin = async (username, password) => {
@@ -56,6 +63,7 @@ const CashierLoginPage = () => {
           title="Вход для кассира" 
           onLogin={handleLogin}
           redirectPath="/cashier"
+          usernameOptions={cashiers}
         />
       </Content>
     </LoginContainer>

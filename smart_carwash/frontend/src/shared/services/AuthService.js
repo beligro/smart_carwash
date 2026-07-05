@@ -72,6 +72,12 @@ const AuthService = {
     }
   },
   
+  // Список активных кассиров для выпадающего списка на странице входа
+  getCashierList: async () => {
+    const response = await api.get('/auth/cashier/list');
+    return response.data.cashiers || [];
+  },
+
   // Авторизация кассира
   loginCashier: async (username, password) => {
     try {

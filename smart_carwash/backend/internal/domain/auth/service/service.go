@@ -57,6 +57,7 @@ type Service interface {
 	// Методы для авторизации
 	LoginAdmin(username, password string) (*models.LoginResponse, error)
 	LoginCashier(ctx context.Context, username, password string) (*models.LoginResponse, error)
+	ListActiveCashierUsernames(ctx context.Context) ([]string, error)
 	LoginCleaner(ctx context.Context, username, password string) (*models.LoginResponse, error)
 	ValidateToken(ctx context.Context, token string) (*models.TokenClaims, error)
 	ValidateCleanerToken(ctx context.Context, token string) (*models.TokenClaims, error)
@@ -183,8 +184,26 @@ func (s *ServiceImpl) LoginAdmin(username, password string) (*models.LoginRespon
 	}, nil
 }
 
+// ListActiveCashierUsernames возвращает имена активных кассиров (для выпадающего списка на логине).
+func (s *ServiceImpl) ListActiveCashierUsernames(ctx context.Context) ([]string, error) {
+	cashiers, err := s.repo.ListCashiers(ctx)
+	if err != nil {
+		return nil, err
+	}
+	names := make([]string, 0, len(cashiers))
+	for _, c := range cashiers {
+		if c.IsActive {
+			names = append(names, c.Username)
+		}
+	}
+	return names, nil
+}
+
 // LoginCashier авторизует кассира
 func (s *ServiceImpl) LoginCashier(ctx context.Context, username, password string) (*models.LoginResponse, error) {
+	// Убираем случайные пробелы/переносы (частая причина ложных ошибок при вводе на терминале)
+	username = strings.TrimSpace(username)
+	password = strings.TrimSpace(password)
 	logger.Printf("Попытка входа кассира: username=%s", username)
 
 	// Получаем кассира по имени пользователя
