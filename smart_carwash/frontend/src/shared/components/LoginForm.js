@@ -118,7 +118,7 @@ const ErrorMessage = styled.div`
  * @param {string} props.redirectPath - Путь для перенаправления после успешной авторизации
  * @returns {React.ReactNode} - Форма авторизации
  */
-const LoginForm = ({ title, onLogin, redirectPath, usernameOptions }) => {
+const LoginForm = ({ title, onLogin, redirectPath, usernameOptions, allowShowPassword }) => {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
@@ -204,23 +204,33 @@ const LoginForm = ({ title, onLogin, redirectPath, usernameOptions }) => {
         </FormGroup>
         <FormGroup>
           <Label theme={theme}>Пароль</Label>
-          <PasswordWrap>
+          {allowShowPassword ? (
+            <PasswordWrap>
+              <Input
+                type={showPassword ? 'text' : 'password'}
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                disabled={loading}
+                theme={theme}
+                style={{ paddingRight: 84 }}
+              />
+              <EyeButton
+                type="button"
+                onClick={() => setShowPassword((v) => !v)}
+                theme={theme}
+              >
+                {showPassword ? 'Скрыть' : 'Показать'}
+              </EyeButton>
+            </PasswordWrap>
+          ) : (
             <Input
-              type={showPassword ? 'text' : 'password'}
+              type="password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               disabled={loading}
               theme={theme}
-              style={{ paddingRight: 44 }}
             />
-            <EyeButton
-              type="button"
-              onClick={() => setShowPassword((v) => !v)}
-              theme={theme}
-            >
-              {showPassword ? 'Скрыть' : 'Показать'}
-            </EyeButton>
-          </PasswordWrap>
+          )}
         </FormGroup>
         <Button type="submit" disabled={loading} theme={theme}>
           {loading ? 'Вход...' : 'Войти'}

@@ -64,6 +64,7 @@ const CashierLoginPage = () => {
           onLogin={handleLogin}
           redirectPath="/cashier"
           usernameOptions={cashiers}
+          allowShowPassword
         />
       </Content>
     </LoginContainer>
