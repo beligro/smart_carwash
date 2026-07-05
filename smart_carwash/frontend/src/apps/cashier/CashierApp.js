@@ -373,7 +373,8 @@ const CashierApp = () => {
   const [reassignModal, setReassignModal] = useState({
     isOpen: false,
     sessionId: null,
-    serviceType: null
+    serviceType: null,
+    boxNumber: null
   });
 
   useEffect(() => {
@@ -625,13 +626,22 @@ const CashierApp = () => {
   };
 
   // Обработчик переназначения сессии
-  const handleReassignSession = async (sessionId) => {
+  const handleReassignSession = async (sessionId, symptomId = null, comment = '') => {
+    // Переназначение кассиром обязательно создаёт сервисный наряд → симптом обязателен.
+    if (!symptomId) {
+      setError('Укажите причину неисправности (симптом) для переназначения');
+      return;
+    }
     setActionLoading(prev => ({ ...prev, [sessionId]: true }));
     
     try {
-      await ApiService.cashierReassignSession(sessionId);
+      const resp = await ApiService.cashierReassignSession(sessionId, symptomId, comment);
+      if (resp && resp.success === false) {
+        setError(resp.message || 'Не удалось переназначить сессию');
+        return;
+      }
       await loadData(); // Перезагружаем данные
-      setReassignModal({ isOpen: false, sessionId: null, serviceType: null });
+      setReassignModal({ isOpen: false, sessionId: null, serviceType: null, boxNumber: null });
     } catch (error) {
       console.error('Ошибка переназначения сессии:', error);
       setError('Ошибка переназначения сессии: ' + (error.response?.data?.error || error.message));
@@ -641,11 +651,12 @@ const CashierApp = () => {
   };
 
   // Открытие модального окна переназначения
-  const openReassignModal = (sessionId, serviceType) => {
+  const openReassignModal = (sessionId, serviceType, boxNumber) => {
     setReassignModal({
       isOpen: true,
       sessionId,
-      serviceType
+      serviceType,
+      boxNumber
     });
   };
 
@@ -654,7 +665,8 @@ const CashierApp = () => {
     setReassignModal({
       isOpen: false,
       sessionId: null,
-      serviceType: null
+      serviceType: null,
+      boxNumber: null
     });
   };
 
@@ -915,7 +927,7 @@ const CashierApp = () => {
                                     {(session.status === 'active') && (
                                       <ActionButton
                                         className="reassign"
-                                        onClick={() => openReassignModal(session.id, session.service_type)}
+                                        onClick={() => openReassignModal(session.id, session.service_type, session.box_number)}
                                         disabled={actionLoading[session.id]}
                                         style={{ padding: '4px 8px', fontSize: '0.8rem', backgroundColor: '#ff9800', color: 'white' }}
                                       >
@@ -1025,7 +1037,7 @@ const CashierApp = () => {
                               {(session.status === 'active') && (
                                 <ActionButton
                                   className="reassign"
-                                  onClick={() => openReassignModal(session.id, session.service_type)}
+                                  onClick={() => openReassignModal(session.id, session.service_type, session.box_number)}
                                   disabled={actionLoading[session.id]}
                                   style={{ padding: '8px 16px', fontSize: '0.9rem', minHeight: '44px', backgroundColor: '#ff9800', color: 'white' }}
                                 >
@@ -1132,6 +1144,8 @@ const CashierApp = () => {
         onConfirm={handleReassignSession}
         sessionId={reassignModal.sessionId}
         serviceType={reassignModal.serviceType}
+        boxNumber={reassignModal.boxNumber}
+        requireSymptom
         isLoading={actionLoading[reassignModal.sessionId] || false}
       />
     </CashierContainer>
