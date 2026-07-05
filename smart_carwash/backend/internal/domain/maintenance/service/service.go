@@ -255,7 +255,124 @@ func (s *ServiceImpl) CloseTicket(ctx context.Context, ticketID uuid.UUID, close
 		}
 	}
 
+	go s.pushTicketClosed(ticket, works)
+
 	return ticket, nil
+}
+
+// pushTicketClosed рассылает уведомление о возврате бокса в работу (в фоне)
+// с полной историей: кто/почему/когда поставил и кто/что/когда сделал.
+func (s *ServiceImpl) pushTicketClosed(ticket *models.ServiceTicket, works []models.TicketWork) {
+	if s.notifier == nil {
+		return
+	}
+	ctx := context.Background()
+
+	loc, err := time.LoadLocation("Asia/Novosibirsk")
+	if err != nil {
+		loc = time.FixedZone("NSK", 7*3600)
+	}
+	fmtTime := func(t time.Time) string { return t.In(loc).Format("02.01 15:04") }
+
+	symptom := "не указан"
+	if ticket.SymptomID != nil {
+		if syms, e := s.repo.GetSymptomsByBoxType(ctx, ticket.BoxType); e == nil {
+			for _, sy := range syms {
+				if sy.ID == *ticket.SymptomID {
+					symptom = sy.Name
+					break
+				}
+			}
+		}
+	}
+
+	openedBy := ticket.OpenedBy
+	if openedBy == "" {
+		openedBy = "—"
+	}
+	closedBy := ticket.ClosedBy
+	if closedBy == "" {
+		closedBy = "—"
+	}
+
+	text := fmt.Sprintf("✅ <b>Бокс №%d — возвращён в работу</b>\n\n", ticket.BoxNumber)
+	text += fmt.Sprintf("В сервис: %s · %s\n", openedBy, fmtTime(ticket.OpenedAt))
+	text += "Причина: " + symptom + "\n"
+	if ticket.CashierComment != "" {
+		text += "Коммент кассира: " + ticket.CashierComment + "\n"
+	}
+
+	closedLine := fmt.Sprintf("\nВернул: %s", closedBy)
+	if ticket.ClosedAt != nil {
+		closedLine += " · " + fmtTime(*ticket.ClosedAt)
+		closedLine += " · простой " + humanDuration(ticket.ClosedAt.Sub(ticket.OpenedAt))
+	}
+	text += closedLine + "\n"
+
+	if len(works) > 0 {
+		text += "Работы:\n"
+		for _, w := range works {
+			name, _ := s.repo.GetComponentName(ctx, w.ComponentID)
+			if name == "" {
+				name = fmt.Sprintf("деталь #%d", w.ComponentID)
+			}
+			text += fmt.Sprintf("• %s%s — %s\n", carrierLabel(w.Carrier), name, actionLabel(w.Action))
+		}
+	}
+	if ticket.MasterComment != "" {
+		text += "Коммент мастера: " + ticket.MasterComment + "\n"
+	}
+
+	recipients, err := s.repo.ActiveRecipients(ctx, "service_ticket")
+	if err != nil {
+		logger.Printf("Ошибка получения получателей уведомлений (close): %v", err)
+		return
+	}
+	for _, r := range recipients {
+		if err := s.notifier.SendMaintenanceAlert(r.ChatID, text); err != nil {
+			logger.Printf("Ошибка отправки push (close) получателю %s (%d): %v", r.Name, r.ChatID, err)
+		}
+	}
+}
+
+// actionLabel — человекочитаемое действие.
+func actionLabel(action string) string {
+	switch action {
+	case models.ActionReplace:
+		return "замена"
+	case models.ActionRepair:
+		return "ремонт"
+	case models.ActionClean:
+		return "чистка"
+	default:
+		return action
+	}
+}
+
+// carrierLabel — префикс носителя ("Аппарат: " / "Бокс: " / "").
+func carrierLabel(carrier string) string {
+	switch carrier {
+	case "machine":
+		return "Аппарат: "
+	case "box":
+		return "Бокс: "
+	default:
+		return ""
+	}
+}
+
+// humanDuration форматирует длительность в «Xч Yмин» / «Yмин».
+func humanDuration(d time.Duration) string {
+	total := int(d.Minutes())
+	if total < 0 {
+		total = 0
+	}
+	h := total / 60
+	m := total % 60
+	if h > 0 {
+		return fmt.Sprintf("%d ч %d мин", h, m)
+	}
+	return fmt.Sprintf("%d мин", m)
 }
 
 // ReconcileOrphanTickets закрывает открытые наряды, чей бокс уже не в сервисе

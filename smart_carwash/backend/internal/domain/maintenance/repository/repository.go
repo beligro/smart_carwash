@@ -17,6 +17,7 @@ type Repository interface {
 	GetSymptomByID(ctx context.Context, id int) (*models.SymptomType, error)
 	GetCatalog(ctx context.Context, boxType string) ([]models.CatalogGroup, error)
 	GetComponentCarrier(ctx context.Context, componentID int) (string, error)
+	GetComponentName(ctx context.Context, componentID int) (string, error)
 
 	// Наряды
 	CreateTicket(ctx context.Context, ticket *models.ServiceTicket) error
@@ -113,6 +114,15 @@ func (r *PostgresRepository) GetComponentCarrier(ctx context.Context, componentI
 		Raw(`SELECT g.carrier FROM component_types t JOIN component_groups g ON g.id = t.group_id WHERE t.id = ?`, componentID).
 		Scan(&carrier).Error
 	return carrier, err
+}
+
+// GetComponentName возвращает название детали по id.
+func (r *PostgresRepository) GetComponentName(ctx context.Context, componentID int) (string, error) {
+	var name string
+	err := r.db.WithContext(ctx).
+		Raw(`SELECT name FROM component_types WHERE id = ?`, componentID).
+		Scan(&name).Error
+	return name, err
 }
 
 // CreateTicket создаёт наряд.
