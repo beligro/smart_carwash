@@ -33,6 +33,7 @@ type Service interface {
 	OpenTicket(ctx context.Context, cashierID *uuid.UUID, req *models.OpenTicketRequest) (*models.ServiceTicket, error)
 	CloseTicket(ctx context.Context, ticketID uuid.UUID, closedBy string, req *models.CloseTicketRequest) (*models.ServiceTicket, error)
 	ListTickets(ctx context.Context, status *string, boxNumber *int, since *time.Time, limit int) ([]models.TicketView, error)
+	ReconcileOrphanTickets(ctx context.Context) error
 
 	ListRecipients(ctx context.Context) ([]models.NotificationRecipient, error)
 	CreateRecipient(ctx context.Context, req *models.CreateRecipientRequest) (*models.NotificationRecipient, error)
@@ -216,6 +217,37 @@ func (s *ServiceImpl) CloseTicket(ctx context.Context, ticketID uuid.UUID, close
 	}
 
 	return ticket, nil
+}
+
+// ReconcileOrphanTickets закрывает открытые наряды, чей бокс уже не в сервисе
+// (вышел из maintenance вне раздела нарядов) — страховка от рассинхрона.
+func (s *ServiceImpl) ReconcileOrphanTickets(ctx context.Context) error {
+	tickets, err := s.repo.GetAllOpenTickets(ctx)
+	if err != nil {
+		return err
+	}
+	now := time.Now()
+	for i := range tickets {
+		t := tickets[i]
+		if t.BoxID == nil {
+			continue
+		}
+		box, err := s.washboxSvc.GetWashBoxByID(ctx, *t.BoxID)
+		if err != nil {
+			continue
+		}
+		if box.Status == washboxModels.StatusMaintenance {
+			continue // бокс всё ещё в сервисе — наряд валиден
+		}
+		t.ClosedAt = &now
+		t.ClosedBy = "Авто (бокс вернулся в работу)"
+		t.MasterComment = "Наряд закрыт автоматически: бокс вышел из сервиса вне раздела нарядов"
+		t.Status = models.TicketStatusClosed
+		if err := s.repo.CloseTicket(ctx, &t, nil); err != nil {
+			logger.Printf("Reconcile: не удалось авто-закрыть наряд %s: %v", t.ID, err)
+		}
+	}
+	return nil
 }
 
 // ListTickets возвращает журнал нарядов.

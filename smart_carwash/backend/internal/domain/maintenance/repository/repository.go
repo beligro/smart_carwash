@@ -21,6 +21,7 @@ type Repository interface {
 	// Наряды
 	CreateTicket(ctx context.Context, ticket *models.ServiceTicket) error
 	GetOpenTicketByBoxNumber(ctx context.Context, boxNumber int) (*models.ServiceTicket, error)
+	GetAllOpenTickets(ctx context.Context) ([]models.ServiceTicket, error)
 	GetTicketByID(ctx context.Context, id uuid.UUID) (*models.ServiceTicket, error)
 	CloseTicket(ctx context.Context, ticket *models.ServiceTicket, works []models.TicketWork) error
 	ListTickets(ctx context.Context, status *string, boxNumber *int, since *time.Time, limit int) ([]models.TicketView, error)
@@ -136,6 +137,13 @@ func (r *PostgresRepository) GetOpenTicketByBoxNumber(ctx context.Context, boxNu
 		return nil, err
 	}
 	return &t, nil
+}
+
+// GetAllOpenTickets возвращает все открытые наряды.
+func (r *PostgresRepository) GetAllOpenTickets(ctx context.Context) ([]models.ServiceTicket, error) {
+	var rows []models.ServiceTicket
+	err := r.db.WithContext(ctx).Where("status = ?", models.TicketStatusOpen).Find(&rows).Error
+	return rows, err
 }
 
 // GetTicketByID возвращает наряд по id.

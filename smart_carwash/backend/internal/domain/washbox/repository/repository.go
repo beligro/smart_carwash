@@ -20,6 +20,7 @@ type Repository interface {
 	GetFreeWashBoxesWithChemistry(ctx context.Context, serviceType string) ([]models.WashBox, error)
 	GetWashBoxesByServiceType(ctx context.Context, serviceType string) ([]models.WashBox, error)
 	GetExpiredTimedServiceBoxes(ctx context.Context) ([]models.WashBox, error)
+	HasOpenServiceTicket(ctx context.Context, boxID uuid.UUID) (bool, error)
 
 	// Административные методы
 	GetWashBoxByNumber(ctx context.Context, number int) (*models.WashBox, error)
@@ -100,6 +101,16 @@ func (r *PostgresRepository) GetExpiredTimedServiceBoxes(ctx context.Context) ([
 		Where("status = ? AND service_until IS NOT NULL AND service_until <= ?", models.StatusMaintenance, time.Now()).
 		Find(&boxes).Error
 	return boxes, err
+}
+
+// HasOpenServiceTicket возвращает true, если по боксу есть открытый сервисный наряд.
+func (r *PostgresRepository) HasOpenServiceTicket(ctx context.Context, boxID uuid.UUID) (bool, error) {
+	var cnt int64
+	err := r.db.WithContext(ctx).
+		Table("service_tickets").
+		Where("box_id = ? AND status = ?", boxID, "open").
+		Count(&cnt).Error
+	return cnt > 0, err
 }
 
 // CreateWashBox создает новый бокс мойки

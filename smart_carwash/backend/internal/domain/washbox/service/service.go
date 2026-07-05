@@ -298,6 +298,14 @@ func (s *ServiceImpl) AdminUpdateWashBox(ctx context.Context, req *models.AdminU
 
 	if req.Status != nil {
 		prev := existingBox.Status
+		// Если бокс в сервисе ПО НАРЯДУ (поставлен кассиром/переназначением) — вернуть в работу
+		// можно только закрыв наряд в разделе «Сервисные наряды», иначе наряд осиротеет.
+		// Если наряда нет (сервис поставил админ вручную) — админ может снять сам.
+		if prev == models.StatusMaintenance && *req.Status != models.StatusMaintenance {
+			if hasTicket, _ := s.repo.HasOpenServiceTicket(ctx, existingBox.ID); hasTicket {
+				return nil, errors.New("бокс в сервисе по наряду — вернуть в работу можно только закрыв наряд в разделе «Сервисные наряды»")
+			}
+		}
 		existingBox.Status = *req.Status
 		if s.logSvc != nil && prev != *req.Status {
 			_ = s.logSvc.RecordStatusChange(ctx, existingBox.ID, prev, *req.Status, nil)

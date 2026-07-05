@@ -966,6 +966,28 @@ func main() {
 		}
 	}()
 
+	// Периодическая авто-сверка нарядов: закрываем наряды, чей бокс уже не в сервисе
+	go func() {
+		time.Sleep(12 * time.Second)
+		ticker := time.NewTicker(60 * time.Second)
+		defer ticker.Stop()
+
+		for {
+			select {
+			case <-ticker.C:
+				func() {
+					ctx2, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+					defer cancel()
+					if err := maintenanceSvc.ReconcileOrphanTickets(ctx2); err != nil {
+						log.WithField("error", err).Error("Ошибка авто-сверки нарядов")
+					}
+				}()
+			case <-done:
+				return
+			}
+		}
+	}()
+
 	// Запускаем периодическую задачу для проверки и отправки уведомлений о скором завершении сессий (старт через 7 сек)
 	go func() {
 		time.Sleep(7 * time.Second) // Разносим запуск задач
