@@ -966,10 +966,12 @@ const ApiService = {
   },
 
   // Переназначение сессии на другой бокс (кассир)
-  cashierReassignSession: async (sessionId) => {
+  cashierReassignSession: async (sessionId, symptomId = null, comment = '') => {
     try {
       const response = await api.post('/cashier/sessions/reassign', {
         session_id: sessionId,
+        symptom_id: symptomId,
+        comment,
       });
       return response.data;
     } catch (error) {

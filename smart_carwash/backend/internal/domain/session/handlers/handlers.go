@@ -972,8 +972,8 @@ func (h *Handler) adminReassignSession(c *gin.Context) {
 	// Логируем мета-параметр для поиска
 	logger.WithContext(c).Infof("Запрос на переназначение сессии администратором: SessionID=%s", req.SessionID)
 
-	// Переназначаем сессию
-	response, err := h.service.ReassignSession(c.Request.Context(), &req)
+	// Админ переназначает без обязательного наряда (cashierID = nil).
+	response, err := h.service.ReassignSession(c.Request.Context(), &req, nil)
 	if err != nil {
 		logger.WithContext(c).Errorf("Ошибка переназначения сессии администратором: %v", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
@@ -997,8 +997,9 @@ func (h *Handler) cashierReassignSession(c *gin.Context) {
 	// Логируем мета-параметр для поиска
 	logger.WithContext(c).Infof("Запрос на переназначение сессии кассиром: SessionID=%s", req.SessionID)
 
-	// Переназначаем сессию
-	response, err := h.service.ReassignSession(c.Request.Context(), &req)
+	// Кассир переназначает → наряд обязателен (cashierID из контекста CashierMiddleware).
+	cashierID := cashierIDFromContext(c)
+	response, err := h.service.ReassignSession(c.Request.Context(), &req, cashierID)
 	if err != nil {
 		logger.WithContext(c).Errorf("Ошибка переназначения сессии кассиром: %v", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
@@ -1007,4 +1008,21 @@ func (h *Handler) cashierReassignSession(c *gin.Context) {
 
 	logger.WithContext(c).Infof("Успешно переназначена сессия кассиром: SessionID=%s", req.SessionID)
 	c.JSON(http.StatusOK, response)
+}
+
+// cashierIDFromContext извлекает UUID кассира из контекста (устанавливается CashierMiddleware).
+func cashierIDFromContext(c *gin.Context) *uuid.UUID {
+	v, ok := c.Get("cashier_id")
+	if !ok {
+		return nil
+	}
+	switch id := v.(type) {
+	case uuid.UUID:
+		return &id
+	case string:
+		if parsed, err := uuid.Parse(id); err == nil {
+			return &parsed
+		}
+	}
+	return nil
 }

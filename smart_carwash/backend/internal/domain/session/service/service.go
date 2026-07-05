@@ -35,6 +35,12 @@ type SessionEmailSender interface {
 	Send(ctx context.Context, toEmail, subject, htmlBody, textBody string) error
 }
 
+// MaintenanceTicketOpener создаёт сервисный наряд для бокса (реализуется maintenance-сервисом).
+// Отдельный интерфейс, чтобы не создавать циклическую зависимость session ↔ maintenance.
+type MaintenanceTicketOpener interface {
+	OpenTicketForBox(ctx context.Context, cashierID *uuid.UUID, boxID uuid.UUID, boxNumber int, symptomID int, comment string) error
+}
+
 // Service интерфейс для бизнес-логики сессий
 type Service interface {
 	CreateSession(ctx context.Context, req *models.CreateSessionRequest) (*models.Session, error)
@@ -80,8 +86,9 @@ type Service interface {
 	// Методы для химии
 	EnableChemistry(ctx context.Context, req *models.EnableChemistryRequest) (*models.EnableChemistryResponse, error)
 
-	// Методы для переназначения сессий
-	ReassignSession(ctx context.Context, req *models.ReassignSessionRequest) (*models.ReassignSessionResponse, error)
+	// Методы для переназначения сессий. cashierID != nil означает переназначение
+	// кассиром — тогда для старого бокса обязателен сервисный наряд (SymptomID).
+	ReassignSession(ctx context.Context, req *models.ReassignSessionRequest, cashierID *uuid.UUID) (*models.ReassignSessionResponse, error)
 
 	// Методы для Dahua интеграции
 	GetActiveSessionByUserID(ctx context.Context, userID uuid.UUID) (*models.Session, error)
@@ -104,6 +111,7 @@ type ServiceImpl struct {
 	db                *gorm.DB
 	processQueueMu    sync.Mutex
 	washboxLogSvc     washboxlogService.Service
+	maintenanceSvc    MaintenanceTicketOpener // опционально: создание наряда при переназначении
 }
 
 // NewService создает новый экземпляр Service
@@ -128,6 +136,11 @@ func NewService(repo repository.Repository, washboxService washboxService.Servic
 // SetCarwashStatusRepo устанавливает репозиторий статуса мойки (для избежания циклических зависимостей)
 func (s *ServiceImpl) SetCarwashStatusRepo(carwashStatusRepo carwashStatusRepo.Repository) {
 	s.carwashStatusRepo = carwashStatusRepo
+}
+
+// SetMaintenanceService устанавливает сервис нарядов (для избежания циклических зависимостей).
+func (s *ServiceImpl) SetMaintenanceService(m MaintenanceTicketOpener) {
+	s.maintenanceSvc = m
 }
 
 // sendSessionNotificationByEmail отправляет уведомление о сессии на email (для пользователей без Telegram)
@@ -3002,8 +3015,17 @@ func (s *ServiceImpl) AutoDisableChemistry(sessionID uuid.UUID, chemistryTimeMin
 }
 
 // ReassignSession переназначает сессию на другой бокс
-func (s *ServiceImpl) ReassignSession(ctx context.Context, req *models.ReassignSessionRequest) (*models.ReassignSessionResponse, error) {
+func (s *ServiceImpl) ReassignSession(ctx context.Context, req *models.ReassignSessionRequest, cashierID *uuid.UUID) (*models.ReassignSessionResponse, error) {
 	logger.Printf("ReassignSession: начало переназначения сессии, SessionID=%s", req.SessionID)
+
+	// Переназначение кассиром = постановка старого бокса в сервис руками кассира,
+	// поэтому симптом (причина) обязателен — по нему создаётся сервисный наряд.
+	if cashierID != nil && req.SymptomID == nil {
+		return &models.ReassignSessionResponse{
+			Success: false,
+			Message: "Укажите причину неисправности (симптом) — по ней создаётся сервисный наряд",
+		}, nil
+	}
 
 	// Получаем сессию по ID
 	session, err := s.repo.GetSessionByID(ctx, req.SessionID)
@@ -3029,6 +3051,24 @@ func (s *ServiceImpl) ReassignSession(ctx context.Context, req *models.ReassignS
 			Message: "Сессия не имеет назначенного бокса",
 			Session: *session,
 		}, nil
+	}
+
+	// Если задан симптом — сначала создаём сервисный наряд для старого бокса
+	// (делаем это ДО перевода в maintenance, чтобы при ошибке не оставить бокс
+	// в сервисе без наряда). Для кассира симптом обязателен (проверено выше).
+	if req.SymptomID != nil && s.maintenanceSvc != nil {
+		boxNumber := 0
+		if session.BoxNumber != nil {
+			boxNumber = *session.BoxNumber
+		}
+		if err := s.maintenanceSvc.OpenTicketForBox(ctx, cashierID, *session.BoxID, boxNumber, *req.SymptomID, req.Comment); err != nil {
+			logger.Printf("ReassignSession: не удалось создать наряд, SessionID=%s, BoxID=%s, error=%v", req.SessionID, *session.BoxID, err)
+			return &models.ReassignSessionResponse{
+				Success: false,
+				Message: "Не удалось создать сервисный наряд: " + err.Error(),
+				Session: *session,
+			}, nil
+		}
 	}
 
 	logger.Printf("ReassignSession: перевод бокса в maintenance, SessionID=%s, BoxID=%s", req.SessionID, *session.BoxID)

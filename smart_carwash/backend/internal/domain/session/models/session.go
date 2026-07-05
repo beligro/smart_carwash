@@ -73,6 +73,10 @@ type Session struct {
 // ReassignSessionRequest запрос на переназначение сессии на другой бокс
 type ReassignSessionRequest struct {
 	SessionID uuid.UUID `json:"session_id" binding:"required"`
+	// SymptomID — причина постановки старого бокса в сервис. Обязателен при
+	// переназначении кассиром (создаётся сервисный наряд). Необязателен для админа.
+	SymptomID *int   `json:"symptom_id"`
+	Comment   string `json:"comment"`
 }
 
 // ReassignSessionResponse ответ на переназначение сессии

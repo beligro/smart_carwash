@@ -197,6 +197,9 @@ func main() {
 	}
 	maintenanceSvc := maintenanceService.NewService(maintenanceRepo.NewPostgresRepository(db), washboxSvc, maintenanceNotifier)
 
+	// Переназначение сессии кассиром создаёт сервисный наряд для старого бокса.
+	sessionSvc.SetMaintenanceService(maintenanceSvc)
+
 	// Устанавливаем вебхук для бота
 	if tgBot != nil {
 		if err := tgBot.SetWebhook(); err != nil {

@@ -31,6 +31,7 @@ type Service interface {
 	GetSymptoms(ctx context.Context, boxNumber int) ([]models.SymptomType, error)
 	GetCatalog(ctx context.Context, boxNumber int) ([]models.CatalogGroup, error)
 	OpenTicket(ctx context.Context, cashierID *uuid.UUID, req *models.OpenTicketRequest) (*models.ServiceTicket, error)
+	OpenTicketForBox(ctx context.Context, cashierID *uuid.UUID, boxID uuid.UUID, boxNumber int, symptomID int, comment string) error
 	CloseTicket(ctx context.Context, ticketID uuid.UUID, closedBy string, req *models.CloseTicketRequest) (*models.ServiceTicket, error)
 	ListTickets(ctx context.Context, status *string, boxNumber *int, since *time.Time, limit int) ([]models.TicketView, error)
 	ReconcileOrphanTickets(ctx context.Context) error
@@ -125,6 +126,44 @@ func (s *ServiceImpl) OpenTicket(ctx context.Context, cashierID *uuid.UUID, req 
 	go s.pushTicketOpened(ticket)
 
 	return ticket, nil
+}
+
+// OpenTicketForBox создаёт наряд для бокса, который УЖЕ переводится в сервис
+// вызывающей стороной (напр. переназначение сессии кассиром). Статус бокса не меняет.
+func (s *ServiceImpl) OpenTicketForBox(ctx context.Context, cashierID *uuid.UUID, boxID uuid.UUID, boxNumber int, symptomID int, comment string) error {
+	symptom, err := s.repo.GetSymptomByID(ctx, symptomID)
+	if err != nil || symptom == nil {
+		return errors.New("указан несуществующий симптом")
+	}
+
+	openedBy := ""
+	if cashierID != nil {
+		if name, e := s.repo.GetCashierUsername(ctx, *cashierID); e == nil {
+			openedBy = name
+		}
+	}
+
+	sid := symptomID
+	bid := boxID
+	ticket := &models.ServiceTicket{
+		BoxID:             &bid,
+		BoxNumber:         boxNumber,
+		BoxType:           BoxType(boxNumber),
+		Status:            models.TicketStatusOpen,
+		IsBreakdown:       symptom.IsBreakdown,
+		OpenedAt:          time.Now(),
+		OpenedBy:          openedBy,
+		OpenedByCashierID: cashierID,
+		SymptomID:         &sid,
+		CashierComment:    comment,
+	}
+	if err := s.repo.CreateTicket(ctx, ticket); err != nil {
+		logger.Printf("Ошибка создания наряда при переназначении (бокс %d): %v", boxNumber, err)
+		return fmt.Errorf("не удалось создать наряд: %v", err)
+	}
+
+	go s.pushTicketOpened(ticket)
+	return nil
 }
 
 // pushTicketOpened рассылает уведомление активным получателям (в фоне).

@@ -1,6 +1,7 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import styled from 'styled-components';
 import { getTheme } from '../../../styles/theme';
+import ApiService from '../../../services/ApiService';
 
 const ModalOverlay = styled.div`
   position: fixed;
@@ -99,6 +100,45 @@ const ConsequenceItem = styled.li`
   margin-bottom: 8px;
 `;
 
+const Field = styled.div`
+  margin-top: 16px;
+`;
+
+const FieldLabel = styled.label`
+  display: block;
+  margin-bottom: 6px;
+  color: #333;
+  font-size: 0.9rem;
+  font-weight: 600;
+`;
+
+const Select = styled.select`
+  width: 100%;
+  padding: 10px;
+  border: 1px solid #ccc;
+  border-radius: 6px;
+  font-size: 0.95rem;
+  background: white;
+  color: #333;
+`;
+
+const TextArea = styled.textarea`
+  width: 100%;
+  padding: 10px;
+  border: 1px solid #ccc;
+  border-radius: 6px;
+  font-size: 0.95rem;
+  resize: vertical;
+  min-height: 60px;
+  box-sizing: border-box;
+`;
+
+const FieldHint = styled.div`
+  margin-top: 6px;
+  font-size: 0.8rem;
+  color: #b71c1c;
+`;
+
 const ButtonContainer = styled.div`
   display: flex;
   gap: 12px;
@@ -145,8 +185,28 @@ const ReassignSessionModal = ({
   onConfirm, 
   sessionId, 
   serviceType,
+  boxNumber,
+  requireSymptom = false,
   isLoading = false 
 }) => {
+  const [symptoms, setSymptoms] = useState([]);
+  const [symptomId, setSymptomId] = useState('');
+  const [comment, setComment] = useState('');
+  const [loadingSymptoms, setLoadingSymptoms] = useState(false);
+
+  useEffect(() => {
+    if (!isOpen || !requireSymptom || !boxNumber) return;
+    let cancelled = false;
+    setLoadingSymptoms(true);
+    setSymptomId('');
+    setComment('');
+    ApiService.getServiceSymptoms(boxNumber)
+      .then((data) => { if (!cancelled) setSymptoms(Array.isArray(data) ? data : []); })
+      .catch(() => { if (!cancelled) setSymptoms([]); })
+      .finally(() => { if (!cancelled) setLoadingSymptoms(false); });
+    return () => { cancelled = true; };
+  }, [isOpen, requireSymptom, boxNumber]);
+
   if (!isOpen) return null;
 
   const getServiceText = (type) => {
@@ -158,8 +218,11 @@ const ReassignSessionModal = ({
     }
   };
 
+  const symptomMissing = requireSymptom && !symptomId;
+
   const handleConfirm = () => {
-    onConfirm(sessionId);
+    if (symptomMissing) return;
+    onConfirm(sessionId, symptomId ? Number(symptomId) : null, comment.trim());
   };
 
   return (
@@ -202,11 +265,41 @@ const ReassignSessionModal = ({
           </ConsequencesList>
         </div>
 
+        {requireSymptom && (
+          <>
+            <Field>
+              <FieldLabel>Причина неисправности (симптом)*</FieldLabel>
+              <Select
+                value={symptomId}
+                onChange={(e) => setSymptomId(e.target.value)}
+                disabled={loadingSymptoms || isLoading}
+              >
+                <option value="">{loadingSymptoms ? 'Загрузка…' : '— выберите причину —'}</option>
+                {symptoms.map((s) => (
+                  <option key={s.id} value={s.id}>{s.name}</option>
+                ))}
+              </Select>
+              {symptomMissing && (
+                <FieldHint>По переназначению создаётся сервисный наряд — укажите причину.</FieldHint>
+              )}
+            </Field>
+            <Field>
+              <FieldLabel>Комментарий (необязательно)</FieldLabel>
+              <TextArea
+                value={comment}
+                onChange={(e) => setComment(e.target.value)}
+                placeholder="Что случилось, детали для мастера…"
+                disabled={isLoading}
+              />
+            </Field>
+          </>
+        )}
+
         <ButtonContainer>
           <CancelButton onClick={onClose} disabled={isLoading}>
             Отмена
           </CancelButton>
-          <ReassignButton onClick={handleConfirm} disabled={isLoading}>
+          <ReassignButton onClick={handleConfirm} disabled={isLoading || symptomMissing}>
             {isLoading ? 'Переназначаем...' : 'Переназначить'}
           </ReassignButton>
         </ButtonContainer>
