@@ -606,6 +606,25 @@ const CashierApp = () => {
     }
   };
 
+  // Обработчик включения химии кассиром (работает для веб/телеги/гостя)
+  const handleEnableChemistry = async (sessionId) => {
+    setActionLoading(prev => ({ ...prev, [sessionId]: true }));
+
+    try {
+      const resp = await ApiService.enableChemistryCashier(sessionId);
+      if (resp && resp.success === false) {
+        setError(resp.message || 'Не удалось включить химию');
+      } else {
+        await loadData(); // Перезагружаем данные
+      }
+    } catch (error) {
+      console.error('Ошибка включения химии:', error);
+      setError('Ошибка включения химии: ' + (error.response?.data?.error || error.message));
+    } finally {
+      setActionLoading(prev => ({ ...prev, [sessionId]: false }));
+    }
+  };
+
   // Обработчик отмены сессии из таблицы сессий
   const handleCancelSessionFromTable = async (sessionId) => {
     if (!window.confirm('Вы уверены, что хотите отменить эту сессию?')) {
@@ -934,6 +953,16 @@ const CashierApp = () => {
                                         {actionLoading[session.id] ? 'Переназначаем...' : '🔄 Переназначить'}
                                       </ActionButton>
                                     )}
+                                    {(session.status === 'active' && session.with_chemistry && !session.was_chemistry_on) && (
+                                      <ActionButton
+                                        className="complete"
+                                        onClick={() => handleEnableChemistry(session.id)}
+                                        disabled={actionLoading[session.id]}
+                                        style={{ padding: '4px 8px', fontSize: '0.8rem', backgroundColor: '#17a2b8', color: 'white' }}
+                                      >
+                                        {actionLoading[session.id] ? 'Включаем...' : '🧪 Включить химию'}
+                                      </ActionButton>
+                                    )}
                                     {/* Кнопка отмены сессии (created, in_queue, assigned для кассирских; только created для telegram) */}
                                     {(session.status === 'created') && (
                                       <ActionButton
@@ -1042,6 +1071,16 @@ const CashierApp = () => {
                                   style={{ padding: '8px 16px', fontSize: '0.9rem', minHeight: '44px', backgroundColor: '#ff9800', color: 'white' }}
                                 >
                                   {actionLoading[session.id] ? 'Переназначаем...' : '🔄 Переназначить'}
+                                </ActionButton>
+                              )}
+                              {(session.status === 'active' && session.with_chemistry && !session.was_chemistry_on) && (
+                                <ActionButton
+                                  className="complete"
+                                  onClick={() => handleEnableChemistry(session.id)}
+                                  disabled={actionLoading[session.id]}
+                                  style={{ padding: '8px 16px', fontSize: '0.9rem', minHeight: '44px', backgroundColor: '#17a2b8', color: 'white' }}
+                                >
+                                  {actionLoading[session.id] ? 'Включаем...' : '🧪 Включить химию'}
                                 </ActionButton>
                               )}
                               {/* Кнопка отмены сессии (created, in_queue, assigned для кассирских; только created для telegram) */}

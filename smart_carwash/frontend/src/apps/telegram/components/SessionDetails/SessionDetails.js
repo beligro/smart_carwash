@@ -442,6 +442,7 @@ const SessionDetails = ({ theme = 'light', user }) => {
 
   // Функция для завершения сессии
   const handleCompleteSession = async () => {
+    if (!window.confirm('Вы точно уверены, что хотите завершить мойку? Возврата средств не будет.')) return;
     try {
       setActionLoading(true);
       setError(null);
