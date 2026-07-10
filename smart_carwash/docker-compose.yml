@@ -49,10 +49,9 @@ services:
       - POSTGRES_DB=${POSTGRES_DB}
       - PGDATA=/var/lib/postgresql/data/18/docker  # Путь к данным PG18
     
-    # СЕТЬ (статический IP для бэкенда!)
+    # СЕТЬ (бэкенд обращается по DNS-имени postgres, без статического IP)
     networks:
-      carwash_network:
-        ipv4_address: 172.18.0.2            # Бэкенд ищет postgres по этому IP!
+      - carwash_network
     
     # ПОРТЫ (только localhost!)
     ports:
