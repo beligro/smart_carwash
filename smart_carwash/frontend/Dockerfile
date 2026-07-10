@@ -13,6 +13,11 @@ RUN npm install
 # Копируем исходный код
 COPY . .
 
+# Прод-сборка не должна падать из-за предупреждений eslint (под BuildKit CI=true
+# делает их фатальными). Линтинг — задача dev/CI, а не деплойной сборки.
+ENV CI=false
+ENV DISABLE_ESLINT_PLUGIN=true
+
 # Аргумент для выбора приложения (по умолчанию - все приложения)
 ARG APP_TYPE=all
 
