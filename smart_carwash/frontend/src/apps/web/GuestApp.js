@@ -1,6 +1,7 @@
 import React, { useEffect, useState, useRef, Suspense, lazy } from 'react';
 import { Routes, Route, Navigate, useNavigate, useLocation } from 'react-router-dom';
 import GuestApiService, { getGuestToken, setGuestToken, clearGuestToken } from './GuestApiService';
+import { ReservationWindow } from '../../shared/components/UI';
 import styles from './WebApp.module.css';
 
 const Header = lazy(() => import('./components/Header'));
@@ -11,7 +12,7 @@ const GuestPaymentPage = lazy(() => import('./GuestPaymentPage'));
 const BASE = '/web/guest';
 
 // Экран после завершения мойки: предложение зарегистрироваться + преимущества
-const GuestCompletionOffer = ({ onFinish }) => (
+const GuestCompletionOffer = ({ onFinish, session, onPay }) => (
   <div style={{ padding: 16, maxWidth: 480, margin: '0 auto' }}>
     <div style={{ background: '#f0fdf4', borderRadius: 12, padding: '20px', textAlign: 'center' }}>
       <p style={{ fontSize: 20, fontWeight: 700, margin: '0 0 8px', color: '#2e7d32' }}>
@@ -21,6 +22,19 @@ const GuestCompletionOffer = ({ onFinish }) => (
         Спасибо, что воспользовались нашей мойкой.
       </p>
     </div>
+
+    {/* Окно приоритетной брони бокса после завершения мойки */}
+    {session && (session.cooldown_until || session.cooldown_minutes) && (
+      <ReservationWindow
+        boxNumber={session.box_number}
+        cooldownUntil={session.cooldown_until}
+        cooldownMinutes={session.cooldown_minutes}
+        completedAt={session.active_ended_at || session.status_updated_at}
+        serviceType={session.service_type}
+        onPay={onPay}
+        theme="light"
+      />
+    )}
 
     <div style={{ background: '#f8f9fa', borderRadius: 12, padding: '16px 20px', marginTop: 12 }}>
       <p style={{ fontSize: 15, fontWeight: 600, margin: '0 0 10px' }}>
@@ -167,6 +181,17 @@ const GuestApp = () => {
     return clearTimers;
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Переход в обычный флоу создания новой гостевой сессии/оплаты
+  // (в течение кулдауна тот же бокс достанется по приоритету по номеру машины)
+  const handlePayToStay = () => {
+    if (sessionResetTimer.current) {
+      clearTimeout(sessionResetTimer.current);
+      sessionResetTimer.current = null;
+    }
+    const preselectServiceType = washInfo?.userSession?.service_type;
+    navigate(`${BASE}/booking`, { state: { preselectServiceType } });
+  };
+
   const handleCreateSession = async (serviceData) => {
     if (carwashStatus?.is_closed) {
       setError('Мойка временно закрыта');
@@ -243,7 +268,11 @@ const GuestApp = () => {
                   error ? (
                     <p style={{ color: 'red', padding: 16 }}>{error}</p>
                   ) : washInfo?.userSession?.status === 'complete' ? (
-                    <GuestCompletionOffer onFinish={handleGuestFinish} />
+                    <GuestCompletionOffer
+                      onFinish={handleGuestFinish}
+                      session={washInfo.userSession}
+                      onPay={handlePayToStay}
+                    />
                   ) : washInfo ? (
                     <WashInfo
                       washInfo={washInfo}

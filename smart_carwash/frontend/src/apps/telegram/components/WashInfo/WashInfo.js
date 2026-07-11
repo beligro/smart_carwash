@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import styles from './WashInfo.module.css';
-import { Card, Button, StatusBadge, Timer } from '../../../../shared/components/UI';
+import { Card, Button, StatusBadge, Timer, ReservationWindow } from '../../../../shared/components/UI';
 import { formatDate } from '../../../../shared/utils/formatters';
 import { getSessionStatusDescription, getServiceTypeDescription, formatRefundInfo, formatAmount, formatAmountWithRefund, getPaymentStatusText, getPaymentStatusColor, formatSessionTotalCost, formatSessionDetailedCost } from '../../../../shared/utils/statusHelpers';
 import useTimer from '../../../../shared/hooks/useTimer';
@@ -291,6 +291,17 @@ const WashInfo = ({ washInfo, theme = 'light', onCreateSession, onViewHistory, o
   const handleCreateSessionClick = () => {
     try {
       navigate(`${pathBase}/booking`);
+    } catch (error) {
+      alert('Ошибка при переходе на страницу записи: ' + error.message);
+    }
+  };
+
+  // Переход в обычный флоу создания новой сессии/оплаты (приоритетный возврат в тот же бокс)
+  const handlePayToStay = () => {
+    try {
+      navigate(`${pathBase}/booking`, {
+        state: { preselectServiceType: userSession?.service_type },
+      });
     } catch (error) {
       alert('Ошибка при переходе на страницу записи: ' + error.message);
     }
@@ -624,6 +635,19 @@ const WashInfo = ({ washInfo, theme = 'light', onCreateSession, onViewHistory, o
               </div>
             )}
             
+            {/* Окно приоритетной брони бокса после завершения мойки */}
+            {userSession.status === 'complete' && (userSession.cooldown_until || userSession.cooldown_minutes) && (
+              <ReservationWindow
+                boxNumber={userSession.boxNumber || userSession.box_number}
+                cooldownUntil={userSession.cooldown_until}
+                cooldownMinutes={userSession.cooldown_minutes}
+                completedAt={userSession.active_ended_at || userSession.status_updated_at}
+                serviceType={userSession.service_type}
+                onPay={handlePayToStay}
+                theme={theme}
+              />
+            )}
+
             {/* Текст для назначенной сессии */}
             {userSession.status === 'assigned' && (userSession.boxNumber || userSession.box_number || userSession.boxId || userSession.box_id) && (
               <div style={{

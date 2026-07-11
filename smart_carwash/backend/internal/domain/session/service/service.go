@@ -474,6 +474,51 @@ func (s *ServiceImpl) CheckActiveSession(ctx context.Context, req *models.CheckA
 }
 
 // GetUserSession получает активную сессию пользователя
+// enrichSessionCooldown заполняет виртуальные поля CooldownMinutes и CooldownUntil
+// для завершённой сессии с реальным активным кулдауном на её боксе.
+// Бокс держится за клиентом (приоритетный возврат в тот же бокс) если last_completed
+// совпадает по user_id ИЛИ по car_number и box.CooldownUntil ещё не наступил.
+// Кассирские сессии (user == CASHIER_USER_ID) не трогаем.
+func (s *ServiceImpl) enrichSessionCooldown(ctx context.Context, session *models.Session) {
+	if session == nil {
+		return
+	}
+	if session.Status != models.SessionStatusComplete || session.BoxID == nil {
+		return
+	}
+	if s.washboxService == nil {
+		return
+	}
+
+	// Пропускаем сессии кассира
+	if s.cashierUserID != "" {
+		if cashierUserID, err := uuid.Parse(s.cashierUserID); err == nil && session.UserID == cashierUserID {
+			return
+		}
+	}
+
+	box, err := s.washboxService.GetWashBoxByID(ctx, *session.BoxID)
+	if err != nil || box == nil {
+		return
+	}
+	if box.CooldownUntil == nil || !box.CooldownUntil.After(time.Now()) {
+		return
+	}
+
+	// Бокс держится за клиентом, если совпадает пользователь или номер машины
+	matchUser := box.LastCompletedSessionUserID != nil && *box.LastCompletedSessionUserID == session.UserID
+	matchCar := box.LastCompletedSessionCarNumber != nil && session.CarNumber != "" &&
+		*box.LastCompletedSessionCarNumber == session.CarNumber
+	if !matchUser && !matchCar {
+		return
+	}
+
+	if cooldownTimeout, err := s.settingsService.GetCooldownTimeout(ctx); err == nil {
+		session.CooldownMinutes = &cooldownTimeout
+	}
+	session.CooldownUntil = box.CooldownUntil
+}
+
 func (s *ServiceImpl) GetUserSession(ctx context.Context, req *models.GetUserSessionRequest) (*models.GetUserSessionResponse, error) {
 	session, err := s.repo.GetActiveSessionByUserID(ctx, req.UserID)
 	if err != nil {
@@ -512,6 +557,9 @@ func (s *ServiceImpl) GetUserSession(ctx context.Context, req *models.GetUserSes
 		}
 		session.SessionTimeoutMinutes = sessionTimeout
 	}
+
+	// Заполняем cooldown_minutes и cooldown_until для завершённой сессии с активным кулдауном
+	s.enrichSessionCooldown(ctx, session)
 
 	return &models.GetUserSessionResponse{
 		Session: session,
@@ -604,6 +652,9 @@ func (s *ServiceImpl) GetSession(ctx context.Context, req *models.GetSessionRequ
 		}
 		session.SessionTimeoutMinutes = sessionTimeout
 	}
+
+	// Заполняем cooldown_minutes и cooldown_until для завершённой сессии с активным кулдауном
+	s.enrichSessionCooldown(ctx, session)
 
 	return &models.GetSessionResponse{
 		Session: session,
@@ -2379,6 +2430,7 @@ func (s *ServiceImpl) GetUserSessionHistory(ctx context.Context, req *models.Get
 								if err == nil {
 									sessions[i].CooldownMinutes = &cooldownTimeout
 								}
+								sessions[i].CooldownUntil = box.CooldownUntil
 							}
 						}
 					}
@@ -2398,6 +2450,7 @@ func (s *ServiceImpl) GetUserSessionHistory(ctx context.Context, req *models.Get
 							if err == nil {
 								sessions[i].CooldownMinutes = &cooldownTimeout
 							}
+							sessions[i].CooldownUntil = box.CooldownUntil
 						}
 					}
 				}
@@ -3316,6 +3369,8 @@ func (s *ServiceImpl) GetSessionByGuestToken(ctx context.Context, token string) 
 		}
 		session.SessionTimeoutMinutes = sessionTimeout
 	}
+	// Заполняем cooldown_minutes и cooldown_until для завершённой сессии с активным кулдауном
+	s.enrichSessionCooldown(ctx, session)
 	return session, nil
 }
 

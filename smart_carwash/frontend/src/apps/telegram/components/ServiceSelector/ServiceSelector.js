@@ -13,7 +13,7 @@ import { validateAndNormalizeLicensePlate } from '../../../../shared/utils/licen
  * @param {string} props.theme - Тема оформления ('light' или 'dark')
  * @param {Object} props.user - Данные пользователя (для получения сохраненного номера)
  */
-const ServiceSelector = ({ onSelect, theme = 'light', user }) => {
+const ServiceSelector = ({ onSelect, theme = 'light', user, initialServiceType }) => {
   const [selectedService, setSelectedService] = useState(null);
   const [withChemistry, setWithChemistry] = useState(false);
   const [rentalTimes, setRentalTimes] = useState([]);
@@ -147,6 +147,17 @@ const ServiceSelector = ({ onSelect, theme = 'light', user }) => {
       console.error('Ошибка в handleServiceSelect:', error);
     }
   };
+
+  // Предвыбор типа услуги (например, при возврате «Оплатить и остаться»)
+  useEffect(() => {
+    if (initialServiceType && !selectedService) {
+      const match = serviceTypes.find((s) => s.id === initialServiceType);
+      if (match) {
+        handleServiceSelect(match);
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialServiceType]);
 
   // Обработчик отмены выбора услуги
   const handleServiceDeselect = () => {

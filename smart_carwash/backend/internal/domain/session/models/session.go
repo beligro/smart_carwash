@@ -67,6 +67,7 @@ type Session struct {
 	IsPriority                             bool           `json:"is_priority" gorm:"column:is_priority;default:false"`              // Приоритет в очереди (переставленные клиенты)
 	SessionTimeoutMinutes                  int            `json:"session_timeout_minutes" gorm:"-"`    // Время ожидания старта мойки в минутах (виртуальное поле)
 	CooldownMinutes                        *int           `json:"cooldown_minutes,omitempty" gorm:"-"` // Время кулдауна в минутах (виртуальное поле)
+	CooldownUntil                          *time.Time     `json:"cooldown_until,omitempty" gorm:"-"`   // Дедлайн приоритетного удержания бокса за клиентом (виртуальное поле)
 	DeletedAt                              gorm.DeletedAt `json:"-" gorm:"index"`
 }
 

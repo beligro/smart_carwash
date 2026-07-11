@@ -1,5 +1,5 @@
 import React from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import styles from './BookingPage.module.css';
 import ServiceSelector from '../ServiceSelector';
 
@@ -12,6 +12,8 @@ import ServiceSelector from '../ServiceSelector';
  */
 const BookingPage = ({ theme = 'light', user, onCreateSession }) => {
   const navigate = useNavigate();
+  const location = useLocation();
+  const preselectServiceType = location.state?.preselectServiceType;
   const themeClass = theme === 'dark' ? styles.dark : styles.light;
 
   // Обработчик выбора услуги
@@ -32,6 +34,7 @@ const BookingPage = ({ theme = 'light', user, onCreateSession }) => {
           onSelect={handleServiceSelect} 
           theme={theme} 
           user={user}
+          initialServiceType={preselectServiceType}
         />
       </div>
     </div>

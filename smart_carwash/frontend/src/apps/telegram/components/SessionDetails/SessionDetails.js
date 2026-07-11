@@ -1,7 +1,7 @@
 import React, { useEffect, useState, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import styles from './SessionDetails.module.css';
-import { Card, Button, StatusBadge, Timer } from '../../../../shared/components/UI';
+import { Card, Button, StatusBadge, Timer, ReservationWindow } from '../../../../shared/components/UI';
 import { formatDate } from '../../../../shared/utils/formatters';
 import { getServiceTypeDescription, formatRefundInfo, formatSessionRefundInfo, formatAmount, formatAmountWithRefund, getPaymentStatusText, getPaymentStatusColor, formatSessionDetailedCost, getDisplayPaymentStatus } from '../../../../shared/utils/statusHelpers';
 import ApiService from '../../../../shared/services/ApiService';
@@ -625,6 +625,13 @@ const SessionDetails = ({ theme = 'light', user }) => {
     navigate(`${pathBase}`);
   };
 
+  // Переход в обычный флоу создания новой сессии/оплаты (приоритетный возврат в тот же бокс)
+  const handlePayToStay = () => {
+    navigate(`${pathBase}/booking`, {
+      state: { preselectServiceType: session?.service_type },
+    });
+  };
+
   // Обработчик отмены сессии
   const handleCancelSession = async () => {
     if (!session || !user) return;
@@ -709,6 +716,19 @@ const SessionDetails = ({ theme = 'light', user }) => {
           </div>
         )}
         
+        {/* Окно приоритетной брони бокса после завершения мойки */}
+        {session.status === 'complete' && (session.cooldown_until || session.cooldown_minutes) && (
+          <ReservationWindow
+            boxNumber={session.box_number}
+            cooldownUntil={session.cooldown_until}
+            cooldownMinutes={session.cooldown_minutes}
+            completedAt={session.active_ended_at || session.status_updated_at}
+            serviceType={session.service_type}
+            onPay={handlePayToStay}
+            theme={theme}
+          />
+        )}
+
         {/* Таймеры и кнопки под статусом */}
         {session.status === 'active' && timeLeft !== null && (
           <>
