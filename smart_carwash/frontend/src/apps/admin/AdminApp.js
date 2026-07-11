@@ -18,6 +18,7 @@ import WashboxChangeLogs from './components/WashboxChangeLogs';
 import BoxMaintenanceManagement from './components/BoxMaintenanceManagement';
 import ServiceTicketsManagement from './components/ServiceTicketsManagement';
 import AdminManagement from './components/AdminManagement';
+import MyWash from './components/MyWash';
 
 
 const AdminContainer = styled.div`
@@ -295,6 +296,13 @@ const AdminApp = () => {
               </NavLink>
             </NavItem>
           )}
+          {can('my-wash') && (
+            <NavItem>
+              <NavLink to="/admin/my-wash" theme={theme} isActive={location.pathname === '/admin/my-wash'}>
+                Моя мойка
+              </NavLink>
+            </NavItem>
+          )}
           {can('maintenance') && (
             <NavItem>
               <NavLink to="/admin/maintenance" theme={theme} isActive={location.pathname === '/admin/maintenance'}>
@@ -393,6 +401,7 @@ const AdminApp = () => {
         <Routes>
           <Route path="/" element={<Dashboard />} />
           <Route path="/washboxes" element={<WashBoxManagement />} />
+          <Route path="/my-wash" element={<MyWash />} />
           <Route path="/maintenance" element={<BoxMaintenanceManagement />} />
           <Route path="/service-tickets" element={<ServiceTicketsManagement />} />
           <Route path="/sessions" element={<SessionManagement />} />
@@ -444,6 +453,18 @@ const AdminApp = () => {
                   onClick={() => setIsMobileMenuOpen(false)}
                 >
                   Боксы мойки
+                </MobileNavLink>
+              </MobileNavItem>
+            )}
+            {can('my-wash') && (
+              <MobileNavItem>
+                <MobileNavLink 
+                  to="/admin/my-wash" 
+                  theme={theme} 
+                  isActive={location.pathname === '/admin/my-wash'}
+                  onClick={() => setIsMobileMenuOpen(false)}
+                >
+                  Моя мойка
                 </MobileNavLink>
               </MobileNavItem>
             )}

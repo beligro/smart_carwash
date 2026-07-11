@@ -51,6 +51,78 @@ type WashBox struct {
 	DeletedAt                     gorm.DeletedAt `json:"-" gorm:"index"`
 }
 
+// Причины админского включения коилов
+const (
+	AdminCoilReasonPersonalWash = "personal_wash"
+	AdminCoilReasonTest         = "test"
+)
+
+// Причины завершения админского включения коилов
+const (
+	AdminCoilEndedAuto   = "auto"
+	AdminCoilEndedManual = "manual"
+)
+
+// Тип бокса для лимитов личного включения
+const (
+	BoxTypeWash   = "wash"
+	BoxTypeVacuum = "vacuum"
+	BoxTypeAir    = "air"
+)
+
+// AdminCoilAction — запись о ручном включении коилов бокса администратором
+// (личная мойка/тест). Хранит окно действия и причину завершения.
+type AdminCoilAction struct {
+	ID            uuid.UUID  `json:"id" gorm:"primaryKey;type:uuid;default:gen_random_uuid()"`
+	AdminUsername string     `json:"admin_username" gorm:"type:varchar(255);not null;default:''"`
+	BoxID         *uuid.UUID `json:"box_id" gorm:"type:uuid"`
+	BoxNumber     int        `json:"box_number" gorm:"not null"`
+	BoxType       string     `json:"box_type" gorm:"type:varchar(20);not null"`
+	Reason        string     `json:"reason" gorm:"type:varchar(20);not null"`
+	TicketID      *uuid.UUID `json:"ticket_id" gorm:"type:uuid"`
+	StartedAt     time.Time  `json:"started_at" gorm:"not null;default:now()"`
+	ExpiresAt     *time.Time `json:"expires_at"`
+	EndedAt       *time.Time `json:"ended_at"`
+	EndedReason   *string    `json:"ended_reason" gorm:"type:varchar(20)"`
+	CreatedAt     time.Time  `json:"created_at" gorm:"not null;default:now()"`
+}
+
+// TableName задаёт имя таблицы для AdminCoilAction.
+func (AdminCoilAction) TableName() string {
+	return "admin_coil_actions"
+}
+
+// PersonalUseBox — информация о боксе для раздела «Моя мойка».
+type PersonalUseBox struct {
+	ID          uuid.UUID  `json:"id"`
+	Number      int        `json:"number"`
+	ServiceType string     `json:"service_type"`
+	BoxType     string     `json:"box_type"`
+	Status      string     `json:"status"`
+	Remaining   *int       `json:"remaining,omitempty"`    // остаток лимита по типу (для свободных)
+	ExpiresAt   *time.Time `json:"expires_at,omitempty"`   // если сейчас активно личное включение
+	ActionID    *uuid.UUID `json:"action_id,omitempty"`    // id открытого AdminCoilAction
+	AdminUsername *string  `json:"admin_username,omitempty"` // кто включил (для активных)
+}
+
+// PersonalUseAvailabilityResponse — ответ по доступности личного включения.
+type PersonalUseAvailabilityResponse struct {
+	Boxes  []PersonalUseBox `json:"boxes"`
+	Active []PersonalUseBox `json:"active"`
+}
+
+// AdminPersonalUseResponse — ответ на личное включение бокса.
+type AdminPersonalUseResponse struct {
+	BoxNumber int        `json:"box_number"`
+	ExpiresAt *time.Time `json:"expires_at"`
+	Message   string     `json:"message"`
+}
+
+// AdminPersonalUseRequest — запрос на личное включение/возврат бокса.
+type AdminPersonalUseRequest struct {
+	BoxID uuid.UUID `json:"box_id" binding:"required"`
+}
+
 // GetQueueStatusResponse представляет ответ на получение статуса очереди и боксов
 type GetQueueStatusResponse struct {
 	Boxes     []WashBox `json:"boxes"`

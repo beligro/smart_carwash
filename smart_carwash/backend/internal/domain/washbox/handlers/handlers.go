@@ -67,6 +67,69 @@ func (h *Handler) RegisterRoutes(router *gin.RouterGroup, cleanerMiddleware gin.
 	}
 }
 
+// RegisterPersonalWashRoutes регистрирует маршруты раздела «Моя мойка» (личное включение боксов).
+// sectionMiddleware — обычно authHandler.RequireSection("my-wash") (внутри уже проверяет права админа).
+func (h *Handler) RegisterPersonalWashRoutes(router *gin.RouterGroup, sectionMiddleware gin.HandlerFunc) {
+	group := router.Group("/admin/personal-wash")
+	if sectionMiddleware != nil {
+		group.Use(sectionMiddleware)
+	}
+	{
+		group.GET("/boxes", h.personalWashBoxes)
+		group.POST("", h.personalWashStart)
+		group.POST("/return", h.personalWashReturn)
+	}
+}
+
+// usernameFromCtx достаёт username актора из gin-контекста (кладётся authMiddleware).
+func usernameFromCtx(c *gin.Context) string {
+	if v, ok := c.Get("username"); ok {
+		if s, _ := v.(string); s != "" {
+			return s
+		}
+	}
+	return ""
+}
+
+// personalWashBoxes возвращает боксы с остатком лимита и активные личные включения.
+func (h *Handler) personalWashBoxes(c *gin.Context) {
+	resp, err := h.service.PersonalUseAvailability(c.Request.Context(), usernameFromCtx(c))
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, resp)
+}
+
+// personalWashStart лично включает бокс на 15 минут.
+func (h *Handler) personalWashStart(c *gin.Context) {
+	var req models.AdminPersonalUseRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	resp, err := h.service.AdminPersonalUse(c.Request.Context(), usernameFromCtx(c), req.BoxID)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, resp)
+}
+
+// personalWashReturn досрочно возвращает бокс в работу.
+func (h *Handler) personalWashReturn(c *gin.Context) {
+	var req models.AdminPersonalUseRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	if err := h.service.AdminReturnBox(c.Request.Context(), usernameFromCtx(c), req.BoxID); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"success": true})
+}
+
 // adminListWashBoxes обработчик для получения списка боксов мойки
 func (h *Handler) adminListWashBoxes(c *gin.Context) {
 	// Получаем параметры фильтрации из query

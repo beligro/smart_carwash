@@ -417,6 +417,12 @@ func (h *Handler) GetAdminMiddleware() gin.HandlerFunc {
 	return h.adminMiddleware()
 }
 
+// RequireSection возвращает middleware, ограничивающее доступ по разделу (публичный метод).
+// Внутри уже выполняется проверка прав администратора.
+func (h *Handler) RequireSection(section string) gin.HandlerFunc {
+	return h.requireSection(section)
+}
+
 // cleanerMiddleware middleware для проверки авторизации уборщика
 func (h *Handler) cleanerMiddleware() gin.HandlerFunc {
 	return func(c *gin.Context) {

@@ -64,16 +64,34 @@ type Service interface {
 	SetCooldownByCarNumber(ctx context.Context, boxID uuid.UUID, carNumber string, cooldownUntil time.Time) error
 	ClearCooldown(ctx context.Context, boxID uuid.UUID) error
 	CheckCooldownExpired(ctx context.Context) error
+
+	// Личное включение боксов админом («Моя мойка»)
+	AdminPersonalUse(ctx context.Context, adminUsername string, boxID uuid.UUID) (*models.AdminPersonalUseResponse, error)
+	AdminReturnBox(ctx context.Context, adminUsername string, boxID uuid.UUID) error
+	PersonalUseAvailability(ctx context.Context, adminUsername string) (*models.PersonalUseAvailabilityResponse, error)
+	SetPersonalUseNotifier(n PersonalUseNotifier)
+}
+
+// PersonalUseNotifier рассылает push-уведомления о личном включении боксов.
+// Реализация связывается в main.go (через maintenance-рассылку). Если nil — push пропускается.
+type PersonalUseNotifier interface {
+	Notify(text string)
 }
 
 // ServiceImpl реализация Service
 type ServiceImpl struct {
-	repo            repository.Repository
-	sessionRepo     sessionRepository.Repository
-	settingsService service.Service
-	modbusRepo      *modbusRepository.ModbusRepository
-	modbusAdapter   *modbusAdapter.ModbusAdapter
-	logSvc          washboxlogService.Service
+	repo                repository.Repository
+	sessionRepo         sessionRepository.Repository
+	settingsService     service.Service
+	modbusRepo          *modbusRepository.ModbusRepository
+	modbusAdapter       *modbusAdapter.ModbusAdapter
+	logSvc              washboxlogService.Service
+	personalUseNotifier PersonalUseNotifier
+}
+
+// SetPersonalUseNotifier задаёт нотифаер для push о личном включении боксов.
+func (s *ServiceImpl) SetPersonalUseNotifier(n PersonalUseNotifier) {
+	s.personalUseNotifier = n
 }
 
 func (s *ServiceImpl) isSpecialCleanerBox(box *models.WashBox) bool {
@@ -589,12 +607,247 @@ func (s *ServiceImpl) AutoReturnTimedService(ctx context.Context) error {
 		if s.logSvc != nil {
 			_ = s.logSvc.RecordStatusChange(ctx, updatedBox.ID, prev, models.StatusFree, nil)
 		}
-		// Выключаем свет при возврате в работу
-		if s.modbusAdapter != nil && updatedBox.LightCoilRegister != nil && *updatedBox.LightCoilRegister != "" {
-			_ = s.modbusAdapter.WriteLightCoil(ctx, updatedBox.ID, *updatedBox.LightCoilRegister, false)
+		// Выключаем свет и химию при возврате в работу.
+		// Под service_until попадают и старые cashier timed-service боксы (пылесосы) —
+		// для них нет AdminCoilAction, просто гасим коилы (chemistry для них безопасно).
+		if s.modbusAdapter != nil {
+			if updatedBox.LightCoilRegister != nil && *updatedBox.LightCoilRegister != "" {
+				_ = s.modbusAdapter.WriteLightCoil(ctx, updatedBox.ID, *updatedBox.LightCoilRegister, false)
+			}
+			if updatedBox.ChemistryCoilRegister != nil && *updatedBox.ChemistryCoilRegister != "" {
+				_ = s.modbusAdapter.WriteChemistryCoil(ctx, updatedBox.ID, *updatedBox.ChemistryCoilRegister, false)
+			}
+		}
+		// Если по боксу было открытое личное включение — закрываем его и шлём push.
+		if action, err := s.repo.GetOpenAdminCoilActionByBox(ctx, updatedBox.ID); err == nil && action != nil {
+			if err := s.repo.CloseAdminCoilAction(ctx, action.ID, models.AdminCoilEndedAuto); err != nil {
+				logger.Printf("Ошибка закрытия личного включения бокса %d: %v", updatedBox.Number, err)
+			} else {
+				s.notifyPersonalUse(fmt.Sprintf("↩️ Бокс №%d автоматически возвращён в работу", updatedBox.Number))
+			}
 		}
 	}
 	return nil
+}
+
+// boxTypeOf определяет тип бокса для лимитов личного включения по service_type.
+func boxTypeOf(serviceType string) string {
+	switch serviceType {
+	case models.ServiceTypeVacuum:
+		return models.BoxTypeVacuum
+	case models.ServiceTypeAirDry:
+		return models.BoxTypeAir
+	default:
+		return models.BoxTypeWash
+	}
+}
+
+// boxTypeLabelRu возвращает читаемое название типа бокса.
+func boxTypeLabelRu(boxType string) string {
+	switch boxType {
+	case models.BoxTypeVacuum:
+		return "Пылесос"
+	case models.BoxTypeAir:
+		return "Воздух"
+	default:
+		return "Мойка"
+	}
+}
+
+// notifyPersonalUse отправляет push (в фоне) через нотифаер, если он задан.
+func (s *ServiceImpl) notifyPersonalUse(text string) {
+	if s.personalUseNotifier == nil {
+		return
+	}
+	go s.personalUseNotifier.Notify(text)
+}
+
+const personalUseDailyLimit = 2
+const personalUseMinutes = 15
+
+// AdminPersonalUse включает бокс лично для администратора на 15 минут (свет + химия для мойки).
+func (s *ServiceImpl) AdminPersonalUse(ctx context.Context, adminUsername string, boxID uuid.UUID) (*models.AdminPersonalUseResponse, error) {
+	box, err := s.repo.GetWashBoxByID(ctx, boxID)
+	if err != nil || box == nil {
+		return nil, errors.New("бокс не найден")
+	}
+	if box.Status != models.StatusFree {
+		return nil, errors.New("бокс занят/недоступен")
+	}
+
+	boxType := boxTypeOf(box.ServiceType)
+
+	usedToday, err := s.repo.CountPersonalUseToday(ctx, adminUsername, boxType)
+	if err != nil {
+		return nil, err
+	}
+	if usedToday >= personalUseDailyLimit {
+		return nil, fmt.Errorf("лимит %d в сутки по этому типу исчерпан", personalUseDailyLimit)
+	}
+
+	now := time.Now()
+	until := now.Add(personalUseMinutes * time.Minute)
+	prev := box.Status
+	box.Status = models.StatusMaintenance
+	box.ServiceUntil = &until
+	updatedBox, err := s.repo.UpdateWashBox(ctx, box)
+	if err != nil {
+		return nil, err
+	}
+	if s.logSvc != nil {
+		_ = s.logSvc.RecordStatusChange(ctx, updatedBox.ID, prev, models.StatusMaintenance, nil)
+	}
+
+	// Включаем коилы. Ошибки только логируем — реконсиляция восстановит статус позже.
+	if s.modbusAdapter != nil {
+		if updatedBox.LightCoilRegister != nil && *updatedBox.LightCoilRegister != "" {
+			if err := s.modbusAdapter.WriteLightCoil(ctx, updatedBox.ID, *updatedBox.LightCoilRegister, true); err != nil {
+				logger.WithFields(logrus.Fields{"washbox_id": updatedBox.ID}).WithError(err).Error("не удалось включить свет при личном включении")
+			}
+		}
+		if updatedBox.ServiceType == models.ServiceTypeWash && updatedBox.ChemistryCoilRegister != nil && *updatedBox.ChemistryCoilRegister != "" {
+			if err := s.modbusAdapter.WriteChemistryCoil(ctx, updatedBox.ID, *updatedBox.ChemistryCoilRegister, true); err != nil {
+				logger.WithFields(logrus.Fields{"washbox_id": updatedBox.ID}).WithError(err).Error("не удалось включить химию при личном включении")
+			}
+		}
+	}
+
+	boxIDVal := updatedBox.ID
+	action := &models.AdminCoilAction{
+		AdminUsername: adminUsername,
+		BoxID:         &boxIDVal,
+		BoxNumber:     updatedBox.Number,
+		BoxType:       boxType,
+		Reason:        models.AdminCoilReasonPersonalWash,
+		StartedAt:     now,
+		ExpiresAt:     &until,
+	}
+	if err := s.repo.CreateAdminCoilAction(ctx, action); err != nil {
+		logger.Printf("Ошибка записи личного включения бокса %d: %v", updatedBox.Number, err)
+	}
+
+	// Push в фоне со сводкой за месяц.
+	monthCount, _ := s.repo.CountPersonalUseThisMonth(ctx, adminUsername, boxType)
+	monthMinutes := monthCount * personalUseMinutes
+	text := fmt.Sprintf("🧼 Личное включение\nКто: %s\nБокс №%d (%s)\n%d мин\nВ этом месяце: %d-е (%d мин)",
+		adminUsername, updatedBox.Number, boxTypeLabelRu(boxType), personalUseMinutes, monthCount, monthMinutes)
+	s.notifyPersonalUse(text)
+
+	return &models.AdminPersonalUseResponse{
+		BoxNumber: updatedBox.Number,
+		ExpiresAt: &until,
+		Message:   fmt.Sprintf("Бокс №%d включён на %d мин", updatedBox.Number, personalUseMinutes),
+	}, nil
+}
+
+// AdminReturnBox досрочно возвращает бокс в работу: гасит коилы, закрывает личное включение.
+func (s *ServiceImpl) AdminReturnBox(ctx context.Context, adminUsername string, boxID uuid.UUID) error {
+	box, err := s.repo.GetWashBoxByID(ctx, boxID)
+	if err != nil || box == nil {
+		return errors.New("бокс не найден")
+	}
+
+	// Гасим коилы.
+	if s.modbusAdapter != nil {
+		if box.LightCoilRegister != nil && *box.LightCoilRegister != "" {
+			if err := s.modbusAdapter.WriteLightCoil(ctx, box.ID, *box.LightCoilRegister, false); err != nil {
+				logger.WithFields(logrus.Fields{"washbox_id": box.ID}).WithError(err).Error("не удалось выключить свет при досрочном возврате")
+			}
+		}
+		if box.ChemistryCoilRegister != nil && *box.ChemistryCoilRegister != "" {
+			if err := s.modbusAdapter.WriteChemistryCoil(ctx, box.ID, *box.ChemistryCoilRegister, false); err != nil {
+				logger.WithFields(logrus.Fields{"washbox_id": box.ID}).WithError(err).Error("не удалось выключить химию при досрочном возврате")
+			}
+		}
+	}
+
+	prev := box.Status
+	box.Status = models.StatusFree
+	box.ServiceUntil = nil
+	updatedBox, err := s.repo.UpdateWashBox(ctx, box)
+	if err != nil {
+		return err
+	}
+	if s.logSvc != nil && prev != models.StatusFree {
+		_ = s.logSvc.RecordStatusChange(ctx, updatedBox.ID, prev, models.StatusFree, nil)
+	}
+
+	if action, err := s.repo.GetOpenAdminCoilActionByBox(ctx, updatedBox.ID); err == nil && action != nil {
+		if err := s.repo.CloseAdminCoilAction(ctx, action.ID, models.AdminCoilEndedManual); err != nil {
+			logger.Printf("Ошибка закрытия личного включения бокса %d: %v", updatedBox.Number, err)
+		}
+	}
+
+	s.notifyPersonalUse(fmt.Sprintf("↩️ Бокс №%d возвращён в работу (досрочно) — %s", updatedBox.Number, adminUsername))
+	return nil
+}
+
+// PersonalUseAvailability возвращает боксы с остатком лимита по типу и активные личные включения.
+func (s *ServiceImpl) PersonalUseAvailability(ctx context.Context, adminUsername string) (*models.PersonalUseAvailabilityResponse, error) {
+	boxes, err := s.repo.GetAllWashBoxes(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	// Кэш остатка по типу, чтобы не дёргать БД на каждый свободный бокс.
+	remainingByType := make(map[string]int)
+	remainingFor := func(boxType string) int {
+		if v, ok := remainingByType[boxType]; ok {
+			return v
+		}
+		used, e := s.repo.CountPersonalUseToday(ctx, adminUsername, boxType)
+		if e != nil {
+			used = 0
+		}
+		rem := personalUseDailyLimit - int(used)
+		if rem < 0 {
+			rem = 0
+		}
+		remainingByType[boxType] = rem
+		return rem
+	}
+
+	result := make([]models.PersonalUseBox, 0, len(boxes))
+	for i := range boxes {
+		b := boxes[i]
+		boxType := boxTypeOf(b.ServiceType)
+		item := models.PersonalUseBox{
+			ID:          b.ID,
+			Number:      b.Number,
+			ServiceType: b.ServiceType,
+			BoxType:     boxType,
+			Status:      b.Status,
+		}
+		if b.Status == models.StatusFree {
+			rem := remainingFor(boxType)
+			item.Remaining = &rem
+		}
+		result = append(result, item)
+	}
+
+	// Активные личные включения (для таймеров на фронте).
+	active := make([]models.PersonalUseBox, 0)
+	if openActions, err := s.repo.ListOpenPersonalUse(ctx); err == nil {
+		for i := range openActions {
+			a := openActions[i]
+			username := a.AdminUsername
+			actionID := a.ID
+			item := models.PersonalUseBox{
+				Number:        a.BoxNumber,
+				BoxType:       a.BoxType,
+				Status:        models.StatusMaintenance,
+				ExpiresAt:     a.ExpiresAt,
+				ActionID:      &actionID,
+				AdminUsername: &username,
+			}
+			if a.BoxID != nil {
+				item.ID = *a.BoxID
+			}
+			active = append(active, item)
+		}
+	}
+
+	return &models.PersonalUseAvailabilityResponse{Boxes: result, Active: active}, nil
 }
 
 // CleanerListWashBoxes получает список боксов для уборщика

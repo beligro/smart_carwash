@@ -73,6 +73,19 @@ import (
 	"gorm.io/gorm"
 )
 
+// personalUseNotifierAdapter связывает washbox-нотифаер личного включения
+// с рассылкой maintenance-сервиса (телеграм-получателям).
+type personalUseNotifierAdapter struct {
+	broadcast func(text string)
+}
+
+// Notify рассылает текст уведомления получателям сервисных нарядов.
+func (a personalUseNotifierAdapter) Notify(text string) {
+	if a.broadcast != nil {
+		a.broadcast(text)
+	}
+}
+
 func main() {
 	// Инициализируем генератор случайных чисел
 	rand.Seed(time.Now().UnixNano())
@@ -200,6 +213,9 @@ func main() {
 	// Переназначение сессии кассиром создаёт сервисный наряд для старого бокса.
 	sessionSvc.SetMaintenanceService(maintenanceSvc)
 
+	// Нотифаер личного включения боксов («Моя мойка») шлёт push через maintenance-рассылку.
+	washboxSvc.SetPersonalUseNotifier(personalUseNotifierAdapter{broadcast: maintenanceSvc.Broadcast})
+
 	// Устанавливаем вебхук для бота
 	if tgBot != nil {
 		if err := tgBot.SetWebhook(); err != nil {
@@ -269,6 +285,7 @@ func main() {
 		// Регистрируем маршруты для каждого домена
 		userHandler.RegisterRoutes(api)
 		washboxHandler.RegisterRoutes(api, authHandler.GetCleanerMiddleware(), authHandler.GetAdminMiddleware())
+		washboxHandler.RegisterPersonalWashRoutes(api, authHandler.RequireSection("my-wash"))
 		maintenanceHandler.RegisterRoutes(api, middleware.CashierMiddleware(authSvc), authHandler.GetAdminMiddleware())
 		sessionHandler.RegisterRoutes(api)
 		queueCashierMiddleware := middleware.CashierMiddleware(authSvc)

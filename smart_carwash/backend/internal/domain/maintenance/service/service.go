@@ -39,6 +39,8 @@ type Service interface {
 	ListRecipients(ctx context.Context) ([]models.NotificationRecipient, error)
 	CreateRecipient(ctx context.Context, req *models.CreateRecipientRequest) (*models.NotificationRecipient, error)
 	SetRecipientActive(ctx context.Context, id uuid.UUID, active bool) error
+
+	Broadcast(text string)
 }
 
 // ServiceImpl реализация Service.
@@ -197,6 +199,25 @@ func (s *ServiceImpl) pushTicketOpened(ticket *models.ServiceTicket) {
 	recipients, err := s.repo.ActiveRecipients(ctx, "service_ticket")
 	if err != nil {
 		logger.Printf("Ошибка получения получателей уведомлений: %v", err)
+		return
+	}
+	for _, r := range recipients {
+		if err := s.notifier.SendMaintenanceAlert(r.ChatID, text); err != nil {
+			logger.Printf("Ошибка отправки push получателю %s (%d): %v", r.Name, r.ChatID, err)
+		}
+	}
+}
+
+// Broadcast рассылает произвольный текст активным получателям (event_type=service_ticket).
+// Используется, напр., для уведомлений о личном включении боксов админом.
+func (s *ServiceImpl) Broadcast(text string) {
+	if s.notifier == nil {
+		return
+	}
+	ctx := context.Background()
+	recipients, err := s.repo.ActiveRecipients(ctx, "service_ticket")
+	if err != nil {
+		logger.Printf("Ошибка получения получателей уведомлений (broadcast): %v", err)
 		return
 	}
 	for _, r := range recipients {

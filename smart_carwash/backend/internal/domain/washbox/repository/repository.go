@@ -58,6 +58,14 @@ type Repository interface {
 	// Методы с блокировкой для предотвращения дедлоков
 	GetWashBoxByIDForUpdate(ctx context.Context, id uuid.UUID) (*models.WashBox, error)
 	UpdateWashBoxStatusInTransaction(ctx context.Context, id uuid.UUID, status string) error
+
+	// Методы для админского включения коилов (личная мойка/тест)
+	CreateAdminCoilAction(ctx context.Context, action *models.AdminCoilAction) error
+	GetOpenAdminCoilActionByBox(ctx context.Context, boxID uuid.UUID) (*models.AdminCoilAction, error)
+	CloseAdminCoilAction(ctx context.Context, id uuid.UUID, endedReason string) error
+	CountPersonalUseToday(ctx context.Context, adminUsername, boxType string) (int64, error)
+	CountPersonalUseThisMonth(ctx context.Context, adminUsername, boxType string) (int64, error)
+	ListOpenPersonalUse(ctx context.Context) ([]models.AdminCoilAction, error)
 }
 
 // PostgresRepository реализация Repository для PostgreSQL
@@ -558,4 +566,72 @@ func (r *PostgresRepository) GetWashBoxByIDForUpdate(ctx context.Context, id uui
 // Этот метод должен вызываться внутри транзакции
 func (r *PostgresRepository) UpdateWashBoxStatusInTransaction(ctx context.Context, id uuid.UUID, status string) error {
 	return r.db.WithContext(ctx).Model(&models.WashBox{}).Where("id = ?", id).Update("status", status).Error
+}
+
+// CreateAdminCoilAction создаёт запись об админском включении коилов.
+func (r *PostgresRepository) CreateAdminCoilAction(ctx context.Context, action *models.AdminCoilAction) error {
+	return r.db.WithContext(ctx).Create(action).Error
+}
+
+// GetOpenAdminCoilActionByBox возвращает открытое (ended_at IS NULL) действие по боксу.
+func (r *PostgresRepository) GetOpenAdminCoilActionByBox(ctx context.Context, boxID uuid.UUID) (*models.AdminCoilAction, error) {
+	var action models.AdminCoilAction
+	err := r.db.WithContext(ctx).
+		Where("box_id = ? AND ended_at IS NULL", boxID).
+		Order("started_at DESC").
+		First(&action).Error
+	if err != nil {
+		return nil, err
+	}
+	return &action, nil
+}
+
+// CloseAdminCoilAction закрывает действие: ended_at=now, ended_reason=endedReason.
+func (r *PostgresRepository) CloseAdminCoilAction(ctx context.Context, id uuid.UUID, endedReason string) error {
+	return r.db.WithContext(ctx).Model(&models.AdminCoilAction{}).
+		Where("id = ?", id).
+		Updates(map[string]interface{}{
+			"ended_at":     time.Now(),
+			"ended_reason": endedReason,
+		}).Error
+}
+
+// startOfDay возвращает начало текущих суток по времени сервера.
+func startOfDay(now time.Time) time.Time {
+	return time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
+}
+
+// startOfMonth возвращает начало текущего месяца по времени сервера.
+func startOfMonth(now time.Time) time.Time {
+	return time.Date(now.Year(), now.Month(), 1, 0, 0, 0, 0, now.Location())
+}
+
+// CountPersonalUseToday считает личные включения админа по типу бокса за текущие сутки.
+func (r *PostgresRepository) CountPersonalUseToday(ctx context.Context, adminUsername, boxType string) (int64, error) {
+	var cnt int64
+	err := r.db.WithContext(ctx).Model(&models.AdminCoilAction{}).
+		Where("reason = ? AND admin_username = ? AND box_type = ? AND started_at >= ?",
+			models.AdminCoilReasonPersonalWash, adminUsername, boxType, startOfDay(time.Now())).
+		Count(&cnt).Error
+	return cnt, err
+}
+
+// CountPersonalUseThisMonth считает личные включения админа по типу бокса за текущий месяц.
+func (r *PostgresRepository) CountPersonalUseThisMonth(ctx context.Context, adminUsername, boxType string) (int64, error) {
+	var cnt int64
+	err := r.db.WithContext(ctx).Model(&models.AdminCoilAction{}).
+		Where("reason = ? AND admin_username = ? AND box_type = ? AND started_at >= ?",
+			models.AdminCoilReasonPersonalWash, adminUsername, boxType, startOfMonth(time.Now())).
+		Count(&cnt).Error
+	return cnt, err
+}
+
+// ListOpenPersonalUse возвращает все открытые личные включения (ended_at IS NULL).
+func (r *PostgresRepository) ListOpenPersonalUse(ctx context.Context) ([]models.AdminCoilAction, error) {
+	var actions []models.AdminCoilAction
+	err := r.db.WithContext(ctx).
+		Where("reason = ? AND ended_at IS NULL", models.AdminCoilReasonPersonalWash).
+		Order("started_at DESC").
+		Find(&actions).Error
+	return actions, err
 }

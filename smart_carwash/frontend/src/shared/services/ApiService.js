@@ -729,6 +729,26 @@ const ApiService = {
     return response.data;
   },
 
+  // === МОЯ МОЙКА (личное включение боксов админом) ===
+
+  // Список боксов с остатком лимита и активные личные включения
+  getPersonalWashBoxes: async () => {
+    const response = await api.get('/admin/personal-wash/boxes');
+    return response.data;
+  },
+
+  // Личное включение бокса на 15 минут
+  startPersonalWash: async (boxId) => {
+    const response = await api.post('/admin/personal-wash', { box_id: boxId });
+    return response.data;
+  },
+
+  // Досрочно вернуть бокс в работу
+  returnPersonalWash: async (boxId) => {
+    const response = await api.post('/admin/personal-wash/return', { box_id: boxId });
+    return response.data;
+  },
+
   // === СЕРВИСНЫЕ НАРЯДЫ (Фаза 1) ===
 
   // Кассир: симптомы для постановки бокса в сервис (фильтр по номеру бокса)
