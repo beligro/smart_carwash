@@ -1018,7 +1018,7 @@ func main() {
 	// если статус ON или неизвестен — например после перезагрузки контроллера).
 	go func() {
 		time.Sleep(20 * time.Second)
-		ticker := time.NewTicker(45 * time.Second)
+		ticker := time.NewTicker(2 * time.Second)
 		defer ticker.Stop()
 
 		for {

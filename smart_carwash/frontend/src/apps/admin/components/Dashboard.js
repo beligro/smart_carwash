@@ -92,6 +92,34 @@ const Dashboard = () => {
       path: '/admin/washboxes',
       section: 'washboxes'
     },
+    {
+      title: 'ТО аппаратов',
+      description: 'Мнемосхема ТО, моточасы и обслуживание узлов боксов мойки, пылесосов и воздуха.',
+      icon: '🔧',
+      path: '/admin/maintenance',
+      section: 'maintenance'
+    },
+    {
+      title: 'Сервисные наряды',
+      description: 'Открытые и закрытые сервисные наряды: симптомы, выполненные работы, простои.',
+      icon: '🧾',
+      path: '/admin/service-tickets',
+      section: 'service-tickets'
+    },
+    {
+      title: 'Моя мойка',
+      description: 'Личное включение боксов (химия/свет) для мойки своей машины и проверки аппарата.',
+      icon: '🚿',
+      path: '/admin/my-wash',
+      section: 'my-wash'
+    },
+    {
+      title: 'Личные мойки (отчёт)',
+      description: 'Сводка личных моек по администраторам за выбранный период.',
+      icon: '📈',
+      path: '/admin/personal-wash-report',
+      section: 'personal-wash-report'
+    },
     !isLimitedAdmin ? {
       title: 'История боксов',
       description: 'Полная история изменений статусов, света и химии по всем боксам.',
@@ -154,6 +182,13 @@ const Dashboard = () => {
       icon: '⚙️',
       path: '/admin/settings',
       section: 'settings'
+    },
+    {
+      title: 'Modbus мониторинг',
+      description: 'Мониторинг состояния Modbus-устройств и коилов боксов в реальном времени.',
+      icon: '🔌',
+      path: '/admin/modbus-dashboard',
+      section: 'modbus-dashboard'
     }
   ];
 
