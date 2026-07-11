@@ -119,6 +119,29 @@ type AdminPersonalUseResponse struct {
 	Message   string     `json:"message"`
 }
 
+// PersonalWashSummaryRow — строка сводки отчёта по личным мойкам (по сотруднику).
+type PersonalWashSummaryRow struct {
+	AdminUsername string `json:"admin_username"`
+	Count         int    `json:"count"`
+	Minutes       int    `json:"minutes"`
+}
+
+// PersonalWashReportItem — строка детальной истории личных моек.
+type PersonalWashReportItem struct {
+	AdminUsername string    `json:"admin_username"`
+	BoxNumber     int       `json:"box_number"`
+	BoxType       string    `json:"box_type"`
+	BoxTypeLabel  string    `json:"box_type_label"`
+	StartedAt     time.Time `json:"started_at"`
+	Minutes       int       `json:"minutes"`
+}
+
+// PersonalWashReportResponse — отчёт по личным мойкам за период.
+type PersonalWashReportResponse struct {
+	Summary []PersonalWashSummaryRow  `json:"summary"`
+	Items   []PersonalWashReportItem  `json:"items"`
+}
+
 // AdminPersonalUseRequest — запрос на личное включение/возврат бокса.
 type AdminPersonalUseRequest struct {
 	BoxID uuid.UUID `json:"box_id" binding:"required"`

@@ -3,6 +3,7 @@ package handlers
 import (
 	"net/http"
 	"strconv"
+	"time"
 
 	"carwash_backend/internal/domain/washbox/models"
 	"carwash_backend/internal/domain/washbox/service"
@@ -79,6 +80,52 @@ func (h *Handler) RegisterPersonalWashRoutes(router *gin.RouterGroup, sectionMid
 		group.POST("", h.personalWashStart)
 		group.POST("/return", h.personalWashReturn)
 	}
+}
+
+// RegisterPersonalWashReportRoute регистрирует маршрут отчёта по личным мойкам админов.
+// sectionMiddleware — обычно authHandler.RequireSection("personal-wash-report").
+func (h *Handler) RegisterPersonalWashReportRoute(router *gin.RouterGroup, sectionMiddleware gin.HandlerFunc) {
+	group := router.Group("/admin/personal-wash")
+	if sectionMiddleware != nil {
+		group.Use(sectionMiddleware)
+	}
+	{
+		group.GET("/report", h.personalWashReport)
+	}
+}
+
+// personalWashReport возвращает отчёт по личным мойкам за период (query from/to, формат YYYY-MM-DD).
+func (h *Handler) personalWashReport(c *gin.Context) {
+	now := time.Now()
+	loc := now.Location()
+
+	from := time.Date(now.Year(), now.Month(), 1, 0, 0, 0, 0, loc)
+	if fromStr := c.Query("from"); fromStr != "" {
+		parsed, err := time.ParseInLocation("2006-01-02", fromStr, loc)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "некорректный параметр from (ожидается YYYY-MM-DD)"})
+			return
+		}
+		from = parsed
+	}
+
+	to := now
+	if toStr := c.Query("to"); toStr != "" {
+		parsed, err := time.ParseInLocation("2006-01-02", toStr, loc)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "некорректный параметр to (ожидается YYYY-MM-DD)"})
+			return
+		}
+		// Конец дня to включительно.
+		to = parsed.AddDate(0, 0, 1)
+	}
+
+	resp, err := h.service.PersonalWashReport(c.Request.Context(), from, to)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, resp)
 }
 
 // RegisterCoilResetRoute регистрирует маршрут аварийного сброса коилов бокса.

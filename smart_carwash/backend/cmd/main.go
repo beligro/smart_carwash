@@ -288,6 +288,7 @@ func main() {
 		washboxHandler.RegisterPersonalWashRoutes(api, authHandler.RequireSection("my-wash"))
 		washboxHandler.RegisterCoilResetRoute(api, authHandler.RequireSection("maintenance"))
 		washboxHandler.RegisterTestCoilRoute(api, authHandler.RequireSection("service-tickets"))
+		washboxHandler.RegisterPersonalWashReportRoute(api, authHandler.RequireSection("personal-wash-report"))
 		maintenanceHandler.RegisterRoutes(api, middleware.CashierMiddleware(authSvc), authHandler.GetAdminMiddleware())
 		sessionHandler.RegisterRoutes(api)
 		queueCashierMiddleware := middleware.CashierMiddleware(authSvc)

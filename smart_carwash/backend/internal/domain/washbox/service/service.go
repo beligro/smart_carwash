@@ -12,7 +12,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"math"
 	"math/rand"
+	"sort"
 	"time"
 
 	"github.com/google/uuid"
@@ -77,6 +79,7 @@ type Service interface {
 	AdminPersonalUse(ctx context.Context, adminUsername string, boxID uuid.UUID) (*models.AdminPersonalUseResponse, error)
 	AdminReturnBox(ctx context.Context, adminUsername string, boxID uuid.UUID) error
 	PersonalUseAvailability(ctx context.Context, adminUsername string) (*models.PersonalUseAvailabilityResponse, error)
+	PersonalWashReport(ctx context.Context, from, to time.Time) (*models.PersonalWashReportResponse, error)
 	SetPersonalUseNotifier(n PersonalUseNotifier)
 }
 
@@ -864,6 +867,71 @@ func boxTypeLabelRu(boxType string) string {
 	default:
 		return "Мойка"
 	}
+}
+
+// PersonalWashReport формирует отчёт по личным мойкам за период [from, to).
+func (s *ServiceImpl) PersonalWashReport(ctx context.Context, from, to time.Time) (*models.PersonalWashReportResponse, error) {
+	actions, err := s.repo.GetPersonalWashActions(ctx, from, to)
+	if err != nil {
+		return nil, err
+	}
+
+	now := time.Now()
+	items := make([]models.PersonalWashReportItem, 0, len(actions))
+	type agg struct {
+		count   int
+		minutes int
+	}
+	summaryMap := make(map[string]*agg)
+
+	for _, a := range actions {
+		end := now
+		if a.EndedAt != nil {
+			end = *a.EndedAt
+		}
+		dur := end.Sub(a.StartedAt)
+		minutes := int(math.Ceil(dur.Minutes()))
+		if minutes < 1 && dur > 0 {
+			minutes = 1
+		}
+		if minutes < 0 {
+			minutes = 0
+		}
+
+		items = append(items, models.PersonalWashReportItem{
+			AdminUsername: a.AdminUsername,
+			BoxNumber:     a.BoxNumber,
+			BoxType:       a.BoxType,
+			BoxTypeLabel:  boxTypeLabelRu(a.BoxType),
+			StartedAt:     a.StartedAt,
+			Minutes:       minutes,
+		})
+
+		g, ok := summaryMap[a.AdminUsername]
+		if !ok {
+			g = &agg{}
+			summaryMap[a.AdminUsername] = g
+		}
+		g.count++
+		g.minutes += minutes
+	}
+
+	summary := make([]models.PersonalWashSummaryRow, 0, len(summaryMap))
+	for username, g := range summaryMap {
+		summary = append(summary, models.PersonalWashSummaryRow{
+			AdminUsername: username,
+			Count:         g.count,
+			Minutes:       g.minutes,
+		})
+	}
+	sort.Slice(summary, func(i, j int) bool {
+		return summary[i].Count > summary[j].Count
+	})
+
+	return &models.PersonalWashReportResponse{
+		Summary: summary,
+		Items:   items,
+	}, nil
 }
 
 // notifyPersonalUse отправляет push (в фоне) через нотифаер, если он задан.

@@ -19,6 +19,7 @@ const SECTION_OPTIONS = [
   { key: 'settings', label: 'Настройки' },
   { key: 'modbus-dashboard', label: 'Modbus мониторинг' },
   { key: 'my-wash', label: 'Моя мойка' },
+  { key: 'personal-wash-report', label: 'Отчёт: личные мойки' },
 ];
 
 const Container = styled.div`

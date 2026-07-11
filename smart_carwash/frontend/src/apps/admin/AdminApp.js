@@ -19,6 +19,7 @@ import BoxMaintenanceManagement from './components/BoxMaintenanceManagement';
 import ServiceTicketsManagement from './components/ServiceTicketsManagement';
 import AdminManagement from './components/AdminManagement';
 import MyWash from './components/MyWash';
+import PersonalWashReport from './components/PersonalWashReport';
 
 
 const AdminContainer = styled.div`
@@ -303,6 +304,13 @@ const AdminApp = () => {
               </NavLink>
             </NavItem>
           )}
+          {can('personal-wash-report') && (
+            <NavItem>
+              <NavLink to="/admin/personal-wash-report" theme={theme} isActive={location.pathname === '/admin/personal-wash-report'}>
+                Личные мойки (отчёт)
+              </NavLink>
+            </NavItem>
+          )}
           {can('maintenance') && (
             <NavItem>
               <NavLink to="/admin/maintenance" theme={theme} isActive={location.pathname === '/admin/maintenance'}>
@@ -402,6 +410,7 @@ const AdminApp = () => {
           <Route path="/" element={<Dashboard />} />
           <Route path="/washboxes" element={<WashBoxManagement />} />
           <Route path="/my-wash" element={<MyWash />} />
+          <Route path="/personal-wash-report" element={<PersonalWashReport />} />
           <Route path="/maintenance" element={<BoxMaintenanceManagement />} />
           <Route path="/service-tickets" element={<ServiceTicketsManagement />} />
           <Route path="/sessions" element={<SessionManagement />} />
@@ -465,6 +474,18 @@ const AdminApp = () => {
                   onClick={() => setIsMobileMenuOpen(false)}
                 >
                   Моя мойка
+                </MobileNavLink>
+              </MobileNavItem>
+            )}
+            {can('personal-wash-report') && (
+              <MobileNavItem>
+                <MobileNavLink 
+                  to="/admin/personal-wash-report" 
+                  theme={theme} 
+                  isActive={location.pathname === '/admin/personal-wash-report'}
+                  onClick={() => setIsMobileMenuOpen(false)}
+                >
+                  Личные мойки (отчёт)
                 </MobileNavLink>
               </MobileNavItem>
             )}

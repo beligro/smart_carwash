@@ -761,6 +761,15 @@ const ApiService = {
     return response.data;
   },
 
+  // Отчёт по личным мойкам админов за период (from/to в формате YYYY-MM-DD)
+  getPersonalWashReport: async ({ from, to } = {}) => {
+    const params = {};
+    if (from) params.from = from;
+    if (to) params.to = to;
+    const response = await api.get('/admin/personal-wash/report', { params });
+    return response.data;
+  },
+
   // === СЕРВИСНЫЕ НАРЯДЫ (Фаза 1) ===
 
   // Кассир: симптомы для постановки бокса в сервис (фильтр по номеру бокса)

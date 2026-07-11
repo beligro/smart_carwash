@@ -65,6 +65,7 @@ type Repository interface {
 	CloseAdminCoilAction(ctx context.Context, id uuid.UUID, endedReason string) error
 	CountPersonalUseToday(ctx context.Context, adminUsername, boxType string) (int64, error)
 	CountPersonalUseThisMonth(ctx context.Context, adminUsername, boxType string) (int64, error)
+	GetPersonalWashActions(ctx context.Context, from, to time.Time) ([]models.AdminCoilAction, error)
 	ListOpenPersonalUse(ctx context.Context) ([]models.AdminCoilAction, error)
 	GetExpiredTestActions(ctx context.Context) ([]models.AdminCoilAction, error)
 	GetOpenTestActionByBoxCoil(ctx context.Context, boxID uuid.UUID, coil string) (*models.AdminCoilAction, error)
@@ -626,6 +627,16 @@ func (r *PostgresRepository) CountPersonalUseThisMonth(ctx context.Context, admi
 			models.AdminCoilReasonPersonalWash, adminUsername, boxType, startOfMonth(time.Now())).
 		Count(&cnt).Error
 	return cnt, err
+}
+
+// GetPersonalWashActions возвращает личные мойки за период [from, to).
+func (r *PostgresRepository) GetPersonalWashActions(ctx context.Context, from, to time.Time) ([]models.AdminCoilAction, error) {
+	var actions []models.AdminCoilAction
+	err := r.db.WithContext(ctx).
+		Where("reason = ? AND started_at >= ? AND started_at < ?", models.AdminCoilReasonPersonalWash, from, to).
+		Order("started_at DESC").
+		Find(&actions).Error
+	return actions, err
 }
 
 // ListOpenPersonalUse возвращает все открытые личные включения (ended_at IS NULL).
