@@ -46,6 +46,10 @@ type Service interface {
 	CashierStartTimedService(ctx context.Context, req *models.CashierStartTimedServiceRequest) (*models.CashierStartTimedServiceResponse, error)
 	AutoReturnTimedService(ctx context.Context) error
 
+	// Реконсиляция коилов и аварийный сброс бокса
+	ReconcileFreeBoxCoils(ctx context.Context) error
+	AdminResetBoxCoils(ctx context.Context, adminUsername string, boxID uuid.UUID) error
+
 	// Методы для уборщиков
 	CleanerListWashBoxes(ctx context.Context, req *models.CleanerListWashBoxesRequest) (*models.CleanerListWashBoxesResponse, error)
 	CleanerStartCleaning(ctx context.Context, req *models.CleanerStartCleaningRequest, cleanerID uuid.UUID) (*models.CleanerStartCleaningResponse, error)
@@ -627,6 +631,80 @@ func (s *ServiceImpl) AutoReturnTimedService(ctx context.Context) error {
 			}
 		}
 	}
+	return nil
+}
+
+// ReconcileFreeBoxCoils гасит коилы (свет/химию) у всех свободных боксов, если их
+// последний известный статус ON или неизвестен. Самолечащаяся операция: при успешной
+// записи адаптер обновит статус в false (следующий тик пропустит бокс); при недоступности
+// Modbus запись упадёт, статус не обновится и попытка повторится на следующем тике.
+// Свободный бокс = нет активной сессии (сессия держит busy/reserved), поэтому гасить безопасно.
+func (s *ServiceImpl) ReconcileFreeBoxCoils(ctx context.Context) error {
+	boxes, err := s.repo.GetAllWashBoxes(ctx)
+	if err != nil {
+		return err
+	}
+	for i := range boxes {
+		box := boxes[i]
+		if box.Status != models.StatusFree {
+			continue
+		}
+		if s.modbusAdapter == nil {
+			continue
+		}
+
+		light, chem, _ := s.modbusAdapter.GetCoilStatus(ctx, box.ID)
+
+		// Свет: гасим, если регистр задан и статус ON или неизвестен.
+		if box.LightCoilRegister != nil && *box.LightCoilRegister != "" && (light == nil || *light) {
+			if err := s.modbusAdapter.WriteLightCoil(ctx, box.ID, *box.LightCoilRegister, false); err != nil {
+				logger.Printf("Reconcile: ошибка выключения света свободного бокса %d: %v", box.Number, err)
+			} else {
+				logger.Printf("Reconcile: выключен свет свободного бокса %d (был ON/неизвестен)", box.Number)
+			}
+		}
+
+		// Химия: аналогично.
+		if box.ChemistryCoilRegister != nil && *box.ChemistryCoilRegister != "" && (chem == nil || *chem) {
+			if err := s.modbusAdapter.WriteChemistryCoil(ctx, box.ID, *box.ChemistryCoilRegister, false); err != nil {
+				logger.Printf("Reconcile: ошибка выключения химии свободного бокса %d: %v", box.Number, err)
+			} else {
+				logger.Printf("Reconcile: выключена химия свободного бокса %d (была ON/неизвестна)", box.Number)
+			}
+		}
+	}
+	return nil
+}
+
+// AdminResetBoxCoils аварийно гасит коилы (свет/химию) бокса без изменения его статуса.
+// Статус бокса НЕ трогаем, чтобы не вмешиваться во флоу наряда/сессии — гасим только «железо».
+func (s *ServiceImpl) AdminResetBoxCoils(ctx context.Context, adminUsername string, boxID uuid.UUID) error {
+	box, err := s.repo.GetWashBoxByID(ctx, boxID)
+	if err != nil || box == nil {
+		return errors.New("бокс не найден")
+	}
+
+	if s.modbusAdapter != nil {
+		if box.LightCoilRegister != nil && *box.LightCoilRegister != "" {
+			if err := s.modbusAdapter.WriteLightCoil(ctx, box.ID, *box.LightCoilRegister, false); err != nil {
+				logger.Printf("Аварийный сброс: ошибка выключения света бокса %d: %v", box.Number, err)
+			}
+		}
+		if box.ChemistryCoilRegister != nil && *box.ChemistryCoilRegister != "" {
+			if err := s.modbusAdapter.WriteChemistryCoil(ctx, box.ID, *box.ChemistryCoilRegister, false); err != nil {
+				logger.Printf("Аварийный сброс: ошибка выключения химии бокса %d: %v", box.Number, err)
+			}
+		}
+	}
+
+	// Если по боксу есть открытое личное включение — закрываем его (ручной сброс).
+	if action, err := s.repo.GetOpenAdminCoilActionByBox(ctx, box.ID); err == nil && action != nil {
+		if err := s.repo.CloseAdminCoilAction(ctx, action.ID, models.AdminCoilEndedManual); err != nil {
+			logger.Printf("Аварийный сброс: ошибка закрытия личного включения бокса %d: %v", box.Number, err)
+		}
+	}
+
+	s.notifyPersonalUse(fmt.Sprintf("🛑 Аварийный сброс коилов: бокс №%d (%s)", box.Number, adminUsername))
 	return nil
 }
 

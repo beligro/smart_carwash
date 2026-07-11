@@ -286,6 +286,7 @@ func main() {
 		userHandler.RegisterRoutes(api)
 		washboxHandler.RegisterRoutes(api, authHandler.GetCleanerMiddleware(), authHandler.GetAdminMiddleware())
 		washboxHandler.RegisterPersonalWashRoutes(api, authHandler.RequireSection("my-wash"))
+		washboxHandler.RegisterCoilResetRoute(api, authHandler.RequireSection("maintenance"))
 		maintenanceHandler.RegisterRoutes(api, middleware.CashierMiddleware(authSvc), authHandler.GetAdminMiddleware())
 		sessionHandler.RegisterRoutes(api)
 		queueCashierMiddleware := middleware.CashierMiddleware(authSvc)
@@ -343,6 +344,7 @@ func main() {
 				const limitMH = 500
 
 				type boxRow struct {
+					ID              string
 					BoxNumber       int
 					TotalMinutes    int64
 					BaselineMinutes *int64
@@ -356,7 +358,8 @@ func main() {
 				// Все активные боксы; учёт моточасов (box_maintenance) есть только у моечных —
 				// для остальных (воздух/пылесосы) он отсутствует (has_maintenance=false).
 				db.Raw(`
-					SELECT w.number AS box_number,
+					SELECT w.id::text AS id,
+						w.number AS box_number,
 						COALESCE((SELECT SUM(s.rental_time_minutes + s.extension_time_minutes)
 								  FROM sessions s WHERE s.box_id = w.id AND s.status = 'complete'), 0) AS total_minutes,
 						bm.baseline_minutes AS baseline_minutes,
@@ -495,6 +498,7 @@ func main() {
 					}
 
 					row := gin.H{
+						"id":                  r.ID,
 						"box_number":          r.BoxNumber,
 						"box_type":            maintenanceService.BoxType(r.BoxNumber),
 						"has_maintenance":     r.HasMaintenance,
@@ -978,6 +982,29 @@ func main() {
 					defer cancel()
 					if err := washboxSvc.AutoReturnTimedService(ctx2); err != nil {
 						log.WithField("error", err).Error("Ошибка авто-возврата боксов из таймерного сервиса")
+					}
+				}()
+			case <-done:
+				return
+			}
+		}
+	}()
+
+	// Периодическая авто-реконсиляция коилов свободных боксов (самолечение: гасим свет/химию,
+	// если статус ON или неизвестен — например после перезагрузки контроллера).
+	go func() {
+		time.Sleep(20 * time.Second)
+		ticker := time.NewTicker(45 * time.Second)
+		defer ticker.Stop()
+
+		for {
+			select {
+			case <-ticker.C:
+				func() {
+					ctx2, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+					defer cancel()
+					if err := washboxSvc.ReconcileFreeBoxCoils(ctx2); err != nil {
+						log.WithField("error", err).Error("Ошибка авто-реконсиляции коилов свободных боксов")
 					}
 				}()
 			case <-done:

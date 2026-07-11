@@ -158,6 +158,22 @@ func (a *ModbusAdapter) WriteChemistryCoil(ctx context.Context, boxID uuid.UUID,
 	return err
 }
 
+// GetCoilStatus возвращает последний известный статус коилов (света/химии) бокса
+// из таблицы modbus_connection_statuses. Если записи нет — (nil, nil, nil).
+func (a *ModbusAdapter) GetCoilStatus(ctx context.Context, boxID uuid.UUID) (*bool, *bool, error) {
+	status, err := a.repository.GetModbusConnectionStatus(ctx, boxID)
+	if err != nil {
+		if err == gorm.ErrRecordNotFound {
+			return nil, nil, nil
+		}
+		return nil, nil, err
+	}
+	if status == nil {
+		return nil, nil, nil
+	}
+	return status.LightStatus, status.ChemistryStatus, nil
+}
+
 // HandleModbusError обрабатывает ошибку Modbus (только логирует, без продления времени)
 func (a *ModbusAdapter) HandleModbusError(boxID uuid.UUID, operation string, sessionID uuid.UUID, err error) error {
 	logger.Printf("ModbusAdapter error handler - box_id: %s, operation: %s, session_id: %s, error: %v",

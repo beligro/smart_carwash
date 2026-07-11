@@ -81,6 +81,32 @@ func (h *Handler) RegisterPersonalWashRoutes(router *gin.RouterGroup, sectionMid
 	}
 }
 
+// RegisterCoilResetRoute регистрирует маршрут аварийного сброса коилов бокса.
+// sectionMiddleware — обычно authHandler.RequireSection("maintenance") (раздел «ТО аппаратов»).
+func (h *Handler) RegisterCoilResetRoute(router *gin.RouterGroup, sectionMiddleware gin.HandlerFunc) {
+	group := router.Group("/admin/box")
+	if sectionMiddleware != nil {
+		group.Use(sectionMiddleware)
+	}
+	{
+		group.POST("/reset-coils", h.adminResetBoxCoils)
+	}
+}
+
+// adminResetBoxCoils аварийно гасит коилы бокса (свет/химию) без смены статуса.
+func (h *Handler) adminResetBoxCoils(c *gin.Context) {
+	var req models.AdminPersonalUseRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	if err := h.service.AdminResetBoxCoils(c.Request.Context(), usernameFromCtx(c), req.BoxID); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"success": true})
+}
+
 // usernameFromCtx достаёт username актора из gin-контекста (кладётся authMiddleware).
 func usernameFromCtx(c *gin.Context) string {
 	if v, ok := c.Get("username"); ok {

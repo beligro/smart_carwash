@@ -261,6 +261,10 @@ const SmallButton = styled.button`
   &:disabled { opacity: 0.6; cursor: not-allowed; }
 `;
 
+const DangerSmallButton = styled(SmallButton)`
+  background: ${SERVICE_RED};
+`;
+
 const pad2 = (n) => String(n).padStart(2, '0');
 
 const formatDate = (iso) => {
@@ -329,6 +333,9 @@ const BoxMaintenanceManagement = () => {
   const [swapComment, setSwapComment] = useState('');
   const [swapSubmitting, setSwapSubmitting] = useState(false);
   const [swapFeedback, setSwapFeedback] = useState('');
+
+  // Аварийный сброс коилов
+  const [resettingCoils, setResettingCoils] = useState(null);
 
   const isMounted = useRef(true);
 
@@ -429,6 +436,20 @@ const BoxMaintenanceManagement = () => {
       setSwapFeedback('Ошибка: не удалось выполнить ротацию.');
     } finally {
       setSwapSubmitting(false);
+    }
+  };
+
+  const handleResetCoils = async (boxId, boxNumber) => {
+    if (!boxId) return;
+    if (!window.confirm('Выключить коилы бокса аварийно?')) return;
+    setResettingCoils(boxId);
+    try {
+      await ApiService.resetBoxCoils(boxId);
+      await load(true);
+    } catch (e) {
+      setError(`Не удалось аварийно выключить коилы бокса №${boxNumber}.`);
+    } finally {
+      if (isMounted.current) setResettingCoils(null);
     }
   };
 
@@ -620,14 +641,23 @@ const BoxMaintenanceManagement = () => {
                     ) : '—'}
                   </td>
                   <td>
-                    {t && (
-                      <SmallButton
+                    <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                      {t && (
+                        <SmallButton
+                          theme={theme}
+                          onClick={() => setClosingTicket({ id: t.id, box_number: b.box_number, is_breakdown: t.is_breakdown })}
+                        >
+                          Закрыть наряд
+                        </SmallButton>
+                      )}
+                      <DangerSmallButton
                         theme={theme}
-                        onClick={() => setClosingTicket({ id: t.id, box_number: b.box_number, is_breakdown: t.is_breakdown })}
+                        disabled={!b.id || resettingCoils === b.id}
+                        onClick={() => handleResetCoils(b.id, b.box_number)}
                       >
-                        Закрыть наряд
-                      </SmallButton>
-                    )}
+                        {resettingCoils === b.id ? 'Выключение…' : 'Выключить коилы (аварийно)'}
+                      </DangerSmallButton>
+                    </div>
                   </td>
                 </tr>
               );

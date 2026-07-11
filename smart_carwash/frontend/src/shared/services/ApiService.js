@@ -729,6 +729,12 @@ const ApiService = {
     return response.data;
   },
 
+  // Аварийный сброс коилов бокса (гасит свет/химию, статус бокса не меняется)
+  resetBoxCoils: async (boxId) => {
+    const response = await api.post('/admin/box/reset-coils', { box_id: boxId });
+    return response.data;
+  },
+
   // === МОЯ МОЙКА (личное включение боксов админом) ===
 
   // Список боксов с остатком лимита и активные личные включения
