@@ -79,6 +79,7 @@ type AdminCoilAction struct {
 	BoxNumber     int        `json:"box_number" gorm:"not null"`
 	BoxType       string     `json:"box_type" gorm:"type:varchar(20);not null"`
 	Reason        string     `json:"reason" gorm:"type:varchar(20);not null"`
+	Coil          *string    `json:"coil" gorm:"type:varchar(20)"`
 	TicketID      *uuid.UUID `json:"ticket_id" gorm:"type:uuid"`
 	StartedAt     time.Time  `json:"started_at" gorm:"not null;default:now()"`
 	ExpiresAt     *time.Time `json:"expires_at"`
@@ -121,6 +122,14 @@ type AdminPersonalUseResponse struct {
 // AdminPersonalUseRequest — запрос на личное включение/возврат бокса.
 type AdminPersonalUseRequest struct {
 	BoxID uuid.UUID `json:"box_id" binding:"required"`
+}
+
+// AdminTestCoilRequest — запрос на тестовое включение/выключение коила из наряда.
+type AdminTestCoilRequest struct {
+	BoxID    uuid.UUID  `json:"box_id" binding:"required"`
+	Coil     string     `json:"coil" binding:"required"`
+	Value    bool       `json:"value"`
+	TicketID *uuid.UUID `json:"ticket_id"`
 }
 
 // GetQueueStatusResponse представляет ответ на получение статуса очереди и боксов

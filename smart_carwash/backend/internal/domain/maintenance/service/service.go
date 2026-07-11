@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"carwash_backend/internal/domain/maintenance/models"
@@ -344,6 +345,10 @@ func (s *ServiceImpl) pushTicketClosed(ticket *models.ServiceTicket, works []mod
 		text += "Коммент мастера: " + ticket.MasterComment + "\n"
 	}
 
+	if testLine := s.buildTestCoilSummary(ctx, ticket.ID); testLine != "" {
+		text += testLine
+	}
+
 	recipients, err := s.repo.ActiveRecipients(ctx, "service_ticket")
 	if err != nil {
 		logger.Printf("Ошибка получения получателей уведомлений (close): %v", err)
@@ -354,6 +359,64 @@ func (s *ServiceImpl) pushTicketClosed(ticket *models.ServiceTicket, works []mod
 			logger.Printf("Ошибка отправки push (close) получателю %s (%d): %v", r.Name, r.ChatID, err)
 		}
 	}
+}
+
+// buildTestCoilSummary формирует строку-сводку тестовых включений коилов по наряду
+// («Тесты: свет ×N (~M мин), химия ×K (~L мин)») или "" если тестов не было.
+func (s *ServiceImpl) buildTestCoilSummary(ctx context.Context, ticketID uuid.UUID) string {
+	rows, err := s.repo.GetTestCoilActionsByTicket(ctx, ticketID)
+	if err != nil {
+		logger.Printf("Сводка тестов: ошибка получения включений наряда %s: %v", ticketID, err)
+		return ""
+	}
+	if len(rows) == 0 {
+		return ""
+	}
+
+	type agg struct {
+		count int
+		dur   time.Duration
+	}
+	stats := make(map[string]*agg)
+	now := time.Now()
+	for _, r := range rows {
+		end := now
+		if r.EndedAt != nil {
+			end = *r.EndedAt
+		}
+		d := end.Sub(r.StartedAt)
+		if d < 0 {
+			d = 0
+		}
+		a := stats[r.Coil]
+		if a == nil {
+			a = &agg{}
+			stats[r.Coil] = a
+		}
+		a.count++
+		a.dur += d
+	}
+
+	// Минуты: округляем до минут, минимум 1 мин, если суммарно был хоть какой-то интервал.
+	minutesOf := func(d time.Duration) int {
+		m := int((d + 30*time.Second) / time.Minute)
+		if m == 0 && d > 0 {
+			m = 1
+		}
+		return m
+	}
+
+	label := map[string]string{"light": "свет", "chemistry": "химия"}
+	parts := make([]string, 0, 2)
+	for _, coil := range []string{"light", "chemistry"} {
+		if a, ok := stats[coil]; ok {
+			parts = append(parts, fmt.Sprintf("%s ×%d (~%d мин)", label[coil], a.count, minutesOf(a.dur)))
+		}
+	}
+	if len(parts) == 0 {
+		return ""
+	}
+	return "Тесты: " + strings.Join(parts, ", ") + "\n"
 }
 
 // actionLabel — человекочитаемое действие.

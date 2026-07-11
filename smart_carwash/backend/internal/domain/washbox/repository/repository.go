@@ -66,6 +66,8 @@ type Repository interface {
 	CountPersonalUseToday(ctx context.Context, adminUsername, boxType string) (int64, error)
 	CountPersonalUseThisMonth(ctx context.Context, adminUsername, boxType string) (int64, error)
 	ListOpenPersonalUse(ctx context.Context) ([]models.AdminCoilAction, error)
+	GetExpiredTestActions(ctx context.Context) ([]models.AdminCoilAction, error)
+	GetOpenTestActionByBoxCoil(ctx context.Context, boxID uuid.UUID, coil string) (*models.AdminCoilAction, error)
 }
 
 // PostgresRepository реализация Repository для PostgreSQL
@@ -634,4 +636,32 @@ func (r *PostgresRepository) ListOpenPersonalUse(ctx context.Context) ([]models.
 		Order("started_at DESC").
 		Find(&actions).Error
 	return actions, err
+}
+
+// GetExpiredTestActions возвращает открытые тестовые включения, у которых истёк срок (expires_at <= now).
+func (r *PostgresRepository) GetExpiredTestActions(ctx context.Context) ([]models.AdminCoilAction, error) {
+	var actions []models.AdminCoilAction
+	err := r.db.WithContext(ctx).
+		Where("reason = ? AND ended_at IS NULL AND expires_at IS NOT NULL AND expires_at <= ?",
+			models.AdminCoilReasonTest, time.Now()).
+		Order("started_at").
+		Find(&actions).Error
+	return actions, err
+}
+
+// GetOpenTestActionByBoxCoil возвращает открытое тестовое включение по боксу и коилу (или nil).
+func (r *PostgresRepository) GetOpenTestActionByBoxCoil(ctx context.Context, boxID uuid.UUID, coil string) (*models.AdminCoilAction, error) {
+	var action models.AdminCoilAction
+	err := r.db.WithContext(ctx).
+		Where("reason = ? AND box_id = ? AND coil = ? AND ended_at IS NULL",
+			models.AdminCoilReasonTest, boxID, coil).
+		Order("started_at DESC").
+		First(&action).Error
+	if err != nil {
+		if err == gorm.ErrRecordNotFound {
+			return nil, nil
+		}
+		return nil, err
+	}
+	return &action, nil
 }

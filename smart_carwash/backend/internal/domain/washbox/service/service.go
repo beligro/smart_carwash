@@ -50,6 +50,10 @@ type Service interface {
 	ReconcileFreeBoxCoils(ctx context.Context) error
 	AdminResetBoxCoils(ctx context.Context, adminUsername string, boxID uuid.UUID) error
 
+	// Тестовые включения коилов из открытого сервисного наряда
+	AdminTestCoil(ctx context.Context, adminUsername string, boxID uuid.UUID, coil string, value bool, ticketID *uuid.UUID) error
+	AutoOffExpiredTestCoils(ctx context.Context) error
+
 	// Методы для уборщиков
 	CleanerListWashBoxes(ctx context.Context, req *models.CleanerListWashBoxesRequest) (*models.CleanerListWashBoxesResponse, error)
 	CleanerStartCleaning(ctx context.Context, req *models.CleanerStartCleaningRequest, cleanerID uuid.UUID) (*models.CleanerStartCleaningResponse, error)
@@ -705,6 +709,136 @@ func (s *ServiceImpl) AdminResetBoxCoils(ctx context.Context, adminUsername stri
 	}
 
 	s.notifyPersonalUse(fmt.Sprintf("🛑 Аварийный сброс коилов: бокс №%d (%s)", box.Number, adminUsername))
+	return nil
+}
+
+const testCoilMinutes = 2
+
+// Коилы для тестового включения из наряда.
+const (
+	coilLight     = "light"
+	coilChemistry = "chemistry"
+)
+
+// coilRegisterOf возвращает регистр бокса для указанного коила ("light"/"chemistry").
+// Второй результат — ошибка неизвестного коила.
+func coilRegisterOf(box *models.WashBox, coil string) (*string, error) {
+	switch coil {
+	case coilLight:
+		return box.LightCoilRegister, nil
+	case coilChemistry:
+		return box.ChemistryCoilRegister, nil
+	default:
+		return nil, errors.New("неизвестный коил")
+	}
+}
+
+// writeCoil включает/выключает коил бокса через modbus по имени коила.
+func (s *ServiceImpl) writeCoil(ctx context.Context, boxID uuid.UUID, coil, register string, value bool) error {
+	if coil == coilChemistry {
+		return s.modbusAdapter.WriteChemistryCoil(ctx, boxID, register, value)
+	}
+	return s.modbusAdapter.WriteLightCoil(ctx, boxID, register, value)
+}
+
+// AdminTestCoil включает/выключает коил (свет/химию) для теста из открытого сервисного наряда.
+// Доступно только для бокса в статусе maintenance. Push не шлётся — сводка формируется при закрытии наряда.
+func (s *ServiceImpl) AdminTestCoil(ctx context.Context, adminUsername string, boxID uuid.UUID, coil string, value bool, ticketID *uuid.UUID) error {
+	box, err := s.repo.GetWashBoxByID(ctx, boxID)
+	if err != nil || box == nil {
+		return errors.New("бокс не найден")
+	}
+	if box.Status != models.StatusMaintenance {
+		return errors.New("тест доступен только для бокса в сервисе")
+	}
+
+	register, err := coilRegisterOf(box, coil)
+	if err != nil {
+		return err
+	}
+	if register == nil || *register == "" {
+		return errors.New("регистр коила не задан")
+	}
+
+	if value {
+		// ВКЛ: сначала закрываем возможное уже открытое тестовое включение этого box+coil.
+		if existing, e := s.repo.GetOpenTestActionByBoxCoil(ctx, box.ID, coil); e == nil && existing != nil {
+			if err := s.repo.CloseAdminCoilAction(ctx, existing.ID, models.AdminCoilEndedManual); err != nil {
+				logger.Printf("Тест коила: ошибка закрытия предыдущего включения бокса %d (%s): %v", box.Number, coil, err)
+			}
+		}
+		if s.modbusAdapter != nil {
+			if err := s.writeCoil(ctx, box.ID, coil, *register, true); err != nil {
+				logger.WithFields(logrus.Fields{"washbox_id": box.ID, "coil": coil}).WithError(err).Error("не удалось включить коил при тесте")
+			}
+		}
+		now := time.Now()
+		until := now.Add(testCoilMinutes * time.Minute)
+		boxIDVal := box.ID
+		coilVal := coil
+		action := &models.AdminCoilAction{
+			AdminUsername: adminUsername,
+			BoxID:         &boxIDVal,
+			BoxNumber:     box.Number,
+			BoxType:       boxTypeOf(box.ServiceType),
+			Reason:        models.AdminCoilReasonTest,
+			Coil:          &coilVal,
+			TicketID:      ticketID,
+			StartedAt:     now,
+			ExpiresAt:     &until,
+		}
+		if err := s.repo.CreateAdminCoilAction(ctx, action); err != nil {
+			logger.Printf("Тест коила: ошибка записи включения бокса %d (%s): %v", box.Number, coil, err)
+		}
+		return nil
+	}
+
+	// ВЫКЛ: гасим коил и закрываем открытое тестовое включение box+coil.
+	if s.modbusAdapter != nil {
+		if err := s.writeCoil(ctx, box.ID, coil, *register, false); err != nil {
+			logger.WithFields(logrus.Fields{"washbox_id": box.ID, "coil": coil}).WithError(err).Error("не удалось выключить коил при тесте")
+		}
+	}
+	if existing, e := s.repo.GetOpenTestActionByBoxCoil(ctx, box.ID, coil); e == nil && existing != nil {
+		if err := s.repo.CloseAdminCoilAction(ctx, existing.ID, models.AdminCoilEndedManual); err != nil {
+			logger.Printf("Тест коила: ошибка закрытия включения бокса %d (%s): %v", box.Number, coil, err)
+		}
+	}
+	return nil
+}
+
+// AutoOffExpiredTestCoils гасит коилы у просроченных тестовых включений (>2 мин) и закрывает их (auto).
+func (s *ServiceImpl) AutoOffExpiredTestCoils(ctx context.Context) error {
+	actions, err := s.repo.GetExpiredTestActions(ctx)
+	if err != nil {
+		return err
+	}
+	for i := range actions {
+		action := actions[i]
+		if action.BoxID == nil || action.Coil == nil {
+			// Некорректная запись — просто закрываем, чтобы не зацикливаться.
+			if err := s.repo.CloseAdminCoilAction(ctx, action.ID, models.AdminCoilEndedAuto); err != nil {
+				logger.Printf("Авто-выкл теста: ошибка закрытия действия %s: %v", action.ID, err)
+			}
+			continue
+		}
+		box, err := s.repo.GetWashBoxByID(ctx, *action.BoxID)
+		if err != nil || box == nil {
+			logger.Printf("Авто-выкл теста: бокс %s не найден: %v", action.BoxID, err)
+		} else if s.modbusAdapter != nil {
+			register, rerr := coilRegisterOf(box, *action.Coil)
+			if rerr != nil {
+				logger.Printf("Авто-выкл теста: неизвестный коил %q бокса %d", *action.Coil, box.Number)
+			} else if register != nil && *register != "" {
+				if err := s.writeCoil(ctx, box.ID, *action.Coil, *register, false); err != nil {
+					logger.WithFields(logrus.Fields{"washbox_id": box.ID, "coil": *action.Coil}).WithError(err).Error("не удалось выключить коил при авто-выкл теста")
+				}
+			}
+		}
+		if err := s.repo.CloseAdminCoilAction(ctx, action.ID, models.AdminCoilEndedAuto); err != nil {
+			logger.Printf("Авто-выкл теста: ошибка закрытия действия %s: %v", action.ID, err)
+		}
+	}
 	return nil
 }
 

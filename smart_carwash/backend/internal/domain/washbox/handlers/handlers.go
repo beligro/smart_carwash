@@ -93,6 +93,32 @@ func (h *Handler) RegisterCoilResetRoute(router *gin.RouterGroup, sectionMiddlew
 	}
 }
 
+// RegisterTestCoilRoute регистрирует маршрут тестового включения коилов из наряда.
+// sectionMiddleware — обычно authHandler.RequireSection("service-tickets") (раздел «Сервисные наряды»).
+func (h *Handler) RegisterTestCoilRoute(router *gin.RouterGroup, sectionMiddleware gin.HandlerFunc) {
+	group := router.Group("/admin/box")
+	if sectionMiddleware != nil {
+		group.Use(sectionMiddleware)
+	}
+	{
+		group.POST("/test-coil", h.adminTestCoil)
+	}
+}
+
+// adminTestCoil тестово включает/выключает коил (свет/химию) бокса из открытого наряда.
+func (h *Handler) adminTestCoil(c *gin.Context) {
+	var req models.AdminTestCoilRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	if err := h.service.AdminTestCoil(c.Request.Context(), usernameFromCtx(c), req.BoxID, req.Coil, req.Value, req.TicketID); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"success": true})
+}
+
 // adminResetBoxCoils аварийно гасит коилы бокса (свет/химию) без смены статуса.
 func (h *Handler) adminResetBoxCoils(c *gin.Context) {
 	var req models.AdminPersonalUseRequest

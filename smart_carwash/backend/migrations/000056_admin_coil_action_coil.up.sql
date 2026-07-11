@@ -1,0 +1,1 @@
+ALTER TABLE admin_coil_actions ADD COLUMN IF NOT EXISTS coil VARCHAR(20);

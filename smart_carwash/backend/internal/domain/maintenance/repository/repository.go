@@ -36,6 +36,14 @@ type Repository interface {
 	// Вспомогательное
 	GetCashierUsername(ctx context.Context, cashierID uuid.UUID) (string, error)
 	ComputeBoxMotorHours(ctx context.Context, boxNumber int) (int, error)
+	GetTestCoilActionsByTicket(ctx context.Context, ticketID uuid.UUID) ([]TestCoilActionRow, error)
+}
+
+// TestCoilActionRow — строка тестового включения коила по наряду (для сводки при закрытии).
+type TestCoilActionRow struct {
+	Coil      string     `gorm:"column:coil"`
+	StartedAt time.Time  `gorm:"column:started_at"`
+	EndedAt   *time.Time `gorm:"column:ended_at"`
 }
 
 // PostgresRepository реализация Repository на GORM/Postgres.
@@ -346,4 +354,14 @@ func (r *PostgresRepository) ComputeBoxMotorHours(ctx context.Context, boxNumber
 		mh = 0
 	}
 	return int(mh), nil
+}
+
+// GetTestCoilActionsByTicket возвращает тестовые включения коилов по наряду (для сводки при закрытии).
+func (r *PostgresRepository) GetTestCoilActionsByTicket(ctx context.Context, ticketID uuid.UUID) ([]TestCoilActionRow, error) {
+	var rows []TestCoilActionRow
+	err := r.db.WithContext(ctx).
+		Raw(`SELECT coil, started_at, ended_at FROM admin_coil_actions
+			WHERE reason = 'test' AND ticket_id = ? ORDER BY started_at`, ticketID).
+		Scan(&rows).Error
+	return rows, err
 }

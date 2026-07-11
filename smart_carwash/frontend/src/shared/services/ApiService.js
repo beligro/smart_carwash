@@ -735,6 +735,12 @@ const ApiService = {
     return response.data;
   },
 
+  // Тестовое включение/выключение коила (свет/химия) из открытого сервисного наряда
+  testTicketCoil: async ({ box_id, coil, value, ticket_id }) => {
+    const response = await api.post('/admin/box/test-coil', { box_id, coil, value, ticket_id });
+    return response.data;
+  },
+
   // === МОЯ МОЙКА (личное включение боксов админом) ===
 
   // Список боксов с остатком лимита и активные личные включения

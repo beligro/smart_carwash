@@ -287,6 +287,7 @@ func main() {
 		washboxHandler.RegisterRoutes(api, authHandler.GetCleanerMiddleware(), authHandler.GetAdminMiddleware())
 		washboxHandler.RegisterPersonalWashRoutes(api, authHandler.RequireSection("my-wash"))
 		washboxHandler.RegisterCoilResetRoute(api, authHandler.RequireSection("maintenance"))
+		washboxHandler.RegisterTestCoilRoute(api, authHandler.RequireSection("service-tickets"))
 		maintenanceHandler.RegisterRoutes(api, middleware.CashierMiddleware(authSvc), authHandler.GetAdminMiddleware())
 		sessionHandler.RegisterRoutes(api)
 		queueCashierMiddleware := middleware.CashierMiddleware(authSvc)
@@ -982,6 +983,28 @@ func main() {
 					defer cancel()
 					if err := washboxSvc.AutoReturnTimedService(ctx2); err != nil {
 						log.WithField("error", err).Error("Ошибка авто-возврата боксов из таймерного сервиса")
+					}
+				}()
+			case <-done:
+				return
+			}
+		}
+	}()
+
+	// Периодическое авто-выключение просроченных тестовых включений коилов (>2 мин) из нарядов.
+	go func() {
+		time.Sleep(15 * time.Second)
+		ticker := time.NewTicker(20 * time.Second)
+		defer ticker.Stop()
+
+		for {
+			select {
+			case <-ticker.C:
+				func() {
+					ctx2, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+					defer cancel()
+					if err := washboxSvc.AutoOffExpiredTestCoils(ctx2); err != nil {
+						log.WithField("error", err).Error("Ошибка авто-выключения просроченных тестовых включений коилов")
 					}
 				}()
 			case <-done:
