@@ -135,6 +135,69 @@ type ServiceImpl struct {
 	webEmailCodeSender WebEmailCodeSender // опционально
 	invalidTokenCache sync.Map
 	cacheTTL          time.Duration
+	loginNotifier     func(string) // опционально: рассылка в телегу о входах кассиров/админов
+	activeAdminSessions sync.Map   // key: lower(username) -> adminSession; единственная активная сессия админа
+}
+
+// adminSession — последний выданный токен админа и его срок действия.
+type adminSession struct {
+	token     string
+	expiresAt time.Time
+}
+
+// nskLoc — часовой пояс Новосибирска (UTC+7).
+var nskLoc = time.FixedZone("NSK", 7*3600)
+
+// SetLoginNotifier задаёт функцию рассылки уведомлений о входах (обычно maintenance.Broadcast).
+func (s *ServiceImpl) SetLoginNotifier(fn func(string)) {
+	s.loginNotifier = fn
+}
+
+// registerAdminSession сохраняет активный токен админа (вытесняя предыдущий) и возвращает true,
+// если предыдущей активной (не истёкшей) сессии не было — т.е. это «первый»/утренний вход.
+func (s *ServiceImpl) registerAdminSession(username, token string, expiresAt time.Time) bool {
+	key := strings.ToLower(strings.TrimSpace(username))
+	isFirst := true
+	if v, ok := s.activeAdminSessions.Load(key); ok {
+		if e, ok := v.(adminSession); ok && time.Now().Before(e.expiresAt) {
+			isFirst = false
+		}
+	}
+	s.activeAdminSessions.Store(key, adminSession{token: token, expiresAt: expiresAt})
+	return isFirst
+}
+
+// isActiveAdminToken проверяет, что переданный токен — последний выданный для этого админа.
+// Если записи нет (например, после рестарта бэка) или она истекла — не блокируем.
+func (s *ServiceImpl) isActiveAdminToken(username, token string) bool {
+	key := strings.ToLower(strings.TrimSpace(username))
+	v, ok := s.activeAdminSessions.Load(key)
+	if !ok {
+		return true
+	}
+	e, ok := v.(adminSession)
+	if !ok || time.Now().After(e.expiresAt) {
+		return true
+	}
+	return e.token == token
+}
+
+// notifyLogin шлёт уведомление о входе (в фоне, чтобы не задерживать логин).
+func (s *ServiceImpl) notifyLogin(text string) {
+	if s.loginNotifier == nil {
+		return
+	}
+	go s.loginNotifier(text)
+}
+
+// nextNineNSK возвращает ближайшее 09:00 по Новосибирску (02:00 UTC) строго после now.
+func nextNineNSK() time.Time {
+	now := time.Now().UTC()
+	todayExpire := time.Date(now.Year(), now.Month(), now.Day(), 2, 0, 0, 0, time.UTC)
+	if !now.Before(todayExpire) {
+		todayExpire = todayExpire.Add(24 * time.Hour)
+	}
+	return todayExpire
 }
 
 // NewService создает новый экземпляр Service
@@ -162,14 +225,18 @@ func (s *ServiceImpl) LoginAdmin(ctx context.Context, username, password string)
 	role := ""
 	var allowedSections []string
 	adminID := uuid.New() // для конфиг-учёток генерируем случайный ID
+	displayName := username
+	roleLabel := ""
 
 	switch {
 	case username == s.config.AdminUsername && password == s.config.AdminPassword:
 		role = "super_admin"
+		roleLabel = "супер-админ"
 	case s.config.LimitedAdminUsername != "" && s.config.LimitedAdminPassword != "" &&
 		username == s.config.LimitedAdminUsername && password == s.config.LimitedAdminPassword:
 		// Легаси общий limited_admin (оставляем рабочим до финального перехода): без allowed_sections.
 		role = "limited_admin"
+		roleLabel = "общая учётка"
 	default:
 		// Персональная учётка админа из БД
 		admin, err := s.repo.GetAdminByUsername(ctx, username)
@@ -186,6 +253,10 @@ func (s *ServiceImpl) LoginAdmin(ctx context.Context, username, password string)
 			return nil, ErrInvalidCredentials
 		}
 		role = "limited_admin"
+		roleLabel = "личная учётка"
+		if admin.DisplayName != "" {
+			displayName = admin.DisplayName
+		}
 		allowedSections = []string(admin.AllowedSections)
 		adminID = admin.ID
 		now := time.Now()
@@ -201,9 +272,18 @@ func (s *ServiceImpl) LoginAdmin(ctx context.Context, username, password string)
 		AllowedSections: allowedSections,
 	}
 
-	token, expiresAt, err := s.generateToken(claims)
+	// Токен админа истекает в ближайшие 09:00 НСК — чтобы каждый рабочий день заходили заново.
+	token, expiresAt, err := s.generateTokenWithExpiry(claims, nextNineNSK())
 	if err != nil {
 		return nil, err
+	}
+
+	// Единственная активная сессия: новый вход вытесняет предыдущий токен.
+	// Уведомляем только если предыдущей живой сессии не было (утренний/первый вход),
+	// смена устройства в течение дня предыдущий токен гасит, но не уведомляет.
+	if s.registerAdminSession(username, token, expiresAt) {
+		s.notifyLogin(fmt.Sprintf("🔐 Вход администратора: %s (%s) · %s",
+			displayName, roleLabel, time.Now().In(nskLoc).Format("02.01.2006 15:04")))
 	}
 
 	return &models.LoginResponse{
@@ -358,6 +438,9 @@ func (s *ServiceImpl) LoginCashier(ctx context.Context, username, password strin
 		return nil, err
 	}
 
+	s.notifyLogin(fmt.Sprintf("🔑 Кассир авторизовался: %s · %s",
+		cashier.Username, time.Now().In(nskLoc).Format("02.01.2006 15:04")))
+
 	return &models.LoginResponse{
 		Token:     token,
 		ExpiresAt: expiresAt,
@@ -496,6 +579,14 @@ func (s *ServiceImpl) ValidateToken(ctx context.Context, tokenString string) (*m
 			// Сессия не найдена, добавляем в кэш невалидных токенов
 			s.addToInvalidTokenCache(tokenString)
 			return nil, errors.New("сессия не найдена или истекла")
+		}
+	} else {
+		// Админ: допускается только одна активная сессия. Если токен не последний выданный —
+		// значит зашли с другого устройства, этот токен больше не действует.
+		adminUser, _ := claims["username"].(string)
+		if !s.isActiveAdminToken(adminUser, tokenString) {
+			s.addToInvalidTokenCache(tokenString)
+			return nil, errors.New("сессия администратора завершена (вход с другого устройства)")
 		}
 	}
 
@@ -957,11 +1048,13 @@ func (s *ServiceImpl) VerifyTwoFactorCode(ctx context.Context, userID uuid.UUID,
 	return code == "123456", nil
 }
 
-// generateToken генерирует JWT токен
+// generateToken генерирует JWT токен со сроком жизни 24 часа.
 func (s *ServiceImpl) generateToken(claims models.TokenClaims) (string, time.Time, error) {
-	// Устанавливаем время истечения токена (24 часа)
-	expiresAt := time.Now().Add(24 * time.Hour)
+	return s.generateTokenWithExpiry(claims, time.Now().Add(24*time.Hour))
+}
 
+// generateTokenWithExpiry генерирует JWT токен с заданным временем истечения.
+func (s *ServiceImpl) generateTokenWithExpiry(claims models.TokenClaims, expiresAt time.Time) (string, time.Time, error) {
 	// Создаем JWT токен
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
 		"id":               claims.ID.String(),

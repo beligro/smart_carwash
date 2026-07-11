@@ -268,6 +268,10 @@ const AdminApp = () => {
     };
     
     checkAuth();
+    // Периодическая перепроверка: токен админа истекает в 09:00 НСК — при простое
+    // тоже разлогиниваем и уводим на страницу входа, чтобы заходили заново каждый день.
+    const authInterval = setInterval(checkAuth, 60 * 1000);
+    return () => clearInterval(authInterval);
   }, [navigate]);
   
   // Обработчик выхода из системы

@@ -216,6 +216,9 @@ func main() {
 	// Нотифаер личного включения боксов («Моя мойка») шлёт push через maintenance-рассылку.
 	washboxSvc.SetPersonalUseNotifier(personalUseNotifierAdapter{broadcast: maintenanceSvc.Broadcast})
 
+	// Уведомления в телегу о входах кассиров/админов — через ту же maintenance-рассылку.
+	authSvc.SetLoginNotifier(maintenanceSvc.Broadcast)
+
 	// Устанавливаем вебхук для бота
 	if tgBot != nil {
 		if err := tgBot.SetWebhook(); err != nil {
