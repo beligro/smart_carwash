@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import styled from 'styled-components';
-import { Routes, Route, Link, useNavigate, useLocation } from 'react-router-dom';
+import { Routes, Route, Link, Navigate, useNavigate, useLocation } from 'react-router-dom';
 import { getTheme } from '../../shared/styles/theme';
 import AuthService from '../../shared/services/AuthService';
 import CashierManagement from './components/CashierManagement';
@@ -222,6 +222,26 @@ const AdminApp = () => {
   const isLimitedAdmin = role === 'limited_admin';
   const isSuper = role === 'super_admin';
   const can = (section) => AuthService.canAccessSection(section);
+  // Первый доступный раздел — куда отправлять админа без доступа к «Панели управления»
+  const SECTION_PATHS = [
+    ['dashboard', '/admin'],
+    ['sessions', '/admin/sessions'],
+    ['queue', '/admin/queue'],
+    ['maintenance', '/admin/maintenance'],
+    ['service-tickets', '/admin/service-tickets'],
+    ['my-wash', '/admin/my-wash'],
+    ['personal-wash-report', '/admin/personal-wash-report'],
+    ['washboxes', '/admin/washboxes'],
+    ['users', '/admin/users'],
+    ['cashiers', '/admin/cashiers'],
+    ['cleaners', '/admin/cleaners'],
+    ['cleaning-logs', '/admin/cleaning-logs'],
+    ['washbox-change-logs', '/admin/washbox-change-logs'],
+    ['payments', '/admin/payments'],
+    ['settings', '/admin/settings'],
+    ['modbus-dashboard', '/admin/modbus-dashboard'],
+  ];
+  const firstAllowedPath = (SECTION_PATHS.find(([s]) => can(s)) || ['', '/admin'])[1];
   
   useEffect(() => {
     // Проверяем авторизацию при загрузке компонента
@@ -407,23 +427,24 @@ const AdminApp = () => {
       
       <Content>
         <Routes>
-          <Route path="/" element={<Dashboard />} />
-          <Route path="/washboxes" element={<WashBoxManagement />} />
-          <Route path="/my-wash" element={<MyWash />} />
-          <Route path="/personal-wash-report" element={<PersonalWashReport />} />
-          <Route path="/maintenance" element={<BoxMaintenanceManagement />} />
-          <Route path="/service-tickets" element={<ServiceTicketsManagement />} />
-          <Route path="/sessions" element={<SessionManagement />} />
-          <Route path="/queue" element={<QueueStatus />} />
-          <Route path="/users" element={<UserManagement />} />
-          <Route path="/cashiers" element={<CashierManagement />} />
-          <Route path="/cleaners" element={<CleanerManagement />} />
-          <Route path="/cleaning-logs" element={<CleaningLogsManagement />} />
-          {!isLimitedAdmin && <Route path="/washbox-change-logs" element={<WashboxChangeLogs theme={theme} />} />}
-          <Route path="/payments" element={<PaymentManagement />} />
-          <Route path="/settings" element={<SettingsManagement />} />
-          <Route path="/modbus-dashboard" element={<ModbusDashboard />} />
-          <Route path="/admins" element={<AdminManagement />} />
+          <Route path="/" element={can('dashboard') ? <Dashboard /> : <Navigate to={firstAllowedPath} replace />} />
+          {can('washboxes') && <Route path="/washboxes" element={<WashBoxManagement />} />}
+          {can('my-wash') && <Route path="/my-wash" element={<MyWash />} />}
+          {can('personal-wash-report') && <Route path="/personal-wash-report" element={<PersonalWashReport />} />}
+          {can('maintenance') && <Route path="/maintenance" element={<BoxMaintenanceManagement />} />}
+          {can('service-tickets') && <Route path="/service-tickets" element={<ServiceTicketsManagement />} />}
+          {can('sessions') && <Route path="/sessions" element={<SessionManagement />} />}
+          {can('queue') && <Route path="/queue" element={<QueueStatus />} />}
+          {can('users') && <Route path="/users" element={<UserManagement />} />}
+          {can('cashiers') && <Route path="/cashiers" element={<CashierManagement />} />}
+          {can('cleaners') && <Route path="/cleaners" element={<CleanerManagement />} />}
+          {can('cleaning-logs') && <Route path="/cleaning-logs" element={<CleaningLogsManagement />} />}
+          {can('washbox-change-logs') && !isLimitedAdmin && <Route path="/washbox-change-logs" element={<WashboxChangeLogs theme={theme} />} />}
+          {can('payments') && <Route path="/payments" element={<PaymentManagement />} />}
+          {can('settings') && <Route path="/settings" element={<SettingsManagement />} />}
+          {can('modbus-dashboard') && <Route path="/modbus-dashboard" element={<ModbusDashboard />} />}
+          {isSuper && <Route path="/admins" element={<AdminManagement />} />}
+          <Route path="*" element={<Navigate to={firstAllowedPath} replace />} />
         </Routes>
       </Content>
 

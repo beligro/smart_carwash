@@ -2,6 +2,7 @@ import React from 'react';
 import styled from 'styled-components';
 import { Link } from 'react-router-dom';
 import { getTheme } from '../../../shared/styles/theme';
+import AuthService from '../../../shared/services/AuthService';
 
 const Container = styled.div`
   padding: 20px;
@@ -81,66 +82,78 @@ const WelcomeText = styled.p`
 const Dashboard = () => {
   const theme = getTheme('light');
 
+  const isLimitedAdmin = AuthService.getRole() === 'limited_admin';
+
   const sections = [
     {
       title: 'Боксы мойки',
       description: 'Управление боксами мойки: создание, редактирование, удаление и мониторинг статуса боксов.',
       icon: '🚗',
-      path: '/admin/washboxes'
+      path: '/admin/washboxes',
+      section: 'washboxes'
     },
-    !JSON.parse(localStorage.getItem('user') || '{}')?.role || JSON.parse(localStorage.getItem('user') || '{}')?.role !== 'limited_admin' ? {
+    !isLimitedAdmin ? {
       title: 'История боксов',
       description: 'Полная история изменений статусов, света и химии по всем боксам.',
       icon: '🗂️',
-      path: '/admin/washbox-change-logs'
+      path: '/admin/washbox-change-logs',
+      section: 'washbox-change-logs'
     } : null,
     {
       title: 'Сессии мойки',
       description: 'Просмотр и управление сессиями мойки с фильтрацией по статусу, пользователю и дате.',
       icon: '⏱️',
-      path: '/admin/sessions'
+      path: '/admin/sessions',
+      section: 'sessions'
     },
     {
       title: 'Очередь',
       description: 'Мониторинг текущего состояния очереди и просмотр клиентов, ожидающих обслуживания.',
       icon: '📋',
-      path: '/admin/queue'
+      path: '/admin/queue',
+      section: 'queue'
     },
     {
       title: 'Клиенты',
       description: 'Управление клиентами системы: просмотр списка, информации о клиентах.',
       icon: '👥',
-      path: '/admin/users'
+      path: '/admin/users',
+      section: 'users'
     },
     {
       title: 'Управление кассирами',
       description: 'Создание и управление учетными записями кассиров для работы с системой.',
       icon: '👨‍💼',
-      path: '/admin/cashiers'
+      path: '/admin/cashiers',
+      section: 'cashiers'
     },
     {
       title: 'Управление уборщиками',
       description: 'Создание и управление учетными записями уборщиков для обслуживания боксов.',
       icon: '🧹',
-      path: '/admin/cleaners'
+      path: '/admin/cleaners',
+      section: 'cleaners'
     },
     {
       title: 'Логи уборки',
       description: 'Просмотр и анализ логов уборки боксов с фильтрацией по уборщику, боксу и времени.',
       icon: '📊',
-      path: '/admin/cleaning-logs'
+      path: '/admin/cleaning-logs',
+      section: 'cleaning-logs'
     },
     {
       title: 'Платежи',
       description: 'Управление платежами и возвратами: просмотр, фильтрация и обработка платежей.',
       icon: '💳',
-      path: '/admin/payments'
+      path: '/admin/payments',
+      section: 'payments'
     },
     {
       title: 'Настройки',
       description: 'Управление ценами и настройками услуг: изменение цен и времени мойки.',
       icon: '⚙️',
-      path: '/admin/settings'
+      path: '/admin/settings',
+      section: 'settings'
     }
   ];
 
@@ -157,7 +170,10 @@ const Dashboard = () => {
       <Title theme={theme}>Разделы управления</Title>
 
       <Grid>
-        {sections.filter(Boolean).map((section, index) => (
+        {sections
+          .filter(Boolean)
+          .filter((s) => AuthService.canAccessSection(s.section))
+          .map((section, index) => (
           <Card key={index} to={section.path} theme={theme}>
             <Icon theme={theme}>{section.icon}</Icon>
             <CardTitle theme={theme}>{section.title}</CardTitle>
