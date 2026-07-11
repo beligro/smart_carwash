@@ -651,6 +651,17 @@ func (s *ServiceImpl) Logout(ctx context.Context, token string) error {
 		return nil // Сессия уже удалена или истекла
 	}
 
+	// Логаут кассира закрывает его активную смену (передача смены: «Выйти» = смена
+	// закрыта, следующий кассир заходит под собой). Закрываем только смену этого кассира.
+	if shift, sErr := s.repo.GetActiveCashierShift(ctx); sErr == nil && shift != nil && shift.CashierID == session.CashierID {
+		now := time.Now()
+		shift.EndedAt = &now
+		shift.IsActive = false
+		if uErr := s.repo.UpdateCashierShift(ctx, shift); uErr != nil {
+			logger.Printf("Logout: не удалось завершить смену кассира %s при выходе: %v", session.CashierID, uErr)
+		}
+	}
+
 	return s.repo.DeleteCashierSession(ctx, session.ID)
 }
 
