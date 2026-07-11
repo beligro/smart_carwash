@@ -126,9 +126,10 @@ const OnButton = styled.button`
 
 const OffButton = styled.button`
   padding: 6px 14px;
-  border: 1px solid #ccc;
+  border: 1px solid #bbb;
   border-radius: 6px;
-  background: #fff;
+  background: #f1f3f4;
+  color: #333;
   cursor: pointer;
   &:disabled { opacity: 0.5; cursor: not-allowed; }
 `;
