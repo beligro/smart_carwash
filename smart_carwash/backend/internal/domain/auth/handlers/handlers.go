@@ -44,8 +44,16 @@ func (h *Handler) RegisterRoutes(router *gin.RouterGroup) {
 			webAuth.POST("/change-password/confirm", h.webChangePasswordConfirm)
 		}
 
-		// Маршруты для управления кассирами (только для администратора)
-		cashierRoutes := authRoutes.Group("/cashiers", h.adminMiddleware())
+		// Маршруты для управления администраторами (только владелец, super_admin)
+		adminRoutes := authRoutes.Group("/admins", h.superAdminMiddleware())
+		{
+			adminRoutes.POST("", h.createAdmin)
+			adminRoutes.GET("", h.getAdmins)
+			adminRoutes.PUT("", h.updateAdmin)
+		}
+
+		// Маршруты для управления кассирами (раздел cashiers)
+		cashierRoutes := authRoutes.Group("/cashiers", h.requireSection("cashiers"))
 		{
 			cashierRoutes.POST("", h.createCashier)
 			cashierRoutes.GET("", h.getCashiers)
@@ -54,8 +62,8 @@ func (h *Handler) RegisterRoutes(router *gin.RouterGroup) {
 			cashierRoutes.DELETE("", h.deleteCashier)
 		}
 
-		// Маршруты для управления уборщиками (только для администратора)
-		cleanerRoutes := authRoutes.Group("/cleaners", h.adminMiddleware())
+		// Маршруты для управления уборщиками (раздел cleaners)
+		cleanerRoutes := authRoutes.Group("/cleaners", h.requireSection("cleaners"))
 		{
 			cleanerRoutes.POST("", h.createCleaner)
 			cleanerRoutes.GET("", h.getCleaners)
@@ -85,7 +93,7 @@ func (h *Handler) loginAdmin(c *gin.Context) {
 	}
 
 	// Авторизуем администратора
-	resp, err := h.service.LoginAdmin(req.Username, req.Password)
+	resp, err := h.service.LoginAdmin(c.Request.Context(), req.Username, req.Password)
 	if err != nil {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": err.Error()})
 		return
@@ -259,6 +267,46 @@ func (h *Handler) deleteCashier(c *gin.Context) {
 }
 
 // authMiddleware middleware для проверки авторизации
+// createAdmin создаёт персональную учётку администратора (только super_admin).
+func (h *Handler) createAdmin(c *gin.Context) {
+	var req models.CreateAdminRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	admin, err := h.service.CreateAdmin(c.Request.Context(), &req)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, admin)
+}
+
+// getAdmins возвращает список админ-учёток (только super_admin).
+func (h *Handler) getAdmins(c *gin.Context) {
+	resp, err := h.service.GetAdmins(c.Request.Context())
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, resp)
+}
+
+// updateAdmin обновляет учётку админа (только super_admin).
+func (h *Handler) updateAdmin(c *gin.Context) {
+	var req models.UpdateAdminRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	admin, err := h.service.UpdateAdmin(c.Request.Context(), &req)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, admin)
+}
+
 func (h *Handler) authMiddleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		// Получаем токен из заголовка
@@ -287,6 +335,7 @@ func (h *Handler) authMiddleware() gin.HandlerFunc {
 		if claims.Role != "" {
 			c.Set("role", claims.Role)
 		}
+		c.Set("allowed_sections", claims.AllowedSections)
 
 		c.Next()
 	}
@@ -310,6 +359,56 @@ func (h *Handler) adminMiddleware() gin.HandlerFunc {
 		}
 
 		c.Next()
+	}
+}
+
+// superAdminMiddleware пропускает только владельца (role=super_admin).
+func (h *Handler) superAdminMiddleware() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		h.adminMiddleware()(c)
+		if c.IsAborted() {
+			return
+		}
+		role, _ := c.Get("role")
+		if role != "super_admin" {
+			c.JSON(http.StatusForbidden, gin.H{"error": "Требуются права владельца (super_admin)"})
+			c.Abort()
+			return
+		}
+		c.Next()
+	}
+}
+
+// requireSection ограничивает доступ по разделу. super_admin — всегда можно;
+// легаси общий limited_admin (без allowed_sections) — тоже можно (совместимость
+// до финального перехода); персональная учётка limited_admin — только если раздел
+// есть в её allowed_sections.
+func (h *Handler) requireSection(section string) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		h.adminMiddleware()(c)
+		if c.IsAborted() {
+			return
+		}
+		role, _ := c.Get("role")
+		if role == "super_admin" {
+			c.Next()
+			return
+		}
+		sectionsVal, _ := c.Get("allowed_sections")
+		sections, _ := sectionsVal.([]string)
+		if len(sections) == 0 {
+			// Легаси общий limited_admin — полный доступ до перехода.
+			c.Next()
+			return
+		}
+		for _, s := range sections {
+			if s == section {
+				c.Next()
+				return
+			}
+		}
+		c.JSON(http.StatusForbidden, gin.H{"error": "Нет доступа к разделу"})
+		c.Abort()
 	}
 }
 

@@ -36,6 +36,12 @@ var (
 
 	// ErrActiveCleanerSessionExists возвращается, когда уже есть активная сессия уборщика
 	ErrActiveCleanerSessionExists = errors.New("уже есть активная сессия уборщика")
+
+	// ErrAdminNotFound возвращается, когда админ не найден
+	ErrAdminNotFound = errors.New("администратор не найден")
+
+	// ErrAdminAlreadyExists возвращается, когда админ с таким именем уже существует
+	ErrAdminAlreadyExists = errors.New("администратор с таким именем уже существует")
 )
 
 // Repository интерфейс для работы с авторизацией в базе данных
@@ -66,6 +72,13 @@ type Repository interface {
 	UpdateCashierShift(ctx context.Context, shift *models.CashierShift) error
 	DeactivateExpiredCashierShifts(ctx context.Context) (int64, error)
 	DeleteCashierShift(ctx context.Context, id uuid.UUID) error
+
+	// Методы для работы с администраторами (персональные учётки)
+	CreateAdmin(ctx context.Context, admin *models.Admin) error
+	GetAdminByID(ctx context.Context, id uuid.UUID) (*models.Admin, error)
+	GetAdminByUsername(ctx context.Context, username string) (*models.Admin, error)
+	UpdateAdmin(ctx context.Context, admin *models.Admin) error
+	ListAdmins(ctx context.Context) ([]models.Admin, error)
 
 	// Методы для работы с уборщиками
 	CreateCleaner(ctx context.Context, cleaner *models.Cleaner) error
@@ -151,6 +164,57 @@ func (r *PostgresRepository) ListCashiers(ctx context.Context) ([]models.Cashier
 	var cashiers []models.Cashier
 	err := r.db.WithContext(ctx).Find(&cashiers).Error
 	return cashiers, err
+}
+
+// CreateAdmin создаёт новую админ-учётку (проверяя уникальность имени без учёта регистра).
+func (r *PostgresRepository) CreateAdmin(ctx context.Context, admin *models.Admin) error {
+	var count int64
+	if err := r.db.WithContext(ctx).Model(&models.Admin{}).
+		Where("LOWER(username) = LOWER(?)", strings.TrimSpace(admin.Username)).Count(&count).Error; err != nil {
+		return err
+	}
+	if count > 0 {
+		return ErrAdminAlreadyExists
+	}
+	return r.db.WithContext(ctx).Create(admin).Error
+}
+
+// GetAdminByID получает админа по ID.
+func (r *PostgresRepository) GetAdminByID(ctx context.Context, id uuid.UUID) (*models.Admin, error) {
+	var admin models.Admin
+	err := r.db.WithContext(ctx).Where("id = ?", id).First(&admin).Error
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, ErrAdminNotFound
+		}
+		return nil, err
+	}
+	return &admin, nil
+}
+
+// GetAdminByUsername получает админа по имени (без учёта регистра и пробелов).
+func (r *PostgresRepository) GetAdminByUsername(ctx context.Context, username string) (*models.Admin, error) {
+	var admin models.Admin
+	err := r.db.WithContext(ctx).Where("LOWER(username) = LOWER(?)", strings.TrimSpace(username)).First(&admin).Error
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, ErrAdminNotFound
+		}
+		return nil, err
+	}
+	return &admin, nil
+}
+
+// UpdateAdmin сохраняет изменения админ-учётки.
+func (r *PostgresRepository) UpdateAdmin(ctx context.Context, admin *models.Admin) error {
+	return r.db.WithContext(ctx).Save(admin).Error
+}
+
+// ListAdmins возвращает все админ-учётки.
+func (r *PostgresRepository) ListAdmins(ctx context.Context) ([]models.Admin, error) {
+	var admins []models.Admin
+	err := r.db.WithContext(ctx).Order("created_at").Find(&admins).Error
+	return admins, err
 }
 
 // CreateCashierSession создает новую сессию кассира

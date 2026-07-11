@@ -54,7 +54,7 @@ const AuthService = {
   loginAdmin: async (username, password) => {
     try {
       const response = await api.post('/auth/admin/login', { username, password });
-      const { token, expires_at, is_admin, role } = response.data;
+      const { token, expires_at, is_admin, role, allowed_sections } = response.data;
       
       // Сохраняем данные в localStorage
       localStorage.setItem('token', token);
@@ -63,6 +63,7 @@ const AuthService = {
       if (role) {
         localStorage.setItem('role', role);
       }
+      localStorage.setItem('allowedSections', JSON.stringify(allowed_sections || []));
       localStorage.setItem('user', JSON.stringify({ username, is_admin, role }));
       
       return response.data;
@@ -110,6 +111,7 @@ const AuthService = {
       localStorage.removeItem('expiresAt');
       localStorage.removeItem('isAdmin');
       localStorage.removeItem('role');
+      localStorage.removeItem('allowedSections');
     }
   },
   
@@ -151,6 +153,40 @@ const AuthService = {
   
   isLimitedAdmin: () => {
     return AuthService.getRole() === 'limited_admin';
+  },
+
+  // Разрешённые разделы (для limited_admin с персональной учёткой)
+  getAllowedSections: () => {
+    try {
+      return JSON.parse(localStorage.getItem('allowedSections') || '[]');
+    } catch (e) {
+      return [];
+    }
+  },
+
+  // Доступен ли раздел текущему админу.
+  // super_admin — всё; legacy limited_admin без allowed_sections — всё (совместимость);
+  // персональный limited_admin — только разделы из списка.
+  canAccessSection: (section) => {
+    const role = AuthService.getRole();
+    if (role === 'super_admin') return true;
+    const sections = AuthService.getAllowedSections();
+    if (!sections || sections.length === 0) return true; // legacy общий limited_admin
+    return sections.includes(section);
+  },
+
+  // Управление администраторами (только super_admin)
+  getAdmins: async () => {
+    const response = await api.get('/auth/admins');
+    return response.data.admins || [];
+  },
+  createAdmin: async ({ username, password, display_name, allowed_sections }) => {
+    const response = await api.post('/auth/admins', { username, password, display_name, allowed_sections });
+    return response.data;
+  },
+  updateAdmin: async (id, data) => {
+    const response = await api.put('/auth/admins', { ...data, id });
+    return response.data;
   },
   
   // Получение правильного пути для перенаправления после авторизации

@@ -55,7 +55,7 @@ var (
 // Service интерфейс для бизнес-логики авторизации
 type Service interface {
 	// Методы для авторизации
-	LoginAdmin(username, password string) (*models.LoginResponse, error)
+	LoginAdmin(ctx context.Context, username, password string) (*models.LoginResponse, error)
 	LoginCashier(ctx context.Context, username, password string) (*models.LoginResponse, error)
 	ListActiveCashierUsernames(ctx context.Context) ([]string, error)
 	LoginCleaner(ctx context.Context, username, password string) (*models.LoginResponse, error)
@@ -69,6 +69,11 @@ type Service interface {
 	DeleteCashier(ctx context.Context, id uuid.UUID) error
 	GetCashiers(ctx context.Context) (*models.GetCashiersResponse, error)
 	GetCashierByID(ctx context.Context, id uuid.UUID) (*models.Cashier, error)
+
+	// Методы для управления администраторами (персональные учётки)
+	CreateAdmin(ctx context.Context, req *models.CreateAdminRequest) (*models.Admin, error)
+	UpdateAdmin(ctx context.Context, req *models.UpdateAdminRequest) (*models.Admin, error)
+	GetAdmins(ctx context.Context) (*models.GetAdminsResponse, error)
 
 	// Методы для управления сменами кассиров
 	StartShift(ctx context.Context, req *models.StartShiftRequest) (*models.StartShiftResponse, error)
@@ -148,40 +153,125 @@ func NewService(repo repository.Repository, config *config.Config, webUserAuth W
 	return service
 }
 
-// LoginAdmin авторизует администратора (поддержка двух ролей: super_admin и limited_admin)
-func (s *ServiceImpl) LoginAdmin(username, password string) (*models.LoginResponse, error) {
-	// Определяем роль по данным конфигурации
+// LoginAdmin авторизует администратора: super_admin и общий limited_admin из конфига,
+// либо персональные учётки из таблицы admins (роль limited_admin + allowed_sections).
+func (s *ServiceImpl) LoginAdmin(ctx context.Context, username, password string) (*models.LoginResponse, error) {
+	username = strings.TrimSpace(username)
+	password = strings.TrimSpace(password)
+
 	role := ""
+	var allowedSections []string
+	adminID := uuid.New() // для конфиг-учёток генерируем случайный ID
+
 	switch {
 	case username == s.config.AdminUsername && password == s.config.AdminPassword:
 		role = "super_admin"
 	case s.config.LimitedAdminUsername != "" && s.config.LimitedAdminPassword != "" &&
 		username == s.config.LimitedAdminUsername && password == s.config.LimitedAdminPassword:
+		// Легаси общий limited_admin (оставляем рабочим до финального перехода): без allowed_sections.
 		role = "limited_admin"
 	default:
-		return nil, ErrInvalidCredentials
+		// Персональная учётка админа из БД
+		admin, err := s.repo.GetAdminByUsername(ctx, username)
+		if err != nil {
+			if errors.Is(err, repository.ErrAdminNotFound) {
+				return nil, ErrInvalidCredentials
+			}
+			return nil, err
+		}
+		if !admin.IsActive {
+			return nil, ErrInvalidCredentials
+		}
+		if err := bcrypt.CompareHashAndPassword([]byte(admin.PasswordHash), []byte(password)); err != nil {
+			return nil, ErrInvalidCredentials
+		}
+		role = "limited_admin"
+		allowedSections = []string(admin.AllowedSections)
+		adminID = admin.ID
+		now := time.Now()
+		admin.LastLogin = &now
+		_ = s.repo.UpdateAdmin(ctx, admin)
 	}
 
-	// Создаем JWT токен для администратора
 	claims := models.TokenClaims{
-		ID:       uuid.New(), // Для администратора генерируем случайный ID
-		Username: username,
-		IsAdmin:  true,
-		Role:     role,
+		ID:              adminID,
+		Username:        username,
+		IsAdmin:         true,
+		Role:            role,
+		AllowedSections: allowedSections,
 	}
 
-	// Генерируем токен
 	token, expiresAt, err := s.generateToken(claims)
 	if err != nil {
 		return nil, err
 	}
 
 	return &models.LoginResponse{
-		Token:     token,
-		ExpiresAt: expiresAt,
-		IsAdmin:   true,
-		Role:      role,
+		Token:           token,
+		ExpiresAt:       expiresAt,
+		IsAdmin:         true,
+		Role:            role,
+		AllowedSections: allowedSections,
 	}, nil
+}
+
+// CreateAdmin создаёт персональную учётку администратора.
+func (s *ServiceImpl) CreateAdmin(ctx context.Context, req *models.CreateAdminRequest) (*models.Admin, error) {
+	hashed, err := bcrypt.GenerateFromPassword([]byte(strings.TrimSpace(req.Password)), bcrypt.DefaultCost)
+	if err != nil {
+		return nil, err
+	}
+	admin := &models.Admin{
+		Username:        strings.TrimSpace(req.Username),
+		PasswordHash:    string(hashed),
+		DisplayName:     req.DisplayName,
+		AllowedSections: models.Sections(req.AllowedSections),
+		IsActive:        true,
+	}
+	if err := s.repo.CreateAdmin(ctx, admin); err != nil {
+		if errors.Is(err, repository.ErrAdminAlreadyExists) {
+			return nil, fmt.Errorf("администратор с именем %s уже существует", req.Username)
+		}
+		return nil, err
+	}
+	return admin, nil
+}
+
+// UpdateAdmin обновляет учётку админа (пароль/имя/разделы/активность).
+func (s *ServiceImpl) UpdateAdmin(ctx context.Context, req *models.UpdateAdminRequest) (*models.Admin, error) {
+	admin, err := s.repo.GetAdminByID(ctx, req.ID)
+	if err != nil {
+		return nil, err
+	}
+	if req.Password != "" {
+		hashed, err := bcrypt.GenerateFromPassword([]byte(strings.TrimSpace(req.Password)), bcrypt.DefaultCost)
+		if err != nil {
+			return nil, err
+		}
+		admin.PasswordHash = string(hashed)
+	}
+	if req.DisplayName != "" {
+		admin.DisplayName = req.DisplayName
+	}
+	if req.AllowedSections != nil {
+		admin.AllowedSections = models.Sections(req.AllowedSections)
+	}
+	if req.IsActive != nil {
+		admin.IsActive = *req.IsActive
+	}
+	if err := s.repo.UpdateAdmin(ctx, admin); err != nil {
+		return nil, err
+	}
+	return admin, nil
+}
+
+// GetAdmins возвращает список персональных админ-учёток.
+func (s *ServiceImpl) GetAdmins(ctx context.Context) (*models.GetAdminsResponse, error) {
+	admins, err := s.repo.ListAdmins(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return &models.GetAdminsResponse{Admins: admins}, nil
 }
 
 // ListActiveCashierUsernames возвращает имена активных кассиров (для выпадающего списка на логине).
@@ -419,11 +509,22 @@ func (s *ServiceImpl) ValidateToken(ctx context.Context, tokenString string) (*m
 	username, _ := claims["username"].(string)
 
 	role, _ := claims["role"].(string)
+
+	var allowedSections []string
+	if raw, ok := claims["allowed_sections"].([]interface{}); ok {
+		for _, v := range raw {
+			if str, ok := v.(string); ok {
+				allowedSections = append(allowedSections, str)
+			}
+		}
+	}
+
 	return &models.TokenClaims{
-		ID:       id,
-		Username: username,
-		IsAdmin:  isAdmin,
-		Role:     role,
+		ID:              id,
+		Username:        username,
+		IsAdmin:         isAdmin,
+		Role:            role,
+		AllowedSections: allowedSections,
 	}, nil
 }
 
@@ -852,11 +953,12 @@ func (s *ServiceImpl) generateToken(claims models.TokenClaims) (string, time.Tim
 
 	// Создаем JWT токен
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
-		"id":       claims.ID.String(),
-		"username": claims.Username,
-		"is_admin": claims.IsAdmin,
-		"role":     claims.Role,
-		"exp":      expiresAt.Unix(),
+		"id":               claims.ID.String(),
+		"username":         claims.Username,
+		"is_admin":         claims.IsAdmin,
+		"role":             claims.Role,
+		"allowed_sections": claims.AllowedSections,
+		"exp":              expiresAt.Unix(),
 	})
 
 	// Подписываем токен

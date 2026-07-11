@@ -17,6 +17,7 @@ import CleaningLogsManagement from './components/CleaningLogsManagement';
 import WashboxChangeLogs from './components/WashboxChangeLogs';
 import BoxMaintenanceManagement from './components/BoxMaintenanceManagement';
 import ServiceTicketsManagement from './components/ServiceTicketsManagement';
+import AdminManagement from './components/AdminManagement';
 
 
 const AdminContainer = styled.div`
@@ -217,6 +218,8 @@ const AdminApp = () => {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const role = AuthService.getRole();
   const isLimitedAdmin = role === 'limited_admin';
+  const isSuper = role === 'super_admin';
+  const can = (section) => AuthService.canAccessSection(section);
   
   useEffect(() => {
     // Проверяем авторизацию при загрузке компонента
@@ -278,78 +281,111 @@ const AdminApp = () => {
       
       <Navigation theme={theme} className="desktop-nav">
         <NavList>
-          <NavItem>
-            <NavLink to="/admin" theme={theme} isActive={location.pathname === '/admin'}>
-              Панель управления
-            </NavLink>
-          </NavItem>
-          <NavItem>
-            <NavLink to="/admin/washboxes" theme={theme} isActive={location.pathname === '/admin/washboxes'}>
-              Боксы мойки
-            </NavLink>
-          </NavItem>
-          <NavItem>
-            <NavLink to="/admin/maintenance" theme={theme} isActive={location.pathname === '/admin/maintenance'}>
-              ТО аппаратов
-            </NavLink>
-          </NavItem>
-          <NavItem>
-            <NavLink to="/admin/service-tickets" theme={theme} isActive={location.pathname === '/admin/service-tickets'}>
-              Сервисные наряды
-            </NavLink>
-          </NavItem>
-          <NavItem>
-            <NavLink to="/admin/sessions" theme={theme} isActive={location.pathname === '/admin/sessions'}>
-              Сессии мойки
-            </NavLink>
-          </NavItem>
-          <NavItem>
-            <NavLink to="/admin/queue" theme={theme} isActive={location.pathname === '/admin/queue'}>
-              Очередь
-            </NavLink>
-          </NavItem>
-          <NavItem>
-            <NavLink to="/admin/users" theme={theme} isActive={location.pathname === '/admin/users'}>
-              Клиенты
-            </NavLink>
-          </NavItem>
-          <NavItem>
-            <NavLink to="/admin/cashiers" theme={theme} isActive={location.pathname === '/admin/cashiers'}>
-              Управление кассирами
-            </NavLink>
-          </NavItem>
-          <NavItem>
-            <NavLink to="/admin/cleaners" theme={theme} isActive={location.pathname === '/admin/cleaners'}>
-              Управление уборщиками
-            </NavLink>
-          </NavItem>
-          <NavItem>
-            <NavLink to="/admin/cleaning-logs" theme={theme} isActive={location.pathname === '/admin/cleaning-logs'}>
-              Логи уборки
-            </NavLink>
-          </NavItem>
-          {!isLimitedAdmin && (
+          {can('dashboard') && (
+            <NavItem>
+              <NavLink to="/admin" theme={theme} isActive={location.pathname === '/admin'}>
+                Панель управления
+              </NavLink>
+            </NavItem>
+          )}
+          {can('washboxes') && (
+            <NavItem>
+              <NavLink to="/admin/washboxes" theme={theme} isActive={location.pathname === '/admin/washboxes'}>
+                Боксы мойки
+              </NavLink>
+            </NavItem>
+          )}
+          {can('maintenance') && (
+            <NavItem>
+              <NavLink to="/admin/maintenance" theme={theme} isActive={location.pathname === '/admin/maintenance'}>
+                ТО аппаратов
+              </NavLink>
+            </NavItem>
+          )}
+          {can('service-tickets') && (
+            <NavItem>
+              <NavLink to="/admin/service-tickets" theme={theme} isActive={location.pathname === '/admin/service-tickets'}>
+                Сервисные наряды
+              </NavLink>
+            </NavItem>
+          )}
+          {can('sessions') && (
+            <NavItem>
+              <NavLink to="/admin/sessions" theme={theme} isActive={location.pathname === '/admin/sessions'}>
+                Сессии мойки
+              </NavLink>
+            </NavItem>
+          )}
+          {can('queue') && (
+            <NavItem>
+              <NavLink to="/admin/queue" theme={theme} isActive={location.pathname === '/admin/queue'}>
+                Очередь
+              </NavLink>
+            </NavItem>
+          )}
+          {can('users') && (
+            <NavItem>
+              <NavLink to="/admin/users" theme={theme} isActive={location.pathname === '/admin/users'}>
+                Клиенты
+              </NavLink>
+            </NavItem>
+          )}
+          {can('cashiers') && (
+            <NavItem>
+              <NavLink to="/admin/cashiers" theme={theme} isActive={location.pathname === '/admin/cashiers'}>
+                Управление кассирами
+              </NavLink>
+            </NavItem>
+          )}
+          {can('cleaners') && (
+            <NavItem>
+              <NavLink to="/admin/cleaners" theme={theme} isActive={location.pathname === '/admin/cleaners'}>
+                Управление уборщиками
+              </NavLink>
+            </NavItem>
+          )}
+          {can('cleaning-logs') && (
+            <NavItem>
+              <NavLink to="/admin/cleaning-logs" theme={theme} isActive={location.pathname === '/admin/cleaning-logs'}>
+                Логи уборки
+              </NavLink>
+            </NavItem>
+          )}
+          {can('washbox-change-logs') && (
             <NavItem>
               <NavLink to="/admin/washbox-change-logs" theme={theme} isActive={location.pathname === '/admin/washbox-change-logs'}>
                 История боксов
               </NavLink>
             </NavItem>
           )}
-          <NavItem>
-            <NavLink to="/admin/payments" theme={theme} isActive={location.pathname === '/admin/payments'}>
-              Платежи
-            </NavLink>
-          </NavItem>
-          <NavItem>
-            <NavLink to="/admin/settings" theme={theme} isActive={location.pathname === '/admin/settings'}>
-              Настройки
-            </NavLink>
-          </NavItem>
-          <NavItem>
-            <NavLink to="/admin/modbus-dashboard" theme={theme} isActive={location.pathname === '/admin/modbus-dashboard'}>
-              Modbus мониторинг
-            </NavLink>
-          </NavItem>
+          {can('payments') && (
+            <NavItem>
+              <NavLink to="/admin/payments" theme={theme} isActive={location.pathname === '/admin/payments'}>
+                Платежи
+              </NavLink>
+            </NavItem>
+          )}
+          {can('settings') && (
+            <NavItem>
+              <NavLink to="/admin/settings" theme={theme} isActive={location.pathname === '/admin/settings'}>
+                Настройки
+              </NavLink>
+            </NavItem>
+          )}
+          {can('modbus-dashboard') && (
+            <NavItem>
+              <NavLink to="/admin/modbus-dashboard" theme={theme} isActive={location.pathname === '/admin/modbus-dashboard'}>
+                Modbus мониторинг
+              </NavLink>
+            </NavItem>
+          )}
+          {isSuper && (
+            <NavItem>
+              <NavLink to="/admin/admins" theme={theme} isActive={location.pathname === '/admin/admins'}>
+                Управление администраторами
+              </NavLink>
+            </NavItem>
+          )}
         </NavList>
       </Navigation>
       
@@ -369,6 +405,7 @@ const AdminApp = () => {
           <Route path="/payments" element={<PaymentManagement />} />
           <Route path="/settings" element={<SettingsManagement />} />
           <Route path="/modbus-dashboard" element={<ModbusDashboard />} />
+          <Route path="/admins" element={<AdminManagement />} />
         </Routes>
       </Content>
 
@@ -386,136 +423,186 @@ const AdminApp = () => {
           </MobileMenuHeader>
           
           <MobileNavList>
-            <MobileNavItem>
-              <MobileNavLink 
-                to="/admin" 
-                theme={theme} 
-                isActive={location.pathname === '/admin'}
-                onClick={() => setIsMobileMenuOpen(false)}
-              >
-                Панель управления
-              </MobileNavLink>
-            </MobileNavItem>
-            <MobileNavItem>
-              <MobileNavLink 
-                to="/admin/washboxes" 
-                theme={theme} 
-                isActive={location.pathname === '/admin/washboxes'}
-                onClick={() => setIsMobileMenuOpen(false)}
-              >
-                Боксы мойки
-              </MobileNavLink>
-            </MobileNavItem>
-            <MobileNavItem>
-              <MobileNavLink 
-                to="/admin/maintenance" 
-                theme={theme} 
-                isActive={location.pathname === '/admin/maintenance'}
-                onClick={() => setIsMobileMenuOpen(false)}
-              >
-                ТО аппаратов
-              </MobileNavLink>
-            </MobileNavItem>
-            <MobileNavItem>
-              <MobileNavLink 
-                to="/admin/service-tickets" 
-                theme={theme} 
-                isActive={location.pathname === '/admin/service-tickets'}
-                onClick={() => setIsMobileMenuOpen(false)}
-              >
-                Сервисные наряды
-              </MobileNavLink>
-            </MobileNavItem>
-            <MobileNavItem>
-              <MobileNavLink 
-                to="/admin/sessions" 
-                theme={theme} 
-                isActive={location.pathname === '/admin/sessions'}
-                onClick={() => setIsMobileMenuOpen(false)}
-              >
-                Сессии мойки
-              </MobileNavLink>
-            </MobileNavItem>
-            <MobileNavItem>
-              <MobileNavLink 
-                to="/admin/queue" 
-                theme={theme} 
-                isActive={location.pathname === '/admin/queue'}
-                onClick={() => setIsMobileMenuOpen(false)}
-              >
-                Очередь
-              </MobileNavLink>
-            </MobileNavItem>
-            <MobileNavItem>
-              <MobileNavLink 
-                to="/admin/users" 
-                theme={theme} 
-                isActive={location.pathname === '/admin/users'}
-                onClick={() => setIsMobileMenuOpen(false)}
-              >
-                Клиенты
-              </MobileNavLink>
-            </MobileNavItem>
-            <MobileNavItem>
-              <MobileNavLink 
-                to="/admin/cashiers" 
-                theme={theme} 
-                isActive={location.pathname === '/admin/cashiers'}
-                onClick={() => setIsMobileMenuOpen(false)}
-              >
-                Управление кассирами
-              </MobileNavLink>
-            </MobileNavItem>
-            <MobileNavItem>
-              <MobileNavLink 
-                to="/admin/cleaners" 
-                theme={theme} 
-                isActive={location.pathname === '/admin/cleaners'}
-                onClick={() => setIsMobileMenuOpen(false)}
-              >
-                Управление уборщиками
-              </MobileNavLink>
-            </MobileNavItem>
-            <MobileNavItem>
-              <MobileNavLink 
-                to="/admin/cleaning-logs" 
-                theme={theme} 
-                isActive={location.pathname === '/admin/cleaning-logs'}
-                onClick={() => setIsMobileMenuOpen(false)}
-              >
-                Логи уборки
-              </MobileNavLink>
-            </MobileNavItem>
-            <MobileNavItem>
-              <MobileNavLink 
-                to="/admin/payments" 
-                theme={theme} 
-                isActive={location.pathname === '/admin/payments'}
-                onClick={() => setIsMobileMenuOpen(false)}
-              >
-                Платежи
-              </MobileNavLink>
-            </MobileNavItem>
-            <MobileNavItem>
-              <MobileNavLink 
-                to="/admin/settings" 
-                theme={theme} 
-                isActive={location.pathname === '/admin/settings'}
-                onClick={() => setIsMobileMenuOpen(false)}
-              >
-                Настройки
-              </MobileNavLink>
-            </MobileNavItem>
-            <MobileNavItem>
-              <MobileNavLink 
-                to="/admin/modbus-dashboard" 
-                theme={theme} 
-                isActive={location.pathname === '/admin/modbus-dashboard'}
-                onClick={() => setIsMobileMenuOpen(false)}
-              >
-                Modbus мониторинг
-              </MobileNavLink>
-            </MobileNavItem>
+            {can('dashboard') && (
+              <MobileNavItem>
+                <MobileNavLink 
+                  to="/admin" 
+                  theme={theme} 
+                  isActive={location.pathname === '/admin'}
+                  onClick={() => setIsMobileMenuOpen(false)}
+                >
+                  Панель управления
+                </MobileNavLink>
+              </MobileNavItem>
+            )}
+            {can('washboxes') && (
+              <MobileNavItem>
+                <MobileNavLink 
+                  to="/admin/washboxes" 
+                  theme={theme} 
+                  isActive={location.pathname === '/admin/washboxes'}
+                  onClick={() => setIsMobileMenuOpen(false)}
+                >
+                  Боксы мойки
+                </MobileNavLink>
+              </MobileNavItem>
+            )}
+            {can('maintenance') && (
+              <MobileNavItem>
+                <MobileNavLink 
+                  to="/admin/maintenance" 
+                  theme={theme} 
+                  isActive={location.pathname === '/admin/maintenance'}
+                  onClick={() => setIsMobileMenuOpen(false)}
+                >
+                  ТО аппаратов
+                </MobileNavLink>
+              </MobileNavItem>
+            )}
+            {can('service-tickets') && (
+              <MobileNavItem>
+                <MobileNavLink 
+                  to="/admin/service-tickets" 
+                  theme={theme} 
+                  isActive={location.pathname === '/admin/service-tickets'}
+                  onClick={() => setIsMobileMenuOpen(false)}
+                >
+                  Сервисные наряды
+                </MobileNavLink>
+              </MobileNavItem>
+            )}
+            {can('sessions') && (
+              <MobileNavItem>
+                <MobileNavLink 
+                  to="/admin/sessions" 
+                  theme={theme} 
+                  isActive={location.pathname === '/admin/sessions'}
+                  onClick={() => setIsMobileMenuOpen(false)}
+                >
+                  Сессии мойки
+                </MobileNavLink>
+              </MobileNavItem>
+            )}
+            {can('queue') && (
+              <MobileNavItem>
+                <MobileNavLink 
+                  to="/admin/queue" 
+                  theme={theme} 
+                  isActive={location.pathname === '/admin/queue'}
+                  onClick={() => setIsMobileMenuOpen(false)}
+                >
+                  Очередь
+                </MobileNavLink>
+              </MobileNavItem>
+            )}
+            {can('users') && (
+              <MobileNavItem>
+                <MobileNavLink 
+                  to="/admin/users" 
+                  theme={theme} 
+                  isActive={location.pathname === '/admin/users'}
+                  onClick={() => setIsMobileMenuOpen(false)}
+                >
+                  Клиенты
+                </MobileNavLink>
+              </MobileNavItem>
+            )}
+            {can('cashiers') && (
+              <MobileNavItem>
+                <MobileNavLink 
+                  to="/admin/cashiers" 
+                  theme={theme} 
+                  isActive={location.pathname === '/admin/cashiers'}
+                  onClick={() => setIsMobileMenuOpen(false)}
+                >
+                  Управление кассирами
+                </MobileNavLink>
+              </MobileNavItem>
+            )}
+            {can('cleaners') && (
+              <MobileNavItem>
+                <MobileNavLink 
+                  to="/admin/cleaners" 
+                  theme={theme} 
+                  isActive={location.pathname === '/admin/cleaners'}
+                  onClick={() => setIsMobileMenuOpen(false)}
+                >
+                  Управление уборщиками
+                </MobileNavLink>
+              </MobileNavItem>
+            )}
+            {can('cleaning-logs') && (
+              <MobileNavItem>
+                <MobileNavLink 
+                  to="/admin/cleaning-logs" 
+                  theme={theme} 
+                  isActive={location.pathname === '/admin/cleaning-logs'}
+                  onClick={() => setIsMobileMenuOpen(false)}
+                >
+                  Логи уборки
+                </MobileNavLink>
+              </MobileNavItem>
+            )}
+            {can('washbox-change-logs') && (
+              <MobileNavItem>
+                <MobileNavLink 
+                  to="/admin/washbox-change-logs" 
+                  theme={theme} 
+                  isActive={location.pathname === '/admin/washbox-change-logs'}
+                  onClick={() => setIsMobileMenuOpen(false)}
+                >
+                  История боксов
+                </MobileNavLink>
+              </MobileNavItem>
+            )}
+            {can('payments') && (
+              <MobileNavItem>
+                <MobileNavLink 
+                  to="/admin/payments" 
+                  theme={theme} 
+                  isActive={location.pathname === '/admin/payments'}
+                  onClick={() => setIsMobileMenuOpen(false)}
+                >
+                  Платежи
+                </MobileNavLink>
+              </MobileNavItem>
+            )}
+            {can('settings') && (
+              <MobileNavItem>
+                <MobileNavLink 
+                  to="/admin/settings" 
+                  theme={theme} 
+                  isActive={location.pathname === '/admin/settings'}
+                  onClick={() => setIsMobileMenuOpen(false)}
+                >
+                  Настройки
+                </MobileNavLink>
+              </MobileNavItem>
+            )}
+            {can('modbus-dashboard') && (
+              <MobileNavItem>
+                <MobileNavLink 
+                  to="/admin/modbus-dashboard" 
+                  theme={theme} 
+                  isActive={location.pathname === '/admin/modbus-dashboard'}
+                  onClick={() => setIsMobileMenuOpen(false)}
+                >
+                  Modbus мониторинг
+                </MobileNavLink>
+              </MobileNavItem>
+            )}
+            {isSuper && (
+              <MobileNavItem>
+                <MobileNavLink 
+                  to="/admin/admins" 
+                  theme={theme} 
+                  isActive={location.pathname === '/admin/admins'}
+                  onClick={() => setIsMobileMenuOpen(false)}
+                >
+                  Управление администраторами
+                </MobileNavLink>
+              </MobileNavItem>
+            )}
           </MobileNavList>
         </MobileMenuContent>
       </MobileMenu>

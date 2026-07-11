@@ -1,11 +1,64 @@
 package models
 
 import (
+	"database/sql/driver"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
 	"gorm.io/gorm"
 )
+
+// Sections — список разрешённых разделов админки. В БД хранится как TEXT
+// (ключи через запятую), в JSON — как массив строк. Драйвер-независимо.
+type Sections []string
+
+// Value сериализует список в строку через запятую для сохранения в БД.
+func (s Sections) Value() (driver.Value, error) {
+	return strings.Join([]string(s), ","), nil
+}
+
+// Scan разбирает строку из БД обратно в список разделов.
+func (s *Sections) Scan(value interface{}) error {
+	if value == nil {
+		*s = Sections{}
+		return nil
+	}
+	var raw string
+	switch v := value.(type) {
+	case string:
+		raw = v
+	case []byte:
+		raw = string(v)
+	default:
+		*s = Sections{}
+		return nil
+	}
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		*s = Sections{}
+		return nil
+	}
+	parts := strings.Split(raw, ",")
+	out := make(Sections, 0, len(parts))
+	for _, p := range parts {
+		if t := strings.TrimSpace(p); t != "" {
+			out = append(out, t)
+		}
+	}
+	*s = out
+	return nil
+}
+
+// Has проверяет наличие раздела в списке.
+func (s Sections) Has(section string) bool {
+	for _, x := range s {
+		if x == section {
+			return true
+		}
+	}
+	return false
+}
 
 // Cashier представляет модель кассира
 type Cashier struct {
@@ -17,6 +70,43 @@ type Cashier struct {
 	CreatedAt    time.Time      `json:"created_at"`
 	UpdatedAt    time.Time      `json:"updated_at"`
 	DeletedAt    gorm.DeletedAt `json:"-" gorm:"index"`
+}
+
+// Admin представляет персональную учётку администратора (Макс/Костя/Стас и др.).
+// Доступ к разделам админки — через AllowedSections.
+type Admin struct {
+	ID              uuid.UUID      `json:"id" gorm:"primaryKey;type:uuid;default:gen_random_uuid()"`
+	Username        string         `json:"username" gorm:"uniqueIndex"`
+	PasswordHash    string         `json:"-" gorm:"column:password_hash"`
+	DisplayName     string         `json:"display_name" gorm:"column:display_name"`
+	AllowedSections Sections       `json:"allowed_sections" gorm:"column:allowed_sections;type:text"`
+	IsActive        bool           `json:"is_active" gorm:"default:true"`
+	LastLogin       *time.Time     `json:"last_login"`
+	CreatedAt       time.Time      `json:"created_at"`
+	UpdatedAt       time.Time      `json:"updated_at"`
+	DeletedAt       gorm.DeletedAt `json:"-" gorm:"index"`
+}
+
+// CreateAdminRequest — запрос на создание админ-учётки.
+type CreateAdminRequest struct {
+	Username        string   `json:"username" binding:"required"`
+	Password        string   `json:"password" binding:"required"`
+	DisplayName     string   `json:"display_name"`
+	AllowedSections []string `json:"allowed_sections"`
+}
+
+// UpdateAdminRequest — обновление админ-учётки (пароль/разделы/активность/имя).
+type UpdateAdminRequest struct {
+	ID              uuid.UUID `json:"id" binding:"required"`
+	Password        string    `json:"password"`
+	DisplayName     string    `json:"display_name"`
+	AllowedSections []string  `json:"allowed_sections"`
+	IsActive        *bool     `json:"is_active"`
+}
+
+// GetAdminsResponse — список админ-учёток.
+type GetAdminsResponse struct {
+	Admins []Admin `json:"admins"`
 }
 
 // CashierSession представляет активную сессию кассира
@@ -61,10 +151,11 @@ type LoginRequest struct {
 
 // LoginResponse представляет ответ на успешную авторизацию
 type LoginResponse struct {
-	Token     string    `json:"token"`
-	ExpiresAt time.Time `json:"expires_at"`
-	IsAdmin   bool      `json:"is_admin"`
-	Role      string    `json:"role,omitempty"`
+	Token           string    `json:"token"`
+	ExpiresAt       time.Time `json:"expires_at"`
+	IsAdmin         bool      `json:"is_admin"`
+	Role            string    `json:"role,omitempty"`
+	AllowedSections []string  `json:"allowed_sections,omitempty"`
 }
 
 // CreateCashierRequest представляет запрос на создание кассира
@@ -147,10 +238,11 @@ type DeleteCleanerRequest struct {
 
 // TokenClaims представляет данные, хранящиеся в JWT токене
 type TokenClaims struct {
-	ID       uuid.UUID `json:"id"`
-	Username string    `json:"username"`
-	IsAdmin  bool      `json:"is_admin"`
-	Role     string    `json:"role,omitempty"` // super_admin, limited_admin, cashier, cleaner, web
+	ID              uuid.UUID `json:"id"`
+	Username        string    `json:"username"`
+	IsAdmin         bool      `json:"is_admin"`
+	Role            string    `json:"role,omitempty"` // super_admin, limited_admin, cashier, cleaner, web
+	AllowedSections []string  `json:"allowed_sections,omitempty"`
 }
 
 // TwoFactorAuthSettings представляет настройки двухфакторной аутентификации
