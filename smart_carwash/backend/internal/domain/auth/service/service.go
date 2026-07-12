@@ -231,7 +231,6 @@ func (s *ServiceImpl) LoginAdmin(ctx context.Context, username, password string)
 	switch {
 	case username == s.config.AdminUsername && password == s.config.AdminPassword:
 		role = "super_admin"
-		roleLabel = "супер-админ"
 	case s.config.LimitedAdminUsername != "" && s.config.LimitedAdminPassword != "" &&
 		username == s.config.LimitedAdminUsername && password == s.config.LimitedAdminPassword:
 		// Легаси общий limited_admin (оставляем рабочим до финального перехода): без allowed_sections.
@@ -282,8 +281,12 @@ func (s *ServiceImpl) LoginAdmin(ctx context.Context, username, password string)
 	// Уведомляем только если предыдущей живой сессии не было (утренний/первый вход),
 	// смена устройства в течение дня предыдущий токен гасит, но не уведомляет.
 	if s.registerAdminSession(username, token, expiresAt) {
-		s.notifyLogin(fmt.Sprintf("🔐 Вход администратора: %s (%s) · %s",
-			displayName, roleLabel, time.Now().In(nskLoc).Format("02.01.2006 15:04")))
+		who := displayName
+		if roleLabel != "" {
+			who = fmt.Sprintf("%s (%s)", displayName, roleLabel)
+		}
+		s.notifyLogin(fmt.Sprintf("🔐 Вход администратора: %s · %s",
+			who, time.Now().In(nskLoc).Format("02.01.2006 15:04")))
 	}
 
 	return &models.LoginResponse{
