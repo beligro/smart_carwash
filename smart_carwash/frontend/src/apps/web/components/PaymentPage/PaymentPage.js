@@ -3,6 +3,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import styles from './PaymentPage.module.css';
 import { Card, Button } from '../../../../shared/components/UI';
 import WebApiService from '../../../../shared/services/WebApiService';
+import { trackSelfServicePayment } from '../../../../shared/utils/umamiTrack';
 
 /**
  * Компонент PaymentPage - страница оплаты услуги
@@ -28,6 +29,27 @@ const PaymentPage = ({ session, payment: initialPayment, onPaymentComplete, onPa
 
   const themeClass = theme === 'dark' ? styles.dark : styles.light;
 
+  const umamiChannel = pathBase.startsWith('/web/guest') ? 'guest' : 'web';
+
+  const reportPaymentConfirmed = (sess, pay, source) => {
+    trackSelfServicePayment({
+      channel: umamiChannel,
+      payment: pay?.status === 'succeeded' ? pay : undefined,
+      session: sess,
+      source,
+      paymentType,
+    });
+  };
+
+  const fetchPaymentById = async (paymentId) => {
+    try {
+      const response = await WebApiService.getPaymentStatus(paymentId);
+      return response.payment;
+    } catch {
+      return null;
+    }
+  };
+
   // Обработка возврата с Tinkoff (веб: редирект на success/fail URL)
   useEffect(() => {
     const returnType = searchParams.get('return');
@@ -38,9 +60,16 @@ const PaymentPage = ({ session, payment: initialPayment, onPaymentComplete, onPa
     setSearchParams({}, { replace: true });
 
     if (session && initialPayment) {
-      // Данные сессии уже в памяти — сразу тот же флоу, что и после загрузки сессии с API
       if (returnType === 'success') {
-        onPaymentComplete?.(session);
+        (async () => {
+          let pay = initialPayment;
+          if (pay?.id) {
+            const checked = await fetchPaymentById(pay.id);
+            if (checked) pay = checked;
+          }
+          reportPaymentConfirmed(session, pay, 'return');
+          onPaymentComplete?.(session);
+        })();
       } else {
         onPaymentFailed?.(session);
       }
@@ -52,12 +81,19 @@ const PaymentPage = ({ session, payment: initialPayment, onPaymentComplete, onPa
       try {
         const response = await WebApiService.getUserSessionForPayment();
         const sess = response?.session;
+        const pay = response?.payment;
         if (!sess) {
           setError('Сессия не найдена');
           setLoading(false);
           return;
         }
         if (returnType === 'success') {
+          let confirmedPay = pay;
+          if (pay?.id && pay.status !== 'succeeded') {
+            const checked = await fetchPaymentById(pay.id);
+            if (checked) confirmedPay = checked;
+          }
+          reportPaymentConfirmed(sess, confirmedPay, 'return');
           onPaymentComplete?.(sess);
         } else {
           onPaymentFailed?.(sess);
@@ -217,6 +253,7 @@ const PaymentPage = ({ session, payment: initialPayment, onPaymentComplete, onPa
               setError('Не удалось получить данные сессии');
               return;
             }
+            reportPaymentConfirmed(sess, updatedPayment, 'poll');
             onPaymentComplete(sess);
             return;
           } else if (updatedPayment.status === 'failed') {
@@ -247,6 +284,7 @@ const PaymentPage = ({ session, payment: initialPayment, onPaymentComplete, onPa
             // Продление успешно применено
             clearInterval(checkInterval);
             setLoading(false);
+            reportPaymentConfirmed(sess, updatedPayment || payment, 'poll');
             onPaymentComplete(sess);
           } else if (checkCount >= maxChecks) {
             // Если прошло много времени без успеха, считаем оплату неудачной
@@ -260,6 +298,7 @@ const PaymentPage = ({ session, payment: initialPayment, onPaymentComplete, onPa
             // Платеж успешен
             clearInterval(checkInterval);
             setLoading(false);
+            reportPaymentConfirmed(sess, updatedPayment || payment, 'poll');
             onPaymentComplete(sess);
           } else if (checkCount >= maxChecks) {
             // Если прошло много времени без успеха, считаем оплату неудачной

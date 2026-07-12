@@ -3,6 +3,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import styles from './PaymentPage.module.css';
 import { Card, Button } from '../../../../shared/components/UI';
 import ApiService from '../../../../shared/services/ApiService';
+import { trackSelfServicePayment } from '../../../../shared/utils/umamiTrack';
 
 /**
  * Компонент PaymentPage - страница оплаты услуги
@@ -26,6 +27,16 @@ const PaymentPage = ({ session, payment: initialPayment, onPaymentComplete, onPa
   const [returnHandled, setReturnHandled] = useState(false);
 
   const themeClass = theme === 'dark' ? styles.dark : styles.light;
+
+  const reportPaymentConfirmed = (sess, pay, source) => {
+    trackSelfServicePayment({
+      channel: 'telegram',
+      payment: pay?.status === 'succeeded' ? pay : undefined,
+      session: sess,
+      source,
+      paymentType,
+    });
+  };
 
   // Обработка возврата с Tinkoff (веб: редирект на success/fail URL)
   useEffect(() => {
@@ -200,6 +211,7 @@ const PaymentPage = ({ session, payment: initialPayment, onPaymentComplete, onPa
             setLoading(false);
             // Получаем обновленную сессию для передачи в onPaymentComplete
             const updatedSession = await ApiService.getUserSessionForPayment(session.user_id);
+            reportPaymentConfirmed(updatedSession.session, updatedPayment, 'poll');
             onPaymentComplete(updatedSession.session);
             return;
           } else if (updatedPayment.status === 'failed') {
@@ -221,6 +233,7 @@ const PaymentPage = ({ session, payment: initialPayment, onPaymentComplete, onPa
             // Продление успешно применено
             clearInterval(checkInterval);
             setLoading(false);
+            reportPaymentConfirmed(updatedSession.session, updatedPayment || payment, 'poll');
             onPaymentComplete(updatedSession.session);
           } else if (checkCount >= maxChecks) {
             // Если прошло много времени без успеха, считаем оплату неудачной
@@ -234,6 +247,7 @@ const PaymentPage = ({ session, payment: initialPayment, onPaymentComplete, onPa
             // Платеж успешен
             clearInterval(checkInterval);
             setLoading(false);
+            reportPaymentConfirmed(updatedSession.session, updatedPayment || payment, 'poll');
             onPaymentComplete(updatedSession.session);
           } else if (checkCount >= maxChecks) {
             // Если прошло много времени без успеха, считаем оплату неудачной

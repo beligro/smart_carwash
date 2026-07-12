@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import GuestApiService, { getGuestToken, setGuestToken } from './GuestApiService';
+import { trackSelfServicePayment } from '../../shared/utils/umamiTrack';
 
 const SERVICES = { wash: 'Мойка', air_dry: 'Обдув', vacuum: 'Пылесос' };
 
@@ -56,6 +57,13 @@ const GuestPaymentPage = ({
         setSession(sess);
         setPayment(data.payment);
         if (returnType === 'success') {
+          trackSelfServicePayment({
+            channel: 'guest',
+            payment: data.payment?.status === 'succeeded' ? data.payment : undefined,
+            session: sess,
+            source: 'return',
+            paymentType,
+          });
           onPaymentComplete?.(sess);
         } else {
           onPaymentFailed?.(sess);

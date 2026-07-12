@@ -1,6 +1,8 @@
 import React, { useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import styled from 'styled-components';
+import WebApiService from '../../shared/services/WebApiService';
+import { trackSelfServicePayment } from '../../shared/utils/umamiTrack';
 
 const Page = styled.div`
   padding: 40px 24px;
@@ -25,9 +27,31 @@ const Title = styled.h2`
 const WebPaymentResultPage = ({ success }) => {
   const navigate = useNavigate();
   useEffect(() => {
+    if (success) {
+      (async () => {
+        try {
+          const response = await WebApiService.getUserSessionForPayment();
+          const sess = response?.session;
+          let pay = response?.payment;
+          if (pay?.id && pay.status !== 'succeeded') {
+            try {
+              const st = await WebApiService.getPaymentStatus(pay.id);
+              if (st?.payment) pay = st.payment;
+            } catch { /* ignore */ }
+          }
+          trackSelfServicePayment({
+            channel: 'web',
+            payment: pay?.status === 'succeeded' ? pay : undefined,
+            session: sess,
+            source: 'bank_return',
+            paymentType: 'main',
+          });
+        } catch { /* ignore */ }
+      })();
+    }
     const t = setTimeout(() => navigate('/web'), 5000);
     return () => clearTimeout(t);
-  }, [navigate]);
+  }, [navigate, success]);
 
   return (
     <Page>
