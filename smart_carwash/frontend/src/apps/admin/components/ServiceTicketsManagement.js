@@ -213,7 +213,7 @@ const TicketsJournal = () => {
   const [statusFilter, setStatusFilter] = useState('');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-  const [closingTicket, setClosingTicket] = useState(null);
+  const [activeTicket, setActiveTicket] = useState(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -275,7 +275,7 @@ const TicketsJournal = () => {
                   )}
                 </div>
                 {isOpen && (
-                  <PrimaryButton onClick={() => setClosingTicket(t)}>Закрыть наряд</PrimaryButton>
+                  <PrimaryButton onClick={() => setActiveTicket(t)}>Открыть наряд</PrimaryButton>
                 )}
               </TicketHead>
             </TicketCard>
@@ -283,11 +283,11 @@ const TicketsJournal = () => {
         })
       )}
 
-      {closingTicket && (
+      {activeTicket && (
         <CloseTicketModal
-          ticket={closingTicket}
-          onClose={() => setClosingTicket(null)}
-          onClosed={() => { setClosingTicket(null); load(); }}
+          ticket={activeTicket}
+          onClose={() => setActiveTicket(null)}
+          onClosed={() => { setActiveTicket(null); load(); }}
         />
       )}
     </div>

@@ -142,12 +142,37 @@ const Countdown = styled.span`
   text-align: right;
 `;
 
+const DetailsBlock = styled.div`
+  border: 1px solid #e0e0e0;
+  border-radius: 8px;
+  padding: 12px 14px;
+  margin-bottom: 16px;
+  background: #fff;
+  font-size: 0.9rem;
+  line-height: 1.7;
+`;
+
+const SectionTitle = styled.div`
+  font-weight: 600;
+  color: #333;
+  margin: 4px 0 8px 0;
+`;
+
 const TEST_SECONDS = 120;
 
 const fmtMMSS = (s) => {
   const m = Math.floor(s / 60);
   const sec = s % 60;
   return `${m}:${String(sec).padStart(2, '0')}`;
+};
+
+const fmtNsk = (iso) => {
+  if (!iso) return '—';
+  try {
+    return new Date(iso).toLocaleString('ru-RU', { timeZone: 'Asia/Novosibirsk' });
+  } catch {
+    return iso;
+  }
 };
 
 // Модалка закрытия наряда: выбор выполненных работ + комментарий мастера.
@@ -247,39 +272,17 @@ const CloseTicketModal = ({ ticket, onClose, onClosed }) => {
   return (
     <Overlay onClick={submitting ? undefined : onClose}>
       <Modal onClick={(e) => e.stopPropagation()}>
-        <Title>Закрыть наряд — бокс #{ticket.box_number}</Title>
+        <Title>Наряд — бокс #{ticket.box_number}</Title>
         {error && <ErrorMessage>{error}</ErrorMessage>}
 
-        <TestBlock>
-          <TestTitle>Проверка коилов (тест)</TestTitle>
-          <Muted style={{ fontSize: '0.82rem' }}>
-            Кратковременное включение для проверки. Авто-выключение через 2 мин.
-          </Muted>
-          {[
-            { coil: 'light', label: 'Бокс (свет/вода)', show: true },
-            { coil: 'chemistry', label: 'Химия', show: showChemistry },
-          ].filter(r => r.show).map(({ coil, label }) => {
-            const secs = coilSeconds[coil];
-            return (
-              <TestRow key={coil}>
-                <TestLabel>{label}</TestLabel>
-                {secs > 0 && <Countdown>{fmtMMSS(secs)}</Countdown>}
-                <OnButton
-                  onClick={() => toggleCoil(coil, true)}
-                  disabled={coilBusy[coil]}
-                >ВКЛ</OnButton>
-                <OffButton
-                  onClick={() => toggleCoil(coil, false)}
-                  disabled={coilBusy[coil]}
-                >ВЫКЛ</OffButton>
-              </TestRow>
-            );
-          })}
-          {coilError && (
-            <div style={{ color: '#dc3545', fontSize: '0.82rem', marginTop: 6 }}>{coilError}</div>
-          )}
-        </TestBlock>
+        <DetailsBlock>
+          <div><Muted>Статус:</Muted> {ticket.status === 'open' ? 'В сервисе' : 'закрыт'}</div>
+          <div><Muted>Поставил:</Muted> {ticket.opened_by || '—'} · {fmtNsk(ticket.opened_at)}</div>
+          <div><Muted>Симптом:</Muted> {ticket.symptom_name ? `${ticket.symptom_group}: ${ticket.symptom_name}` : '—'}</div>
+          {ticket.cashier_comment && <div><Muted>Коммент кассира:</Muted> {ticket.cashier_comment}</div>}
+        </DetailsBlock>
 
+        <SectionTitle>Выполненные работы</SectionTitle>
         {!requiresWorks && (
           <div style={{ color: '#1565c0', fontSize: '0.9rem', marginBottom: 10 }}>
             Не поломка — работы не требуются, наряд не идёт в статистику. Можно просто закрыть.
@@ -317,6 +320,37 @@ const CloseTicketModal = ({ ticket, onClose, onClosed }) => {
             </GroupBlock>
           ))}
         </div>
+
+        <SectionTitle>Проверка включения (тест коилов)</SectionTitle>
+        <TestBlock>
+          <TestTitle>Проверка коилов (тест)</TestTitle>
+          <Muted style={{ fontSize: '0.82rem' }}>
+            Кратковременное включение для проверки. Авто-выключение через 2 мин.
+          </Muted>
+          {[
+            { coil: 'light', label: 'Бокс (свет/вода)', show: true },
+            { coil: 'chemistry', label: 'Химия', show: showChemistry },
+          ].filter(r => r.show).map(({ coil, label }) => {
+            const secs = coilSeconds[coil];
+            return (
+              <TestRow key={coil}>
+                <TestLabel>{label}</TestLabel>
+                {secs > 0 && <Countdown>{fmtMMSS(secs)}</Countdown>}
+                <OnButton
+                  onClick={() => toggleCoil(coil, true)}
+                  disabled={coilBusy[coil]}
+                >ВКЛ</OnButton>
+                <OffButton
+                  onClick={() => toggleCoil(coil, false)}
+                  disabled={coilBusy[coil]}
+                >ВЫКЛ</OffButton>
+              </TestRow>
+            );
+          })}
+          {coilError && (
+            <div style={{ color: '#dc3545', fontSize: '0.82rem', marginTop: 6 }}>{coilError}</div>
+          )}
+        </TestBlock>
 
         <label style={{ fontWeight: 500 }}>Комментарий мастера</label>
         <TextArea
