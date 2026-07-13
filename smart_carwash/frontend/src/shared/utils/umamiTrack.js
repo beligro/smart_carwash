@@ -24,14 +24,17 @@ export function trackSelfServicePayment({
     if (dedupeKey && sessionStorage.getItem(dedupeKey)) return;
     if (dedupeKey) sessionStorage.setItem(dedupeKey, '1');
 
-    const amountRub = payment?.amount ? Math.round(Number(payment.amount) / 100) : undefined;
+    const amountRub = payment?.amount ? Number(payment.amount) / 100 : undefined;
 
     window.umami.track('payment_confirmed', {
       channel,
       source,
       service: session?.service_type || 'unknown',
       type: paymentType,
-      ...(amountRub != null && amountRub > 0 ? { amount: amountRub } : {}),
+      // Umami Revenue tab требует именно revenue + currency (ISO 4217), не amount.
+      ...(amountRub != null && amountRub > 0
+        ? { revenue: amountRub, currency: 'RUB' }
+        : {}),
     });
   } catch {
     // аналитика не должна ломать оплату
