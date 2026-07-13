@@ -28,6 +28,8 @@ const GuestPaymentPage = ({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [returnHandled, setReturnHandled] = useState(false);
+  // Продление оплачено, но бронь бокса истекла → оплата возвращена (бэкенд refundExpiredExtension).
+  const [extensionRefunded, setExtensionRefunded] = useState(false);
 
   // Обработка возврата с Tinkoff (?return=success|fail&gt=<токен>)
   useEffect(() => {
@@ -57,6 +59,23 @@ const GuestPaymentPage = ({
         setSession(sess);
         setPayment(data.payment);
         if (returnType === 'success') {
+          if (paymentType === 'extension') {
+            // Проверяем платёж продления: если бронь истекла и оплата возвращена — показываем сообщение.
+            let refunded = false;
+            try {
+              const pays = await GuestApiService.getSessionPayments(sess.id);
+              const exts = pays?.extension_payments || [];
+              if (exts.length > 0) {
+                const latest = exts.reduce((a, b) =>
+                  new Date(b.created_at) > new Date(a.created_at) ? b : a);
+                refunded = latest?.status === 'refunded';
+              }
+            } catch { /* ignore */ }
+            if (refunded) {
+              setExtensionRefunded(true);
+              return;
+            }
+          }
           onPaymentComplete?.(sess);
           trackSelfServicePayment({
             channel: 'guest',
@@ -88,6 +107,27 @@ const GuestPaymentPage = ({
 
   if (loading) {
     return <div style={{ padding: 40, textAlign: 'center' }}>Загрузка…</div>;
+  }
+
+  if (extensionRefunded) {
+    return (
+      <div style={{ padding: 16, maxWidth: 480, margin: '0 auto' }}>
+        <h2 style={{ marginBottom: 16 }}>Бронь бокса истекла</h2>
+        <div style={cardStyle}>
+          <p style={{ margin: '8px 0', fontSize: 14 }}>
+            К сожалению, время брони вашего бокса истекло, и продление применить не удалось —
+            остаться в этом боксе уже не получится.
+          </p>
+          <p style={{ margin: '8px 0', fontSize: 14 }}>
+            Оплата за продление <b>полностью возвращена</b> на вашу карту. Деньги обычно
+            приходят в течение нескольких минут (зависит от банка).
+          </p>
+        </div>
+        <button onClick={onBack} style={{ ...btnStyle, background: '#1a73e8', color: '#fff', fontSize: 16, marginTop: 12 }}>
+          Понятно
+        </button>
+      </div>
+    );
   }
 
   if (error) {

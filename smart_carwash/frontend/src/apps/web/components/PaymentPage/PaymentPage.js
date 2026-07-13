@@ -26,6 +26,8 @@ const PaymentPage = ({ session, payment: initialPayment, onPaymentComplete, onPa
   const [retryCount, setRetryCount] = useState(0);
   const [payment, setPayment] = useState(initialPayment);
   const [returnHandled, setReturnHandled] = useState(false);
+  // Продление оплачено, но бронь бокса истекла → оплата возвращена (см. бэкенд refundExpiredExtension).
+  const [extensionRefunded, setExtensionRefunded] = useState(false);
 
   const themeClass = theme === 'dark' ? styles.dark : styles.light;
 
@@ -50,6 +52,21 @@ const PaymentPage = ({ session, payment: initialPayment, onPaymentComplete, onPa
     }
   };
 
+  // Последний платёж продления сессии возвращён (refunded)? Бэкенд делает авто-возврат,
+  // если оплата продления пришла после завершения сессии и бронь бокса истекла.
+  const isLatestExtensionRefunded = async (sessionId) => {
+    try {
+      const resp = await WebApiService.getSessionPayments(sessionId);
+      const exts = resp?.extension_payments || [];
+      if (exts.length === 0) return false;
+      const latest = exts.reduce((a, b) =>
+        new Date(b.created_at) > new Date(a.created_at) ? b : a);
+      return latest?.status === 'refunded';
+    } catch {
+      return false;
+    }
+  };
+
   // Обработка возврата с Tinkoff (веб: редирект на success/fail URL)
   useEffect(() => {
     const returnType = searchParams.get('return');
@@ -61,17 +78,34 @@ const PaymentPage = ({ session, payment: initialPayment, onPaymentComplete, onPa
 
     if (session && initialPayment) {
       if (returnType === 'success') {
-        // Навигация на экран мойки — сразу, синхронно (не ждём доп. запрос статуса).
-        onPaymentComplete?.(session);
-        // Уточнение статуса/суммы и трекинг — в фоне, уже после перехода.
-        (async () => {
-          let pay = initialPayment;
-          if (pay?.id) {
-            const checked = await fetchPaymentById(pay.id);
-            if (checked) pay = checked;
-          }
-          reportPaymentConfirmed(session, pay, 'return');
-        })();
+        if (paymentType === 'extension') {
+          // Для продления сначала проверяем платёж: если бронь истекла и оплата
+          // возвращена (refunded) — показываем сообщение, а не переходим на мойку.
+          (async () => {
+            let pay = initialPayment;
+            if (pay?.id) {
+              const checked = await fetchPaymentById(pay.id);
+              if (checked) pay = checked;
+            }
+            if (pay?.status === 'refunded') {
+              setExtensionRefunded(true);
+              return;
+            }
+            onPaymentComplete?.(session);
+            reportPaymentConfirmed(session, pay, 'return');
+          })();
+        } else {
+          // Основной платёж: навигация сразу (не ждём доп. запрос), трекинг в фоне.
+          onPaymentComplete?.(session);
+          (async () => {
+            let pay = initialPayment;
+            if (pay?.id) {
+              const checked = await fetchPaymentById(pay.id);
+              if (checked) pay = checked;
+            }
+            reportPaymentConfirmed(session, pay, 'return');
+          })();
+        }
       } else {
         onPaymentFailed?.(session);
       }
@@ -90,17 +124,22 @@ const PaymentPage = ({ session, payment: initialPayment, onPaymentComplete, onPa
           return;
         }
         if (returnType === 'success') {
-          // Навигация на экран мойки — сразу, как только есть сессия.
-          onPaymentComplete?.(sess);
-          // Уточнение суммы платежа и трекинг — в фоне, не задерживают переход.
-          (async () => {
-            let confirmedPay = pay;
-            if (pay?.id && pay.status !== 'succeeded') {
-              const checked = await fetchPaymentById(pay.id);
-              if (checked) confirmedPay = checked;
-            }
-            reportPaymentConfirmed(sess, confirmedPay, 'return');
-          })();
+          if (paymentType === 'extension' && await isLatestExtensionRefunded(sess.id)) {
+            // Бронь бокса истекла → оплата продления возвращена. Показываем сообщение.
+            setExtensionRefunded(true);
+          } else {
+            // Навигация на экран мойки — сразу, как только есть сессия.
+            onPaymentComplete?.(sess);
+            // Уточнение суммы платежа и трекинг — в фоне, не задерживают переход.
+            (async () => {
+              let confirmedPay = pay;
+              if (pay?.id && pay.status !== 'succeeded') {
+                const checked = await fetchPaymentById(pay.id);
+                if (checked) confirmedPay = checked;
+              }
+              reportPaymentConfirmed(sess, confirmedPay, 'return');
+            })();
+          }
         } else {
           onPaymentFailed?.(sess);
         }
@@ -262,6 +301,12 @@ const PaymentPage = ({ session, payment: initialPayment, onPaymentComplete, onPa
             onPaymentComplete(sess);
             reportPaymentConfirmed(sess, updatedPayment, 'poll');
             return;
+          } else if (updatedPayment.status === 'refunded') {
+            // Продление возвращено (бронь бокса истекла) — показываем сообщение.
+            clearInterval(checkInterval);
+            setLoading(false);
+            setExtensionRefunded(true);
+            return;
           } else if (updatedPayment.status === 'failed') {
             // Платеж неудачен
             clearInterval(checkInterval);
@@ -330,6 +375,33 @@ const PaymentPage = ({ session, payment: initialPayment, onPaymentComplete, onPa
     }, 600000);
   };
 
+
+  if (extensionRefunded) {
+    return (
+      <div className={`${styles.paymentPage} ${themeClass}`}>
+        <Card>
+          <div className={styles.header}>
+            <h2>Бронь бокса истекла</h2>
+          </div>
+          <div className={styles.instructions}>
+            <p>
+              К сожалению, время брони вашего бокса истекло, и продление применить не удалось —
+              остаться в этом боксе уже не получится.
+            </p>
+            <p>
+              Оплата за продление <b>полностью возвращена</b> на вашу карту. Деньги обычно
+              приходят в течение нескольких минут (зависит от банка).
+            </p>
+          </div>
+          <div className={styles.actions}>
+            <Button onClick={handleBackToSession} className={styles.payButton}>
+              Понятно
+            </Button>
+          </div>
+        </Card>
+      </div>
+    );
+  }
 
   if (!session || !payment) {
     return (

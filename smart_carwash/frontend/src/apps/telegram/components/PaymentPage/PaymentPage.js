@@ -25,8 +25,24 @@ const PaymentPage = ({ session, payment: initialPayment, onPaymentComplete, onPa
   const [retryCount, setRetryCount] = useState(0);
   const [payment, setPayment] = useState(initialPayment);
   const [returnHandled, setReturnHandled] = useState(false);
+  // Продление оплачено, но бронь бокса истекла → оплата возвращена (бэкенд refundExpiredExtension).
+  const [extensionRefunded, setExtensionRefunded] = useState(false);
 
   const themeClass = theme === 'dark' ? styles.dark : styles.light;
+
+  // Последний платёж продления возвращён (refunded)?
+  const isLatestExtensionRefunded = async (sessionId) => {
+    try {
+      const resp = await ApiService.getSessionPayments(sessionId);
+      const exts = resp?.extension_payments || [];
+      if (exts.length === 0) return false;
+      const latest = exts.reduce((a, b) =>
+        new Date(b.created_at) > new Date(a.created_at) ? b : a);
+      return latest?.status === 'refunded';
+    } catch {
+      return false;
+    }
+  };
 
   const reportPaymentConfirmed = (sess, pay, source) => {
     trackSelfServicePayment({
@@ -50,7 +66,17 @@ const PaymentPage = ({ session, payment: initialPayment, onPaymentComplete, onPa
     if (session && initialPayment) {
       // Данные сессии уже в памяти (типично для Telegram Mini App) — не дёргаем API, сразу флоу как после fetch
       if (returnType === 'success') {
-        onPaymentComplete?.(session);
+        if (paymentType === 'extension') {
+          (async () => {
+            if (await isLatestExtensionRefunded(session.id)) {
+              setExtensionRefunded(true);
+            } else {
+              onPaymentComplete?.(session);
+            }
+          })();
+        } else {
+          onPaymentComplete?.(session);
+        }
       } else {
         onPaymentFailed?.(session);
       }
@@ -68,7 +94,11 @@ const PaymentPage = ({ session, payment: initialPayment, onPaymentComplete, onPa
           return;
         }
         if (returnType === 'success') {
-          onPaymentComplete?.(sess);
+          if (paymentType === 'extension' && await isLatestExtensionRefunded(sess.id)) {
+            setExtensionRefunded(true);
+          } else {
+            onPaymentComplete?.(sess);
+          }
         } else {
           onPaymentFailed?.(sess);
         }
@@ -214,6 +244,12 @@ const PaymentPage = ({ session, payment: initialPayment, onPaymentComplete, onPa
             onPaymentComplete(updatedSession.session);
             reportPaymentConfirmed(updatedSession.session, updatedPayment, 'poll');
             return;
+          } else if (updatedPayment.status === 'refunded') {
+            // Продление возвращено (бронь бокса истекла) — показываем сообщение.
+            clearInterval(checkInterval);
+            setLoading(false);
+            setExtensionRefunded(true);
+            return;
           } else if (updatedPayment.status === 'failed') {
             // Платеж неудачен
             clearInterval(checkInterval);
@@ -273,6 +309,33 @@ const PaymentPage = ({ session, payment: initialPayment, onPaymentComplete, onPa
     }, 600000);
   };
 
+
+  if (extensionRefunded) {
+    return (
+      <div className={`${styles.paymentPage} ${themeClass}`}>
+        <Card>
+          <div className={styles.header}>
+            <h2>Бронь бокса истекла</h2>
+          </div>
+          <div className={styles.instructions}>
+            <p>
+              К сожалению, время брони вашего бокса истекло, и продление применить не удалось —
+              остаться в этом боксе уже не получится.
+            </p>
+            <p>
+              Оплата за продление <b>полностью возвращена</b> на вашу карту. Деньги обычно
+              приходят в течение нескольких минут (зависит от банка).
+            </p>
+          </div>
+          <div className={styles.actions}>
+            <Button onClick={handleBackToSession} className={styles.payButton}>
+              Понятно
+            </Button>
+          </div>
+        </Card>
+      </div>
+    );
+  }
 
   if (!session || !payment) {
     return (
