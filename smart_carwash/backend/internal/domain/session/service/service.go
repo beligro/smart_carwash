@@ -2675,13 +2675,18 @@ func (s *ServiceImpl) UpdateSessionExtension(ctx context.Context, sessionID uuid
 	}
 
 	// Если целевая сессия уже завершена (таймер закрыл её раньше, чем пришла оплата
-	// продления) — НЕ трогаем мёртвую сессию. Оплата продления в этой ситуации
-	// превращается в новую in_queue-сессию на оплаченное время: ProcessQueue сам
-	// отдаст тот же бокс (если кулдаун ещё жив) либо поставит в общую очередь.
+	// продления) — НЕ трогаем мёртвую сессию.
+	//   • Кулдаун на боксе ещё жив (бронь клиента действует) → создаём новую
+	//     in_queue-сессию на оплаченное время; ProcessQueue вернёт тот же бокс.
+	//   • Кулдаун истёк (бронь бокса пропала) → остаться в боксе уже нельзя,
+	//     поэтому делаем полный авто-возврат оплаты продления, новую сессию не создаём.
 	if session.Status != models.SessionStatusActive &&
 		session.Status != models.SessionStatusInQueue &&
 		session.Status != models.SessionStatusAssigned {
-		return s.resumeExtensionAsNewSession(ctx, session, extensionTimeMinutes)
+		if s.isBoxCooldownAliveForSession(ctx, session) {
+			return s.resumeExtensionAsNewSession(ctx, session, extensionTimeMinutes)
+		}
+		return s.refundExpiredExtension(ctx, session)
 	}
 
 	// Обновляем время продления сессии
@@ -2737,12 +2742,86 @@ func (s *ServiceImpl) UpdateSessionExtension(ctx context.Context, sessionID uuid
 	return nil
 }
 
+// isBoxCooldownAliveForSession сообщает, держится ли ещё бокс завершённой сессии за этим
+// клиентом (кулдаун не истёк и совпадает по user_id ИЛИ по car_number). Та же логика, что в
+// enrichSessionCooldown, но без побочных эффектов — только проверка.
+func (s *ServiceImpl) isBoxCooldownAliveForSession(ctx context.Context, session *models.Session) bool {
+	if session == nil || session.BoxID == nil || s.washboxService == nil {
+		return false
+	}
+	box, err := s.washboxService.GetWashBoxByID(ctx, *session.BoxID)
+	if err != nil || box == nil {
+		return false
+	}
+	if box.CooldownUntil == nil || !box.CooldownUntil.After(time.Now()) {
+		return false
+	}
+	matchUser := box.LastCompletedSessionUserID != nil && *box.LastCompletedSessionUserID == session.UserID
+	matchCar := box.LastCompletedSessionCarNumber != nil && session.CarNumber != "" &&
+		*box.LastCompletedSessionCarNumber == session.CarNumber
+	return matchUser || matchCar
+}
+
+// refundExpiredExtension вызывается, когда оплата продления пришла уже после завершения сессии
+// И кулдаун на боксе истёк — остаться в боксе клиент не может. Делаем полный возврат оплаты
+// продления (последний успешный extension-платёж сессии) и снимаем запрошенное продление.
+// Новую сессию не создаём. Фронт по завершённой сессии + возвращённому платежу покажет клиенту
+// «бронь истекла, оплата возвращена».
+func (s *ServiceImpl) refundExpiredExtension(ctx context.Context, oldSession *models.Session) error {
+	// Снимаем запрошенное продление со старой сессии (саму сессию оставляем complete).
+	_ = s.repo.UpdateSessionFields(ctx, oldSession.ID, map[string]interface{}{
+		"requested_extension_time_minutes":           0,
+		"requested_extension_chemistry_time_minutes": 0,
+		"updated_at": time.Now(),
+	})
+
+	paymentsResp, err := s.paymentService.GetPaymentsBySessionID(ctx, oldSession.ID)
+	if err != nil {
+		return fmt.Errorf("refundExpiredExtension: ошибка получения платежей сессии %s: %w", oldSession.ID, err)
+	}
+
+	// Берём последний успешный и ещё не возвращённый extension-платёж (тот, что только что прошёл).
+	var target *paymentModels.Payment
+	for i := range paymentsResp.ExtensionPayments {
+		p := paymentsResp.ExtensionPayments[i]
+		if p.Status != paymentModels.PaymentStatusSucceeded {
+			continue
+		}
+		if p.RefundedAmount >= p.Amount {
+			continue
+		}
+		if target == nil || p.CreatedAt.After(target.CreatedAt) {
+			pCopy := p
+			target = &pCopy
+		}
+	}
+
+	if target == nil {
+		logger.Printf("refundExpiredExtension: не найден платёж продления для возврата, session_id=%s", oldSession.ID)
+		return nil
+	}
+
+	_, err = s.paymentService.RefundPayment(ctx, &paymentModels.RefundPaymentRequest{
+		PaymentID: target.ID,
+		Amount:    target.Amount - target.RefundedAmount,
+	})
+	if err != nil {
+		logger.Printf("refundExpiredExtension: ОШИБКА возврата платежа %s (session %s): %v — требуется ручной возврат",
+			target.ID, oldSession.ID, err)
+		return fmt.Errorf("ошибка возврата оплаты продления: %w", err)
+	}
+
+	logger.Printf("refundExpiredExtension: кулдаун истёк, оплата продления возвращена — session_id=%s, payment_id=%s, amount=%d",
+		oldSession.ID, target.ID, target.Amount-target.RefundedAmount)
+	return nil
+}
+
 // resumeExtensionAsNewSession обрабатывает оплату продления, пришедшую уже ПОСЛЕ завершения
-// исходной сессии. Мёртвую сессию не воскрешаем — создаём новую in_queue-сессию на оплаченное
-// время (тот же номер/пользователь/услуга/источник). Дальнейшее назначение бокса делает
-// ProcessQueue: если бокс ещё в кулдауне за этим клиентом — вернётся тот же бокс, иначе общая
-// очередь. Для гостя переносим guest_token со старой сессии на новую, иначе гостевой экран
-// (навигация строго по токену) не увидит новую сессию.
+// исходной сессии, когда бокс ещё держится за клиентом (кулдаун жив). Мёртвую сессию не
+// воскрешаем — создаём новую in_queue-сессию на оплаченное время (тот же номер/пользователь/
+// услуга/источник). ProcessQueue по приоритету кулдауна вернёт тот же бокс. Для гостя переносим
+// guest_token со старой сессии на новую, иначе гостевой экран (навигация строго по токену) не
+// увидит новую сессию.
 func (s *ServiceImpl) resumeExtensionAsNewSession(ctx context.Context, oldSession *models.Session, extensionTimeMinutes int) error {
 	extChemMinutes := oldSession.RequestedExtensionChemistryTimeMinutes
 
