@@ -2674,6 +2674,16 @@ func (s *ServiceImpl) UpdateSessionExtension(ctx context.Context, sessionID uuid
 		extensionTimeMinutes = session.RequestedExtensionTimeMinutes
 	}
 
+	// Если целевая сессия уже завершена (таймер закрыл её раньше, чем пришла оплата
+	// продления) — НЕ трогаем мёртвую сессию. Оплата продления в этой ситуации
+	// превращается в новую in_queue-сессию на оплаченное время: ProcessQueue сам
+	// отдаст тот же бокс (если кулдаун ещё жив) либо поставит в общую очередь.
+	if session.Status != models.SessionStatusActive &&
+		session.Status != models.SessionStatusInQueue &&
+		session.Status != models.SessionStatusAssigned {
+		return s.resumeExtensionAsNewSession(ctx, session, extensionTimeMinutes)
+	}
+
 	// Обновляем время продления сессии
 	session.ExtensionTimeMinutes += extensionTimeMinutes
 	session.RequestedExtensionTimeMinutes = 0 // Очищаем запрошенное время
@@ -2724,6 +2734,70 @@ func (s *ServiceImpl) UpdateSessionExtension(ctx context.Context, sessionID uuid
 		return fmt.Errorf("ошибка обновления времени продления сессии: %w", err)
 	}
 
+	return nil
+}
+
+// resumeExtensionAsNewSession обрабатывает оплату продления, пришедшую уже ПОСЛЕ завершения
+// исходной сессии. Мёртвую сессию не воскрешаем — создаём новую in_queue-сессию на оплаченное
+// время (тот же номер/пользователь/услуга/источник). Дальнейшее назначение бокса делает
+// ProcessQueue: если бокс ещё в кулдауне за этим клиентом — вернётся тот же бокс, иначе общая
+// очередь. Для гостя переносим guest_token со старой сессии на новую, иначе гостевой экран
+// (навигация строго по токену) не увидит новую сессию.
+func (s *ServiceImpl) resumeExtensionAsNewSession(ctx context.Context, oldSession *models.Session, extensionTimeMinutes int) error {
+	extChemMinutes := oldSession.RequestedExtensionChemistryTimeMinutes
+
+	rentalTime := extensionTimeMinutes
+	if rentalTime <= 0 {
+		// Крайний случай: докупка только химии — даём боксу время под химию.
+		rentalTime = extChemMinutes
+	}
+
+	newSession := &models.Session{
+		UserID:               oldSession.UserID,
+		Status:               models.SessionStatusInQueue,
+		ServiceType:          oldSession.ServiceType,
+		WithChemistry:        extChemMinutes > 0,
+		ChemistryTimeMinutes: extChemMinutes,
+		CarNumber:            oldSession.CarNumber,
+		CarNumberCountry:     oldSession.CarNumberCountry,
+		Email:                oldSession.Email,
+		RentalTimeMinutes:    rentalTime,
+		ExtensionTimeMinutes: 0,
+		Source:               oldSession.Source,
+		StatusUpdatedAt:      time.Now(),
+	}
+
+	moveGuestToken := oldSession.Source == "guest" && oldSession.GuestToken != nil
+
+	err := s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		// Со старой (завершённой) сессии снимаем запрошенное продление и, для гостя,
+		// отвязываем токен (guest_token — уникальный индекс, нельзя держать на двух сессиях).
+		oldUpdates := map[string]interface{}{
+			"requested_extension_time_minutes":           0,
+			"requested_extension_chemistry_time_minutes": 0,
+			"updated_at": time.Now(),
+		}
+		if moveGuestToken {
+			oldUpdates["guest_token"] = nil
+		}
+		if err := tx.Model(&models.Session{}).Where("id = ?", oldSession.ID).Updates(oldUpdates).Error; err != nil {
+			return fmt.Errorf("ошибка снятия продления со старой сессии: %w", err)
+		}
+
+		if moveGuestToken {
+			newSession.GuestToken = oldSession.GuestToken
+		}
+		if err := tx.Create(newSession).Error; err != nil {
+			return fmt.Errorf("ошибка создания новой сессии из продления: %w", err)
+		}
+		return nil
+	})
+	if err != nil {
+		return err
+	}
+
+	logger.Printf("UpdateSessionExtension: оплата продления пришла после завершения сессии %s — создана новая сессия %s (rental=%d мин, chemistry=%d мин, source=%s)",
+		oldSession.ID, newSession.ID, rentalTime, extChemMinutes, oldSession.Source)
 	return nil
 }
 
