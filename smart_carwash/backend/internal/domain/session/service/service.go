@@ -3430,6 +3430,16 @@ func (s *ServiceImpl) ExtendFromCashier(ctx context.Context, req *models.ExtendS
 	logger.Printf("Service - ExtendFromCashier: найдена активная сессия, session_id: %s, status: %s, car_number: %s",
 		session.ID.String(), session.Status, session.CarNumber)
 
+	// Продлевать можно только оплаченную/идущую сессию. Статус created означает, что
+	// сессия ещё не оплачена (клиент не завершил оплату в приложении). Привязка продления
+	// к такой сессии бессмысленна: она так и не активируется и будет отменена, а время
+	// продления потеряется. Отклоняем — кассир увидит, что активной оплаченной сессии нет.
+	if session.Status == models.SessionStatusCreated {
+		logger.Printf("Service - ExtendFromCashier: сессия %s в статусе created (не оплачена) — продление отклонено, car_number: %s",
+			session.ID.String(), session.CarNumber)
+		return nil, fmt.Errorf("Нет оплаченной активной сессии по номеру машины")
+	}
+
 	// Валидация: если активная сессия не мойка и передано не нулевое время продления химии, возвращаем ошибку
 	if session.ServiceType != "wash" && req.ExtensionChemistryTimeMinutes != nil && *req.ExtensionChemistryTimeMinutes > 0 {
 		logger.Printf("Service - ExtendFromCashier: попытка продления химии для сессии не типа мойка, session_id: %s, service_type: %s",
