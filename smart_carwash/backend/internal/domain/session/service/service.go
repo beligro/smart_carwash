@@ -2825,6 +2825,11 @@ func (s *ServiceImpl) refundExpiredExtension(ctx context.Context, oldSession *mo
 // услуга/источник). ProcessQueue по приоритету кулдауна вернёт тот же бокс. Для гостя переносим
 // guest_token со старой сессии на новую, иначе гостевой экран (навигация строго по токену) не
 // увидит новую сессию.
+//
+// Также перепривязываем сам extension-платёж к новой сессии как её main-платёж: тогда, если
+// клиент отменит новую сессию до старта, штатная отмена корректно вернёт деньги через Tinkoff
+// (по TinkoffID платежа). Возвращается ТОЛЬКО этот платёж (продление); исходный, уже
+// использованный платёж остаётся на старой (завершённой) сессии и не затрагивается.
 func (s *ServiceImpl) resumeExtensionAsNewSession(ctx context.Context, oldSession *models.Session, extensionTimeMinutes int) error {
 	extChemMinutes := oldSession.RequestedExtensionChemistryTimeMinutes
 
@@ -2871,6 +2876,27 @@ func (s *ServiceImpl) resumeExtensionAsNewSession(ctx context.Context, oldSessio
 		}
 		if err := tx.Create(newSession).Error; err != nil {
 			return fmt.Errorf("ошибка создания новой сессии из продления: %w", err)
+		}
+
+		// Перепривязываем оплаченный extension-платёж к новой сессии как её main-платёж.
+		// Так деньги закреплены за сессией, которую реально оплатили, и штатная отмена
+		// новой сессии (до старта) корректно вернёт именно этот платёж через Tinkoff.
+		var extPayment paymentModels.Payment
+		extErr := tx.Where("session_id = ? AND payment_type = ? AND status = ?",
+			oldSession.ID, paymentModels.PaymentTypeExtension, paymentModels.PaymentStatusSucceeded).
+			Order("created_at DESC").First(&extPayment).Error
+		if extErr == nil {
+			if err := tx.Model(&paymentModels.Payment{}).Where("id = ?", extPayment.ID).
+				Updates(map[string]interface{}{
+					"session_id":   newSession.ID,
+					"payment_type": paymentModels.PaymentTypeMain,
+					"updated_at":   time.Now(),
+				}).Error; err != nil {
+				return fmt.Errorf("ошибка перепривязки платежа продления к новой сессии: %w", err)
+			}
+		} else {
+			logger.Printf("resumeExtensionAsNewSession: не найден успешный extension-платёж для перепривязки, session_id=%s: %v",
+				oldSession.ID, extErr)
 		}
 		return nil
 	})
