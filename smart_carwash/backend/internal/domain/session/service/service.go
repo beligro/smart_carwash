@@ -2772,11 +2772,22 @@ func (s *ServiceImpl) isBoxCooldownAliveForSession(ctx context.Context, session 
 // «бронь истекла, оплата возвращена».
 func (s *ServiceImpl) refundExpiredExtension(ctx context.Context, oldSession *models.Session) error {
 	// Снимаем запрошенное продление со старой сессии (саму сессию оставляем complete).
-	_ = s.repo.UpdateSessionFields(ctx, oldSession.ID, map[string]interface{}{
-		"requested_extension_time_minutes":           0,
-		"requested_extension_chemistry_time_minutes": 0,
-		"updated_at": time.Now(),
-	})
+	// ИДЕМПОТЕНТНОСТЬ: Tinkoff шлёт два webhook на один платёж; возврат должен уйти один раз.
+	// Атомарный UPDATE с условием requested > 0 пропускает к возврату ровно один вызов.
+	res := s.db.WithContext(ctx).Model(&models.Session{}).
+		Where("id = ? AND (requested_extension_time_minutes > 0 OR requested_extension_chemistry_time_minutes > 0)", oldSession.ID).
+		Updates(map[string]interface{}{
+			"requested_extension_time_minutes":           0,
+			"requested_extension_chemistry_time_minutes": 0,
+			"updated_at": time.Now(),
+		})
+	if res.Error != nil {
+		return fmt.Errorf("refundExpiredExtension: ошибка снятия продления с сессии %s: %w", oldSession.ID, res.Error)
+	}
+	if res.RowsAffected == 0 {
+		logger.Printf("refundExpiredExtension: продление уже обработано (повторный webhook), пропускаем — session_id=%s", oldSession.ID)
+		return nil
+	}
 
 	paymentsResp, err := s.paymentService.GetPaymentsBySessionID(ctx, oldSession.ID)
 	if err != nil {
@@ -2854,11 +2865,24 @@ func (s *ServiceImpl) resumeExtensionAsNewSession(ctx context.Context, oldSessio
 		StatusUpdatedAt:      time.Now(),
 	}
 
+	// Нечего применять (например повторный webhook уже обнулил requested) — выходим,
+	// иначе создали бы мусорную сессию с нулевым временем.
+	if rentalTime <= 0 {
+		logger.Printf("resumeExtensionAsNewSession: нулевое время продления, сессию не создаём (session_id=%s)", oldSession.ID)
+		return nil
+	}
+
 	moveGuestToken := oldSession.Source == "guest" && oldSession.GuestToken != nil
 
+	duplicate := false
 	err := s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		// Со старой (завершённой) сессии снимаем запрошенное продление и, для гостя,
 		// отвязываем токен (guest_token — уникальный индекс, нельзя держать на двух сессиях).
+		//
+		// ИДЕМПОТЕНТНОСТЬ: Tinkoff шлёт два webhook на один платёж (AUTHORIZED + CONFIRMED),
+		// оба доходят сюда. Условие WHERE requested > 0 + проверка RowsAffected гарантируют,
+		// что новую сессию создаст ровно один вызов: в READ COMMITTED конкурирующий UPDATE
+		// дождётся первой транзакции, переоценит условие и обновит 0 строк.
 		oldUpdates := map[string]interface{}{
 			"requested_extension_time_minutes":           0,
 			"requested_extension_chemistry_time_minutes": 0,
@@ -2867,8 +2891,15 @@ func (s *ServiceImpl) resumeExtensionAsNewSession(ctx context.Context, oldSessio
 		if moveGuestToken {
 			oldUpdates["guest_token"] = nil
 		}
-		if err := tx.Model(&models.Session{}).Where("id = ?", oldSession.ID).Updates(oldUpdates).Error; err != nil {
-			return fmt.Errorf("ошибка снятия продления со старой сессии: %w", err)
+		res := tx.Model(&models.Session{}).
+			Where("id = ? AND (requested_extension_time_minutes > 0 OR requested_extension_chemistry_time_minutes > 0)", oldSession.ID).
+			Updates(oldUpdates)
+		if res.Error != nil {
+			return fmt.Errorf("ошибка снятия продления со старой сессии: %w", res.Error)
+		}
+		if res.RowsAffected == 0 {
+			duplicate = true
+			return nil
 		}
 
 		if moveGuestToken {
@@ -2902,6 +2933,10 @@ func (s *ServiceImpl) resumeExtensionAsNewSession(ctx context.Context, oldSessio
 	})
 	if err != nil {
 		return err
+	}
+	if duplicate {
+		logger.Printf("resumeExtensionAsNewSession: продление уже обработано (повторный webhook), пропускаем — session_id=%s", oldSession.ID)
+		return nil
 	}
 
 	logger.Printf("UpdateSessionExtension: оплата продления пришла после завершения сессии %s — создана новая сессия %s (rental=%d мин, chemistry=%d мин, source=%s)",
