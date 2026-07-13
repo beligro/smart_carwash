@@ -2479,9 +2479,12 @@ func (s *ServiceImpl) CreateFromCashier(ctx context.Context, req *models.Cashier
 		normalizedCarNumber = utils.NormalizeLicensePlate(req.CarNumber)
 		logger.Printf("Service - CreateFromCashier: госномер нормализован '%s' -> '%s'", req.CarNumber, normalizedCarNumber)
 
-		// Проверяем, нет ли уже активной сессии с этим номером машины
+		// Проверяем, нет ли уже активной сессии с этим номером машины.
+		// Неоплаченный черновик (created) не считается препятствием: клиент оплачивает
+		// через кассу, а брошенный черновик отменится автоотменой (10 мин) и в очередь
+		// не лезет (очередь = только in_queue). Поэтому создаём новую оплаченную сессию.
 		existingSession, err := s.repo.GetActiveSessionByCarNumber(ctx, normalizedCarNumber)
-		if err == nil && existingSession != nil {
+		if err == nil && existingSession != nil && existingSession.Status != models.SessionStatusCreated {
 			logger.Printf("Service - CreateFromCashier: найдена существующая активная сессия с номером '%s', session_id: %s, status: %s, created_at: %s",
 				normalizedCarNumber, existingSession.ID.String(), existingSession.Status, existingSession.CreatedAt.Format(time.RFC3339))
 

@@ -736,6 +736,19 @@ func (h *Handler) handle1CGetSessionType(c *gin.Context) {
 		return
 	}
 
+	// Неоплаченный черновик (created) для кассы — это «нет сессии»: продлевать нечего.
+	// Отвечаем 404, чтобы 1С пошла по пути НОВОЙ продажи (создастся оплаченная сессия),
+	// а не продлевала мёртвый черновик. Сам черновик отменится автоотменой (10 мин).
+	if session.Status == models.SessionStatusCreated {
+		logger.WithContext(c).Infof("handle1CGetSessionType: найден только неоплаченный черновик (created) для '%s', session_id=%s — отвечаем как 'нет сессии'",
+			normalizedCarNumber, session.ID.String())
+		c.JSON(http.StatusNotFound, models.GetSessionType1CResponse{
+			Success: false,
+			Message: "Нет активных сессий по номеру машины",
+		})
+		return
+	}
+
 	// Проверяем, что тип услуги указан
 	if session.ServiceType == "" {
 		logger.WithContext(c).Errorf("Service type is empty for session: %s", session.ID.String())
