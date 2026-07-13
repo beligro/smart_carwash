@@ -57,6 +57,7 @@ const GuestPaymentPage = ({
         setSession(sess);
         setPayment(data.payment);
         if (returnType === 'success') {
+          onPaymentComplete?.(sess);
           trackSelfServicePayment({
             channel: 'guest',
             payment: data.payment?.status === 'succeeded' ? data.payment : undefined,
@@ -64,7 +65,6 @@ const GuestPaymentPage = ({
             source: 'return',
             paymentType,
           });
-          onPaymentComplete?.(sess);
         } else {
           onPaymentFailed?.(sess);
         }

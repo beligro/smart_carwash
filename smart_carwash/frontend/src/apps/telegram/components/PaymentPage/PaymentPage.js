@@ -211,8 +211,8 @@ const PaymentPage = ({ session, payment: initialPayment, onPaymentComplete, onPa
             setLoading(false);
             // Получаем обновленную сессию для передачи в onPaymentComplete
             const updatedSession = await ApiService.getUserSessionForPayment(session.user_id);
-            reportPaymentConfirmed(updatedSession.session, updatedPayment, 'poll');
             onPaymentComplete(updatedSession.session);
+            reportPaymentConfirmed(updatedSession.session, updatedPayment, 'poll');
             return;
           } else if (updatedPayment.status === 'failed') {
             // Платеж неудачен
@@ -233,8 +233,8 @@ const PaymentPage = ({ session, payment: initialPayment, onPaymentComplete, onPa
             // Продление успешно применено
             clearInterval(checkInterval);
             setLoading(false);
-            reportPaymentConfirmed(updatedSession.session, updatedPayment || payment, 'poll');
             onPaymentComplete(updatedSession.session);
+            reportPaymentConfirmed(updatedSession.session, updatedPayment || payment, 'poll');
           } else if (checkCount >= maxChecks) {
             // Если прошло много времени без успеха, считаем оплату неудачной
             clearInterval(checkInterval);
@@ -247,8 +247,8 @@ const PaymentPage = ({ session, payment: initialPayment, onPaymentComplete, onPa
             // Платеж успешен
             clearInterval(checkInterval);
             setLoading(false);
-            reportPaymentConfirmed(updatedSession.session, updatedPayment || payment, 'poll');
             onPaymentComplete(updatedSession.session);
+            reportPaymentConfirmed(updatedSession.session, updatedPayment || payment, 'poll');
           } else if (checkCount >= maxChecks) {
             // Если прошло много времени без успеха, считаем оплату неудачной
             clearInterval(checkInterval);

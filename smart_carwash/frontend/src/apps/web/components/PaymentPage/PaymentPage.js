@@ -67,8 +67,8 @@ const PaymentPage = ({ session, payment: initialPayment, onPaymentComplete, onPa
             const checked = await fetchPaymentById(pay.id);
             if (checked) pay = checked;
           }
-          reportPaymentConfirmed(session, pay, 'return');
           onPaymentComplete?.(session);
+          reportPaymentConfirmed(session, pay, 'return');
         })();
       } else {
         onPaymentFailed?.(session);
@@ -93,8 +93,8 @@ const PaymentPage = ({ session, payment: initialPayment, onPaymentComplete, onPa
             const checked = await fetchPaymentById(pay.id);
             if (checked) confirmedPay = checked;
           }
-          reportPaymentConfirmed(sess, confirmedPay, 'return');
           onPaymentComplete?.(sess);
+          reportPaymentConfirmed(sess, confirmedPay, 'return');
         } else {
           onPaymentFailed?.(sess);
         }
@@ -253,8 +253,8 @@ const PaymentPage = ({ session, payment: initialPayment, onPaymentComplete, onPa
               setError('Не удалось получить данные сессии');
               return;
             }
-            reportPaymentConfirmed(sess, updatedPayment, 'poll');
             onPaymentComplete(sess);
+            reportPaymentConfirmed(sess, updatedPayment, 'poll');
             return;
           } else if (updatedPayment.status === 'failed') {
             // Платеж неудачен
@@ -284,8 +284,8 @@ const PaymentPage = ({ session, payment: initialPayment, onPaymentComplete, onPa
             // Продление успешно применено
             clearInterval(checkInterval);
             setLoading(false);
-            reportPaymentConfirmed(sess, updatedPayment || payment, 'poll');
             onPaymentComplete(sess);
+            reportPaymentConfirmed(sess, updatedPayment || payment, 'poll');
           } else if (checkCount >= maxChecks) {
             // Если прошло много времени без успеха, считаем оплату неудачной
             clearInterval(checkInterval);
@@ -298,8 +298,8 @@ const PaymentPage = ({ session, payment: initialPayment, onPaymentComplete, onPa
             // Платеж успешен
             clearInterval(checkInterval);
             setLoading(false);
-            reportPaymentConfirmed(sess, updatedPayment || payment, 'poll');
             onPaymentComplete(sess);
+            reportPaymentConfirmed(sess, updatedPayment || payment, 'poll');
           } else if (checkCount >= maxChecks) {
             // Если прошло много времени без успеха, считаем оплату неудачной
             clearInterval(checkInterval);
