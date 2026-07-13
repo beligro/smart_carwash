@@ -2480,11 +2480,27 @@ func (s *ServiceImpl) CreateFromCashier(ctx context.Context, req *models.Cashier
 		logger.Printf("Service - CreateFromCashier: госномер нормализован '%s' -> '%s'", req.CarNumber, normalizedCarNumber)
 
 		// Проверяем, нет ли уже активной сессии с этим номером машины.
-		// Неоплаченный черновик (created) не считается препятствием: клиент оплачивает
-		// через кассу, а брошенный черновик отменится автоотменой (10 мин) и в очередь
-		// не лезет (очередь = только in_queue). Поэтому создаём новую оплаченную сессию.
+		// Неоплаченный черновик (created) не препятствие: клиент оплачивает через кассу.
+		// Но черновик надо ОТМЕНИТЬ, а не проигнорировать: частичный уникальный индекс
+		// idx_sessions_car_number_unique_active не даст создать вторую сессию с этим
+		// номером, пока черновик в статусе created.
 		existingSession, err := s.repo.GetActiveSessionByCarNumber(ctx, normalizedCarNumber)
-		if err == nil && existingSession != nil && existingSession.Status != models.SessionStatusCreated {
+		if err == nil && existingSession != nil && existingSession.Status == models.SessionStatusCreated {
+			now := time.Now()
+			if cancelErr := s.repo.UpdateSessionFields(ctx, existingSession.ID, map[string]interface{}{
+				"status":            models.SessionStatusCanceled,
+				"completion_source": "cashier",
+				"status_updated_at": now,
+				"updated_at":        now,
+			}); cancelErr != nil {
+				logger.Printf("Service - CreateFromCashier: не удалось отменить черновик %s: %v", existingSession.ID.String(), cancelErr)
+			} else {
+				logger.Printf("Service - CreateFromCashier: отменён неоплаченный черновик %s (номер '%s') — клиент оплачивает через кассу",
+					existingSession.ID.String(), normalizedCarNumber)
+			}
+			existingSession = nil
+		}
+		if err == nil && existingSession != nil {
 			logger.Printf("Service - CreateFromCashier: найдена существующая активная сессия с номером '%s', session_id: %s, status: %s, created_at: %s",
 				normalizedCarNumber, existingSession.ID.String(), existingSession.Status, existingSession.CreatedAt.Format(time.RFC3339))
 
@@ -2539,6 +2555,13 @@ func (s *ServiceImpl) CreateFromCashier(ctx context.Context, req *models.Cashier
 			if normalizedCarNumber != "" {
 				existingSession, findErr := s.repo.GetActiveSessionByCarNumber(ctx, normalizedCarNumber)
 				if findErr == nil && existingSession != nil {
+					// Неоплаченный черновик возвращать НЕЛЬЗЯ: оплата кассира привязалась бы
+					// к черновику, который отменится автоотменой — клиент заплатил бы впустую.
+					// Честная ошибка кассиру (повторит продажу) безопаснее.
+					if existingSession.Status == models.SessionStatusCreated {
+						logger.Printf("Service - CreateFromCashier: после ошибки БД найден только черновик %s — возвращаем ошибку, а не черновик", existingSession.ID.String())
+						return nil, fmt.Errorf("номер '%s' занят неоплаченной сессией из приложения, повторите продажу", req.CarNumber)
+					}
 					logger.Printf("Service - CreateFromCashier: найдена существующая сессия после ошибки БД, session_id: %s", existingSession.ID.String())
 					return existingSession, nil
 				}
@@ -2759,10 +2782,23 @@ func (s *ServiceImpl) isBoxCooldownAliveForSession(ctx context.Context, session 
 	if box.CooldownUntil == nil || !box.CooldownUntil.After(time.Now()) {
 		return false
 	}
-	matchUser := box.LastCompletedSessionUserID != nil && *box.LastCompletedSessionUserID == session.UserID
-	matchCar := box.LastCompletedSessionCarNumber != nil && session.CarNumber != "" &&
-		*box.LastCompletedSessionCarNumber == session.CarNumber
-	return matchUser || matchCar
+
+	// Зеркалим правило ProcessQueue: гостевые (общий служебный user_id) и кассирские
+	// сессии матчим ТОЛЬКО по госномеру, остальные — по user_id. Иначе для гостя
+	// matchUser ложно срабатывал бы по общему guest-user, когда кулдаун на боксе
+	// принадлежит другому гостю.
+	isGuest := session.Source == "guest"
+	isCashier := false
+	if s.cashierUserID != "" {
+		if cashierUserID, err := uuid.Parse(s.cashierUserID); err == nil && session.UserID == cashierUserID {
+			isCashier = true
+		}
+	}
+	if (isGuest || isCashier) && session.CarNumber != "" {
+		return box.LastCompletedSessionCarNumber != nil &&
+			*box.LastCompletedSessionCarNumber == session.CarNumber
+	}
+	return box.LastCompletedSessionUserID != nil && *box.LastCompletedSessionUserID == session.UserID
 }
 
 // refundExpiredExtension вызывается, когда оплата продления пришла уже после завершения сессии
@@ -2829,6 +2865,10 @@ func (s *ServiceImpl) refundExpiredExtension(ctx context.Context, oldSession *mo
 		oldSession.ID, target.ID, target.Amount-target.RefundedAmount)
 	return nil
 }
+
+// errResumeConflict: создать новую сессию из продления нельзя — у этого номера уже есть
+// другая активная сессия (частичный уникальный индекс по car_number). Обрабатывается возвратом.
+var errResumeConflict = errors.New("у номера уже есть другая активная сессия")
 
 // resumeExtensionAsNewSession обрабатывает оплату продления, пришедшую уже ПОСЛЕ завершения
 // исходной сессии, когда бокс ещё держится за клиентом (кулдаун жив). Мёртвую сессию не
@@ -2906,6 +2946,12 @@ func (s *ServiceImpl) resumeExtensionAsNewSession(ctx context.Context, oldSessio
 			newSession.GuestToken = oldSession.GuestToken
 		}
 		if err := tx.Create(newSession).Error; err != nil {
+			// Уникальный индекс idx_sessions_car_number_unique_active: у номера уже есть
+			// другая активная сессия (например касса успела продать новую). Транзакция
+			// откатится (requested останется > 0) — снаружи уйдём в возврат.
+			if strings.Contains(err.Error(), "duplicate key") || strings.Contains(err.Error(), "unique constraint") {
+				return errResumeConflict
+			}
 			return fmt.Errorf("ошибка создания новой сессии из продления: %w", err)
 		}
 
@@ -2931,6 +2977,13 @@ func (s *ServiceImpl) resumeExtensionAsNewSession(ctx context.Context, oldSessio
 		}
 		return nil
 	})
+	if errors.Is(err, errResumeConflict) {
+		// Транзакция откатилась (requested остался > 0) — возвращаем оплату продления:
+		// занять бокс новой сессией нельзя, у номера уже есть другая активная сессия.
+		logger.Printf("resumeExtensionAsNewSession: конфликт активной сессии по номеру '%s' — делаем возврат оплаты продления (session_id=%s)",
+			oldSession.CarNumber, oldSession.ID)
+		return s.refundExpiredExtension(ctx, oldSession)
+	}
 	if err != nil {
 		return err
 	}
