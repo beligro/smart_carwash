@@ -244,7 +244,7 @@ const PaymentPage = ({ session, payment: initialPayment, onPaymentComplete, onPa
             onPaymentComplete(updatedSession.session);
             reportPaymentConfirmed(updatedSession.session, updatedPayment, 'poll');
             return;
-          } else if (updatedPayment.status === 'refunded') {
+          } else if (paymentType === 'extension' && updatedPayment.status === 'refunded') {
             // Продление возвращено (бронь бокса истекла) — показываем сообщение.
             clearInterval(checkInterval);
             setLoading(false);
