@@ -61,13 +61,15 @@ const PaymentPage = ({ session, payment: initialPayment, onPaymentComplete, onPa
 
     if (session && initialPayment) {
       if (returnType === 'success') {
+        // Навигация на экран мойки — сразу, синхронно (не ждём доп. запрос статуса).
+        onPaymentComplete?.(session);
+        // Уточнение статуса/суммы и трекинг — в фоне, уже после перехода.
         (async () => {
           let pay = initialPayment;
           if (pay?.id) {
             const checked = await fetchPaymentById(pay.id);
             if (checked) pay = checked;
           }
-          onPaymentComplete?.(session);
           reportPaymentConfirmed(session, pay, 'return');
         })();
       } else {
@@ -88,13 +90,17 @@ const PaymentPage = ({ session, payment: initialPayment, onPaymentComplete, onPa
           return;
         }
         if (returnType === 'success') {
-          let confirmedPay = pay;
-          if (pay?.id && pay.status !== 'succeeded') {
-            const checked = await fetchPaymentById(pay.id);
-            if (checked) confirmedPay = checked;
-          }
+          // Навигация на экран мойки — сразу, как только есть сессия.
           onPaymentComplete?.(sess);
-          reportPaymentConfirmed(sess, confirmedPay, 'return');
+          // Уточнение суммы платежа и трекинг — в фоне, не задерживают переход.
+          (async () => {
+            let confirmedPay = pay;
+            if (pay?.id && pay.status !== 'succeeded') {
+              const checked = await fetchPaymentById(pay.id);
+              if (checked) confirmedPay = checked;
+            }
+            reportPaymentConfirmed(sess, confirmedPay, 'return');
+          })();
         } else {
           onPaymentFailed?.(sess);
         }
