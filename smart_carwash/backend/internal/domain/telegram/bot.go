@@ -228,6 +228,13 @@ func (b *Bot) sendErrorMessage(chatID int64) {
 
 // SendSessionNotification отправляет уведомление о сессии
 func (b *Bot) SendSessionNotification(telegramID int64, notificationType NotificationType, cooldownMinutes *int) error {
+	// chat_id == 0 — сервисный аккаунт (касса/1С/гость), настоящего Telegram-чата нет.
+	// Тихо пропускаем: иначе Telegram вернёт "chat_id is empty", а вызывающий тикер
+	// будет ретраить отправку каждый тик (флаг "уведомление отправлено" не выставится).
+	if telegramID == 0 {
+		return nil
+	}
+
 	var messageText string
 
 	switch notificationType {
@@ -267,6 +274,11 @@ func (b *Bot) SendSessionNotification(telegramID int64, notificationType Notific
 
 // SendBoxAssignmentNotification отправляет уведомление о назначении бокса
 func (b *Bot) SendBoxAssignmentNotification(telegramID int64, boxNumber int) error {
+	// chat_id == 0 — сервисный аккаунт (касса/1С/гость), настоящего Telegram-чата нет.
+	if telegramID == 0 {
+		return nil
+	}
+
 	messageText := fmt.Sprintf("Вам назначен бокс №%d! Добро пожаловать. Будьте осторожны и заезжайте в бокс! Если бокс занят - предыдущий клиент задержался, поторопите его, пожалуйста! Начните мойку в мини приложении.\n\nПерейдите в мини приложение по кнопке в левом нижнем углу ↙️↙️↙️ и нажмите на кнопку \"Включить бокс\"", boxNumber)
 
 	// Отправляем сообщение без клавиатуры
@@ -297,6 +309,11 @@ func (b *Bot) SendMaintenanceAlert(chatID int64, text string) error {
 
 // SendSessionReassignmentNotification отправляет уведомление о переназначении сессии
 func (b *Bot) SendSessionReassignmentNotification(telegramID int64, serviceType string) error {
+	// chat_id == 0 — сервисный аккаунт (касса/1С/гость), настоящего Telegram-чата нет.
+	if telegramID == 0 {
+		return nil
+	}
+
 	var serviceText string
 	switch serviceType {
 	case "wash":
