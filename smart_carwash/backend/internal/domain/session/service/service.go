@@ -1093,6 +1093,7 @@ func (s *ServiceImpl) CompleteSessionWithoutRefund(ctx context.Context, sessionI
 		lockedSession.Status = models.SessionStatusComplete
 		lockedSession.StatusUpdatedAt = time.Now()
 		lockedSession.IsCompletingNotificationSent = false
+		lockedSession.CompletionSource = completionSource
 
 		if err := tx.Save(&lockedSession).Error; err != nil {
 			return fmt.Errorf("ошибка обновления сессии: %w", err)
@@ -1102,6 +1103,7 @@ func (s *ServiceImpl) CompleteSessionWithoutRefund(ctx context.Context, sessionI
 		session.Status = lockedSession.Status
 		session.StatusUpdatedAt = lockedSession.StatusUpdatedAt
 		session.IsCompletingNotificationSent = lockedSession.IsCompletingNotificationSent
+		session.CompletionSource = lockedSession.CompletionSource
 
 		return nil
 	})
