@@ -30,10 +30,10 @@ services:
       -c autovacuum_max_workers=3
       -c autovacuum_naptime=1min
       -c log_checkpoints=on
-      -c log_connections=on
-      -c log_disconnections=on
+      -c log_connections=off
+      -c log_disconnections=off
       -c log_lock_waits=on
-      -c log_min_duration_statement=1000
+      -c log_min_duration_statement=2000
       -c max_parallel_workers_per_gather=2
       -c max_parallel_workers=4
     
