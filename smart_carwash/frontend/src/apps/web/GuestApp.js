@@ -166,6 +166,23 @@ const GuestApp = () => {
           if (data?.session && !isTerminal(data.session)) {
             setWashInfo((prev) => ({ ...prev, userSession: data.session, payment: data.payment }));
             startSessionPolling();
+
+            // Резюме оплаты: если у клиента в этом же браузере осталась незавершённая
+            // неоплаченная сессия (created) с живой ссылкой Tinkoff — ведём сразу на оплату,
+            // чтобы он продолжил, а не упирался в «уже есть активная сессия» при пересоздании.
+            // Не вмешиваемся в возврат из банка (?return=...) и когда уже на странице оплаты.
+            const params = new URLSearchParams(window.location.search);
+            const isReturnFlow = !!params.get('return');
+            const onPaymentPage = window.location.pathname.includes('/payment');
+            if (
+              data.session.status === 'created' &&
+              data.payment?.payment_url &&
+              (!data.payment.status || data.payment.status === 'pending') &&
+              !isReturnFlow &&
+              !onPaymentPage
+            ) {
+              navigate(`${BASE}/payment`, { state: { session: data.session, payment: data.payment } });
+            }
           } else {
             clearGuestToken();
           }

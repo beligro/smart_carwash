@@ -16,14 +16,10 @@ const BookingPage = ({ theme = 'light', user, onCreateSession }) => {
   const preselectServiceType = location.state?.preselectServiceType;
   const themeClass = theme === 'dark' ? styles.dark : styles.light;
 
-  // Обработчик выбора услуги
+  // Обработчик выбора услуги. Возвращаем промис создания, чтобы ServiceSelector
+  // мог дождаться завершения запроса и держать кнопку заблокированной.
   const handleServiceSelect = (serviceData) => {
-    try {
-      // Используем функцию создания сессии с платежом
-      onCreateSession(serviceData);
-    } catch (error) {
-      alert('Ошибка при выборе услуги: ' + error.message);
-    }
+    return onCreateSession(serviceData);
   };
 
 

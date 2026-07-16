@@ -23,6 +23,8 @@ const ServiceSelector = ({ onSelect, theme = 'light', user, initialServiceType }
   const [filteredChemistryTimes, setFilteredChemistryTimes] = useState([]);
   const [loading, setLoading] = useState(false);
   const [loadingChemistryTimes, setLoadingChemistryTimes] = useState(false);
+  // Блокировка кнопки на время создания сессии (защита от повторных нажатий/дублей запросов)
+  const [submitting, setSubmitting] = useState(false);
   const [carNumber, setCarNumber] = useState('');
   const [carNumberCountry, setCarNumberCountry] = useState('RUS');
   const [rememberCarNumber, setRememberCarNumber] = useState(false);
@@ -453,8 +455,15 @@ const ServiceSelector = ({ onSelect, theme = 'light', user, initialServiceType }
           carNumberCountry: noCarNumber ? '' : carNumberCountry, // Передаем страну только если номер указан
           email: null // Email больше не используется
         };
-        
-        onSelect(serviceData);
+
+        // Блокируем кнопку на время запроса, чтобы повторные нажатия не создавали
+        // дубли запросов создания сессии. Ошибку показывает родитель (onSelect).
+        setSubmitting(true);
+        try {
+          await onSelect(serviceData);
+        } finally {
+          setSubmitting(false);
+        }
       }
     } catch (error) {
       alert('Ошибка в handleConfirm: ' + error.message);
@@ -646,10 +655,10 @@ const ServiceSelector = ({ onSelect, theme = 'light', user, initialServiceType }
           <Button 
             theme={theme} 
             onClick={handleConfirm}
-            disabled={!canConfirm || loading || savingCarNumber}
+            disabled={!canConfirm || loading || savingCarNumber || submitting}
             className={styles.confirmButton}
           >
-            {savingCarNumber ? 'Сохранение...' : 'Подтвердить выбор'}
+            {submitting ? 'Создание…' : savingCarNumber ? 'Сохранение...' : 'Подтвердить выбор'}
           </Button>
         </div>
       )}
