@@ -197,6 +197,23 @@ func (s *ServiceImpl) sendSessionReassignmentByEmail(ctx context.Context, toEmai
 }
 
 // CreateSession создает новую сессию
+// supersedeDraftSession отменяет неоплаченный created-черновик, чтобы освободить место
+// (в т.ч. уникальный индекс по car_number) для создания новой сессии тем же клиентом.
+// Вызывается только для статуса created (без денег и без бокса) — живые сессии не трогаем.
+func (s *ServiceImpl) supersedeDraftSession(ctx context.Context, sessionID uuid.UUID, carNumber string) {
+	now := time.Now()
+	if err := s.repo.UpdateSessionFields(ctx, sessionID, map[string]interface{}{
+		"status":            models.SessionStatusCanceled,
+		"completion_source": "superseded",
+		"status_updated_at": now,
+		"updated_at":        now,
+	}); err != nil {
+		logger.Printf("Service - supersedeDraftSession: не удалось вытеснить черновик %s (номер '%s'): %v", sessionID, carNumber, err)
+		return
+	}
+	logger.Printf("Service - supersedeDraftSession: вытеснен неоплаченный черновик %s (номер '%s') при повторном создании", sessionID, carNumber)
+}
+
 func (s *ServiceImpl) CreateSession(ctx context.Context, req *models.CreateSessionRequest) (*models.Session, error) {
 	logger.Printf("Service - CreateSession: начало создания сессии, user_id: %s, service_type: %s, with_chemistry: %t", req.UserID.String(), req.ServiceType, req.WithChemistry)
 
@@ -211,13 +228,21 @@ func (s *ServiceImpl) CreateSession(ctx context.Context, req *models.CreateSessi
 			logger.Printf("Service - CreateSession: найдена существующая активная сессия с номером '%s', session_id: %s, status: %s, created_at: %s",
 				normalizedCarNumber, existingSessionByCar.ID.String(), existingSessionByCar.Status, existingSessionByCar.CreatedAt.Format(time.RFC3339))
 
-			// Записываем метрику попытки создания дубликата сессии
-			if s.metrics != nil {
-				s.metrics.RecordMultipleSession("duplicate_car_number", normalizedCarNumber, "0")
+			// Неоплаченный черновик (created) НЕ блокирует повторное создание: денег нет,
+			// бокс не назначен. Частый кейс — клиент вернулся в другом браузере, где нет
+			// guest_token, и не может ни резюмировать, ни отменить старую сессию. Вытесняем
+			// черновик (отмена освобождает уникальный индекс car_number) и создаём новую.
+			// Живые/оплаченные сессии (in_queue/assigned/active) не трогаем — отказ.
+			if existingSessionByCar.Status == models.SessionStatusCreated {
+				s.supersedeDraftSession(ctx, existingSessionByCar.ID, normalizedCarNumber)
+			} else {
+				// Записываем метрику попытки создания дубликата сессии
+				if s.metrics != nil {
+					s.metrics.RecordMultipleSession("duplicate_car_number", normalizedCarNumber, "0")
+				}
+				// Возвращаем ошибку о существующей сессии
+				return nil, fmt.Errorf("уже существует активная сессия с номером автомобиля '%s'", req.CarNumber)
 			}
-
-			// Возвращаем ошибку о существующей сессии
-			return nil, fmt.Errorf("уже существует активная сессия с номером автомобиля '%s'", req.CarNumber)
 		}
 	}
 
@@ -283,21 +308,27 @@ func (s *ServiceImpl) CreateSession(ctx context.Context, req *models.CreateSessi
 		// У пользователя уже есть активная сессия
 		logger.Printf("Service - CreateSession: у пользователя уже есть активная сессия, session_id: %s, user_id: %s, status: %s", existingSession.ID.String(), req.UserID.String(), existingSession.Status)
 
-		// Дополнительная проверка: если сессия создана недавно (в последние 30 секунд),
-		// это может быть попытка создания множественных сессий
-		now := time.Now()
-		if now.Sub(existingSession.CreatedAt) < 30*time.Second {
-			logger.Printf("Service - CreateSession: обнаружена попытка создания множественных сессий, session_id: %s, user_id: %s, created_at: %s", existingSession.ID.String(), req.UserID.String(), existingSession.CreatedAt.Format(time.RFC3339))
+		// Неоплаченный черновик (created) вытесняем так же, как в проверке по номеру:
+		// пользователь просто пересоздаёт свою же брошенную неоплаченную сессию.
+		if existingSession.Status == models.SessionStatusCreated {
+			s.supersedeDraftSession(ctx, existingSession.ID, normalizedCarNumber)
+		} else {
+			// Дополнительная проверка: если сессия создана недавно (в последние 30 секунд),
+			// это может быть попытка создания множественных сессий
+			now := time.Now()
+			if now.Sub(existingSession.CreatedAt) < 30*time.Second {
+				logger.Printf("Service - CreateSession: обнаружена попытка создания множественных сессий, session_id: %s, user_id: %s, created_at: %s", existingSession.ID.String(), req.UserID.String(), existingSession.CreatedAt.Format(time.RFC3339))
 
-			// Записываем метрику попытки создания множественных сессий
-			if s.metrics != nil {
-				timeDiff := strconv.FormatFloat(now.Sub(existingSession.CreatedAt).Seconds(), 'f', 0, 64)
-				s.metrics.RecordMultipleSession("attempt", req.UserID.String(), timeDiff)
+				// Записываем метрику попытки создания множественных сессий
+				if s.metrics != nil {
+					timeDiff := strconv.FormatFloat(now.Sub(existingSession.CreatedAt).Seconds(), 'f', 0, 64)
+					s.metrics.RecordMultipleSession("attempt", req.UserID.String(), timeDiff)
+				}
 			}
-		}
 
-		// Возвращаем ошибку вместо существующей сессии
-		return nil, fmt.Errorf("у вас уже есть активная сессия")
+			// Возвращаем ошибку вместо существующей сессии (живая/оплаченная сессия)
+			return nil, fmt.Errorf("у вас уже есть активная сессия")
+		}
 	}
 
 	// Создаем новую сессию
