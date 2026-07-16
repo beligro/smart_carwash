@@ -170,16 +170,18 @@ const GuestApp = () => {
             // Резюме оплаты: если у клиента в этом же браузере осталась незавершённая
             // неоплаченная сессия (created) с живой ссылкой Tinkoff — ведём сразу на оплату,
             // чтобы он продолжил, а не упирался в «уже есть активная сессия» при пересоздании.
-            // Не вмешиваемся в возврат из банка (?return=...) и когда уже на странице оплаты.
+            // ТОЛЬКО при заходе на корень гостевого приложения: не перехватываем /booking,
+            // /session/:id, /payment и возврат из банка (?return=...).
             const params = new URLSearchParams(window.location.search);
             const isReturnFlow = !!params.get('return');
-            const onPaymentPage = window.location.pathname.includes('/payment');
+            const path = window.location.pathname.replace(/\/+$/, '');
+            const isBasePath = path === BASE;
             if (
+              isBasePath &&
+              !isReturnFlow &&
               data.session.status === 'created' &&
               data.payment?.payment_url &&
-              (!data.payment.status || data.payment.status === 'pending') &&
-              !isReturnFlow &&
-              !onPaymentPage
+              (!data.payment.status || data.payment.status === 'pending')
             ) {
               navigate(`${BASE}/payment`, { state: { session: data.session, payment: data.payment } });
             }
