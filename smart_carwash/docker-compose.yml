@@ -92,8 +92,8 @@ services:
     security_opt:
       - no-new-privileges:true
     environment:
-      - HTTPS_PROXY=socks5://moika:tg-proxy-2026@178.72.168.63:10800
-      - HTTP_PROXY=socks5://moika:tg-proxy-2026@178.72.168.63:10800
+      - HTTPS_PROXY=${PROXY_URL}
+      - HTTP_PROXY=${PROXY_URL}
       - NO_PROXY=192.168.0.0/16,10.0.0.0/8,127.0.0.1,localhost
     tmpfs:
       - /tmp
@@ -108,9 +108,7 @@ services:
       context: ./frontend
       dockerfile: Dockerfile
     container_name: carwash_frontend
-    depends_on:
-      - postgres
-    restart: always
+    restart: unless-stopped
     environment:
       REACT_APP_API_URL: ${REACT_APP_API_URL}
     networks:
@@ -126,7 +124,7 @@ services:
       context: ./nginx
       dockerfile: Dockerfile
     container_name: carwash_nginx
-    restart: always
+    restart: unless-stopped
     ports:
       - "80:80"
       - "443:443"
@@ -228,11 +226,9 @@ services:
   prometheus:
     image: prom/prometheus:latest
     container_name: carwash_prometheus
-    depends_on:
-      - backend
-    restart: always
+    restart: unless-stopped
     ports:
-      - "9090:9090"
+      - "127.0.0.1:9090:9090"  # Только локально (доступ через SSH-туннель); наружу не публикуем
     volumes:
       - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
       - ./monitoring/prometheus-rules:/etc/prometheus/rules:ro
@@ -260,11 +256,9 @@ services:
   node-exporter:
     image: prom/node-exporter:latest
     container_name: carwash_node_exporter
-    depends_on:
-      - backend
-    restart: always
+    restart: unless-stopped
     ports:
-      - "9100:9100"
+      - "127.0.0.1:9100:9100"  # Только локально; наружу не публикуем
     volumes:
       - /proc:/host/proc:ro
       - /sys:/host/sys:ro
@@ -286,13 +280,15 @@ services:
   grafana:
     image: grafana/grafana:latest
     container_name: carwash_grafana
-    restart: always
+    restart: unless-stopped
     ports:
-      - "3000:3000"
+      - "127.0.0.1:3000:3000"  # Наружу не публикуем; снаружи доступ только через HTTPS-проксирование nginx (/grafana/)
     environment:
-      - GF_SECURITY_ADMIN_PASSWORD=admin
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_ADMIN_PASSWORD}
       - GF_USERS_ALLOW_SIGN_UP=false
       - GF_INSTALL_PLUGINS=grafana-piechart-panel
+      - GF_SERVER_ROOT_URL=https://h2o-nsk.ru/grafana/
+      - GF_SERVER_SERVE_FROM_SUB_PATH=true
     volumes:
       - grafana_data:/var/lib/grafana
       - ./monitoring/grafana-dashboards:/etc/grafana/provisioning/dashboards:ro
