@@ -200,7 +200,10 @@ func (s *ServiceImpl) sendSessionReassignmentByEmail(ctx context.Context, toEmai
 // supersedeDraftSession отменяет неоплаченный created-черновик, чтобы освободить место
 // (в т.ч. уникальный индекс по car_number) для создания новой сессии тем же клиентом.
 // Вызывается только для статуса created (без денег и без бокса) — живые сессии не трогаем.
-func (s *ServiceImpl) supersedeDraftSession(ctx context.Context, sessionID uuid.UUID, carNumber string) {
+// Также аннулирует платёжную ссылку Tinkoff черновика, чтобы по ней нельзя было оплатить
+// уже отменённую сессию (деньги без услуги). Ошибка аннулирования не блокирует вытеснение
+// (принятый остаточный риск — ручной возврат), ошибка отмены сессии — блокирует.
+func (s *ServiceImpl) supersedeDraftSession(ctx context.Context, sessionID uuid.UUID, carNumber string) error {
 	now := time.Now()
 	if err := s.repo.UpdateSessionFields(ctx, sessionID, map[string]interface{}{
 		"status":            models.SessionStatusCanceled,
@@ -209,9 +212,18 @@ func (s *ServiceImpl) supersedeDraftSession(ctx context.Context, sessionID uuid.
 		"updated_at":        now,
 	}); err != nil {
 		logger.Printf("Service - supersedeDraftSession: не удалось вытеснить черновик %s (номер '%s'): %v", sessionID, carNumber, err)
-		return
+		return fmt.Errorf("не удалось освободить номер от незавершённой сессии, попробуйте ещё раз")
 	}
+
+	// Гасим платёжную ссылку Tinkoff черновика (для pending-платежа /Cancel = аннулирование).
+	if s.paymentService != nil {
+		if err := s.paymentService.CancelPendingPayment(ctx, sessionID); err != nil {
+			logger.Printf("Service - supersedeDraftSession: ВНИМАНИЕ: не удалось аннулировать платёж черновика %s: %v — старая ссылка может остаться живой", sessionID, err)
+		}
+	}
+
 	logger.Printf("Service - supersedeDraftSession: вытеснен неоплаченный черновик %s (номер '%s') при повторном создании", sessionID, carNumber)
+	return nil
 }
 
 func (s *ServiceImpl) CreateSession(ctx context.Context, req *models.CreateSessionRequest) (*models.Session, error) {
@@ -234,7 +246,9 @@ func (s *ServiceImpl) CreateSession(ctx context.Context, req *models.CreateSessi
 			// черновик (отмена освобождает уникальный индекс car_number) и создаём новую.
 			// Живые/оплаченные сессии (in_queue/assigned/active) не трогаем — отказ.
 			if existingSessionByCar.Status == models.SessionStatusCreated {
-				s.supersedeDraftSession(ctx, existingSessionByCar.ID, normalizedCarNumber)
+				if supErr := s.supersedeDraftSession(ctx, existingSessionByCar.ID, normalizedCarNumber); supErr != nil {
+					return nil, supErr
+				}
 			} else {
 				// Записываем метрику попытки создания дубликата сессии
 				if s.metrics != nil {
@@ -311,7 +325,9 @@ func (s *ServiceImpl) CreateSession(ctx context.Context, req *models.CreateSessi
 		// Неоплаченный черновик (created) вытесняем так же, как в проверке по номеру:
 		// пользователь просто пересоздаёт свою же брошенную неоплаченную сессию.
 		if existingSession.Status == models.SessionStatusCreated {
-			s.supersedeDraftSession(ctx, existingSession.ID, normalizedCarNumber)
+			if supErr := s.supersedeDraftSession(ctx, existingSession.ID, normalizedCarNumber); supErr != nil {
+				return nil, supErr
+			}
 		} else {
 			// Дополнительная проверка: если сессия создана недавно (в последние 30 секунд),
 			// это может быть попытка создания множественных сессий
@@ -363,7 +379,14 @@ func (s *ServiceImpl) CreateSession(ctx context.Context, req *models.CreateSessi
 			if normalizedCarNumber != "" {
 				existingSession, findErr := s.repo.GetActiveSessionByCarNumber(ctx, normalizedCarNumber)
 				if findErr == nil && existingSession != nil {
-					logger.Printf("Service - CreateSession: найдена существующая сессия после ошибки БД, session_id: %s", existingSession.ID.String())
+					logger.Printf("Service - CreateSession: найдена существующая сессия после ошибки БД, session_id: %s, status: %s", existingSession.ID.String(), existingSession.Status)
+					// Гонка параллельных созданий: чужой свежий created-черновик успел
+					// вставиться между нашим вытеснением и INSERT. Наш черновик уже
+					// вытеснен, поэтому «уже есть активная сессия» ввело бы в заблуждение —
+					// возвращаем транзиентную ошибку, повторная попытка пройдёт.
+					if existingSession.Status == models.SessionStatusCreated {
+						return nil, fmt.Errorf("не удалось создать сессию, попробуйте ещё раз")
+					}
 					return nil, fmt.Errorf("уже существует активная сессия с номером автомобиля '%s'", req.CarNumber)
 				}
 			}
@@ -2528,6 +2551,13 @@ func (s *ServiceImpl) CreateFromCashier(ctx context.Context, req *models.Cashier
 			}); cancelErr != nil {
 				logger.Printf("Service - CreateFromCashier: не удалось отменить черновик %s: %v", existingSession.ID.String(), cancelErr)
 			} else {
+				// Гасим платёжную ссылку Tinkoff черновика, чтобы клиент не оплатил
+				// отменённую сессию по старой ссылке (клиент платит через кассу).
+				if s.paymentService != nil {
+					if payErr := s.paymentService.CancelPendingPayment(ctx, existingSession.ID); payErr != nil {
+						logger.Printf("Service - CreateFromCashier: ВНИМАНИЕ: не удалось аннулировать платёж черновика %s: %v", existingSession.ID.String(), payErr)
+					}
+				}
 				logger.Printf("Service - CreateFromCashier: отменён неоплаченный черновик %s (номер '%s') — клиент оплачивает через кассу",
 					existingSession.ID.String(), normalizedCarNumber)
 			}

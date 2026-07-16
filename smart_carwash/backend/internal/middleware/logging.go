@@ -1,6 +1,7 @@
 package middleware
 
 import (
+	"regexp"
 	"sync/atomic"
 	"time"
 
@@ -16,7 +17,22 @@ var (
 	requestCounter int64
 	// Счётчик активных запросов
 	activeRequests int64
+
+	// Гостевой токен в URL (/guest/sessions/g_<ts>_<hex>/...) — это фактически пароль
+	// доступа к сессии. В логи пишем усечённую форму, чтобы полный токен не оседал
+	// в логах/мониторинге. Функционал не меняется — маскируется только логирование.
+	guestTokenRe = regexp.MustCompile(`g_\d+_[0-9a-f]+`)
 )
+
+// MaskGuestToken усекает гостевой токен в пути для логов: g_1784100101692_3fb3c584 -> g_...c584
+func MaskGuestToken(path string) string {
+	return guestTokenRe.ReplaceAllStringFunc(path, func(tok string) string {
+		if len(tok) <= 6 {
+			return "g_..."
+		}
+		return "g_..." + tok[len(tok)-4:]
+	})
+}
 
 // LoggingMiddleware создает middleware для логирования HTTP запросов
 func LoggingMiddleware() gin.HandlerFunc {
@@ -32,7 +48,7 @@ func LoggingMiddleware() gin.HandlerFunc {
 
 		// Начало запроса
 		start := time.Now()
-		path := c.Request.URL.Path
+		path := MaskGuestToken(c.Request.URL.Path)
 		method := c.Request.Method
 		clientIP := c.ClientIP()
 		userAgent := c.Request.UserAgent()

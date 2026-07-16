@@ -252,8 +252,20 @@ func main() {
 	washboxLogHandler := washboxlogHandlers.NewHandler(washboxLogSvc)
 	maintenanceHandler := maintenanceHandlers.NewHandler(maintenanceSvc)
 
-	// Создаем роутер
-	router := gin.Default()
+	// Создаем роутер (gin.New вместо gin.Default, чтобы гин-логгер маскировал
+	// гостевые токены в путях — токен в URL является авторизацией гостевой сессии)
+	router := gin.New()
+	router.Use(gin.Recovery())
+	router.Use(gin.LoggerWithFormatter(func(param gin.LogFormatterParams) string {
+		return fmt.Sprintf("[GIN] %s | %3d | %13v | %15s | %-7s %q\n",
+			param.TimeStamp.Format("2006/01/02 - 15:04:05"),
+			param.StatusCode,
+			param.Latency,
+			param.ClientIP,
+			param.Method,
+			middleware.MaskGuestToken(param.Path),
+		)
+	}))
 
 	// Добавляем middleware для метрик
 	router.Use(appMetrics.PrometheusMiddleware())

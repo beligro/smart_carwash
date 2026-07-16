@@ -92,6 +92,7 @@ type Service interface {
 	CashierListPayments(ctx context.Context, req *models.CashierPaymentsRequest) (*models.AdminListPaymentsResponse, error)
 	GetCashierLastShiftStatistics(ctx context.Context, req *models.CashierLastShiftStatisticsRequest) (*models.CashierLastShiftStatisticsResponse, error)
 	PollPendingPayments(ctx context.Context) error
+	CancelPendingPayment(ctx context.Context, sessionID uuid.UUID) error
 	Shutdown() // Завершение работы сервиса (остановка очереди webhook'ов)
 }
 
@@ -1006,6 +1007,41 @@ func (s *service) buildReceipt(amount int, email string) map[string]interface{} 
 	}
 
 	return receipt
+}
+
+// CancelPendingPayment аннулирует неоплаченный (pending) main-платёж сессии в Tinkoff.
+// Для неоплаченного платежа Tinkoff /Cancel гасит платёжную ссылку — оплатить по ней
+// больше нельзя. Используется при вытеснении неоплаченного created-черновика, чтобы
+// клиент не мог оплатить уже отменённую сессию по старой ссылке.
+func (s *service) CancelPendingPayment(ctx context.Context, sessionID uuid.UUID) error {
+	payment, err := s.repository.GetPaymentBySessionID(ctx, sessionID)
+	if err != nil {
+		return fmt.Errorf("платёж сессии не найден: %w", err)
+	}
+	if payment.Status != models.PaymentStatusPending {
+		// Аннулировать нечего (уже оплачен/отменён) — не ошибка.
+		return nil
+	}
+	if payment.TinkoffID == "" {
+		return nil
+	}
+
+	resp, err := s.tinkoffClient.RefundPayment(payment.TinkoffID, payment.Amount) // POST /Cancel: для NEW-платежа это аннулирование ссылки
+	if err != nil {
+		return fmt.Errorf("ошибка аннулирования платежа в Tinkoff: %w", err)
+	}
+	if !resp.Success {
+		return fmt.Errorf("Tinkoff отклонил аннулирование платежа: %s", resp.ErrorCode)
+	}
+
+	payment.Status = models.PaymentStatusFailed
+	if err := s.repository.UpdatePayment(ctx, payment); err != nil {
+		logger.Printf("CancelPendingPayment: платёж %s аннулирован в Tinkoff, но не обновлён в БД: %v", payment.ID, err)
+	}
+
+	logger.Printf("CancelPendingPayment: аннулирован неоплаченный платёж %s (tinkoff_id=%s) сессии %s",
+		payment.ID, payment.TinkoffID, sessionID)
+	return nil
 }
 
 // PollPendingPayments проверяет статус pending платежей через Tinkoff API
